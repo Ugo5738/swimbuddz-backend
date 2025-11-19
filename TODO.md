@@ -37,7 +37,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 1.1 – Global configuration (`libs/common`)
 
-- [ ] Task 1.1 – Global configuration (`libs/common`)
+- [x] Task 1.1 – Global configuration (`libs/common`)
 - Implement `libs/common/config.py` using `pydantic.BaseSettings` for env vars (database URL, Supabase credentials, logging level, etc.).
 - Provide `get_settings()` helper with LRU caching.
 - Add `libs/common/logging.py` that configures structured logging and exposes `get_logger(name)`.
@@ -48,7 +48,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 1.2 – Database utilities (`libs/db`)
 
-- [ ] Task 1.2 – Database utilities (`libs/db`)
+- [x] Task 1.2 – Database utilities (`libs/db`)
 - Implement `libs/db/base.py` defining the declarative `Base`.
 - Implement `libs/db/config.py` to build an async SQLAlchemy engine/sessionmaker from `settings.database_url`.
 - Provide `libs/db/session.py` with FastAPI dependency `get_async_db()` that yields an `AsyncSession`.
@@ -59,7 +59,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 1.3 – Auth helpers (`libs/auth`)
 
-- [ ] Task 1.3 – Auth helpers (`libs/auth`)
+- [x] Task 1.3 – Auth helpers (`libs/auth`)
 - Implement `AuthUser` Pydantic model capturing Supabase claims (user_id, email, role, member_id optional).
 - Add `get_current_user()` FastAPI dependency that validates Supabase JWT (use `python-jose` or `pyjwt`) and returns `AuthUser`.
 - Provide `require_admin()` dependency that ensures `AuthUser.role == "admin"`.
@@ -74,7 +74,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 2.1 – Alembic setup
 
-- [ ] Task 2.1 – Alembic setup
+- [x] Task 2.1 – Alembic setup
 - Initialize `alembic/` with `env.py` wired to the async engine.
 - Configure `alembic.ini`.
 - Create seed migration that creates core tables for members, sessions, attendance, announcements, payments, and supporting enums (per models defined later).
@@ -85,7 +85,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 2.2 – Test database utilities
 
-- [ ] Task 2.2 – Test database utilities
+- [x] Task 2.2 – Test database utilities
 - Create a pytest fixture that spins up an isolated database (use transaction rollbacks or a temp schema).
 - Document how to run tests locally with the fixture.
   **Acceptance Criteria**
@@ -101,7 +101,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 3.1 – Identity Service (`services/identity_service`)
 
-- [ ] Task 3.1 – Identity Service (`services/identity_service`)
+- [x] Task 3.1 – Identity Service (`services/identity_service`)
 - Models: store mappings between Supabase user IDs and member IDs/roles.
 - API: `GET /api/v1/identity/me`.
   **Acceptance Criteria**
@@ -111,7 +111,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 3.2 – Members Service (`services/members_service`)
 
-- [ ] Task 3.2 – Members Service (`services/members_service`)
+- [x] Task 3.2 – Members Service (`services/members_service`)
 - Models: `Member` with profile fields (contact info, emergency contact, membership_status enum, swimming level).
 - APIs: member CRUD set outlined in `API_CONTRACT.md`.
   **Acceptance Criteria**
@@ -122,7 +122,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 3.3 – Sessions Service (`services/sessions_service`)
 
-- [ ] Task 3.3 – Sessions Service (`services/sessions_service`)
+- [x] Task 3.3 – Sessions Service (`services/sessions_service`)
 - Models: `Session` representing events with fields for title, description, location enum, pool_fee, capacity, time range.
 - APIs: create session (admin) + list + get by ID (public) as defined.
   **Acceptance Criteria**
@@ -132,7 +132,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 3.4 – Attendance Service (`services/attendance_service`)
 
-- [ ] Task 3.4 – Attendance Service (`services/attendance_service`)
+- [x] Task 3.4 – Attendance Service (`services/attendance_service`)
 - Models: `SessionAttendance` linking members to sessions with ride-share fields, payment status enums, total_fee.
 - APIs: sign-in endpoint, member attendance history, admin session attendance list, pool-list export.
 - Implement service-layer logic to compute `total_fee` and enforce one attendance row per member/session.
@@ -144,7 +144,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 3.5 – Communications Service (`services/communications_service`)
 
-- [ ] Task 3.5 – Communications Service (`services/communications_service`)
+- [x] Task 3.5 – Communications Service (`services/communications_service`)
 - Models: `Announcement`.
 - APIs: create/list/get announcements (public list).
 - Schema must support `title`, `summary`, `body`, `category`, timestamps (`created_at`, `updated_at`, `published_at`), and `is_pinned`.
@@ -157,7 +157,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 3.6 – Pending Registration Workflow (`services/members_service` + gateway)
 
-- [ ] Task 3.6 – Pending Registration Workflow (`services/members_service` + gateway)
+- [x] Task 3.6 – Pending Registration Workflow (`services/members_service` + gateway)
 - Extend members domain to capture pending registration payloads submitted before email confirmation.
 - Add endpoints:
   - `POST /api/v1/pending-registrations` – public endpoint accepting Supabase `user_id` plus questionnaire payload.
@@ -172,7 +172,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 3.7 – Payments & Academy Services (stubs)
 
-- [ ] Task 3.7 – Payments & Academy Services (stubs)
+- [x] Task 3.7 – Payments & Academy Services (stubs)
 - Define minimal models/APIs if needed for near-term flows.
 - **Crucial**: Implement a mechanism to generate and store a unique **Payment Reference** (e.g., `PAY-12345`) for every transaction, even if manual. This is required for the frontend confirmation screen.
   **Acceptance Criteria**
@@ -186,7 +186,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 4.1 – App wiring
 
-- [ ] Task 4.1 – App wiring
+- [x] Task 4.1 – App wiring
 - Implement `app/main.py` with FastAPI app factory, router inclusion, lifespan events (startup/shutdown), and middleware (CORS, logging).
 - Add health check at `GET /health`.
   **Acceptance Criteria**
@@ -195,7 +195,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 4.2 – Identity & Member endpoints
 
-- [ ] Task 4.2 – Identity & Member endpoints
+- [x] Task 4.2 – Identity & Member endpoints
 - Implement gateway routers that call the identity and members services (prefer direct imports; fall back to HTTP if services run separately).
 - Ensure response models exactly match `API_CONTRACT.md`.
   **Acceptance Criteria**
@@ -205,7 +205,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 4.3 – Sessions & Attendance endpoints
 
-- [ ] Task 4.3 – Sessions & Attendance endpoints
+- [x] Task 4.3 – Sessions & Attendance endpoints
 - Expose combined session list/detail endpoints and session sign-in flow through the gateway, orchestrating the domain services.
 - Implement `GET /api/v1/sessions/{id}/sign-in-view` (from `ARCHITECTURE.md` examples) that merges session + attendance info for the current member.
   **Acceptance Criteria**
@@ -264,7 +264,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 6.1 – Test suite
 
-- [ ] Task 6.1 – Test suite
+- [/] Task 6.1 – Test suite
 - Ensure each service has tests under `app/tests/` covering routers, services, and schemas.
 - Add integration tests under root `tests/` for cross-service flows (registration, three-step sign-in, admin pool list).
   **Acceptance Criteria**
@@ -299,3 +299,6 @@ This document lists the ordered tasks required to implement the backend. **Follo
 Use this section to list scoped ideas that are **not** part of the current TODO sequence (e.g., WhatsApp integrations, advanced analytics, additional MCP tools).
 
 - **Member Scorecard**: A visual representation of a member's progress, skills, and achievements (linked to Academy service).
+- **WhatsApp Integration**: For automated announcements and reminders.
+- **Advanced Analytics**: Dashboard for detailed attendance and financial metrics.
+- **Stripe Integration**: Replace manual payment reference with real payment processing.

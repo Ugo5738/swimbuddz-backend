@@ -20,6 +20,27 @@ def create_app() -> FastAPI:
         """Simple readiness endpoint used during bootstrap."""
         return {"status": "ok"}
 
+    from services.members_service.router import router as members_router
+    from services.members_service.router import pending_router
+    from services.sessions_service.router import router as sessions_router
+    from services.attendance_service.router import router as attendance_router
+    from services.communications_service.router import router as communications_router
+    
+    app.include_router(members_router, prefix="/api/v1")
+    app.include_router(pending_router, prefix="/api/v1")
+    app.include_router(sessions_router, prefix="/api/v1")
+    from services.communications_service.router import router as communications_router
+    from services.payments_service.router import router as payments_router
+    from services.academy_service.router import router as academy_router
+    
+    app.include_router(members_router, prefix="/api/v1")
+    app.include_router(pending_router, prefix="/api/v1")
+    app.include_router(sessions_router, prefix="/api/v1")
+    app.include_router(attendance_router, prefix="/api/v1")
+    app.include_router(communications_router, prefix="/api/v1")
+    app.include_router(payments_router, prefix="/api/v1")
+    app.include_router(academy_router, prefix="/api/v1")
+
     return app
 
 
