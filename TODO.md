@@ -241,7 +241,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 5.1 – MCP server scaffolding
 
-- [ ] Task 5.1 – MCP server scaffolding
+- [x] Task 5.1 – MCP server scaffolding
 - Create FastAPI (or textual) MCP server exposing tools listed in `ARCHITECTURE.md`.
 - Implement auth/config wiring shared with backend libs.
   **Acceptance Criteria**
@@ -250,7 +250,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 5.2 – Tool implementations
 
-- [ ] Task 5.2 – Tool implementations
+- [x] Task 5.2 – Tool implementations
 - Implement tools: `get_current_member_profile`, `update_member_profile`, `list_upcoming_sessions`, `get_session_details`, `sign_in_to_session`, `get_my_attendance_history`, `list_announcements`, `create_announcement`.
 - Tools should call gateway HTTP endpoints or shared domain functions—no direct DB writes.
   **Acceptance Criteria**

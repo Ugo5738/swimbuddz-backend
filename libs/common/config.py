@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str
     SUPABASE_JWT_SECRET: str
     SUPABASE_PROJECT_ID: str
+    
+    # Gateway
+    GATEWAY_URL: str = "http://localhost:8000"
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
