@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime
-import enum
 import random
 import string
 

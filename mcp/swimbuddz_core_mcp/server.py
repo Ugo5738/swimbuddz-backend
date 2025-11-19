@@ -1,5 +1,5 @@
-from fastapi import FastAPI, HTTPException, Body
-from typing import Any, Dict, List
+from fastapi import FastAPI, HTTPException
+from typing import Any, Dict
 from pydantic import BaseModel
 
 from mcp.swimbuddz_core_mcp import tools

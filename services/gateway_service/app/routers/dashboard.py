@@ -1,10 +1,9 @@
-from typing import List, Optional
+from typing import List
 from datetime import datetime
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user, require_admin
@@ -114,7 +113,7 @@ async def get_admin_dashboard_stats(
     total_members = result.scalar_one() or 0
 
     # 2. Active Members (assuming registration_complete=True is active for now)
-    query = select(func.count(Member.id)).where(Member.registration_complete == True)
+    query = select(func.count(Member.id)).where(Member.registration_complete.is_(True))
     result = await db.execute(query)
     active_members = result.scalar_one() or 0
 

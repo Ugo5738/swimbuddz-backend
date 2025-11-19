@@ -2,9 +2,9 @@ import uuid
 from datetime import datetime
 import enum
 
-from sqlalchemy import String, Integer, Float, DateTime, Enum as SAEnum, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Float, DateTime, Enum as SAEnum, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from libs.db.base import Base
 

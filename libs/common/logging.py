@@ -1,6 +1,5 @@
 import logging
 import sys
-from typing import Any
 
 from libs.common.config import get_settings
 

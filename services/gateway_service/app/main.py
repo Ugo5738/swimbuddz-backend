@@ -29,7 +29,6 @@ def create_app() -> FastAPI:
     app.include_router(members_router, prefix="/api/v1")
     app.include_router(pending_router, prefix="/api/v1")
     app.include_router(sessions_router, prefix="/api/v1")
-    from services.communications_service.router import router as communications_router
     from services.payments_service.router import router as payments_router
     from services.academy_service.router import router as academy_router
     

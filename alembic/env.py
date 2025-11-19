@@ -11,11 +11,12 @@ from alembic import context
 from libs.common.config import get_settings
 from libs.db.base import Base
 # Import all models here so they are registered with Base.metadata
-from services.members_service.models import Member, PendingRegistration
-from services.sessions_service.models import Session
-from services.attendance_service.models import SessionAttendance
-from services.communications_service.models import Announcement
-from services.payments_service.models import Payment
+from services.members_service.models import Member  # noqa: F401
+from services.members_service.models import PendingRegistration  # noqa: F401
+from services.sessions_service.models import Session  # noqa: F401
+from services.attendance_service.models import SessionAttendance  # noqa: F401
+from services.communications_service.models import Announcement  # noqa: F401
+from services.payments_service.models import Payment  # noqa: F401
 
 settings = get_settings()
 

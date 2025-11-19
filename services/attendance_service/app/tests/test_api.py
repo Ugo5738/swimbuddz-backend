@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import uuid
 from datetime import datetime, timedelta
 
-from libs.auth.dependencies import get_current_user
 from services.attendance_service.router import get_current_member
 from services.gateway_service.app.main import app
 

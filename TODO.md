@@ -274,7 +274,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 6.2 – Tooling & CI
 
-- [ ] Task 6.2 – Tooling & CI
+- [x] Task 6.2 – Tooling & CI
 - Add linting/formatting (ruff + black or equivalent) and enforce via pre-commit or CI script.
 - Add GitHub Actions (or similar) workflow to run lint + pytest + Alembic migration check.
   **Acceptance Criteria**
@@ -284,7 +284,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 6.3 – Documentation & handoff
 
-- [ ] Task 6.3 – Documentation & handoff
+- [x] Task 6.3 – Documentation & handoff
 - Update `README.md` with setup instructions, service overview, and troubleshooting tips.
 - Ensure `API_CONTRACT.md`, `CONVENTIONS.md`, and this TODO stay in sync with implemented functionality.
   **Acceptance Criteria**
