@@ -40,6 +40,9 @@ def create_app() -> FastAPI:
     app.include_router(communications_router, prefix="/api/v1")
     app.include_router(payments_router, prefix="/api/v1")
     app.include_router(academy_router, prefix="/api/v1")
+    
+    from services.gateway_service.app.routers.dashboard import router as dashboard_router
+    app.include_router(dashboard_router, prefix="/api/v1")
 
     return app
 

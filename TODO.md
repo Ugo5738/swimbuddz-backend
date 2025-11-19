@@ -215,7 +215,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 4.4 – Dashboard endpoint
 
-- [ ] Task 4.4 – Dashboard endpoint
+- [x] Task 4.4 – Dashboard endpoint
 - Implement `GET /api/v1/me/dashboard` combining identity, member profile, upcoming sessions, attendance summary, and announcements.
   **Acceptance Criteria**
 
@@ -224,7 +224,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 4.5 – Admin Dashboard endpoint
 
-- [ ] Task 4.5 – Admin Dashboard endpoint
+- [x] Task 4.5 – Admin Dashboard endpoint
 - Implement `GET /api/v1/admin/dashboard-stats` aggregating:
   - Total members (active/inactive).
   - Upcoming sessions count.
