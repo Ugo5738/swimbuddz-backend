@@ -1,0 +1,52 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+.envrc
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Packaging / build output
+dist/
+build/
+*.egg-info/
+.python-version
+
+# Coverage / test artifacts
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# IDE / editor files
+.DS_Store
+.idea/
+.vscode/
+*.code-workspace
+
+# Logs and temp files
+*.log
+logs/
+tmp/
+*.tmp
+
+# Type checker caches
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# Docker / Compose
+*.pid
+docker-compose.override.yml
+
+# MCP / tooling artifacts
+*.mcp.cache
