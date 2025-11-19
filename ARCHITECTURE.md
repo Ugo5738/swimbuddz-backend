@@ -211,10 +211,12 @@ services/<service_name>/
 
 ### 6.1 Registration
 
-1. User signs in via Supabase (frontend).
-2. Frontend calls `POST /api/v1/members/` (gateway → `members_service`).
-3. `members_service` creates a `Member` with `supabase_user_id` plus profile details.
-4. Subsequent calls to `get_current_user()` + `identity_service` map to this member record.
+1. User fills registration form (frontend).
+2. Frontend calls `POST /api/v1/pending-registrations` (gateway → `members_service`) to store profile data.
+3. Frontend triggers Supabase sign-up → User receives email confirmation link.
+4. User clicks link → Supabase redirects to frontend `/auth/callback`.
+5. Frontend calls `POST /api/v1/pending-registrations/complete` (gateway → `members_service`).
+6. `members_service` creates the final `Member` record linked to the now-confirmed Supabase user.
 
 ### 6.2 Three-Step Session Sign-In
 

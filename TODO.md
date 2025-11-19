@@ -20,7 +20,7 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 ### Task 0.2 – Docker + Compose bootstrap
 
-- [ ] Task 0.2 – Docker + Compose bootstrap
+- [x] Task 0.2 – Docker + Compose bootstrap
 - Author a reusable backend Docker base image (Python 3.11-slim with Poetry/pip tooling) plus service-specific Dockerfiles that copy only their code.
 - Update `docker-compose.yml` so each service runs in its own container (gateway, identity, members, sessions, attendance, communications, payments, academy, db) with restart policies that prevent one failure from crashing the others.
 - Ensure compose wiring shares a common network while keeping per-service env files (e.g., `.env.gateway`, `.env.members`) that extend `.env`.
@@ -173,7 +173,8 @@ This document lists the ordered tasks required to implement the backend. **Follo
 ### Task 3.7 – Payments & Academy Services (stubs)
 
 - [ ] Task 3.7 – Payments & Academy Services (stubs)
-- Define minimal models/APIs if needed for near-term flows; otherwise scaffold folders with TODO comments describing pending requirements.
+- Define minimal models/APIs if needed for near-term flows.
+- **Crucial**: Implement a mechanism to generate and store a unique **Payment Reference** (e.g., `PAY-12345`) for every transaction, even if manual. This is required for the frontend confirmation screen.
   **Acceptance Criteria**
 
 1. Folder structure exists with placeholder routers/tests referencing future work.
@@ -220,6 +221,19 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 1. Endpoint responds within async orchestration best practices (concurrent awaits where safe).
 2. Unit/integration test validates orchestration logic using mocks/fakes for underlying services.
+
+### Task 4.5 – Admin Dashboard endpoint
+
+- [ ] Task 4.5 – Admin Dashboard endpoint
+- Implement `GET /api/v1/admin/dashboard-stats` aggregating:
+  - Total members (active/inactive).
+  - Upcoming sessions count.
+  - Recent announcements count.
+- Ensure this endpoint is protected by `require_admin`.
+  **Acceptance Criteria**
+
+1. Returns JSON structure matching the frontend Admin Dashboard needs.
+2. Returns 403 Forbidden for non-admin users.
 
 ---
 
@@ -283,3 +297,5 @@ This document lists the ordered tasks required to implement the backend. **Follo
 ## Future Ideas
 
 Use this section to list scoped ideas that are **not** part of the current TODO sequence (e.g., WhatsApp integrations, advanced analytics, additional MCP tools).
+
+- **Member Scorecard**: A visual representation of a member's progress, skills, and achievements (linked to Academy service).

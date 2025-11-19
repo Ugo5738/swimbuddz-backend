@@ -260,3 +260,23 @@ Announcements power the public noticeboard and admin share helpers.
 - **Auth:** Public
 - **Description:** Fetch the full announcement content.
 - **Response 200:** `AnnouncementRead`
+
+---
+
+## 6. Admin Dashboard
+
+### `GET /api/v1/admin/dashboard-stats`
+
+- **Auth:** Admin
+- **Description:** Aggregate statistics for the admin dashboard.
+- **Response 200**
+
+```json
+{
+  "total_members": 150,
+  "active_members": 120,
+  "inactive_members": 30,
+  "upcoming_sessions_count": 5,
+  "recent_announcements_count": 2
+}
+```

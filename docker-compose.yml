@@ -1,32 +1,22 @@
-version: "3.9"
-
 services:
-  db:
-    image: postgres:16
-    container_name: swimbuddz_db
-    environment:
-      POSTGRES_DB: swimbuddz
-      POSTGRES_USER: swimbuddz
-      POSTGRES_PASSWORD: swimbuddz
-    ports:
-      - "5432:5432"
-    volumes:
-      - swimbuddz_db_data:/var/lib/postgresql/data
-
   gateway:
     build:
-      context: ./services/gateway_service
+      context: .
+      dockerfile: services/gateway_service/Dockerfile
     container_name: swimbuddz_gateway
     env_file:
-      - .env
-    depends_on:
-      - db
+      - .env.dev
+    # depends_on:
+    #   - db  <-- Removed because we will use Supabase CLI's Postgres
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Allow access to host's Supabase (localhost)
     command: >
       uvicorn services.gateway_service.app.main:app
       --host 0.0.0.0
       --port 8000
+      --reload
 
 volumes:
   swimbuddz_db_data:
