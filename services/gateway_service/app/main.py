@@ -1,10 +1,18 @@
-"""FastAPI application entrypoint for the SwimBuddz gateway service."""
+"""FastAPI application entrypoint for the SwimBuddz gateway service.
+
+This gateway now proxies requests to independent microservices instead of
+importing them directly.
+"""
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
+
+from services.gateway_service.app import clients
 
 
 def create_app() -> FastAPI:
@@ -12,38 +20,105 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="SwimBuddz Gateway Service",
         version="0.1.0",
-        description="Backend-for-frontend that orchestrates SwimBuddz domain services.",
+        description="API Gateway that orchestrates SwimBuddz microservices.",
     )
 
     @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:  # pragma: no cover - trivial wiring
-        """Simple readiness endpoint used during bootstrap."""
+    async def health_check() -> dict[str, str]:
+        """Simple readiness endpoint."""
         return {"status": "ok"}
 
-    from services.members_service.router import router as members_router
-    from services.members_service.router import pending_router
-    from services.sessions_service.router import router as sessions_router
-    from services.attendance_service.router import router as attendance_router
-    from services.communications_service.router import router as communications_router
+    # ==================================================================
+    # MEMBERS SERVICE PROXY
+    # ==================================================================
+    @app.api_route("/api/v1/members/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    async def proxy_members(path: str, request: Request):
+        """Proxy all /api/v1/members/* requests to members service."""
+        return await proxy_request(clients.members_client, f"/members/{path}", request)
     
-    app.include_router(members_router, prefix="/api/v1")
-    app.include_router(pending_router, prefix="/api/v1")
-    app.include_router(sessions_router, prefix="/api/v1")
-    from services.payments_service.router import router as payments_router
-    from services.academy_service.router import router as academy_router
-    
-    app.include_router(members_router, prefix="/api/v1")
-    app.include_router(pending_router, prefix="/api/v1")
-    app.include_router(sessions_router, prefix="/api/v1")
-    app.include_router(attendance_router, prefix="/api/v1")
-    app.include_router(communications_router, prefix="/api/v1")
-    app.include_router(payments_router, prefix="/api/v1")
-    app.include_router(academy_router, prefix="/api/v1")
-    
+    @app.api_route("/api/v1/pending-registrations/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    async def proxy_pending_registrations(path: str, request: Request):
+        """Proxy pending registration requests to members service."""
+        return await proxy_request(clients.members_client, f"/pending-registrations/{path}", request)
+
+    # ==================================================================
+    # SESSIONS SERVICE PROXY
+    # ==================================================================
+    @app.api_route("/api/v1/sessions/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    async def proxy_sessions(path: str, request: Request):
+        """Proxy all /api/v1/sessions/* requests to sessions service."""
+        return await proxy_request(clients.sessions_client, f"/sessions/{path}", request)
+
+    # ==================================================================
+    # ATTENDANCE SERVICE PROXY
+    # ==================================================================
+    @app.api_route("/api/v1/attendance/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    async def proxy_attendance(path: str, request: Request):
+        """Proxy all /api/v1/attendance/* requests to attendance service."""
+        return await proxy_request(clients.attendance_client, f"/attendance/{path}", request)
+
+    # ==================================================================
+    # COMMUNICATIONS SERVICE PROXY
+    # ==================================================================
+    @app.api_route("/api/v1/communications/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    async def proxy_communications(path: str, request: Request):
+        """Proxy all /api/v1/communications/* requests to communications service."""
+        return await proxy_request(clients.communications_client, f"/communications/{path}", request)
+
+    # ==================================================================
+    # PAYMENTS SERVICE PROXY
+    # ==================================================================
+    @app.api_route("/api/v1/payments/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    async def proxy_payments(path: str, request: Request):
+        """Proxy all /api/v1/payments/* requests to payments service."""
+        return await proxy_request(clients.payments_client, f"/payments/{path}", request)
+
+    # ==================================================================
+    # DASHBOARD (Gateway-specific aggregation)
+    # ==================================================================
     from services.gateway_service.app.routers.dashboard import router as dashboard_router
     app.include_router(dashboard_router, prefix="/api/v1")
 
     return app
+
+
+async def proxy_request(client: clients.ServiceClient, path: str, request: Request):
+    """Generic proxy function to forward requests to microservices."""
+    try:
+        # Get request body if present
+        body = None
+        if request.method in ["POST", "PATCH", "PUT"]:
+            body = await request.json() if await request.body() else {}
+        
+        # Forward headers (including Authorization)
+        headers = dict(request.headers)
+        
+        # Make request to service
+        if request.method == "GET":
+            result = await client.get(path, headers=headers)
+        elif request.method == "POST":
+            result = await client.post(path, json=body, headers=headers)
+        elif request.method == "PATCH":
+            result = await client.patch(path, json=body, headers=headers)
+        elif request.method == "DELETE":
+            result = await client.delete(path, headers=headers)
+        else:
+            raise HTTPException(status_code=405, detail="Method not allowed")
+        
+        return JSONResponse(content=result)
+    
+    except httpx.HTTPStatusError as e:
+        # Forward HTTP errors from services
+        return JSONResponse(
+            status_code=e.response.status_code,
+            content={"detail": str(e)}
+        )
+    except httpx.RequestError as e:
+        # Handle connection errors
+        raise HTTPException(
+            status_code=503,
+            detail=f"Service unavailable: {str(e)}"
+        )
 
 
 app = create_app()

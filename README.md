@@ -35,6 +35,22 @@ swimbuddz-backend/
 └── tests/                # Integration tests
 ```
 
+## Architecture
+
+**SwimBuddz** uses a **microservices architecture** where each domain service runs independently:
+
+- **Gateway Service** (Port 8000) - API Gateway that routes requests to domain services
+- **Members Service** (Port 8001) - Member management
+- **Sessions Service** (Port 8002) - Session scheduling
+- **Attendance Service** (Port 8003) - Attendance tracking
+- **Communications Service** (Port 8004) - Announcements
+- **Payments Service** (Port 8005) - Payment processing
+
+The Gateway proxies requests to the appropriate service via HTTP, allowing each service to be:
+- Scaled independently
+- Deployed independently
+- Developed and tested in isolation
+
 ## Getting Started
 
 ### Prerequisites
@@ -45,21 +61,33 @@ swimbuddz-backend/
 ### Running with Docker (Recommended)
 
 1.  **Configure Environment**:
-    Copy `.env.example` to `.env` and fill in your Supabase credentials.
+    Copy `.env.example` to `.env.dev` and fill in your Supabase credentials.
     ```bash
-    cp .env.example .env
+    cp .env.example .env.dev
     ```
 
-2.  **Start Services**:
+2.  **Start All Services**:
     ```bash
     docker compose up --build
     ```
-    The Gateway API will be available at `http://localhost:8000`.
+    
+    This will start all 6 services:
+    - Gateway at `http://localhost:8000`
+    - Individual services at ports 8001-8005
 
 3.  **Run Migrations**:
     ```bash
     docker compose exec gateway alembic upgrade head
     ```
+
+### Testing Individual Services
+
+Each service can be accessed directly during development:
+- Members: `http://localhost:8001/docs`
+- Sessions: `http://localhost:8002/docs`
+- Attendance: `http://localhost:8003/docs`
+- Communications: `http://localhost:8004/docs`
+- Payments: `http://localhost:8005/docs`
 
 ### Local Development
 

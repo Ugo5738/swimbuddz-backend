@@ -1,4 +1,80 @@
 services:
+  # ==================================================================
+  # DOMAIN MICROSERVICES
+  # ==================================================================
+  members-service:
+    build:
+      context: .
+      dockerfile: services/members_service/Dockerfile
+    container_name: swimbuddz_members
+    env_file:
+      - .env.dev
+    ports:
+      - "8001:8001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  sessions-service:
+    build:
+      context: .
+      dockerfile: services/sessions_service/Dockerfile
+    container_name: swimbuddz_sessions
+    env_file:
+      - .env.dev
+    ports:
+      - "8002:8002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  attendance-service:
+    build:
+      context: .
+      dockerfile: services/attendance_service/Dockerfile
+    container_name: swimbuddz_attendance
+    env_file:
+      - .env.dev
+    ports:
+      - "8003:8003"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  communications-service:
+    build:
+      context: .
+      dockerfile: services/communications_service/Dockerfile
+    container_name: swimbuddz_communications
+    env_file:
+      - .env.dev
+    ports:
+      - "8004:8004"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  payments-service:
+    build:
+      context: .
+      dockerfile: services/payments_service/Dockerfile
+    container_name: swimbuddz_payments
+    env_file:
+      - .env.dev
+    ports:
+      - "8005:8005"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  # ==================================================================
+  # API GATEWAY
+  # ==================================================================
   gateway:
     build:
       context: .
@@ -6,12 +82,16 @@ services:
     container_name: swimbuddz_gateway
     env_file:
       - .env.dev
-    # depends_on:
-    #   - db  <-- Removed because we will use Supabase CLI's Postgres
+    depends_on:
+      - members-service
+      - sessions-service
+      - attendance-service
+      - communications-service
+      - payments-service
     ports:
       - "8000:8000"
     extra_hosts:
-      - "host.docker.internal:host-gateway" # Allow access to host's Supabase (localhost)
+      - "host.docker.internal:host-gateway"
     command: >
       uvicorn services.gateway_service.app.main:app
       --host 0.0.0.0

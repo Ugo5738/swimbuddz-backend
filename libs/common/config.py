@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     
     # Gateway
     GATEWAY_URL: str = "http://localhost:8000"
+    
+    # Microservices URLs
+    MEMBERS_SERVICE_URL: str = "http://members-service:8001"
+    SESSIONS_SERVICE_URL: str = "http://sessions-service:8002"
+    ATTENDANCE_SERVICE_URL: str = "http://attendance-service:8003"
+    COMMUNICATIONS_SERVICE_URL: str = "http://communications-service:8004"
+    PAYMENTS_SERVICE_URL: str = "http://payments-service:8005"
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
