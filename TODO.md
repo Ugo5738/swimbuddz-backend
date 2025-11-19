@@ -27,9 +27,9 @@ This document lists the ordered tasks required to implement the backend. **Follo
 - Document how to `docker compose up`/down, rebuild individual services, and tail logs.
   **Acceptance Criteria**
 
-1. `docker compose up gateway` builds and serves the FastAPI placeholder via http://localhost:8000 while Postgres runs separately.
-2. Stopping one service container does not kill the remaining services (use `restart: unless-stopped` and no shared processes).
-3. README instructions cover local dev via Docker (build, run, logs) and mention per-service env overrides.
+1. `docker compose up --build` builds and starts all 6 services (gateway + 5 domain services).
+2. Gateway accessible at `http://localhost:8000`, individual services at ports 8001-8005.
+3. Services communicate via Docker network; frontend calls only the Gateway.
 
 ---
 

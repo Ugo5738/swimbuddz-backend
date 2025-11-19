@@ -13,20 +13,29 @@ The goals are:
 
 ## 1. High-Level Overview
 
-The backend is a **Python monorepo** composed of:
+The backend uses a **microservices architecture** where each domain service runs as an independent process:
 
 1. **Shared libraries (`libs/`)** – common configuration, database access, and authentication helpers.
-2. **Domain services (`services/`)** – each encapsulates a core SwimBuddz domain:
-   - `identity_service`: links Supabase users to SwimBuddz members and roles.
-   - `members_service`: member registration and profiles.
-   - `sessions_service`: all swim sessions and events (Yaba, Sunfit, meetups, trips, etc.).
-   - `attendance_service`: session sign-ins, ride-share options, pool lists, attendance history.
-   - `communications_service`: announcements / noticeboard.
-   - `academy_service`: structured learning programs and enrolments.
-   - `payments_service`: payment records and status (manual first, gateways later).
-   - `gateway_service`: API gateway / backend-for-frontend (BFF) for client apps.
+2. **Domain services (`services/`)** – each runs as a standalone FastAPI application:
+   - `members_service` (Port 8001): member registration and profiles.
+   - `sessions_service` (Port 8002): all swim sessions and events.
+   - `attendance_service` (Port 8003): session sign-ins, ride-share, pool lists.
+   - `communications_service` (Port 8004): announcements / noticeboard.
+   - `payments_service` (Port 8005): payment records and status.
+   - `gateway_service` (Port 8000): **API Gateway** that proxies requests to domain services via HTTP.
 3. **MCP server (`mcp/`)** – `swimbuddz_core_mcp` exposes high-level tools to AI agents.
 4. **Migrations (`alembic/`)** – Alembic manages the Postgres schema.
+
+### Architecture Pattern
+
+The **Gateway Service** acts as the single entry point for clients and **proxies HTTP requests** to the appropriate domain service. This provides:
+
+- **Independent scaling** - Scale high-traffic services separately
+- **Fault isolation** - Service failures don't crash the entire system
+- **Independent deployment** - Deploy services separately
+- **Clear boundaries** - Enforced separation of concerns
+
+Each domain service is a complete FastAPI application with its own endpoints, models, and business logic. Services communicate via HTTP when needed, typically through the Gateway.
 
 ---
 
@@ -174,18 +183,27 @@ services/<service_name>/
 
 ---
 
-## 4. Gateway Service (HTTP API Gateway / BFF)
+## 4. Gateway Service (HTTP API Gateway)
 
 **Path:** `services/gateway_service/`
+**Port:** 8000
 
 - **Responsibilities**
   - Provide a single HTTP entrypoint for web/mobile clients.
-  - Orchestrate data from multiple domain services into frontend-friendly responses.
+  - **Proxy requests** to domain services via HTTP.
+  - Orchestrate data from multiple services into frontend-friendly responses (e.g., dashboard).
+- **Implementation**
+  - Uses HTTP clients to forward requests to domain services.
+  - Services discovered via Docker Compose network (e.g., `http://members-service:8001`).
+  - Dashboard endpoints aggregate data from multiple services using direct database queries for efficiency.
 - **Examples**
-  - `GET /api/v1/me/dashboard`: combines identity, profile, attendance summary, and announcements.
-  - `GET /api/v1/sessions/{id}/sign-in-view`: merges session details with any existing attendance record.
+  - `GET /api/v1/members/*` → proxies to Members Service (8001)
+  - `GET /api/v1/sessions/*` → proxies to Sessions Service (8002)
+  - `GET /api/v1/me/dashboard` → aggregates from multiple sources
 - **Design Notes**
-  - Avoid heavy domain logic; validate requests, call other services (imports or internal HTTP), and shape responses for the frontend.
+  - Stateless proxy pattern for most endpoints.
+  - Dashboard uses direct DB access for performance (queries from multiple tables).
+  - All authentication/authorization handled by individual services.
 
 ---
 
