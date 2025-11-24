@@ -84,6 +84,14 @@ def create_app() -> FastAPI:
         return await proxy_request(clients.payments_client, f"/payments/{path}", request)
 
     # ==================================================================
+    # ACADEMY SERVICE PROXY
+    # ==================================================================
+    @app.api_route("/api/v1/academy/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    async def proxy_academy(path: str, request: Request):
+        """Proxy all /api/v1/academy/* requests to academy service."""
+        return await proxy_request(clients.academy_client, f"/academy/{path}", request)
+
+    # ==================================================================
     # DASHBOARD (Gateway-specific aggregation)
     # ==================================================================
     from services.gateway_service.app.routers.dashboard import router as dashboard_router
