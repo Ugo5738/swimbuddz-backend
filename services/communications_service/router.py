@@ -2,7 +2,7 @@ from typing import List
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
@@ -29,6 +29,23 @@ async def list_announcements(
     return result.scalars().all()
 
 
+@router.get("/stats")
+async def get_announcement_stats(
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get announcement statistics.
+    """
+    # Just total count for now
+    query = select(func.count(Announcement.id))
+    result = await db.execute(query)
+    recent_announcements_count = result.scalar_one() or 0
+
+    return {
+        "recent_announcements_count": recent_announcements_count
+    }
+
+
 @router.get("/{announcement_id}", response_model=AnnouncementResponse)
 async def get_announcement(
     announcement_id: uuid.UUID,
@@ -46,20 +63,4 @@ async def get_announcement(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Announcement not found",
         )
-    return announcement
-
-
-@router.post("/", response_model=AnnouncementResponse, status_code=status.HTTP_201_CREATED)
-async def create_announcement(
-    announcement_in: AnnouncementCreate,
-    current_user: AuthUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """
-    Create a new announcement (Admin only).
-    """
-    announcement = Announcement(**announcement_in.model_dump())
-    db.add(announcement)
-    await db.commit()
-    await db.refresh(announcement)
     return announcement

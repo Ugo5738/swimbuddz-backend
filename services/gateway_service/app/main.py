@@ -54,6 +54,16 @@ def create_app() -> FastAPI:
     # ==================================================================
     # SESSIONS SERVICE PROXY
     # ==================================================================
+    @app.api_route("/api/v1/sessions/{session_id}/attendance", methods=["GET"])
+    async def proxy_session_attendance(session_id: str, request: Request):
+        """Proxy session attendance requests to attendance service."""
+        return await proxy_request(clients.attendance_client, f"/attendance/sessions/{session_id}/attendance", request)
+
+    @app.api_route("/api/v1/sessions/{session_id}/pool-list", methods=["GET"])
+    async def proxy_session_pool_list(session_id: str, request: Request):
+        """Proxy session pool list requests to attendance service."""
+        return await proxy_request(clients.attendance_client, f"/attendance/sessions/{session_id}/pool-list", request)
+
     @app.api_route("/api/v1/sessions/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
     async def proxy_sessions(path: str, request: Request):
         """Proxy all /api/v1/sessions/* requests to sessions service."""
@@ -73,7 +83,11 @@ def create_app() -> FastAPI:
     @app.api_route("/api/v1/communications/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
     async def proxy_communications(path: str, request: Request):
         """Proxy all /api/v1/communications/* requests to communications service."""
-        return await proxy_request(clients.communications_client, f"/communications/{path}", request)
+        # Communications router has prefix="/announcements"
+        # Gateway path is "announcements" (from /api/v1/communications/announcements)
+        # We want to call /announcements
+        # So we should forward /{path}
+        return await proxy_request(clients.communications_client, f"/{path}", request)
 
     # ==================================================================
     # PAYMENTS SERVICE PROXY

@@ -21,7 +21,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "academy"}
 
     # Include academy router
-    app.include_router(academy_router)
+    app.include_router(academy_router, prefix="/academy")
 
     return app
 
