@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 # Load .env.prod manually
 def load_env_prod():
-    with open('.env.prod', 'r') as f:
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env.prod')
+    with open(env_path, 'r') as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith('#'):
