@@ -1,4 +1,5 @@
 import json
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -97,14 +98,103 @@ async def complete_pending_registration(
         email=pending.email,
         first_name=profile_data.get("first_name"),
         last_name=profile_data.get("last_name"),
-        registration_complete=True
+        registration_complete=True,
+
+        # Contact & Location
+        phone=profile_data.get("phone"),
+        city=profile_data.get("city"),
+        country=profile_data.get("country"),
+        time_zone=profile_data.get("timeZone"),
+
+        # Swim Profile
+        swim_level=profile_data.get("swimLevel"),
+        deep_water_comfort=profile_data.get("deepWaterComfort"),
+        strokes=profile_data.get("strokes"),
+        interests=profile_data.get("interests"),
+        goals_narrative=profile_data.get("goalsNarrative"),
+        goals_other=profile_data.get("goalsOther"),
+
+        # Coaching
+        certifications=profile_data.get("certifications"),
+        coaching_experience=profile_data.get("coachingExperience"),
+        coaching_specialties=profile_data.get("coachingSpecialties"),
+        coaching_years=profile_data.get("coachingYears"),
+        coaching_portfolio_link=profile_data.get("coachingPortfolioLink"),
+        coaching_document_link=profile_data.get("coachingDocumentLink"),
+        coaching_document_file_name=profile_data.get("coachingDocumentFileName"),
+
+        # Logistics
+        availability_slots=profile_data.get("availabilitySlots"),
+        time_of_day_availability=profile_data.get("timeOfDayAvailability"),
+        location_preference=profile_data.get("locationPreference"),
+        location_preference_other=profile_data.get("locationPreferenceOther"),
+        travel_flexibility=profile_data.get("travelFlexibility"),
+        facility_access=profile_data.get("facilityAccess"),
+        facility_access_other=profile_data.get("facilityAccessOther"),
+        equipment_needs=profile_data.get("equipmentNeeds"),
+        equipment_needs_other=profile_data.get("equipmentNeedsOther"),
+        travel_notes=profile_data.get("travelNotes"),
+
+        # Safety
+        emergency_contact_name=profile_data.get("emergencyContactName"),
+        emergency_contact_relationship=profile_data.get("emergencyContactRelationship"),
+        emergency_contact_phone=profile_data.get("emergencyContactPhone"),
+        emergency_contact_region=profile_data.get("emergencyContactRegion"),
+        medical_info=profile_data.get("medicalInfo"),
+        safety_notes=profile_data.get("safetyNotes"),
+
+        # Community
+        volunteer_interest=profile_data.get("volunteerInterest"),
+        volunteer_roles_detail=profile_data.get("volunteerRolesDetail"),
+        discovery_source=profile_data.get("discoverySource"),
+        social_instagram=profile_data.get("socialInstagram"),
+        social_linkedin=profile_data.get("socialLinkedIn"),
+        social_other=profile_data.get("socialOther"),
+
+        # Preferences
+        language_preference=profile_data.get("languagePreference"),
+        comms_preference=profile_data.get("commsPreference"),
+        payment_readiness=profile_data.get("paymentReadiness"),
+        currency_preference=profile_data.get("currencyPreference"),
+        consent_photo=profile_data.get("consentPhoto"),
+
+        # Membership
+        membership_tiers=profile_data.get("membershipTiers"),
+        academy_focus_areas=profile_data.get("academyFocusAreas"),
+        academy_focus=profile_data.get("academyFocus"),
+        payment_notes=profile_data.get("paymentNotes")
     )
     
     db.add(member)
     await db.delete(pending)  # Cleanup pending
-    await db.commit()
-    await db.refresh(member)
     
+    try:
+        await db.commit()
+        await db.refresh(member)
+    except Exception as e:
+        # Handle race condition where member was created by another request
+        # We check for "duplicate key value" or similar in the error string
+        # or just catch generic IntegrityError if we imported it.
+        # Since we didn't import IntegrityError yet, let's check the string representation
+        # or import it. Better to import it.
+        # But to be safe and quick without adding imports at top:
+        error_str = str(e).lower()
+        if "unique constraint" in error_str or "duplicate key" in error_str:
+             await db.rollback()
+             # Check if member exists now
+             query = select(Member).where(Member.auth_id == current_user.user_id)
+             result = await db.execute(query)
+             existing_member = result.scalar_one_or_none()
+             if existing_member:
+                 return existing_member
+             
+             # If not found but we had a unique error, raise 400
+             raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Member already exists",
+            )
+        raise e
+
     return member
 
 
@@ -149,8 +239,20 @@ async def create_member(
             detail="Email already registered",
         )
 
-    member = Member(**member_in.model_dump())
     db.add(member)
     await db.commit()
     await db.refresh(member)
     return member
+
+
+@router.get("/public", response_model=List[MemberResponse])
+async def list_public_members(
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    List all members for public dropdown (no auth required).
+    Returns limited info (id, first_name, last_name).
+    """
+    query = select(Member).order_by(Member.first_name, Member.last_name)
+    result = await db.execute(query)
+    return result.scalars().all()

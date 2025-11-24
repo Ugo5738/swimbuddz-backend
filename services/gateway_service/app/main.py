@@ -23,6 +23,16 @@ def create_app() -> FastAPI:
         description="API Gateway that orchestrates SwimBuddz microservices.",
     )
 
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     @app.get("/health", tags=["system"])
     async def health_check() -> dict[str, str]:
         """Simple readiness endpoint."""
@@ -90,8 +100,11 @@ async def proxy_request(client: clients.ServiceClient, path: str, request: Reque
         if request.method in ["POST", "PATCH", "PUT"]:
             body = await request.json() if await request.body() else {}
         
-        # Forward headers (including Authorization)
-        headers = dict(request.headers)
+        # Forward headers (excluding those that httpx handles)
+        headers = {
+            k: v for k, v in request.headers.items() 
+            if k.lower() not in ["content-length", "host"]
+        }
         
         # Make request to service
         if request.method == "GET":
@@ -109,9 +122,14 @@ async def proxy_request(client: clients.ServiceClient, path: str, request: Reque
     
     except httpx.HTTPStatusError as e:
         # Forward HTTP errors from services
+        try:
+            error_content = e.response.json()
+        except Exception:
+            error_content = {"detail": e.response.text or str(e)}
+            
         return JSONResponse(
             status_code=e.response.status_code,
-            content={"detail": str(e)}
+            content=error_content
         )
     except httpx.RequestError as e:
         # Handle connection errors
