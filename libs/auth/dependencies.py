@@ -56,8 +56,8 @@ async def require_admin(
     TODO: Refine admin check based on actual Supabase RBAC or 'admin' table.
     For this bootstrap, let's allow if role is 'service_role' OR if we add a temporary check.
     """
-    # Placeholder: strictly enforce 'service_role' or a specific admin flag
-    if current_user.role != "service_role":
+    # Check if user has service role OR is in the admin email list
+    if current_user.role != "service_role" and current_user.email not in settings.ADMIN_EMAILS:
          # Real implementation would check DB or custom claims
          raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
