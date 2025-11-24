@@ -72,6 +72,20 @@ services:
     volumes:
       - .:/app
 
+  academy-service:
+    build:
+      context: .
+      dockerfile: services/academy_service/Dockerfile
+    container_name: swimbuddz_academy
+    env_file:
+      - .env.prod
+    ports:
+      - "8006:8006"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
   # ==================================================================
   # API GATEWAY
   # ==================================================================
@@ -88,6 +102,7 @@ services:
       - attendance-service
       - communications-service
       - payments-service
+      - academy-service
     ports:
       - "8000:8000"
     extra_hosts:

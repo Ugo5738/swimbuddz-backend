@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     # Application
     ENVIRONMENT: Literal["local", "development", "production"] = "local"
     LOG_LEVEL: str = "INFO"
+    ADMIN_EMAILS: list[str] = ["admin@swimbuddz.com"]
 
     # Database
     DATABASE_URL: str
