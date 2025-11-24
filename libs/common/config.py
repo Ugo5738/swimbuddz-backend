@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     ATTENDANCE_SERVICE_URL: str = "http://attendance-service:8003"
     COMMUNICATIONS_SERVICE_URL: str = "http://communications-service:8004"
     PAYMENTS_SERVICE_URL: str = "http://payments-service:8005"
+    ACADEMY_SERVICE_URL: str = "http://academy-service:8006"
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"

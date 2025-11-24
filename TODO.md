@@ -170,15 +170,27 @@ This document lists the ordered tasks required to implement the backend. **Follo
 2. Completing a pending registration creates the member profile and deletes/archives the pending record.
 3. Tests cover happy path + replays (duplicate submissions, completing without pending record) + unauthorized access.
 
-### Task 3.7 – Payments & Academy Services (stubs)
+### Task 3.7 – Payments Service (stub)
 
-- [x] Task 3.7 – Payments & Academy Services (stubs)
+- [x] Task 3.7 – Payments Service (stub)
 - Define minimal models/APIs if needed for near-term flows.
 - **Crucial**: Implement a mechanism to generate and store a unique **Payment Reference** (e.g., `PAY-12345`) for every transaction, even if manual. This is required for the frontend confirmation screen.
   **Acceptance Criteria**
 
 1. Folder structure exists with placeholder routers/tests referencing future work.
-2. Document future ideas under a “Future Ideas” section at the bottom of this file once specifics are known.
+
+### Task 3.8 – Academy Service (`services/academy_service`)
+
+- [x] Task 3.8 – Academy Service (`services/academy_service`)
+- Models: `Program`, `Cohort`, `Enrollment`, `Milestone`, `StudentProgress`.
+- APIs: CRUD for programs/cohorts, enrollment flow, progress tracking.
+- Enums: `ProgramLevel`, `CohortStatus`, `EnrollmentStatus`, `PaymentStatus`, `ProgressStatus`.
+  **Acceptance Criteria**
+
+1. Admin can create programs and cohorts.
+2. Members can be enrolled in cohorts.
+3. Student progress against milestones can be tracked.
+4. Database migrations applied successfully.
 
 ---
 
@@ -234,6 +246,15 @@ This document lists the ordered tasks required to implement the backend. **Follo
 
 1. Returns JSON structure matching the frontend Admin Dashboard needs.
 2. Returns 403 Forbidden for non-admin users.
+
+### Task 4.6 – Academy endpoints
+
+- [x] Task 4.6 – Academy endpoints
+- Register `academy-service` in the Gateway.
+- Proxy routes at `/api/v1/academy/*`.
+  **Acceptance Criteria**
+
+1. Frontend can access Academy Service via Gateway.
 
 ---
 

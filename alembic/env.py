@@ -17,6 +17,7 @@ from services.sessions_service.models import Session  # noqa: F401
 from services.attendance_service.models import SessionAttendance  # noqa: F401
 from services.communications_service.models import Announcement  # noqa: F401
 from services.payments_service.models import Payment  # noqa: F401
+from services.academy_service.models import Program, Cohort, Enrollment, Milestone, StudentProgress  # noqa: F401
 
 settings = get_settings()
 
