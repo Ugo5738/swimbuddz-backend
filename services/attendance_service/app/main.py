@@ -21,7 +21,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "attendance"}
 
     # Include attendance router
-    app.include_router(attendance_router)
+    app.include_router(attendance_router, prefix="/attendance")
 
     return app
 
