@@ -3,20 +3,12 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
-from libs.db.session import get_async_db
+from services.gateway_service.app import clients
 
-# Import models from services
-from services.members_service.models import Member
-from services.sessions_service.models import Session
-from services.attendance_service.models import SessionAttendance
-from services.communications_service.models import Announcement
-
-# Import schemas for reuse
+# Import schemas for reuse (these are just Pydantic models, safe to import)
 from services.members_service.schemas import MemberResponse
 from services.sessions_service.schemas import SessionResponse
 from services.attendance_service.schemas import AttendanceResponse
@@ -42,54 +34,32 @@ class AdminDashboardStats(BaseModel):
 @router.get("/me/dashboard", response_model=MemberDashboardResponse)
 async def get_member_dashboard(
     current_user: AuthUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get the dashboard for the current member.
     Aggregates profile, upcoming sessions, recent attendance, and announcements.
     """
     # 1. Get Member Profile
-    query = select(Member).where(Member.auth_id == current_user.user_id)
-    result = await db.execute(query)
-    member = result.scalar_one_or_none()
-
-    if not member:
+    try:
+        member = await clients.members_client.get("/members/me", headers={"Authorization": f"Bearer {current_user.token}"})
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Member profile not found. Please complete registration.",
         )
 
     # 2. Get Upcoming Sessions (next 5)
-    # Note: In a real app, we might filter by sessions the member is eligible for
-    now = datetime.utcnow()
-    query = (
-        select(Session)
-        .where(Session.start_time > now)
-        .order_by(Session.start_time.asc())
-        .limit(5)
-    )
-    result = await db.execute(query)
-    upcoming_sessions = result.scalars().all()
+    # TODO: Add limit/filter params to sessions service
+    sessions = await clients.sessions_client.get("/sessions/")
+    upcoming_sessions = sessions[:5] # Mock limit for now
 
     # 3. Get Recent Attendance (last 5)
-    query = (
-        select(SessionAttendance)
-        .where(SessionAttendance.member_id == member.id)
-        .order_by(SessionAttendance.created_at.desc())
-        .limit(5)
-    )
-    result = await db.execute(query)
-    recent_attendance = result.scalars().all()
+    # TODO: Add endpoint to attendance service
+    recent_attendance = [] 
 
     # 4. Get Latest Announcements (last 3)
-    query = (
-        select(Announcement)
-        .where(Announcement.published_at <= now)
-        .order_by(Announcement.is_pinned.desc(), Announcement.published_at.desc())
-        .limit(3)
-    )
-    result = await db.execute(query)
-    latest_announcements = result.scalars().all()
+    announcements = await clients.communications_client.get("/announcements/")
+    latest_announcements = announcements[:3]
 
     return MemberDashboardResponse(
         member=member,
@@ -102,36 +72,22 @@ async def get_member_dashboard(
 @router.get("/admin/dashboard-stats", response_model=AdminDashboardStats)
 async def get_admin_dashboard_stats(
     current_user: AuthUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get statistics for the admin dashboard.
     """
-    # 1. Total Members
-    query = select(func.count(Member.id))
-    result = await db.execute(query)
-    total_members = result.scalar_one() or 0
+    # 1. Member Stats
+    member_stats = await clients.members_client.get("/members/stats")
+    
+    # 2. Session Stats
+    session_stats = await clients.sessions_client.get("/sessions/stats")
 
-    # 2. Active Members (assuming registration_complete=True is active for now)
-    query = select(func.count(Member.id)).where(Member.registration_complete.is_(True))
-    result = await db.execute(query)
-    active_members = result.scalar_one() or 0
-
-    # 3. Upcoming Sessions Count
-    now = datetime.utcnow()
-    query = select(func.count(Session.id)).where(Session.start_time > now)
-    result = await db.execute(query)
-    upcoming_sessions_count = result.scalar_one() or 0
-
-    # 4. Recent Announcements Count (last 30 days)
-    # For simplicity, just total count for now or last 5
-    query = select(func.count(Announcement.id))
-    result = await db.execute(query)
-    recent_announcements_count = result.scalar_one() or 0
+    # 3. Announcement Stats
+    announcement_stats = await clients.communications_client.get("/announcements/stats")
 
     return AdminDashboardStats(
-        total_members=total_members,
-        active_members=active_members,
-        upcoming_sessions_count=upcoming_sessions_count,
-        recent_announcements_count=recent_announcements_count,
+        total_members=member_stats.get("total_members", 0),
+        active_members=member_stats.get("active_members", 0),
+        upcoming_sessions_count=session_stats.get("upcoming_sessions_count", 0),
+        recent_announcements_count=announcement_stats.get("recent_announcements_count", 0),
     )

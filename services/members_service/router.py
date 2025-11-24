@@ -1,8 +1,9 @@
 import json
 from typing import List
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user
@@ -12,6 +13,7 @@ from services.members_service.models import Member, PendingRegistration
 from services.members_service.schemas import (
     MemberResponse, 
     MemberCreate, 
+    MemberUpdate,
     PendingRegistrationCreate, 
     PendingRegistrationResponse
 )
@@ -256,3 +258,69 @@ async def list_public_members(
     query = select(Member).order_by(Member.first_name, Member.last_name)
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.get("/", response_model=List[MemberResponse])
+async def list_members(
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    List all members (admin use).
+    """
+    query = select(Member).offset(skip).limit(limit).order_by(Member.created_at.desc())
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/stats")
+async def get_member_stats(
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get member statistics.
+    """
+    # Total Members
+    query = select(func.count(Member.id))
+    result = await db.execute(query)
+    total_members = result.scalar_one() or 0
+
+    # Active Members
+    query = select(func.count(Member.id)).where(Member.registration_complete.is_(True))
+    result = await db.execute(query)
+    active_members = result.scalar_one() or 0
+
+    return {
+        "total_members": total_members,
+        "active_members": active_members
+    }
+
+
+@router.patch("/{member_id}", response_model=MemberResponse)
+async def update_member(
+    member_id: uuid.UUID,
+    member_in: MemberUpdate,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Update a member by ID.
+    """
+    query = select(Member).where(Member.id == member_id)
+    result = await db.execute(query)
+    member = result.scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found",
+        )
+
+    update_data = member_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(member, field, value)
+
+    db.add(member)
+    await db.commit()
+    await db.refresh(member)
+    return member
