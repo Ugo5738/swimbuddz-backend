@@ -275,11 +275,15 @@ async def enroll_student(
 
 @router.post("/enrollments/me", response_model=EnrollmentResponse)
 async def self_enroll(
-    cohort_id: uuid.UUID,
+    request_data: dict,
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Allow a member to enroll themselves in a cohort."""
+    cohort_id = request_data.get("cohort_id")
+    if not cohort_id:
+        raise HTTPException(status_code=422, detail="cohort_id is required in request body")
+    
     # 1. Get Member ID
     query = select(Member).where(Member.auth_id == current_user.user_id)
     result = await db.execute(query)
