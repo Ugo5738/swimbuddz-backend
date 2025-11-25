@@ -99,6 +99,17 @@ class CohortResponse(CohortBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+# --- Member Schemas ---
+
+class MemberBasicInfo(BaseModel):
+    id: UUID
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # --- Enrollment Schemas ---
 
 class EnrollmentBase(BaseModel):
@@ -122,8 +133,16 @@ class EnrollmentResponse(EnrollmentBase):
     member_id: UUID
     created_at: datetime
     updated_at: datetime
+    
+    # Include cohort details for "My Enrollments"
+    cohort: Optional[CohortResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class EnrollmentWithStudent(EnrollmentResponse):
+    member: MemberBasicInfo
+    progress_records: List['StudentProgressResponse'] = []
 
 
 # --- Student Progress Schemas ---
@@ -148,3 +167,6 @@ class StudentProgressResponse(StudentProgressBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+# Resolve forward reference
+EnrollmentWithStudent.model_rebuild()

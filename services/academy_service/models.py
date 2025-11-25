@@ -43,6 +43,21 @@ class ProgressStatus(str, enum.Enum):
     ACHIEVED = "achieved"
 
 
+class Member(Base):
+    __tablename__ = "members"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    auth_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    first_name: Mapped[str] = mapped_column(String, nullable=True)
+    last_name: Mapped[str] = mapped_column(String, nullable=True)
+    
+    # We only need minimal fields for Academy service
+
+
+
 class Program(Base):
     __tablename__ = "programs"
 
@@ -112,7 +127,7 @@ class Enrollment(Base):
         UUID(as_uuid=True), ForeignKey("cohorts.id"), nullable=False
     )
     member_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("members.id"), nullable=False, index=True
     )  # Reference to Member in members_service
     
     status: Mapped[EnrollmentStatus] = mapped_column(
@@ -129,6 +144,7 @@ class Enrollment(Base):
 
     # Relationships
     cohort = relationship("Cohort", back_populates="enrollments")
+    member = relationship("Member")
     progress_records = relationship("StudentProgress", back_populates="enrollment")
 
     def __repr__(self):
