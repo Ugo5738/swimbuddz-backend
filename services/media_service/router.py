@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func
 
 from libs.db.session import get_async_db
+from libs.auth.dependencies import get_current_user, require_admin
+from libs.auth.models import AuthUser
 
 from services.media_service.models import Album, Photo, PhotoTag
 from services.media_service.schemas import (
@@ -18,11 +20,6 @@ from services.media_service.storage import storage_service
 
 
 router = APIRouter(prefix="/api/v1/media", tags=["media"])
-
-
-# NOTE: Auth temporarily disabled for all endpoints
-# TODO: Add auth using: from libs.auth.dependencies import get_current_user, require_admin
-# Then add to function params: current_user: AuthUser = Depends(require_admin)
 
 
 # ===== HEALTH CHECK =====
@@ -38,10 +35,11 @@ async def health_check():
 @router.post("/albums", response_model=AlbumResponse)
 async def create_album(
     album: AlbumCreate,
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Create a new album."""
-    db_album = Album(**album.model_dump())
+    """Create a new album (admin only)."""
+    db_album = Album(**album.model_dump(), created_by=current_user.user_id)
     db.add(db_album)
     await db.commit()
     await db.refresh(db_album)
@@ -114,9 +112,10 @@ async def get_album(
 async def update_album(
     album_id: uuid.UUID,
     album_update: AlbumUpdate,
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Update album."""
+    """Update album (admin only)."""
     query = select(Album).where(Album.id == album_id)
     result = await db.execute(query)
     album = result.scalar_one_or_none()
@@ -142,9 +141,10 @@ async def update_album(
 @router.delete("/albums/{album_id}")
 async def delete_album(
     album_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Delete album and all its photos."""
+    """Delete album and all its photos (admin only)."""
     query = select(Album).where(Album.id == album_id)
     result = await db.execute(query)
     album = result.scalar_one_or_none()
@@ -184,9 +184,10 @@ async def upload_photo(
     album_id: uuid.UUID,
     file: UploadFile = File(...),
     caption: Optional[str] = Form(None),
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Upload photo to album."""
+    """Upload photo to album (admin only)."""
     # Verify album exists
     query = select(Album).where(Album.id == album_id)
     result = await db.execute(query)
@@ -214,7 +215,8 @@ async def upload_photo(
         album_id=album_id,
         file_url=file_url,
         thumbnail_url=thumbnail_url,
-        caption=caption
+        caption=caption,
+        uploaded_by=current_user.user_id
     )
     db.add(db_photo)
     await db.commit()
@@ -286,9 +288,10 @@ async def get_featured_photos(
 async def update_photo(
     photo_id: uuid.UUID,
     photo_update: PhotoUpdate,
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Update photo metadata."""
+    """Update photo metadata (admin only)."""
     query = select(Photo).where(Photo.id == photo_id)
     result = await db.execute(query)
     photo = result.scalar_one_or_none()
@@ -313,9 +316,10 @@ async def update_photo(
 @router.delete("/photos/{photo_id}")
 async def delete_photo(
     photo_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Delete photo."""
+    """Delete photo (admin only)."""
     query = select(Photo).where(Photo.id == photo_id)
     result = await db.execute(query)
     photo = result.scalar_one_or_none()
@@ -346,9 +350,10 @@ async def delete_photo(
 async def tag_member_in_photo(
     photo_id: uuid.UUID,
     member_id: uuid.UUID = Form(...),
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Tag a member in a photo."""
+    """Tag a member in a photo (admin only)."""
     # Verify photo exists
     query = select(Photo).where(Photo.id == photo_id)
     result = await db.execute(query)
@@ -386,9 +391,10 @@ async def tag_member_in_photo(
 async def remove_tag(
     photo_id: uuid.UUID,
     member_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Remove member tag from photo."""
+    """Remove member tag from photo (admin only)."""
     query = select(PhotoTag).where(
         PhotoTag.photo_id == photo_id,
         PhotoTag.member_id == member_id
