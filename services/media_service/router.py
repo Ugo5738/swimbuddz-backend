@@ -2,10 +2,10 @@
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import desc
 
-from libs.db.session import get_db
+from libs.db.session import get_async_db
 from libs.auth.utils import get_current_user_id, require_admin_or_media_volunteer
 
 from .models import Album, Photo, PhotoTag
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/media", tags=["media"])
 async def create_album(
     album: AlbumCreate,
     current_user_id: uuid.UUID = Depends(require_admin_or_media_volunteer),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """Create a new album (admin/media volunteers only)."""
     db_album = Album(
@@ -46,7 +46,7 @@ async def create_album(
 @router.get("/albums", response_model=List[AlbumResponse])
 async def list_albums(
     album_type: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """List all albums, optionally filtered by type."""
     query = db.query(Album).order_by(desc(Album.created_at))
@@ -69,7 +69,7 @@ async def list_albums(
 @router.get("/albums/{album_id}", response_model=AlbumWithPhotos)
 async def get_album(
     album_id: uuid.UUID,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """Get album details with all photos."""
     album = db.query(Album).filter(Album.id == album_id).first()
@@ -97,7 +97,7 @@ async def update_album(
     album_id: uuid.UUID,
     album_update: AlbumUpdate,
     current_user_id: uuid.UUID = Depends(require_admin_or_media_volunteer),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """Update album (admin/media volunteers only)."""
     album = db.query(Album).filter(Album.id == album_id).first()
@@ -120,7 +120,7 @@ async def update_album(
 async def delete_album(
     album_id: uuid.UUID,
     current_user_id: uuid.UUID = Depends(require_admin_or_media_volunteer),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """Delete album and all its photos (admin/media volunteers only)."""
     album = db.query(Album).filter(Album.id == album_id).first()
@@ -151,7 +151,7 @@ async def upload_photo(
     file: UploadFile = File(...),
     caption: Optional[str] = Form(None),
     current_user_id: uuid.UUID = Depends(require_admin_or_media_volunteer),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """Upload photo to album (admin/media volunteers only)."""
     # Verify album exists
@@ -195,7 +195,7 @@ async def list_photos(
     album_id: Optional[uuid.UUID] = None,
     is_featured: Optional[bool] = None,
     limit: int = 50,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """List photos with optional filters."""
     query = db.query(Photo).order_by(desc(Photo.created_at))
@@ -221,7 +221,7 @@ async def list_photos(
 @router.get("/photos/featured", response_model=FeaturedPhotosResponse)
 async def get_featured_photos(
     limit: int = 6,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """Get featured photos for homepage."""
     photos = db.query(Photo)\
@@ -245,7 +245,7 @@ async def update_photo(
     photo_id: uuid.UUID,
     photo_update: PhotoUpdate,
     current_user_id: uuid.UUID = Depends(require_admin_or_media_volunteer),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """Update photo metadata (admin/media volunteers only)."""
     photo = db.query(Photo).filter(Photo.id == photo_id).first()
@@ -269,7 +269,7 @@ async def update_photo(
 async def delete_photo(
     photo_id: uuid.UUID,
     current_user_id: uuid.UUID = Depends(require_admin_or_media_volunteer),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """Delete photo (admin/media volunteers only)."""
     photo = db.query(Photo).filter(Photo.id == photo_id).first()
@@ -296,7 +296,7 @@ async def tag_member_in_photo(
     photo_id: uuid.UUID,
     member_id: uuid.UUID = Form(...),
     current_user_id: uuid.UUID = Depends(require_admin_or_media_volunteer),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """Tag a member in a photo (admin/media volunteers only)."""
     # Verify photo exists
@@ -333,7 +333,7 @@ async def remove_tag(
     photo_id: uuid.UUID,
     member_id: uuid.UUID,
     current_user_id: uuid.UUID = Depends(require_admin_or_media_volunteer),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """Remove member tag from photo (admin/media volunteers only)."""
     tag = db.query(PhotoTag).filter(
