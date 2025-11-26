@@ -86,6 +86,34 @@ services:
     volumes:
       - .:/app
 
+  media-service:
+    build:
+      context: .
+      dockerfile: services/media_service/Dockerfile
+    container_name: swimbuddz_media
+    env_file:
+      - .env.prod
+    ports:
+      - "8008:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  events-service:
+    build:
+      context: .
+      dockerfile: services/events_service/Dockerfile
+    container_name: swimbuddz_events
+    env_file:
+      - .env.prod
+    ports:
+      - "8007:8007"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
   # ==================================================================
   # API GATEWAY
   # ==================================================================
@@ -108,6 +136,10 @@ services:
       payments-service:
         condition: service_started
       academy-service:
+        condition: service_started
+      media-service:
+        condition: service_started
+      events-service:
         condition: service_started
     ports:
       - "8000:8000"
