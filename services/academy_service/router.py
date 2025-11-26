@@ -361,6 +361,30 @@ async def list_cohort_enrollments(
     return result.scalars().all()
 
 
+@router.patch("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
+async def update_enrollment(
+    enrollment_id: uuid.UUID,
+    enrollment_in: EnrollmentUpdate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Update enrollment status and/or payment status."""
+    query = select(Enrollment).where(Enrollment.id == enrollment_id)
+    result = await db.execute(query)
+    enrollment = result.scalar_one_or_none()
+    
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+        
+    update_data = enrollment_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(enrollment, field, value)
+        
+    await db.commit()
+    await db.refresh(enrollment)
+    return enrollment
+
+
 # --- Progress ---
 
 @router.post("/progress", response_model=StudentProgressResponse)

@@ -13,6 +13,7 @@ from libs.db.base import Base
 # Import all models here so they are registered with Base.metadata
 from services.members_service.models import Member  # noqa: F401
 from services.members_service.models import PendingRegistration  # noqa: F401
+from services.members_service.models import VolunteerRole, VolunteerInterest, ClubChallenge, MemberChallengeCompletion  # noqa: F401
 from services.sessions_service.models import Session  # noqa: F401
 from services.attendance_service.models import SessionAttendance  # noqa: F401
 from services.communications_service.models import Announcement  # noqa: F401

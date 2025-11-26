@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Boolean, DateTime
+from sqlalchemy import String, Boolean, DateTime, Integer
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -92,6 +92,33 @@ class Member(Base):
     academy_focus: Mapped[str] = mapped_column(String, nullable=True)
     payment_notes: Mapped[str] = mapped_column(String, nullable=True)
 
+    # ===== NEW TIER-BASED FIELDS =====
+    # Tier Management
+    membership_tier: Mapped[str] = mapped_column(String, nullable=False, default="community", server_default="community")
+    
+    # Profile Photo
+    profile_photo_url: Mapped[str] = mapped_column(String, nullable=True)
+    
+    # Community Tier - Enhanced fields
+    gender: Mapped[str] = mapped_column(String, nullable=True)
+    date_of_birth: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    show_in_directory: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    interest_tags: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    
+    # Club Tier - Badges & Tracking
+    club_badges_earned: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    club_challenges_completed: Mapped[dict] = mapped_column(String, nullable=True)  # JSON stored as string
+    punctuality_score: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    commitment_score: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    
+    # Academy Tier - Skill Assessment & Goals
+    academy_skill_assessment: Mapped[dict] = mapped_column(String, nullable=True)  # JSON stored as string
+    academy_goals: Mapped[str] = mapped_column(String, nullable=True)
+    academy_preferred_coach_gender: Mapped[str] = mapped_column(String, nullable=True)
+    academy_lesson_preference: Mapped[str] = mapped_column(String, nullable=True)
+    academy_certifications: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    academy_graduation_dates: Mapped[dict] = mapped_column(String, nullable=True)  # JSON stored as string
+
     def __repr__(self):
         return f"<Member {self.email}>"
 
@@ -111,3 +138,88 @@ class PendingRegistration(Base):
 
     def __repr__(self):
         return f"<PendingRegistration {self.email}>"
+
+
+class VolunteerRole(Base):
+    """Volunteer roles available for members to express interest in"""
+    __tablename__ = "volunteer_roles"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=True)
+    category: Mapped[str] = mapped_column(String, nullable=False)  # media/logistics/admin/coaching_support/lane_marshal
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    slots_available: Mapped[int] = mapped_column(Integer, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    def __repr__(self):
+        return f"<VolunteerRole {self.title}>"
+
+
+class VolunteerInterest(Base):
+    """Tracks member interest in volunteer roles"""
+    __tablename__ = "volunteer_interests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    role_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    status: Mapped[str] = mapped_column(String, default="interested")  # interested/active/inactive
+    notes: Mapped[str] = mapped_column(String, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    def __repr__(self):
+        return f"<VolunteerInterest member={self.member_id} role={self.role_id}>"
+
+
+class ClubChallenge(Base):
+    """Club challenges that members can complete to earn badges"""
+    __tablename__ = "club_challenges"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=True)
+    challenge_type: Mapped[str] = mapped_column(String, nullable=False)  # time_trial/attendance/distance/technique
+    badge_name: Mapped[str] = mapped_column(String, nullable=False)
+    criteria_json: Mapped[str] = mapped_column(String, nullable=True)  # JSON stored as string
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    def __repr__(self):
+        return f"<ClubChallenge {self.title}>"
+
+
+class MemberChallengeCompletion(Base):
+    """Tracks member completion of club challenges"""
+    __tablename__ = "member_challenge_completions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    challenge_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    result_data: Mapped[str] = mapped_column(String, nullable=True)  # JSON stored as string
+    verified_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)  # Coach/admin verification
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<MemberChallengeCompletion member={self.member_id} challenge={self.challenge_id}>"

@@ -12,7 +12,7 @@ env/
 
 # Environment files
 .env
-# .env.*
+.env.*
 !.env.example
 
 # Packaging / build output

@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from services.communications_service.router import router as communications_router
+from services.communications_service.router import content_router
 
 
 def create_app() -> FastAPI:
@@ -20,8 +21,9 @@ def create_app() -> FastAPI:
         """Health check endpoint."""
         return {"status": "ok", "service": "communications"}
 
-    # Include communications router
+    # Include communications routers
     app.include_router(communications_router)
+    app.include_router(content_router)
 
     return app
 

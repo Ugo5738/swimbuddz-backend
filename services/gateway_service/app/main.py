@@ -70,6 +70,19 @@ def create_app() -> FastAPI:
         return await proxy_request(clients.sessions_client, f"/sessions/{path}", request)
 
     # ==================================================================
+    # VOLUNTEER & CHALLENGE PROXY (Members Service)
+    # ==================================================================
+    @app.api_route("/api/v1/volunteers/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    async def proxy_volunteers(path: str, request: Request):
+        """Proxy all /api/v1/volunteers/* requests to members service."""
+        return await proxy_request(clients.members_client, f"/volunteers/{path}", request)
+
+    @app.api_route("/api/v1/challenges/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    async def proxy_challenges(path: str, request: Request):
+        """Proxy all /api/v1/challenges/* requests to members service."""
+        return await proxy_request(clients.members_client, f"/challenges/{path}", request)
+
+    # ==================================================================
     # ATTENDANCE SERVICE PROXY
     # ==================================================================
     @app.api_route("/api/v1/attendance/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
@@ -89,6 +102,11 @@ def create_app() -> FastAPI:
         # So we should forward /{path}
         return await proxy_request(clients.communications_client, f"/{path}", request)
 
+    @app.api_route("/api/v1/content/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    async def proxy_content(path: str, request: Request):
+        """Proxy all /api/v1/content/* requests to communications service."""
+        return await proxy_request(clients.communications_client, f"/content/{path}", request)
+
     # ==================================================================
     # PAYMENTS SERVICE PROXY
     # ==================================================================
@@ -104,6 +122,22 @@ def create_app() -> FastAPI:
     async def proxy_academy(path: str, request: Request):
         """Proxy all /api/v1/academy/* requests to academy service."""
         return await proxy_request(clients.academy_client, f"/academy/{path}", request)
+
+    # ==================================================================
+    # MEDIA SERVICE PROXY
+    # ==================================================================
+    @app.api_route("/api/v1/media/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+    async def proxy_media(path: str, request: Request):
+        """Proxy all /api/v1/media/* requests to media service."""
+        return await proxy_request(clients.media_client, f"/media/{path}", request)
+
+    # ==================================================================
+    # EVENTS SERVICE PROXY
+    # ==================================================================
+    @app.api_route("/api/v1/events/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    async def proxy_events(path: str, request: Request):
+        """Proxy all /api/v1/events/* requests to events service."""
+        return await proxy_request(clients.events_client, f"/events/{path}", request)
 
     # ==================================================================
     # DASHBOARD (Gateway-specific aggregation)
