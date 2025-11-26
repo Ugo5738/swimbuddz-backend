@@ -74,6 +74,33 @@ class MemberBase(BaseModel):
     academy_focus: Optional[str] = None
     payment_notes: Optional[str] = None
 
+    # ===== NEW TIER-BASED FIELDS =====
+    # Tier Management
+    membership_tier: Optional[str] = "community"
+    
+    # Profile Photo
+    profile_photo_url: Optional[str] = None
+    
+    # Community Tier - Enhanced fields
+    gender: Optional[str] = None
+    date_of_birth: Optional[datetime] = None
+    show_in_directory: Optional[bool] = False
+    interest_tags: Optional[list[str]] = None
+    
+    # Club Tier - Badges & Tracking
+    club_badges_earned: Optional[list[str]] = None
+    club_challenges_completed: Optional[dict] = None
+    punctuality_score: Optional[int] = 0
+    commitment_score: Optional[int] = 0
+    
+    # Academy Tier - Skill Assessment & Goals
+    academy_skill_assessment: Optional[dict] = None
+    academy_goals: Optional[str] = None
+    academy_preferred_coach_gender: Optional[str] = None
+    academy_lesson_preference: Optional[str] = None
+    academy_certifications: Optional[list[str]] = None
+    academy_graduation_dates: Optional[dict] = None
+
 
 class MemberCreate(MemberBase):
     auth_id: str

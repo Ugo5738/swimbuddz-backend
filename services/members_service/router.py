@@ -164,7 +164,34 @@ async def complete_pending_registration(
         membership_tiers=profile_data.get("membershipTiers"),
         academy_focus_areas=profile_data.get("academyFocusAreas"),
         academy_focus=profile_data.get("academyFocus"),
-        payment_notes=profile_data.get("paymentNotes")
+        payment_notes=profile_data.get("paymentNotes"),
+        
+        # ===== NEW TIER-BASED FIELDS =====
+        # Tier Management
+        membership_tier=profile_data.get("membership_tier", "community"),
+        
+        # Profile Photo
+        profile_photo_url=profile_data.get("profile_photo_url"),
+        
+        # Community Tier - Enhanced fields
+        gender=profile_data.get("gender"),
+        date_of_birth=profile_data.get("date_of_birth"),
+        show_in_directory=profile_data.get("show_in_directory", False),
+        interest_tags=profile_data.get("interest_tags", []),
+        
+        # Club Tier - Badges & Tracking (initialized as empty)
+        club_badges_earned=profile_data.get("club_badges_earned", []),
+        club_challenges_completed=profile_data.get("club_challenges_completed", {}),
+        punctuality_score=profile_data.get("punctuality_score", 0),
+        commitment_score=profile_data.get("commitment_score", 0),
+        
+        # Academy Tier - Skill Assessment & Goals
+        academy_skill_assessment=profile_data.get("academy_skill_assessment"),
+        academy_goals=profile_data.get("academy_goals"),
+        academy_preferred_coach_gender=profile_data.get("academy_preferred_coach_gender"),
+        academy_lesson_preference=profile_data.get("academy_lesson_preference"),
+        academy_certifications=profile_data.get("academy_certifications", []),
+        academy_graduation_dates=profile_data.get("academy_graduation_dates", {})
     )
     
     db.add(member)
