@@ -1,8 +1,8 @@
 """initial_setup
 
-Revision ID: 4ce6faae9397
+Revision ID: 6b1d29fce9bc
 Revises: 
-Create Date: 2025-11-27 17:01:23.323949
+Create Date: 2025-11-28 10:58:32.080830
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '4ce6faae9397'
+revision: str = '6b1d29fce9bc'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -153,15 +153,15 @@ def upgrade() -> None:
     sa.Column('show_in_directory', sa.Boolean(), server_default='false', nullable=False),
     sa.Column('interest_tags', postgresql.ARRAY(sa.String()), nullable=True),
     sa.Column('club_badges_earned', postgresql.ARRAY(sa.String()), nullable=True),
-    sa.Column('club_challenges_completed', sa.String(), nullable=True),
+    sa.Column('club_challenges_completed', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('punctuality_score', sa.Integer(), server_default='0', nullable=False),
     sa.Column('commitment_score', sa.Integer(), server_default='0', nullable=False),
-    sa.Column('academy_skill_assessment', sa.String(), nullable=True),
+    sa.Column('academy_skill_assessment', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('academy_goals', sa.String(), nullable=True),
     sa.Column('academy_preferred_coach_gender', sa.String(), nullable=True),
     sa.Column('academy_lesson_preference', sa.String(), nullable=True),
     sa.Column('academy_certifications', postgresql.ARRAY(sa.String()), nullable=True),
-    sa.Column('academy_graduation_dates', sa.String(), nullable=True),
+    sa.Column('academy_graduation_dates', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('auth_id'),
     sa.UniqueConstraint('email')

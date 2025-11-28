@@ -46,6 +46,12 @@ def create_app() -> FastAPI:
         """Proxy all /api/v1/members/* requests to members service."""
         return await proxy_request(clients.members_client, f"/members/{path}", request)
     
+    @app.api_route("/api/v1/pending-registrations", methods=["GET", "POST", "PATCH", "DELETE"])
+    @app.api_route("/api/v1/pending-registrations/", methods=["GET", "POST", "PATCH", "DELETE"])
+    async def proxy_pending_registrations_root(request: Request):
+        """Proxy pending registration root requests to members service."""
+        return await proxy_request(clients.members_client, "/pending-registrations/", request)
+
     @app.api_route("/api/v1/pending-registrations/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
     async def proxy_pending_registrations(path: str, request: Request):
         """Proxy pending registration requests to members service."""

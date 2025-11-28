@@ -9,7 +9,7 @@ settings = get_settings()
 class ServiceClient:
     """Base client for making HTTP requests to microservices."""
     
-    def __init__(self, base_url: str, timeout: float = 10.0):
+    def __init__(self, base_url: str, timeout: float = 60.0):
         self.base_url = base_url
         self.timeout = timeout
     

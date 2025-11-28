@@ -127,6 +127,7 @@ class PendingRegistrationCreate(BaseModel):
     email: EmailStr
     first_name: str
     last_name: str
+    password: Optional[str] = None
     # Add other profile fields as needed, for now just these
     model_config = ConfigDict(extra="allow")
     

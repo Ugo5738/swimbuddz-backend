@@ -20,7 +20,7 @@ COPY libs/ /app/libs/
 COPY services/media_service/ /app/services/media_service/
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8008
 
 # Run service
-CMD ["uvicorn", "services.media_service.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "services.media_service.app.main:app", "--host", "0.0.0.0", "--port", "8008"]
