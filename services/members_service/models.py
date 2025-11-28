@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import String, Boolean, DateTime, Integer
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from libs.db.base import Base
@@ -107,17 +107,17 @@ class Member(Base):
     
     # Club Tier - Badges & Tracking
     club_badges_earned: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
-    club_challenges_completed: Mapped[dict] = mapped_column(String, nullable=True)  # JSON stored as string
+    club_challenges_completed: Mapped[dict] = mapped_column(JSONB, nullable=True)
     punctuality_score: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     commitment_score: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     
     # Academy Tier - Skill Assessment & Goals
-    academy_skill_assessment: Mapped[dict] = mapped_column(String, nullable=True)  # JSON stored as string
+    academy_skill_assessment: Mapped[dict] = mapped_column(JSONB, nullable=True)
     academy_goals: Mapped[str] = mapped_column(String, nullable=True)
     academy_preferred_coach_gender: Mapped[str] = mapped_column(String, nullable=True)
     academy_lesson_preference: Mapped[str] = mapped_column(String, nullable=True)
     academy_certifications: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
-    academy_graduation_dates: Mapped[dict] = mapped_column(String, nullable=True)  # JSON stored as string
+    academy_graduation_dates: Mapped[dict] = mapped_column(JSONB, nullable=True)
 
     def __repr__(self):
         return f"<Member {self.email}>"

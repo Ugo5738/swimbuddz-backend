@@ -1,17 +1,20 @@
 import asyncio
 import os
 import sys
-from uuid import uuid4
 from datetime import datetime
+from pathlib import Path
+from uuid import uuid4
 
 # Add parent directory to path to import libs
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 
-# Load .env.prod explicitly to get Cloud Supabase credentials
+# Load env file selected for the reset (defaults to .env.prod when ENV_FILE not set)
 # MUST be done before importing libs that use get_settings()
-load_dotenv(".env.prod", override=True)
+project_root = Path(__file__).resolve().parents[2]
+env_file = os.environ.get("ENV_FILE", ".env.prod")
+load_dotenv(project_root / env_file, override=True)
 
 import httpx
 from sqlalchemy import select

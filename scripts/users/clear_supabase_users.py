@@ -1,14 +1,17 @@
 import asyncio
 import os
 import sys
+from pathlib import Path
 
 # Add parent directory to path to import libs
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 
-# Load .env.prod explicitly to get Cloud Supabase credentials
-load_dotenv(".env.prod", override=True)
+# Load env file selected for the reset (defaults to .env.prod when ENV_FILE not set)
+project_root = Path(__file__).resolve().parents[2]
+env_file = os.environ.get("ENV_FILE", ".env.prod")
+load_dotenv(project_root / env_file, override=True)
 
 import httpx
 from libs.common.config import get_settings

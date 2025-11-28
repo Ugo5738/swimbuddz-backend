@@ -46,6 +46,10 @@ async def create_pending_registration(
     pending = result.scalar_one_or_none()
 
     profile_data = registration_in.model_dump()
+    # Remove password from stored profile data
+    if "password" in profile_data:
+        del profile_data["password"]
+        
     profile_data_json = json.dumps(profile_data)
 
     if pending:
@@ -60,6 +64,48 @@ async def create_pending_registration(
 
     await db.commit()
     await db.refresh(pending)
+
+    # Trigger Supabase User Creation
+    # We use admin.create_user to create the user immediately with the provided password.
+    # We set email_confirm=False so they still need to verify their email.
+    try:
+        from supabase import create_client, Client
+        from libs.common.config import get_settings
+        
+        settings = get_settings()
+        supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Check if we have a password (we should from frontend now)
+        if registration_in.password:
+            # Use sign_up instead of admin.create_user to ensure the confirmation email is sent.
+            # sign_up mimics a real user signup flow.
+            credentials = {
+                "email": registration_in.email,
+                "password": registration_in.password,
+                "options": {
+                    "data": {
+                        "first_name": registration_in.first_name,
+                        "last_name": registration_in.last_name
+                    },
+                    "email_redirect_to": "http://localhost:3000/confirm"
+                }
+            }
+            response = supabase.auth.sign_up(credentials)
+            print(f"User signed up in Supabase: {response}")
+        else:
+            # Fallback to invite if no password (shouldn't happen with new frontend)
+            redirect_url = "http://localhost:3000/confirm"
+            response = supabase.auth.admin.invite_user_by_email(
+                registration_in.email, 
+                options={"redirect_to": redirect_url}
+            )
+            print(f"Invitation sent (fallback): {response}")
+        
+    except Exception as e:
+        # Log error. If user already exists in Supabase but not in our DB (edge case),
+        # we might want to handle it. For now, just log.
+        print(f"Failed to create Supabase user: {e}")
+
     return pending
 
 
@@ -186,7 +232,7 @@ async def complete_pending_registration(
         commitment_score=profile_data.get("commitment_score", 0),
         
         # Academy Tier - Skill Assessment & Goals
-        academy_skill_assessment=profile_data.get("academy_skill_assessment"),
+        academy_skill_assessment=profile_data.get("academy_skill_assessment", {}),
         academy_goals=profile_data.get("academy_goals"),
         academy_preferred_coach_gender=profile_data.get("academy_preferred_coach_gender"),
         academy_lesson_preference=profile_data.get("academy_lesson_preference"),

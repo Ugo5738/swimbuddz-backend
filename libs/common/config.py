@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # Application
     ENVIRONMENT: Literal["local", "development", "production"] = "local"
     LOG_LEVEL: str = "INFO"
-    ADMIN_EMAILS: list[str] = ["admin@admin.com"]
+    ADMIN_EMAIL: str = "admin@admin.com"
     TIMEZONE: str = "Africa/Lagos" 
 
     # Database
@@ -48,7 +48,6 @@ class Settings(BaseSettings):
             if v.startswith("postgresql://"):
                 return v.replace("postgresql://", "postgresql+psycopg://", 1)
         return v
-
 
 @lru_cache
 def get_settings() -> Settings:
