@@ -1,10 +1,12 @@
 """FastAPI application for the Sessions Service."""
 from fastapi import FastAPI
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
 from services.sessions_service.router import router as sessions_router
+from services.sessions_service.template_router import router as templates_router
 
 
 def create_app() -> FastAPI:
@@ -15,12 +17,24 @@ def create_app() -> FastAPI:
         description="Session management service for SwimBuddz.",
     )
 
+    # CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     @app.get("/health", tags=["system"])
     async def health_check() -> dict[str, str]:
         """Health check endpoint."""
         return {"status": "ok", "service": "sessions"}
 
-    # Include sessions router
+    # Include routers
+    # Register templates router with  full path to avoid trailing slash issues
+    # FastAPI is strict about trailing slashes - /sessions/templates != /sessions/templates/
+    app.include_router(templates_router)
     app.include_router(sessions_router)
 
     return app

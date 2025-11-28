@@ -135,3 +135,5 @@ class PendingRegistrationResponse(BaseModel):
     id: uuid.UUID
     email: EmailStr
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
