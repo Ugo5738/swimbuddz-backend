@@ -9,9 +9,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 
-# Load .env.dev explicitly to get Cloud Supabase credentials
+# Load .env.prod explicitly to get Cloud Supabase credentials
 # MUST be done before importing libs that use get_settings()
-load_dotenv(".env.dev", override=True)
+load_dotenv(".env.prod", override=True)
 
 import httpx
 from sqlalchemy import select
@@ -28,7 +28,7 @@ async def create_admin_user():
     print(f"DEBUG: SUPABASE_URL = {settings.SUPABASE_URL}")
     
     email = "admin@admin.com"
-    password = "admin" # Default password, change immediately
+    password = "admin"  # Default password, change immediately
     
     # 1. Create Supabase Auth User via HTTPX
     print(f"Connecting to Supabase at {settings.SUPABASE_URL}...")

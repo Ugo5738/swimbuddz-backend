@@ -273,6 +273,25 @@ async def enroll_student(
     return enrollment
 
 
+@router.get("/enrollments", response_model=List[EnrollmentResponse])
+async def list_enrollments(
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List all enrollments (admin only)."""
+    from sqlalchemy.orm import selectinload
+    query = (
+        select(Enrollment)
+        .options(
+            selectinload(Enrollment.cohort),
+            selectinload(Enrollment.member)
+        )
+        .order_by(Enrollment.created_at.desc())
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
 @router.post("/enrollments/me", response_model=EnrollmentResponse)
 async def self_enroll(
     request_data: dict,

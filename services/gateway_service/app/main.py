@@ -54,6 +54,13 @@ def create_app() -> FastAPI:
     # ==================================================================
     # SESSIONS SERVICE PROXY
     # ==================================================================
+    # Handle sessions root endpoint (both with and without trailing slash)
+    @app.api_route("/api/v1/sessions", methods=["GET", "POST"])
+    @app.api_route("/api/v1/sessions/", methods=["GET", "POST"])
+    async def proxy_sessions_root(request: Request):
+        """Proxy sessions list and create requests to sessions service."""
+        return await proxy_request(clients.sessions_client, "/sessions/", request)
+    
     @app.api_route("/api/v1/sessions/{session_id}/attendance", methods=["GET"])
     async def proxy_session_attendance(session_id: str, request: Request):
         """Proxy session attendance requests to attendance service."""
@@ -118,7 +125,7 @@ def create_app() -> FastAPI:
     # ==================================================================
     # ACADEMY SERVICE PROXY
     # ==================================================================
-    @app.api_route("/api/v1/academy/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    @app.api_route("/api/v1/academy/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     async def proxy_academy(path: str, request: Request):
         """Proxy all /api/v1/academy/* requests to academy service."""
         return await proxy_request(clients.academy_client, f"/academy/{path}", request)
@@ -167,12 +174,19 @@ async def proxy_request(client: clients.ServiceClient, path: str, request: Reque
             result = await client.get(path, headers=headers)
         elif request.method == "POST":
             result = await client.post(path, json=body, headers=headers)
+        elif request.method == "PUT":
+            result = await client.put(path, json=body, headers=headers)
         elif request.method == "PATCH":
             result = await client.patch(path, json=body, headers=headers)
         elif request.method == "DELETE":
             result = await client.delete(path, headers=headers)
         else:
             raise HTTPException(status_code=405, detail="Method not allowed")
+        
+        # Handle 204 No Content responses (result will be None)
+        if result is None:
+            from fastapi.responses import Response
+            return Response(status_code=204)
         
         return JSONResponse(content=result)
     

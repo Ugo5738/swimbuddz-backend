@@ -35,5 +35,7 @@ class SessionResponse(SessionBase):
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    template_id: Optional[uuid.UUID] = None
+    is_recurring_instance: bool = False
 
     model_config = ConfigDict(from_attributes=True)

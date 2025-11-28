@@ -29,6 +29,21 @@ class ServiceClient:
                 headers=headers or {}
             )
             response.raise_for_status()
+            if response.status_code == 204:
+                return None
+            return response.json()
+    
+    async def put(self, path: str, json: Dict, headers: Optional[Dict] = None) -> Any:
+        """Make PUT request to service."""
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.put(
+                f"{self.base_url}{path}", 
+                json=json, 
+                headers=headers or {}
+            )
+            response.raise_for_status()
+            if response.status_code == 204:
+                return None
             return response.json()
     
     async def patch(self, path: str, json: Dict, headers: Optional[Dict] = None) -> Any:
@@ -40,6 +55,8 @@ class ServiceClient:
                 headers=headers or {}
             )
             response.raise_for_status()
+            if response.status_code == 204:
+                return None
             return response.json()
     
     async def delete(self, path: str, headers: Optional[Dict] = None) -> Any:
@@ -47,6 +64,8 @@ class ServiceClient:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.delete(f"{self.base_url}{path}", headers=headers or {})
             response.raise_for_status()
+            if response.status_code == 204:
+                return None
             return response.json()
 
 

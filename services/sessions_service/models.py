@@ -1,8 +1,9 @@
 import uuid
 from datetime import datetime
 import enum
+from typing import Optional
 
-from sqlalchemy import String, Integer, Float, DateTime, Enum as SAEnum, Text
+from sqlalchemy import String, Integer, Float, DateTime, Enum as SAEnum, Text, Boolean, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -32,6 +33,12 @@ class Session(Base):
     
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    
+    # Template tracking
+    template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("session_templates.id"), nullable=True
+    )
+    is_recurring_instance: Mapped[bool] = mapped_column(Boolean, default=False)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

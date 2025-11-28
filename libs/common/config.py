@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: Literal["local", "development", "production"] = "local"
     LOG_LEVEL: str = "INFO"
     ADMIN_EMAILS: list[str] = ["admin@admin.com"]
+    TIMEZONE: str = "Africa/Lagos" 
 
     # Database
     DATABASE_URL: str
