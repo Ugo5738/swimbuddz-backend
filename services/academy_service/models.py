@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 from libs.db.base import Base
-from sqlalchemy import JSON, Boolean, DateTime
+from sqlalchemy import JSON, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID

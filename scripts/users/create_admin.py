@@ -18,7 +18,6 @@ load_dotenv(project_root / env_file, override=True)
 
 import httpx
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.config import get_settings
 from libs.db.config import AsyncSessionLocal

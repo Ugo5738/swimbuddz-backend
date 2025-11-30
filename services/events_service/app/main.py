@@ -1,9 +1,5 @@
 """FastAPI application for the Events Service."""
 from fastapi import FastAPI
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from services.events_service.router import router as events_router
 
 

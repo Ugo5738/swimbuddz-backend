@@ -1,13 +1,11 @@
 from typing import List
 import uuid
-from datetime import datetime, timedelta, time as time_type
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.auth.dependencies import require_admin
-from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.sessions_service.session_template import SessionTemplate
 from services.sessions_service.template_schemas import (
@@ -26,7 +24,7 @@ async def list_templates(
     """List all session templates."""
     query = select(SessionTemplate)
     if active_only:
-        query = query.where(SessionTemplate.is_active == True)
+        query = query.where(SessionTemplate.is_active.is_(True))
     query = query.order_by(SessionTemplate.day_of_week, SessionTemplate.start_time)
     result = await db.execute(query)
     return result.scalars().all()

@@ -1,9 +1,5 @@
 """FastAPI application for the Payments Service."""
 from fastapi import FastAPI
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from services.payments_service.router import router as payments_router
 
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Query
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.db.session import get_async_db

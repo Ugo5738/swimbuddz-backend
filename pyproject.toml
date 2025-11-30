@@ -35,3 +35,6 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["libs*", "services*", "mcp*", "alembic*"]
+
+[tool.ruff.lint]
+ignore = ["E402"]
