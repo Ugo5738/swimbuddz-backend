@@ -3,9 +3,7 @@ services:
   # DOMAIN MICROSERVICES
   # ==================================================================
   members-service:
-    build:
-      context: .
-      dockerfile: services/members_service/Dockerfile
+    image: ${DOCKER_USERNAME}/swimbuddz-members-service:latest
     container_name: swimbuddz_members
     env_file:
       - .env.prod
@@ -17,9 +15,7 @@ services:
       - .:/app
 
   sessions-service:
-    build:
-      context: .
-      dockerfile: services/sessions_service/Dockerfile
+    image: ${DOCKER_USERNAME}/swimbuddz-sessions-service:latest
     container_name: swimbuddz_sessions
     env_file:
       - .env.prod
@@ -31,9 +27,7 @@ services:
       - .:/app
 
   attendance-service:
-    build:
-      context: .
-      dockerfile: services/attendance_service/Dockerfile
+    image: ${DOCKER_USERNAME}/swimbuddz-attendance-service:latest
     container_name: swimbuddz_attendance
     env_file:
       - .env.prod
@@ -45,9 +39,7 @@ services:
       - .:/app
 
   communications-service:
-    build:
-      context: .
-      dockerfile: services/communications_service/Dockerfile
+    image: ${DOCKER_USERNAME}/swimbuddz-communications-service:latest
     container_name: swimbuddz_communications
     env_file:
       - .env.prod
@@ -59,9 +51,7 @@ services:
       - .:/app
 
   payments-service:
-    build:
-      context: .
-      dockerfile: services/payments_service/Dockerfile
+    image: ${DOCKER_USERNAME}/swimbuddz-payments-service:latest
     container_name: swimbuddz_payments
     env_file:
       - .env.prod
@@ -73,9 +63,7 @@ services:
       - .:/app
 
   academy-service:
-    build:
-      context: .
-      dockerfile: services/academy_service/Dockerfile
+    image: ${DOCKER_USERNAME}/swimbuddz-academy-service:latest
     container_name: swimbuddz_academy
     env_file:
       - .env.prod
@@ -87,9 +75,7 @@ services:
       - .:/app
 
   media-service:
-    build:
-      context: .
-      dockerfile: services/media_service/Dockerfile
+    image: ${DOCKER_USERNAME}/swimbuddz-media-service:latest
     container_name: swimbuddz_media
     env_file:
       - .env.prod
@@ -101,9 +87,7 @@ services:
       - .:/app
 
   events-service:
-    build:
-      context: .
-      dockerfile: services/events_service/Dockerfile
+    image: ${DOCKER_USERNAME}/swimbuddz-events-service:latest
     container_name: swimbuddz_events
     env_file:
       - .env.prod
@@ -115,9 +99,7 @@ services:
       - .:/app
 
   transport-service:
-    build:
-      context: .
-      dockerfile: services/transport_service/Dockerfile
+    image: ${DOCKER_USERNAME}/swimbuddz-transport-service:latest
     container_name: swimbuddz_transport
     env_file:
       - .env.prod
@@ -132,9 +114,7 @@ services:
   # API GATEWAY
   # ==================================================================
   gateway:
-    build:
-      context: .
-      dockerfile: services/gateway_service/Dockerfile
+    image: ${DOCKER_USERNAME}/swimbuddz-gateway-service:latest
     container_name: swimbuddz_gateway
     env_file:
       - .env.prod
