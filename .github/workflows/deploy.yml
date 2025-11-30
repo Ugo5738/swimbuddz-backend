@@ -18,6 +18,10 @@ jobs:
   backend-ci:
     runs-on: ubuntu-latest
     
+    env:
+      # Set a dummy DATABASE_URL for tests (tests don't actually connect)
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+    
     steps:
     - uses: actions/checkout@v4
 
