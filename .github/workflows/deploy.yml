@@ -160,6 +160,7 @@ jobs:
           # Make DOCKER_USERNAME and LE_EMAIL available for compose
           export DOCKER_USERNAME="${{ secrets.DOCKER_USERNAME }}"
           export LE_EMAIL="${{ secrets.LE_EMAIL }}"
+          export DOCKER_API_VERSION="1.46"
 
           # Login to Docker Hub (to ensure we can pull private images if needed)
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
