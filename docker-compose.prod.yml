@@ -1,5 +1,28 @@
 services:
   # ==================================================================
+  # INGRESS / TLS
+  # ==================================================================
+  traefik:
+    image: traefik:v3.1
+    container_name: swimbuddz_traefik
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.le.acme.tlschallenge=true
+      - --certificatesresolvers.le.acme.email=${LE_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --log.level=INFO
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+    restart: unless-stopped
+
+  # ==================================================================
   # DOMAIN MICROSERVICES
   # ==================================================================
   members-service:
@@ -137,8 +160,6 @@ services:
         condition: service_started
       transport-service:
         condition: service_started
-    ports:
-      - "8000:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: >
@@ -148,6 +169,16 @@ services:
       --reload
     volumes:
       - .:/app
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.api.rule=Host(`api.swimbuddz.com`)
+      - traefik.http.routers.api.entrypoints=websecure
+      - traefik.http.routers.api.tls.certresolver=le
+      - traefik.http.services.api.loadbalancer.server.port=8000
+      - traefik.http.routers.api-http.rule=Host(`api.swimbuddz.com`)
+      - traefik.http.routers.api-http.entrypoints=web
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+      - traefik.http.routers.api-http.middlewares=redirect-to-https
 
 volumes:
   swimbuddz_db_data:
