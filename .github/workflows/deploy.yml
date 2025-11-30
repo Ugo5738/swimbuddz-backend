@@ -10,8 +10,8 @@ env:
   DOCKER_REGISTRY: docker.io
   DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
   DEPLOY_PATH: /home/deploy/swimbuddz-backend
-  # If you don't want to set REPO_URL as a secret, set it here directly:
-  REPO_URL: https://github.com/Ugo5738/swimbuddz-backend.git
+  # Prefer to set REPO_URL as a secret that already includes auth (e.g., https://<token>@github.com/Ugo5738/swimbuddz-backend.git)
+  REPO_URL: ${{ secrets.REPO_URL }}
 
 jobs:
   # ------------------------------------------------------------------
@@ -149,6 +149,7 @@ jobs:
           if [ ! -d .git ]; then
             git clone "${{ env.REPO_URL }}" .
           else
+            git remote set-url origin "${{ env.REPO_URL }}"
             git fetch origin
             git reset --hard origin/main
           fi
