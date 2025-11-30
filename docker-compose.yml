@@ -139,15 +139,24 @@ services:
     env_file:
       - .env.dev
     depends_on:
-      - members-service
-      - sessions-service
-      - attendance-service
-      - communications-service
-      - payments-service
-      - academy-service
-      - media-service
-      - events-service
-      - transport-service
+      members-service:
+        condition: service_started
+      sessions-service:
+        condition: service_started
+      attendance-service:
+        condition: service_started
+      communications-service:
+        condition: service_started
+      payments-service:
+        condition: service_started
+      academy-service:
+        condition: service_started
+      media-service:
+        condition: service_started
+      events-service:
+        condition: service_started
+      transport-service:
+        condition: service_started
     ports:
       - "8000:8000"
     extra_hosts:

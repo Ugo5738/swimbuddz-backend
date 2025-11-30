@@ -33,10 +33,10 @@ class AttendanceRecord(Base):
     )
 
     session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False, index=True
+        UUID(as_uuid=True), nullable=False, index=True
     )
     member_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("members.id"), nullable=False, index=True
+        UUID(as_uuid=True), nullable=False, index=True
     )
 
     # Attendance status/details (simplified; ride-share and payment move to dedicated services)
