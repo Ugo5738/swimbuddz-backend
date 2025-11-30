@@ -3,7 +3,7 @@ services:
   # INGRESS / TLS
   # ==================================================================
   traefik:
-    image: traefik:v3.1
+    image: traefik:v3
     container_name: swimbuddz_traefik
     command:
       - --providers.docker=true
