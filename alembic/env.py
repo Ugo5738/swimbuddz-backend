@@ -1,3 +1,7 @@
+"""Alembic configuration entrypoint."""
+
+# ruff: noqa: F401
+
 import asyncio
 from logging.config import fileConfig
 
