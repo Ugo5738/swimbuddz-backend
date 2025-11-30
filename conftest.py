@@ -4,6 +4,7 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.exc import OperationalError
 
 from libs.common.config import get_settings
 from libs.db.base import Base
@@ -25,8 +26,12 @@ async def test_engine():
     engine = create_async_engine(db_url, future=True)
 
     # Create tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except OperationalError:
+        await engine.dispose()
+        pytest.skip("Database not available for tests")
 
     yield engine
 

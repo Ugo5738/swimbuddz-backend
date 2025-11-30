@@ -18,11 +18,13 @@ class Settings(BaseSettings):
     DATABASE_URL: str
 
     # Supabase
-    SUPABASE_URL: str
-    SUPABASE_ANON_KEY: str
-    SUPABASE_SERVICE_ROLE_KEY: str
-    SUPABASE_JWT_SECRET: str
-    SUPABASE_PROJECT_ID: str
+    # Default placeholder values keep local/test runs from failing when Supabase
+    # credentials are not required. Real deployments should override via env.
+    SUPABASE_URL: str = "http://localhost"
+    SUPABASE_ANON_KEY: str = "test-anon-key"
+    SUPABASE_SERVICE_ROLE_KEY: str = "test-service-role-key"
+    SUPABASE_JWT_SECRET: str = "test-jwt-secret"
+    SUPABASE_PROJECT_ID: str = "test-project-id"
 
     # Gateway
     GATEWAY_URL: str = "http://localhost:8000"
