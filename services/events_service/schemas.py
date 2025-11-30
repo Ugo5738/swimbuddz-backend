@@ -1,4 +1,5 @@
 """Pydantic schemas for Events Service."""
+
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -8,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 class EventBase(BaseModel):
     """Base event schema."""
+
     title: str
     description: Optional[str] = None
     event_type: str  # social/volunteer/beach_day/watch_party/cleanup/training
@@ -20,11 +22,13 @@ class EventBase(BaseModel):
 
 class EventCreate(EventBase):
     """Schema for creating an event."""
+
     pass
 
 
 class EventUpdate(BaseModel):
     """Schema for updating an event."""
+
     title: Optional[str] = None
     description: Optional[str] = None
     event_type: Optional[str] = None
@@ -37,6 +41,7 @@ class EventUpdate(BaseModel):
 
 class EventResponse(EventBase):
     """Event response schema."""
+
     id: uuid.UUID
     created_by: uuid.UUID
     created_at: datetime
@@ -48,11 +53,13 @@ class EventResponse(EventBase):
 
 class RSVPCreate(BaseModel):
     """Schema for creating/updating an RSVP."""
+
     status: str  # going/maybe/not_going
 
 
 class RSVPResponse(BaseModel):
     """RSVP response schema."""
+
     id: uuid.UUID
     event_id: uuid.UUID
     member_id: uuid.UUID

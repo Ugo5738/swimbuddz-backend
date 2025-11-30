@@ -20,16 +20,27 @@ from services.academy_service.models import (
     Member,
 )
 from services.academy_service.schemas import (
-    ProgramCreate, ProgramResponse, ProgramUpdate,
-    CohortCreate, CohortResponse, CohortUpdate,
-    EnrollmentCreate, EnrollmentResponse, EnrollmentUpdate, EnrollmentWithStudent,
-    MilestoneCreate, MilestoneResponse, StudentProgressResponse, StudentProgressUpdate
+    ProgramCreate,
+    ProgramResponse,
+    ProgramUpdate,
+    CohortCreate,
+    CohortResponse,
+    CohortUpdate,
+    EnrollmentCreate,
+    EnrollmentResponse,
+    EnrollmentUpdate,
+    EnrollmentWithStudent,
+    MilestoneCreate,
+    MilestoneResponse,
+    StudentProgressResponse,
+    StudentProgressUpdate,
 )
 
 router = APIRouter(tags=["academy"])
 
 
 # --- Programs ---
+
 
 @router.post("/programs", response_model=ProgramResponse)
 async def create_program(
@@ -76,14 +87,14 @@ async def update_program(
     query = select(Program).where(Program.id == program_id)
     result = await db.execute(query)
     program = result.scalar_one_or_none()
-    
+
     if not program:
         raise HTTPException(status_code=404, detail="Program not found")
-        
+
     update_data = program_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(program, field, value)
-        
+
     await db.commit()
     await db.refresh(program)
     return program
@@ -98,16 +109,17 @@ async def delete_program(
     query = select(Program).where(Program.id == program_id)
     result = await db.execute(query)
     program = result.scalar_one_or_none()
-    
+
     if not program:
         raise HTTPException(status_code=404, detail="Program not found")
-        
+
     await db.delete(program)
     await db.commit()
     return None
 
 
 # --- Cohorts ---
+
 
 @router.post("/cohorts", response_model=CohortResponse)
 async def create_cohort(
@@ -132,14 +144,14 @@ async def update_cohort(
     query = select(Cohort).where(Cohort.id == cohort_id)
     result = await db.execute(query)
     cohort = result.scalar_one_or_none()
-    
+
     if not cohort:
         raise HTTPException(status_code=404, detail="Cohort not found")
-        
+
     update_data = cohort_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(cohort, field, value)
-        
+
     await db.commit()
     await db.refresh(cohort)
     return cohort
@@ -154,10 +166,10 @@ async def delete_cohort(
     query = select(Cohort).where(Cohort.id == cohort_id)
     result = await db.execute(query)
     cohort = result.scalar_one_or_none()
-    
+
     if not cohort:
         raise HTTPException(status_code=404, detail="Cohort not found")
-        
+
     await db.delete(cohort)
     await db.commit()
     return None
@@ -171,7 +183,7 @@ async def list_cohorts(
     query = select(Cohort).order_by(Cohort.start_date.desc())
     if program_id:
         query = query.where(Cohort.program_id == program_id)
-    
+
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -181,7 +193,11 @@ async def list_open_cohorts(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all cohorts with status OPEN."""
-    query = select(Cohort).where(Cohort.status == CohortStatus.OPEN).order_by(Cohort.start_date.asc())
+    query = (
+        select(Cohort)
+        .where(Cohort.status == CohortStatus.OPEN)
+        .order_by(Cohort.start_date.asc())
+    )
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -208,12 +224,12 @@ async def list_cohort_students(
     """List all students enrolled in a cohort with their progress."""
     # Eager load member and progress_records
     from sqlalchemy.orm import selectinload
+
     query = (
         select(Enrollment)
         .where(Enrollment.cohort_id == cohort_id)
         .options(
-            selectinload(Enrollment.member),
-            selectinload(Enrollment.progress_records)
+            selectinload(Enrollment.member), selectinload(Enrollment.progress_records)
         )
     )
     result = await db.execute(query)
@@ -221,6 +237,7 @@ async def list_cohort_students(
 
 
 # --- Milestones ---
+
 
 @router.post("/milestones", response_model=MilestoneResponse)
 async def create_milestone(
@@ -240,30 +257,37 @@ async def list_program_milestones(
     program_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
-    query = select(Milestone).where(Milestone.program_id == program_id).order_by(Milestone.name)
+    query = (
+        select(Milestone)
+        .where(Milestone.program_id == program_id)
+        .order_by(Milestone.name)
+    )
     result = await db.execute(query)
     return result.scalars().all()
 
 
 # --- Enrollments ---
 
+
 @router.post("/enrollments", response_model=EnrollmentResponse)
 async def enroll_student(
     enrollment_in: EnrollmentCreate,
-    current_user: AuthUser = Depends(require_admin), # Admin can enroll anyone
+    current_user: AuthUser = Depends(require_admin),  # Admin can enroll anyone
     db: AsyncSession = Depends(get_async_db),
 ):
     # Check if already enrolled
     query = select(Enrollment).where(
         Enrollment.cohort_id == enrollment_in.cohort_id,
-        Enrollment.member_id == enrollment_in.member_id
+        Enrollment.member_id == enrollment_in.member_id,
     )
     result = await db.execute(query)
     existing = result.scalar_one_or_none()
-    
+
     if existing:
-        raise HTTPException(status_code=400, detail="Member already enrolled in this cohort")
-        
+        raise HTTPException(
+            status_code=400, detail="Member already enrolled in this cohort"
+        )
+
     enrollment = Enrollment(**enrollment_in.model_dump())
     db.add(enrollment)
     await db.commit()
@@ -278,12 +302,10 @@ async def list_enrollments(
 ):
     """List all enrollments (admin only)."""
     from sqlalchemy.orm import selectinload
+
     query = (
         select(Enrollment)
-        .options(
-            selectinload(Enrollment.cohort),
-            selectinload(Enrollment.member)
-        )
+        .options(selectinload(Enrollment.cohort), selectinload(Enrollment.member))
         .order_by(Enrollment.created_at.desc())
     )
     result = await db.execute(query)
@@ -299,44 +321,52 @@ async def self_enroll(
     """Allow a member to enroll themselves in a cohort."""
     cohort_id = request_data.get("cohort_id")
     if not cohort_id:
-        raise HTTPException(status_code=422, detail="cohort_id is required in request body")
-    
+        raise HTTPException(
+            status_code=422, detail="cohort_id is required in request body"
+        )
+
     # 1. Get Member ID
     query = select(Member).where(Member.auth_id == current_user.user_id)
     result = await db.execute(query)
     member = result.scalar_one_or_none()
-    
+
     if not member:
-        raise HTTPException(status_code=404, detail="Member profile not found. Please complete registration.")
+        raise HTTPException(
+            status_code=404,
+            detail="Member profile not found. Please complete registration.",
+        )
 
     # 2. Check Cohort Status
     cohort_query = select(Cohort).where(Cohort.id == cohort_id)
     cohort_result = await db.execute(cohort_query)
     cohort = cohort_result.scalar_one_or_none()
-    
+
     if not cohort:
         raise HTTPException(status_code=404, detail="Cohort not found")
-    
+
     if cohort.status != CohortStatus.OPEN:
-        raise HTTPException(status_code=400, detail="This cohort is not open for enrollment")
+        raise HTTPException(
+            status_code=400, detail="This cohort is not open for enrollment"
+        )
 
     # 3. Check Existing Enrollment
     query = select(Enrollment).where(
-        Enrollment.cohort_id == cohort_id,
-        Enrollment.member_id == member.id
+        Enrollment.cohort_id == cohort_id, Enrollment.member_id == member.id
     )
     result = await db.execute(query)
     existing = result.scalar_one_or_none()
-    
+
     if existing:
-        raise HTTPException(status_code=400, detail="You are already enrolled in this cohort")
-        
+        raise HTTPException(
+            status_code=400, detail="You are already enrolled in this cohort"
+        )
+
     # 4. Create Enrollment (Auto-PAID for now as per plan)
     enrollment = Enrollment(
         cohort_id=cohort_id,
         member_id=member.id,
         status=EnrollmentStatus.ENROLLED,
-        payment_status=PaymentStatus.PAID 
+        payment_status=PaymentStatus.PAID,
     )
     db.add(enrollment)
     await db.commit()
@@ -352,12 +382,13 @@ async def get_my_enrollments(
     query = select(Member).where(Member.auth_id == current_user.user_id)
     result = await db.execute(query)
     member = result.scalar_one_or_none()
-    
+
     if not member:
         raise HTTPException(status_code=404, detail="Member profile not found")
-        
+
     # Eager load cohort details
     from sqlalchemy.orm import selectinload
+
     query = (
         select(Enrollment)
         .where(Enrollment.member_id == member.id)
@@ -389,14 +420,14 @@ async def update_enrollment(
     query = select(Enrollment).where(Enrollment.id == enrollment_id)
     result = await db.execute(query)
     enrollment = result.scalar_one_or_none()
-    
+
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
-        
+
     update_data = enrollment_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(enrollment, field, value)
-        
+
     await db.commit()
     await db.refresh(enrollment)
     return enrollment
@@ -404,22 +435,23 @@ async def update_enrollment(
 
 # --- Progress ---
 
+
 @router.post("/progress", response_model=StudentProgressResponse)
 async def update_student_progress(
     progress_in: StudentProgressUpdate,
     enrollment_id: uuid.UUID,
     milestone_id: uuid.UUID,
-    current_user: AuthUser = Depends(require_admin), # Coach/Admin
+    current_user: AuthUser = Depends(require_admin),  # Coach/Admin
     db: AsyncSession = Depends(get_async_db),
 ):
     # Check if record exists
     query = select(StudentProgress).where(
         StudentProgress.enrollment_id == enrollment_id,
-        StudentProgress.milestone_id == milestone_id
+        StudentProgress.milestone_id == milestone_id,
     )
     result = await db.execute(query)
     progress = result.scalar_one_or_none()
-    
+
     if progress:
         progress.status = progress_in.status
         progress.achieved_at = progress_in.achieved_at
@@ -430,20 +462,25 @@ async def update_student_progress(
             milestone_id=milestone_id,
             status=progress_in.status,
             achieved_at=progress_in.achieved_at,
-            coach_notes=progress_in.coach_notes
+            coach_notes=progress_in.coach_notes,
         )
         db.add(progress)
-        
+
     await db.commit()
     await db.refresh(progress)
     return progress
 
 
-@router.get("/enrollments/{enrollment_id}/progress", response_model=List[StudentProgressResponse])
+@router.get(
+    "/enrollments/{enrollment_id}/progress",
+    response_model=List[StudentProgressResponse],
+)
 async def get_student_progress(
     enrollment_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
-    query = select(StudentProgress).where(StudentProgress.enrollment_id == enrollment_id)
+    query = select(StudentProgress).where(
+        StudentProgress.enrollment_id == enrollment_id
+    )
     result = await db.execute(query)
     return result.scalars().all()

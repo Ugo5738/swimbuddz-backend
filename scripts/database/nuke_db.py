@@ -27,6 +27,7 @@ def load_env_file() -> None:
 
 load_env_file()
 
+
 def database_url_candidates() -> list[tuple[str, str]]:
     """Return DB URL candidates in priority order.
 
@@ -39,8 +40,11 @@ def database_url_candidates() -> list[tuple[str, str]]:
         if url:
             candidates.append((key, url))
     if not candidates:
-        raise ValueError("No database URL found (expected DATABASE_DIRECT_URL/DATABASE_TRANSACTION_URL/DATABASE_URL)")
+        raise ValueError(
+            "No database URL found (expected DATABASE_DIRECT_URL/DATABASE_TRANSACTION_URL/DATABASE_URL)"
+        )
     return candidates
+
 
 async def nuke_tables():
     candidates = database_url_candidates()
@@ -51,11 +55,11 @@ async def nuke_tables():
 
         # Mask password for logging
         masked_url = url
-        if '@' in masked_url:
+        if "@" in masked_url:
             try:
-                scheme_part, host_part = masked_url.rsplit('@', 1)
-                if ':' in scheme_part:
-                    scheme_user, _ = scheme_part.rsplit(':', 1)
+                scheme_part, host_part = masked_url.rsplit("@", 1)
+                if ":" in scheme_part:
+                    scheme_user, _ = scheme_part.rsplit(":", 1)
                     masked_url = f"{scheme_user}:***@{host_part}"
             except Exception:
                 pass
@@ -65,18 +69,23 @@ async def nuke_tables():
         engine = create_async_engine(url, echo=False, isolation_level="AUTOCOMMIT")
         try:
             async with engine.connect() as conn:
+
                 def nuke(sync_conn):
                     # Disable statement timeout; keep lock timeout short so we don't hang
-                    lock_timeout_ms = int(os.environ.get("NUKE_LOCK_TIMEOUT_MS", "5000"))
+                    lock_timeout_ms = int(
+                        os.environ.get("NUKE_LOCK_TIMEOUT_MS", "5000")
+                    )
                     sync_conn.execute(text("SET SESSION statement_timeout = 0;"))
                     sync_conn.execute(text(f"SET lock_timeout = {lock_timeout_ms};"))
 
                     # Gather tables in public
-                    result = sync_conn.execute(text("""
+                    result = sync_conn.execute(
+                        text("""
                         SELECT tablename FROM pg_tables
                         WHERE schemaname = 'public'
                         ORDER BY tablename;
-                    """))
+                    """)
+                    )
                     tables = [row[0] for row in result]
 
                     if not tables:
@@ -90,31 +99,47 @@ async def nuke_tables():
                         dropped = 0
                         for i, t in enumerate(tables, 1):
                             try:
-                                print(f"  [{i}/{len(tables)}] {t}...", end=" ", flush=True)
-                                sync_conn.execute(text(f"DROP TABLE IF EXISTS \"{t}\" CASCADE;"))
+                                print(
+                                    f"  [{i}/{len(tables)}] {t}...", end=" ", flush=True
+                                )
+                                sync_conn.execute(
+                                    text(f'DROP TABLE IF EXISTS "{t}" CASCADE;')
+                                )
                                 print("✓")
                                 dropped += 1
                             except Exception as ex:
                                 print(f"✗ {str(ex)[:120]}")
 
-                        print(f"\n✓ Dropped {dropped}/{len(tables)} tables (remaining may be locked)")
+                        print(
+                            f"\n✓ Dropped {dropped}/{len(tables)} tables (remaining may be locked)"
+                        )
 
                     # Drop enums in public schema to avoid duplicate type errors
-                    result_types = sync_conn.execute(text("""
+                    result_types = sync_conn.execute(
+                        text("""
                         SELECT n.nspname AS schema, t.typname AS type_name
                         FROM pg_type t
                         JOIN pg_namespace n ON n.oid = t.typnamespace
                         WHERE t.typtype = 'e' AND n.nspname = 'public'
                         ORDER BY type_name;
-                    """))
+                    """)
+                    )
                     enum_types = [(row[0], row[1]) for row in result_types]
 
                     if enum_types:
                         print("\nDropping enum types in public schema...")
                         for schema, type_name in enum_types:
                             try:
-                                print(f"  Dropping type {schema}.{type_name}...", end=" ", flush=True)
-                                sync_conn.execute(text(f"DROP TYPE IF EXISTS \"{schema}\".\"{type_name}\" CASCADE;"))
+                                print(
+                                    f"  Dropping type {schema}.{type_name}...",
+                                    end=" ",
+                                    flush=True,
+                                )
+                                sync_conn.execute(
+                                    text(
+                                        f'DROP TYPE IF EXISTS "{schema}"."{type_name}" CASCADE;'
+                                    )
+                                )
                                 print("✓")
                             except Exception as ex:
                                 print(f"✗ {str(ex)[:120]}")
@@ -125,7 +150,7 @@ async def nuke_tables():
                     sync_conn.execute(text("CREATE SCHEMA IF NOT EXISTS public;"))
                     sync_conn.execute(text("GRANT ALL ON SCHEMA public TO public;"))
                     print("Schema ready for migrations.")
-                
+
                 await conn.run_sync(nuke)
                 # Success, stop trying other URLs
                 return
@@ -141,6 +166,7 @@ async def nuke_tables():
 
     if last_error:
         raise last_error
+
 
 if __name__ == "__main__":
     asyncio.run(nuke_tables())

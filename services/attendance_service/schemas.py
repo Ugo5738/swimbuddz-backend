@@ -5,6 +5,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict
 from services.transport_service.models import RideShareOption
 
+
 class AttendanceBase(BaseModel):
     status: str = "PRESENT"
     role: str = "SWIMMER"
@@ -30,7 +31,7 @@ class AttendanceResponse(AttendanceBase):
     member_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
-    
+
     # Optional fields populated by joins
     member_name: Optional[str] = None
     member_email: Optional[str] = None

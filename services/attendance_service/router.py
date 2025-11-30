@@ -11,7 +11,11 @@ from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from libs.common.config import get_settings
 from services.attendance_service.models import AttendanceRecord
-from services.attendance_service.schemas import AttendanceResponse, AttendanceCreate, PublicAttendanceCreate
+from services.attendance_service.schemas import (
+    AttendanceResponse,
+    AttendanceCreate,
+    PublicAttendanceCreate,
+)
 from services.members_service.models import Member
 from services.sessions_service.models import Session
 
@@ -54,7 +58,7 @@ async def sign_in_to_session(
     # Check for existing attendance
     query = select(AttendanceRecord).where(
         AttendanceRecord.session_id == session_id,
-        AttendanceRecord.member_id == current_member.id
+        AttendanceRecord.member_id == current_member.id,
     )
     result = await db.execute(query)
     attendance = result.scalar_one_or_none()
@@ -81,7 +85,9 @@ async def sign_in_to_session(
     return attendance
 
 
-@router.post("/sessions/{session_id}/attendance/public", response_model=AttendanceResponse)
+@router.post(
+    "/sessions/{session_id}/attendance/public", response_model=AttendanceResponse
+)
 async def public_sign_in_to_session(
     session_id: uuid.UUID,
     attendance_in: PublicAttendanceCreate,
@@ -107,7 +113,7 @@ async def public_sign_in_to_session(
     # Check for existing attendance
     query = select(AttendanceRecord).where(
         AttendanceRecord.session_id == session_id,
-        AttendanceRecord.member_id == attendance_in.member_id
+        AttendanceRecord.member_id == attendance_in.member_id,
     )
     result = await db.execute(query)
     attendance = result.scalar_one_or_none()
@@ -132,7 +138,11 @@ async def public_sign_in_to_session(
     await db.refresh(attendance)
     await _send_ride_preference(session_id, attendance_in.member_id, attendance_in)
     return attendance
-@router.get("/sessions/{session_id}/attendance", response_model=List[AttendanceResponse])
+
+
+@router.get(
+    "/sessions/{session_id}/attendance", response_model=List[AttendanceResponse]
+)
 async def list_session_attendance(
     session_id: uuid.UUID,
     current_user: AuthUser = Depends(require_admin),
@@ -141,10 +151,14 @@ async def list_session_attendance(
     """
     List all attendees for a session (Admin only).
     """
-    query = select(AttendanceRecord, Member).join(Member).where(AttendanceRecord.session_id == session_id)
+    query = (
+        select(AttendanceRecord, Member)
+        .join(Member)
+        .where(AttendanceRecord.session_id == session_id)
+    )
     result = await db.execute(query)
     rows = result.all()
-    
+
     responses = []
     for attendance, member in rows:
         # Convert SQLAlchemy model to Pydantic model
@@ -153,7 +167,7 @@ async def list_session_attendance(
         resp.member_name = f"{member.first_name} {member.last_name}"
         resp.member_email = member.email
         responses.append(resp)
-        
+
     return responses
 
 
@@ -165,9 +179,11 @@ async def get_my_attendance_history(
     """
     Get attendance history for the current member.
     """
-    query = select(AttendanceRecord).where(
-        AttendanceRecord.member_id == current_member.id
-    ).order_by(AttendanceRecord.created_at.desc())
+    query = (
+        select(AttendanceRecord)
+        .where(AttendanceRecord.member_id == current_member.id)
+        .order_by(AttendanceRecord.created_at.desc())
+    )
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -182,7 +198,11 @@ async def get_pool_list_csv(
     Export pool list as CSV (Admin only).
     """
     # Join with Member to get names
-    query = select(AttendanceRecord, Member).join(Member).where(AttendanceRecord.session_id == session_id)
+    query = (
+        select(AttendanceRecord, Member)
+        .join(Member)
+        .where(AttendanceRecord.session_id == session_id)
+    )
     result = await db.execute(query)
     rows = result.all()
 
@@ -194,7 +214,9 @@ async def get_pool_list_csv(
     return Response(content=csv_content, media_type="text/csv")
 
 
-async def _send_ride_preference(session_id: uuid.UUID, member_id: uuid.UUID, payload: AttendanceCreate):
+async def _send_ride_preference(
+    session_id: uuid.UUID, member_id: uuid.UUID, payload: AttendanceCreate
+):
     """
     Fire-and-forget call to transport service to upsert ride preferences.
     """

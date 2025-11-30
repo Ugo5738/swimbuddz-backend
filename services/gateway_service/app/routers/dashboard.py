@@ -40,7 +40,9 @@ async def get_member_dashboard(
     """
     # 1. Get Member Profile
     try:
-        member = await clients.members_client.get("/members/me", headers={"Authorization": f"Bearer {current_user.token}"})
+        member = await clients.members_client.get(
+            "/members/me", headers={"Authorization": f"Bearer {current_user.token}"}
+        )
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -50,11 +52,11 @@ async def get_member_dashboard(
     # 2. Get Upcoming Sessions (next 5)
     # TODO: Add limit/filter params to sessions service
     sessions = await clients.sessions_client.get("/sessions/")
-    upcoming_sessions = sessions[:5] # Mock limit for now
+    upcoming_sessions = sessions[:5]  # Mock limit for now
 
     # 3. Get Recent Attendance (last 5)
     # TODO: Add endpoint to attendance service
-    recent_attendance = [] 
+    recent_attendance = []
 
     # 4. Get Latest Announcements (last 3)
     announcements = await clients.communications_client.get("/announcements/")
@@ -77,7 +79,7 @@ async def get_admin_dashboard_stats(
     """
     # 1. Member Stats
     member_stats = await clients.members_client.get("/members/stats")
-    
+
     # 2. Session Stats
     session_stats = await clients.sessions_client.get("/sessions/stats")
 
@@ -88,5 +90,7 @@ async def get_admin_dashboard_stats(
         total_members=member_stats.get("total_members", 0),
         active_members=member_stats.get("active_members", 0),
         upcoming_sessions_count=session_stats.get("upcoming_sessions_count", 0),
-        recent_announcements_count=announcement_stats.get("recent_announcements_count", 0),
+        recent_announcements_count=announcement_stats.get(
+            "recent_announcements_count", 0
+        ),
     )

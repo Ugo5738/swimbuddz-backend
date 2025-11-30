@@ -77,22 +77,22 @@ class MemberBase(BaseModel):
     # ===== NEW TIER-BASED FIELDS =====
     # Tier Management
     membership_tier: Optional[str] = "community"
-    
+
     # Profile Photo
     profile_photo_url: Optional[str] = None
-    
+
     # Community Tier - Enhanced fields
     gender: Optional[str] = None
     date_of_birth: Optional[datetime] = None
     show_in_directory: Optional[bool] = False
     interest_tags: Optional[list[str]] = None
-    
+
     # Club Tier - Badges & Tracking
     club_badges_earned: Optional[list[str]] = None
     club_challenges_completed: Optional[dict] = None
     punctuality_score: Optional[int] = 0
     commitment_score: Optional[int] = 0
-    
+
     # Academy Tier - Skill Assessment & Goals
     academy_skill_assessment: Optional[dict] = None
     academy_goals: Optional[str] = None
@@ -111,7 +111,7 @@ class MemberUpdate(MemberBase):
     last_name: Optional[str] = None
     email: Optional[EmailStr] = None
     is_active: Optional[bool] = None
-    
+
     # All other fields are inherited from MemberBase as Optional
     # We just need to ensure we can update them.
     # MemberBase fields are already Optional, so this works.
@@ -136,8 +136,8 @@ class PendingRegistrationCreate(BaseModel):
     password: Optional[str] = None
     # Add other profile fields as needed, for now just these
     model_config = ConfigDict(extra="allow")
-    
-    
+
+
 class PendingRegistrationResponse(BaseModel):
     id: uuid.UUID
     email: EmailStr

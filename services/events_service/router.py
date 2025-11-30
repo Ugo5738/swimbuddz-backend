@@ -1,4 +1,5 @@
 """Events Service router/endpoints."""
+
 import uuid
 from datetime import datetime
 from typing import List, Optional
@@ -14,7 +15,7 @@ from services.events_service.schemas import (
     EventUpdate,
     EventResponse,
     RSVPCreate,
-    RSVPResponse
+    RSVPResponse,
 )
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -28,35 +29,34 @@ async def list_events(
 ):
     """List all events with optional filters."""
     query = select(Event)
-    
+
     if event_type:
         query = query.where(Event.event_type == event_type)
-    
+
     if upcoming_only:
         query = query.where(Event.start_time >= datetime.utcnow())
-    
+
     query = query.order_by(Event.start_time.asc())
-    
+
     result = await db.execute(query)
     events = result.scalars().all()
-    
+
     # Get RSVP counts for each event
     events_with_counts = []
     for event in events:
-        rsvp_query = select(
-            EventRSVP.status,
-            func.count(EventRSVP.id).label('count')
-        ).where(
-            EventRSVP.event_id == event.id
-        ).group_by(EventRSVP.status)
-        
+        rsvp_query = (
+            select(EventRSVP.status, func.count(EventRSVP.id).label("count"))
+            .where(EventRSVP.event_id == event.id)
+            .group_by(EventRSVP.status)
+        )
+
         rsvp_result = await db.execute(rsvp_query)
         rsvp_counts = {row[0]: row[1] for row in rsvp_result.all()}
-        
+
         event_dict = event.__dict__.copy()
-        event_dict['rsvp_count'] = rsvp_counts
+        event_dict["rsvp_count"] = rsvp_counts
         events_with_counts.append(EventResponse.model_validate(event_dict))
-    
+
     return events_with_counts
 
 
@@ -69,24 +69,23 @@ async def get_event(
     query = select(Event).where(Event.id == event_id)
     result = await db.execute(query)
     event = result.scalar_one_or_none()
-    
+
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    
+
     # Get RSVP counts
-    rsvp_query = select(
-        EventRSVP.status,
-        func.count(EventRSVP.id).label('count')
-    ).where(
-        EventRSVP.event_id == event.id
-    ).group_by(EventRSVP.status)
-    
+    rsvp_query = (
+        select(EventRSVP.status, func.count(EventRSVP.id).label("count"))
+        .where(EventRSVP.event_id == event.id)
+        .group_by(EventRSVP.status)
+    )
+
     rsvp_result = await db.execute(rsvp_query)
     rsvp_counts = {row[0]: row[1] for row in rsvp_result.all()}
-    
+
     event_dict = event.__dict__.copy()
-    event_dict['rsvp_count'] = rsvp_counts
-    
+    event_dict["rsvp_count"] = rsvp_counts
+
     return EventResponse.model_validate(event_dict)
 
 
@@ -95,22 +94,21 @@ async def create_event(
     event_data: EventCreate,
     # TODO: Add authentication to get current user ID
     # For now, we'll require created_by to be passed in the request body
-    created_by: uuid.UUID = Query(..., description="Admin member ID creating the event"),
+    created_by: uuid.UUID = Query(
+        ..., description="Admin member ID creating the event"
+    ),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Create a new event (admin only)."""
-    event = Event(
-        **event_data.model_dump(),
-        created_by=created_by
-    )
-    
+    event = Event(**event_data.model_dump(), created_by=created_by)
+
     db.add(event)
     await db.commit()
     await db.refresh(event)
-    
+
     event_dict = event.__dict__.copy()
-    event_dict['rsvp_count'] = {}
-    
+    event_dict["rsvp_count"] = {}
+
     return EventResponse.model_validate(event_dict)
 
 
@@ -124,31 +122,30 @@ async def update_event(
     query = select(Event).where(Event.id == event_id)
     result = await db.execute(query)
     event = result.scalar_one_or_none()
-    
+
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    
+
     # Update only provided fields
     for field, value in event_data.model_dump(exclude_unset=True).items():
         setattr(event, field, value)
-    
+
     await db.commit()
     await db.refresh(event)
-    
+
     # Get RSVP counts
-    rsvp_query = select(
-        EventRSVP.status,
-        func.count(EventRSVP.id).label('count')
-    ).where(
-        EventRSVP.event_id == event.id
-    ).group_by(EventRSVP.status)
-    
+    rsvp_query = (
+        select(EventRSVP.status, func.count(EventRSVP.id).label("count"))
+        .where(EventRSVP.event_id == event.id)
+        .group_by(EventRSVP.status)
+    )
+
     rsvp_result = await db.execute(rsvp_query)
     rsvp_counts = {row[0]: row[1] for row in rsvp_result.all()}
-    
+
     event_dict = event.__dict__.copy()
-    event_dict['rsvp_count'] = rsvp_counts
-    
+    event_dict["rsvp_count"] = rsvp_counts
+
     return EventResponse.model_validate(event_dict)
 
 
@@ -161,15 +158,15 @@ async def delete_event(
     query = select(Event).where(Event.id == event_id)
     result = await db.execute(query)
     event = result.scalar_one_or_none()
-    
+
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    
+
     # Delete associated RSVPs first
     await db.execute(select(EventRSVP).where(EventRSVP.event_id == event_id))
     await db.delete(event)
     await db.commit()
-    
+
     return None
 
 
@@ -186,20 +183,17 @@ async def create_or_update_rsvp(
     event_query = select(Event).where(Event.id == event_id)
     event_result = await db.execute(event_query)
     event = event_result.scalar_one_or_none()
-    
+
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    
+
     # Check if RSVP already exists
     rsvp_query = select(EventRSVP).where(
-        and_(
-            EventRSVP.event_id == event_id,
-            EventRSVP.member_id == member_id
-        )
+        and_(EventRSVP.event_id == event_id, EventRSVP.member_id == member_id)
     )
     rsvp_result = await db.execute(rsvp_query)
     existing_rsvp = rsvp_result.scalar_one_or_none()
-    
+
     if existing_rsvp:
         # Update existing RSVP
         existing_rsvp.status = rsvp_data.status
@@ -210,9 +204,7 @@ async def create_or_update_rsvp(
     else:
         # Create new RSVP
         rsvp = EventRSVP(
-            event_id=event_id,
-            member_id=member_id,
-            status=rsvp_data.status
+            event_id=event_id, member_id=member_id, status=rsvp_data.status
         )
         db.add(rsvp)
         await db.commit()
@@ -228,11 +220,11 @@ async def list_event_rsvps(
 ):
     """List all RSVPs for an event (admin only)."""
     query = select(EventRSVP).where(EventRSVP.event_id == event_id)
-    
+
     if status:
         query = query.where(EventRSVP.status == status)
-    
+
     result = await db.execute(query)
     rsvps = result.scalars().all()
-    
+
     return [RSVPResponse.model_validate(rsvp) for rsvp in rsvps]

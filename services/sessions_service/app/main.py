@@ -1,4 +1,5 @@
 """FastAPI application for the Sessions Service."""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from services.sessions_service.router import router as sessions_router

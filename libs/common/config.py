@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: Literal["local", "development", "production"] = "local"
     LOG_LEVEL: str = "INFO"
     ADMIN_EMAIL: str = "admin@admin.com"
-    TIMEZONE: str = "Africa/Lagos" 
+    TIMEZONE: str = "Africa/Lagos"
 
     # Database
     DATABASE_URL: str
@@ -23,10 +23,10 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str
     SUPABASE_JWT_SECRET: str
     SUPABASE_PROJECT_ID: str
-    
+
     # Gateway
     GATEWAY_URL: str = "http://localhost:8000"
-    
+
     # Microservices URLs
     MEMBERS_SERVICE_URL: str = "http://members-service:8001"
     SESSIONS_SERVICE_URL: str = "http://sessions-service:8002"
@@ -49,6 +49,7 @@ class Settings(BaseSettings):
             if v.startswith("postgresql://"):
                 return v.replace("postgresql://", "postgresql+psycopg://", 1)
         return v
+
 
 @lru_cache
 def get_settings() -> Settings:

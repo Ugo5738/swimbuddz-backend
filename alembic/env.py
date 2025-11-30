@@ -10,16 +10,28 @@ from alembic import context
 # Import our application config and models
 from libs.common.config import get_settings
 from libs.db.base import Base
+
 # Import all models here so they are registered with Base.metadata
 from services.members_service.models import Member  # noqa: F401
 from services.members_service.models import PendingRegistration  # noqa: F401
-from services.members_service.models import VolunteerRole, VolunteerInterest, ClubChallenge, MemberChallengeCompletion  # noqa: F401
+from services.members_service.models import (
+    VolunteerRole,
+    VolunteerInterest,
+    ClubChallenge,
+    MemberChallengeCompletion,
+)  # noqa: F401
 from services.sessions_service.models import Session  # noqa: F401
 from services.sessions_service.session_template import SessionTemplate  # noqa: F401
 from services.attendance_service.models import AttendanceRecord  # noqa: F401
 from services.communications_service.models import Announcement  # noqa: F401
 from services.payments_service.models import Payment  # noqa: F401
-from services.academy_service.models import Program, Cohort, Enrollment, Milestone, StudentProgress  # noqa: F401
+from services.academy_service.models import (
+    Program,
+    Cohort,
+    Enrollment,
+    Milestone,
+    StudentProgress,
+)  # noqa: F401
 
 settings = get_settings()
 
@@ -82,7 +94,7 @@ async def run_migrations_online() -> None:
     # Create engine from our settings, but we can use alembic's config structure if we want
     # or just use our own engine. The template uses async_engine_from_config.
     # Let's use our settings URL but keep the config object for other options.
-    
+
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",

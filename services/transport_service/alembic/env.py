@@ -14,7 +14,12 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.transport_service.models import RideArea, PickupLocation, RouteInfo, RidePreference  # noqa: F401
+from services.transport_service.models import (
+    RideArea,
+    PickupLocation,
+    RouteInfo,
+    RidePreference,
+)  # noqa: F401
 from sqlalchemy import Table, Column
 from sqlalchemy.dialects.postgresql import UUID
 

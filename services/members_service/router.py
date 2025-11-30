@@ -11,18 +11,22 @@ from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.members_service.models import Member, PendingRegistration
 from services.members_service.schemas import (
-    MemberResponse, 
-    MemberCreate, 
+    MemberResponse,
+    MemberCreate,
     MemberUpdate,
-    PendingRegistrationCreate, 
-    PendingRegistrationResponse
+    PendingRegistrationCreate,
+    PendingRegistrationResponse,
 )
 
 router = APIRouter(prefix="/members", tags=["members"])
-pending_router = APIRouter(prefix="/pending-registrations", tags=["pending-registrations"])
+pending_router = APIRouter(
+    prefix="/pending-registrations", tags=["pending-registrations"]
+)
 
 
-@pending_router.post("/", response_model=PendingRegistrationResponse, status_code=status.HTTP_201_CREATED)
+@pending_router.post(
+    "/", response_model=PendingRegistrationResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_pending_registration(
     registration_in: PendingRegistrationCreate,
     db: AsyncSession = Depends(get_async_db),
@@ -41,7 +45,9 @@ async def create_pending_registration(
         )
 
     # Check if pending registration already exists, update if so
-    query = select(PendingRegistration).where(PendingRegistration.email == registration_in.email)
+    query = select(PendingRegistration).where(
+        PendingRegistration.email == registration_in.email
+    )
     result = await db.execute(query)
     pending = result.scalar_one_or_none()
 
@@ -49,7 +55,7 @@ async def create_pending_registration(
     # Remove password from stored profile data
     if "password" in profile_data:
         del profile_data["password"]
-        
+
     profile_data_json = json.dumps(profile_data)
 
     if pending:
@@ -57,8 +63,7 @@ async def create_pending_registration(
         # Update timestamp if we had one
     else:
         pending = PendingRegistration(
-            email=registration_in.email,
-            profile_data_json=profile_data_json
+            email=registration_in.email, profile_data_json=profile_data_json
         )
         db.add(pending)
 
@@ -71,10 +76,12 @@ async def create_pending_registration(
     try:
         from supabase import create_client, Client
         from libs.common.config import get_settings
-        
+
         settings = get_settings()
-        supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
-        
+        supabase: Client = create_client(
+            settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY
+        )
+
         # Check if we have a password (we should from frontend now)
         if registration_in.password:
             # Use sign_up instead of admin.create_user to ensure the confirmation email is sent.
@@ -85,10 +92,10 @@ async def create_pending_registration(
                 "options": {
                     "data": {
                         "first_name": registration_in.first_name,
-                        "last_name": registration_in.last_name
+                        "last_name": registration_in.last_name,
                     },
-                    "email_redirect_to": "http://localhost:3000/confirm"
-                }
+                    "email_redirect_to": "http://localhost:3000/confirm",
+                },
             }
             response = supabase.auth.sign_up(credentials)
             print(f"User signed up in Supabase: {response}")
@@ -96,11 +103,10 @@ async def create_pending_registration(
             # Fallback to invite if no password (shouldn't happen with new frontend)
             redirect_url = "http://localhost:3000/confirm"
             response = supabase.auth.admin.invite_user_by_email(
-                registration_in.email, 
-                options={"redirect_to": redirect_url}
+                registration_in.email, options={"redirect_to": redirect_url}
             )
             print(f"Invitation sent (fallback): {response}")
-        
+
     except Exception as e:
         # Log error. If user already exists in Supabase but not in our DB (edge case),
         # we might want to handle it. For now, just log.
@@ -109,7 +115,9 @@ async def create_pending_registration(
     return pending
 
 
-@pending_router.post("/complete", response_model=MemberResponse, status_code=status.HTTP_201_CREATED)
+@pending_router.post(
+    "/complete", response_model=MemberResponse, status_code=status.HTTP_201_CREATED
+)
 async def complete_pending_registration(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
@@ -128,7 +136,9 @@ async def complete_pending_registration(
         )
 
     # Find pending registration by email from token
-    query = select(PendingRegistration).where(PendingRegistration.email == current_user.email)
+    query = select(PendingRegistration).where(
+        PendingRegistration.email == current_user.email
+    )
     result = await db.execute(query)
     pending = result.scalar_one_or_none()
 
@@ -140,20 +150,18 @@ async def complete_pending_registration(
 
     # Create member from pending data
     profile_data = json.loads(pending.profile_data_json)
-    
+
     member = Member(
         auth_id=current_user.user_id,
         email=pending.email,
         first_name=profile_data.get("first_name"),
         last_name=profile_data.get("last_name"),
         registration_complete=True,
-
         # Contact & Location
         phone=profile_data.get("phone"),
         city=profile_data.get("city"),
         country=profile_data.get("country"),
         time_zone=profile_data.get("time_zone"),
-
         # Swim Profile
         swim_level=profile_data.get("swim_level"),
         deep_water_comfort=profile_data.get("deep_water_comfort"),
@@ -161,7 +169,6 @@ async def complete_pending_registration(
         interests=profile_data.get("interests"),
         goals_narrative=profile_data.get("goals_narrative"),
         goals_other=profile_data.get("goals_other"),
-
         # Coaching
         certifications=profile_data.get("certifications"),
         coaching_experience=profile_data.get("coaching_experience"),
@@ -170,7 +177,6 @@ async def complete_pending_registration(
         coaching_portfolio_link=profile_data.get("coaching_portfolio_link"),
         coaching_document_link=profile_data.get("coaching_document_link"),
         coaching_document_file_name=profile_data.get("coaching_document_file_name"),
-
         # Logistics
         availability_slots=profile_data.get("availability_slots"),
         time_of_day_availability=profile_data.get("time_of_day_availability"),
@@ -182,15 +188,15 @@ async def complete_pending_registration(
         equipment_needs=profile_data.get("equipment_needs"),
         equipment_needs_other=profile_data.get("equipment_needs_other"),
         travel_notes=profile_data.get("travel_notes"),
-
         # Safety
         emergency_contact_name=profile_data.get("emergency_contact_name"),
-        emergency_contact_relationship=profile_data.get("emergency_contact_relationship"),
+        emergency_contact_relationship=profile_data.get(
+            "emergency_contact_relationship"
+        ),
         emergency_contact_phone=profile_data.get("emergency_contact_phone"),
         emergency_contact_region=profile_data.get("emergency_contact_region"),
         medical_info=profile_data.get("medical_info"),
         safety_notes=profile_data.get("safety_notes"),
-
         # Community
         volunteer_interest=profile_data.get("volunteer_interest"),
         volunteer_roles_detail=profile_data.get("volunteer_roles_detail"),
@@ -198,51 +204,46 @@ async def complete_pending_registration(
         social_instagram=profile_data.get("social_instagram"),
         social_linkedin=profile_data.get("social_linkedin"),
         social_other=profile_data.get("social_other"),
-
         # Preferences
         language_preference=profile_data.get("language_preference"),
         comms_preference=profile_data.get("comms_preference"),
         payment_readiness=profile_data.get("payment_readiness"),
         currency_preference=profile_data.get("currency_preference"),
         consent_photo=profile_data.get("consent_photo"),
-
         # Membership
         membership_tiers=profile_data.get("membership_tiers"),
         academy_focus_areas=profile_data.get("academy_focus_areas"),
         academy_focus=profile_data.get("academy_focus"),
         payment_notes=profile_data.get("payment_notes"),
-        
         # ===== NEW TIER-BASED FIELDS =====
         # Tier Management
         membership_tier=profile_data.get("membership_tier", "community"),
-        
         # Profile Photo
         profile_photo_url=profile_data.get("profile_photo_url"),
-        
         # Community Tier - Enhanced fields
         gender=profile_data.get("gender"),
         date_of_birth=profile_data.get("date_of_birth"),
         show_in_directory=profile_data.get("show_in_directory", False),
         interest_tags=profile_data.get("interest_tags", []),
-        
         # Club Tier - Badges & Tracking (initialized as empty)
         club_badges_earned=profile_data.get("club_badges_earned", []),
         club_challenges_completed=profile_data.get("club_challenges_completed", {}),
         punctuality_score=profile_data.get("punctuality_score", 0),
         commitment_score=profile_data.get("commitment_score", 0),
-        
         # Academy Tier - Skill Assessment & Goals
         academy_skill_assessment=profile_data.get("academy_skill_assessment", {}),
         academy_goals=profile_data.get("academy_goals"),
-        academy_preferred_coach_gender=profile_data.get("academy_preferred_coach_gender"),
+        academy_preferred_coach_gender=profile_data.get(
+            "academy_preferred_coach_gender"
+        ),
         academy_lesson_preference=profile_data.get("academy_lesson_preference"),
         academy_certifications=profile_data.get("academy_certifications", []),
-        academy_graduation_dates=profile_data.get("academy_graduation_dates", {})
+        academy_graduation_dates=profile_data.get("academy_graduation_dates", {}),
     )
-    
+
     db.add(member)
     await db.delete(pending)  # Cleanup pending
-    
+
     try:
         await db.commit()
         await db.refresh(member)
@@ -255,16 +256,16 @@ async def complete_pending_registration(
         # But to be safe and quick without adding imports at top:
         error_str = str(e).lower()
         if "unique constraint" in error_str or "duplicate key" in error_str:
-             await db.rollback()
-             # Check if member exists now
-             query = select(Member).where(Member.auth_id == current_user.user_id)
-             result = await db.execute(query)
-             existing_member = result.scalar_one_or_none()
-             if existing_member:
-                 return existing_member
-             
-             # If not found but we had a unique error, raise 400
-             raise HTTPException(
+            await db.rollback()
+            # Check if member exists now
+            query = select(Member).where(Member.auth_id == current_user.user_id)
+            result = await db.execute(query)
+            existing_member = result.scalar_one_or_none()
+            if existing_member:
+                return existing_member
+
+            # If not found but we had a unique error, raise 400
+            raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Member already exists",
             )
@@ -365,11 +366,7 @@ async def get_member_stats(
     result = await db.execute(query)
     active_members = result.scalar_one() or 0
 
-    return {
-        "total_members": total_members,
-        "active_members": active_members
-    }
-
+    return {"total_members": total_members, "active_members": active_members}
 
 
 @router.patch("/me", response_model=MemberResponse)

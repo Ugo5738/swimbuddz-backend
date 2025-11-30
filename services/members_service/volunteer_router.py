@@ -1,4 +1,5 @@
 """Router for volunteer and challenge management."""
+
 import uuid
 from typing import List, Optional
 
@@ -8,14 +9,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.db.session import get_async_db
 from services.members_service.models import (
-    VolunteerRole, VolunteerInterest,
-    ClubChallenge, MemberChallengeCompletion
+    VolunteerRole,
+    VolunteerInterest,
+    ClubChallenge,
+    MemberChallengeCompletion,
 )
 from services.members_service.volunteer_schemas import (
-    VolunteerRoleCreate, VolunteerRoleUpdate, VolunteerRoleResponse,
-    VolunteerInterestCreate, VolunteerInterestResponse,
-    ClubChallengeCreate, ClubChallengeUpdate, ClubChallengeResponse,
-    ChallengeCompletionCreate, ChallengeCompletionResponse
+    VolunteerRoleCreate,
+    VolunteerRoleUpdate,
+    VolunteerRoleResponse,
+    VolunteerInterestCreate,
+    VolunteerInterestResponse,
+    ClubChallengeCreate,
+    ClubChallengeUpdate,
+    ClubChallengeResponse,
+    ChallengeCompletionCreate,
+    ChallengeCompletionResponse,
 )
 
 
@@ -30,15 +39,15 @@ async def list_volunteer_roles(
 ):
     """List volunteer roles with optional filters."""
     query = select(VolunteerRole)
-    
+
     if active_only:
         query = query.where(VolunteerRole.is_active.is_(True))
-    
+
     query = query.order_by(VolunteerRole.created_at.desc())
-    
+
     result = await db.execute(query)
     roles = result.scalars().all()
-    
+
     # Get interested member counts for each role
     roles_with_counts = []
     for role in roles:
@@ -47,11 +56,11 @@ async def list_volunteer_roles(
         )
         interest_result = await db.execute(interest_query)
         interested_count = interest_result.scalar_one()
-        
+
         role_dict = role.__dict__.copy()
-        role_dict['interested_count'] = interested_count
+        role_dict["interested_count"] = interested_count
         roles_with_counts.append(VolunteerRoleResponse.model_validate(role_dict))
-    
+
     return roles_with_counts
 
 
@@ -64,20 +73,20 @@ async def get_volunteer_role(
     query = select(VolunteerRole).where(VolunteerRole.id == role_id)
     result = await db.execute(query)
     role = result.scalar_one_or_none()
-    
+
     if not role:
         raise HTTPException(status_code=404, detail="Volunteer role not found")
-    
+
     # Get interested count
     interest_query = select(func.count(VolunteerInterest.id)).where(
         VolunteerInterest.role_id == role.id
     )
     interest_result = await db.execute(interest_query)
     interested_count = interest_result.scalar_one()
-    
+
     role_dict = role.__dict__.copy()
-    role_dict['interested_count'] = interested_count
-    
+    role_dict["interested_count"] = interested_count
+
     return VolunteerRoleResponse.model_validate(role_dict)
 
 
@@ -88,14 +97,14 @@ async def create_volunteer_role(
 ):
     """Create a new volunteer role (admin only)."""
     role = VolunteerRole(**role_data.model_dump())
-    
+
     db.add(role)
     await db.commit()
     await db.refresh(role)
-    
+
     role_dict = role.__dict__.copy()
-    role_dict['interested_count'] = 0
-    
+    role_dict["interested_count"] = 0
+
     return VolunteerRoleResponse.model_validate(role_dict)
 
 
@@ -109,27 +118,27 @@ async def update_volunteer_role(
     query = select(VolunteerRole).where(VolunteerRole.id == role_id)
     result = await db.execute(query)
     role = result.scalar_one_or_none()
-    
+
     if not role:
         raise HTTPException(status_code=404, detail="Volunteer role not found")
-    
+
     # Update only provided fields
     for field, value in role_data.model_dump(exclude_unset=True).items():
         setattr(role, field, value)
-    
+
     await db.commit()
     await db.refresh(role)
-    
+
     # Get interested count
     interest_query = select(func.count(VolunteerInterest.id)).where(
         VolunteerInterest.role_id == role.id
     )
     interest_result = await db.execute(interest_query)
     interested_count = interest_result.scalar_one()
-    
+
     role_dict = role.__dict__.copy()
-    role_dict['interested_count'] = interested_count
-    
+    role_dict["interested_count"] = interested_count
+
     return VolunteerRoleResponse.model_validate(role_dict)
 
 
@@ -142,20 +151,24 @@ async def delete_volunteer_role(
     query = select(VolunteerRole).where(VolunteerRole.id == role_id)
     result = await db.execute(query)
     role = result.scalar_one_or_none()
-    
+
     if not role:
         raise HTTPException(status_code=404, detail="Volunteer role not found")
-    
+
     # Delete associated interests first
-    await db.execute(select(VolunteerInterest).where(VolunteerInterest.role_id == role_id))
+    await db.execute(
+        select(VolunteerInterest).where(VolunteerInterest.role_id == role_id)
+    )
     await db.delete(role)
     await db.commit()
-    
+
     return None
 
 
 # ===== VOLUNTEER INTEREST ENDPOINTS =====
-@volunteer_router.post("/interest", response_model=VolunteerInterestResponse, status_code=201)
+@volunteer_router.post(
+    "/interest", response_model=VolunteerInterestResponse, status_code=201
+)
 async def register_volunteer_interest(
     interest_data: VolunteerInterestCreate,
     # TODO: Get member_id from authentication
@@ -167,35 +180,37 @@ async def register_volunteer_interest(
     role_query = select(VolunteerRole).where(VolunteerRole.id == interest_data.role_id)
     role_result = await db.execute(role_query)
     role = role_result.scalar_one_or_none()
-    
+
     if not role:
         raise HTTPException(status_code=404, detail="Volunteer role not found")
-    
+
     # Check if already interested
     existing_query = select(VolunteerInterest).where(
         VolunteerInterest.role_id == interest_data.role_id,
-        VolunteerInterest.member_id == member_id
+        VolunteerInterest.member_id == member_id,
     )
     existing_result = await db.execute(existing_query)
     existing_interest = existing_result.scalar_one_or_none()
-    
+
     if existing_interest:
-        raise HTTPException(status_code=400, detail="Already registered interest in this role")
-    
+        raise HTTPException(
+            status_code=400, detail="Already registered interest in this role"
+        )
+
     interest = VolunteerInterest(
-        role_id=interest_data.role_id,
-        member_id=member_id,
-        notes=interest_data.notes
+        role_id=interest_data.role_id, member_id=member_id, notes=interest_data.notes
     )
-    
+
     db.add(interest)
     await db.commit()
     await db.refresh(interest)
-    
+
     return VolunteerInterestResponse.model_validate(interest)
 
 
-@volunteer_router.get("/roles/{role_id}/interested", response_model=List[VolunteerInterestResponse])
+@volunteer_router.get(
+    "/roles/{role_id}/interested", response_model=List[VolunteerInterestResponse]
+)
 async def list_interested_members(
     role_id: uuid.UUID,
     status: Optional[str] = Query(None, description="Filter by status"),
@@ -203,14 +218,16 @@ async def list_interested_members(
 ):
     """List members interested in a volunteer role (admin only)."""
     query = select(VolunteerInterest).where(VolunteerInterest.role_id == role_id)
-    
+
     if status:
         query = query.where(VolunteerInterest.status == status)
-    
+
     result = await db.execute(query)
     interests = result.scalars().all()
-    
-    return [VolunteerInterestResponse.model_validate(interest) for interest in interests]
+
+    return [
+        VolunteerInterestResponse.model_validate(interest) for interest in interests
+    ]
 
 
 # ===== CLUB CHALLENGE ROUTER =====
@@ -225,18 +242,18 @@ async def list_club_challenges(
 ):
     """List club challenges with optional filters."""
     query = select(ClubChallenge)
-    
+
     if active_only:
         query = query.where(ClubChallenge.is_active.is_(True))
-    
+
     if challenge_type:
         query = query.where(ClubChallenge.challenge_type == challenge_type)
-    
+
     query = query.order_by(ClubChallenge.created_at.desc())
-    
+
     result = await db.execute(query)
     challenges = result.scalars().all()
-    
+
     # Get completion counts for each challenge
     challenges_with_counts = []
     for challenge in challenges:
@@ -245,11 +262,13 @@ async def list_club_challenges(
         )
         completion_result = await db.execute(completion_query)
         completion_count = completion_result.scalar_one()
-        
+
         challenge_dict = challenge.__dict__.copy()
-        challenge_dict['completion_count'] = completion_count
-        challenges_with_counts.append(ClubChallengeResponse.model_validate(challenge_dict))
-    
+        challenge_dict["completion_count"] = completion_count
+        challenges_with_counts.append(
+            ClubChallengeResponse.model_validate(challenge_dict)
+        )
+
     return challenges_with_counts
 
 
@@ -262,20 +281,20 @@ async def get_club_challenge(
     query = select(ClubChallenge).where(ClubChallenge.id == challenge_id)
     result = await db.execute(query)
     challenge = result.scalar_one_or_none()
-    
+
     if not challenge:
         raise HTTPException(status_code=404, detail="Club challenge not found")
-    
+
     # Get completion count
     completion_query = select(func.count(MemberChallengeCompletion.id)).where(
         MemberChallengeCompletion.challenge_id == challenge.id
     )
     completion_result = await db.execute(completion_query)
     completion_count = completion_result.scalar_one()
-    
+
     challenge_dict = challenge.__dict__.copy()
-    challenge_dict['completion_count'] = completion_count
-    
+    challenge_dict["completion_count"] = completion_count
+
     return ClubChallengeResponse.model_validate(challenge_dict)
 
 
@@ -286,20 +305,24 @@ async def create_club_challenge(
 ):
     """Create a new club challenge (admin only)."""
     import json
-    
+
     challenge = ClubChallenge(
-        **challenge_data.model_dump(exclude={'criteria_json'}),
-        criteria_json=json.dumps(challenge_data.criteria_json) if challenge_data.criteria_json else None
+        **challenge_data.model_dump(exclude={"criteria_json"}),
+        criteria_json=json.dumps(challenge_data.criteria_json)
+        if challenge_data.criteria_json
+        else None,
     )
-    
+
     db.add(challenge)
     await db.commit()
     await db.refresh(challenge)
-    
+
     challenge_dict = challenge.__dict__.copy()
-    challenge_dict['completion_count'] = 0
-    challenge_dict['criteria_json'] = json.loads(challenge.criteria_json) if challenge.criteria_json else None
-    
+    challenge_dict["completion_count"] = 0
+    challenge_dict["criteria_json"] = (
+        json.loads(challenge.criteria_json) if challenge.criteria_json else None
+    )
+
     return ClubChallengeResponse.model_validate(challenge_dict)
 
 
@@ -311,36 +334,44 @@ async def update_club_challenge(
 ):
     """Update a club challenge (admin only)."""
     import json
-    
+
     query = select(ClubChallenge).where(ClubChallenge.id == challenge_id)
     result = await db.execute(query)
     challenge = result.scalar_one_or_none()
-    
+
     if not challenge:
         raise HTTPException(status_code=404, detail="Club challenge not found")
-    
+
     # Update only provided fields
-    update_data = challenge_data.model_dump(exclude_unset=True, exclude={'criteria_json'})
+    update_data = challenge_data.model_dump(
+        exclude_unset=True, exclude={"criteria_json"}
+    )
     for field, value in update_data.items():
         setattr(challenge, field, value)
-    
-    if 'criteria_json' in challenge_data.model_dump(exclude_unset=True):
-        challenge.criteria_json = json.dumps(challenge_data.criteria_json) if challenge_data.criteria_json else None
-    
+
+    if "criteria_json" in challenge_data.model_dump(exclude_unset=True):
+        challenge.criteria_json = (
+            json.dumps(challenge_data.criteria_json)
+            if challenge_data.criteria_json
+            else None
+        )
+
     await db.commit()
     await db.refresh(challenge)
-    
+
     # Get completion count
     completion_query = select(func.count(MemberChallengeCompletion.id)).where(
         MemberChallengeCompletion.challenge_id == challenge.id
     )
     completion_result = await db.execute(completion_query)
     completion_count = completion_result.scalar_one()
-    
+
     challenge_dict = challenge.__dict__.copy()
-    challenge_dict['completion_count'] = completion_count
-    challenge_dict['criteria_json'] = json.loads(challenge.criteria_json) if challenge.criteria_json else None
-    
+    challenge_dict["completion_count"] = completion_count
+    challenge_dict["criteria_json"] = (
+        json.loads(challenge.criteria_json) if challenge.criteria_json else None
+    )
+
     return ClubChallengeResponse.model_validate(challenge_dict)
 
 
@@ -353,84 +384,108 @@ async def delete_club_challenge(
     query = select(ClubChallenge).where(ClubChallenge.id == challenge_id)
     result = await db.execute(query)
     challenge = result.scalar_one_or_none()
-    
+
     if not challenge:
         raise HTTPException(status_code=404, detail="Club challenge not found")
-    
+
     # Delete associated completions first
-    await db.execute(select(MemberChallengeCompletion).where(MemberChallengeCompletion.challenge_id == challenge_id))
+    await db.execute(
+        select(MemberChallengeCompletion).where(
+            MemberChallengeCompletion.challenge_id == challenge_id
+        )
+    )
     await db.delete(challenge)
     await db.commit()
-    
+
     return None
 
 
 # ===== CHALLENGE COMPLETION ENDPOINTS =====
-@challenge_router.post("/completions", response_model=ChallengeCompletionResponse, status_code=201)
+@challenge_router.post(
+    "/completions", response_model=ChallengeCompletionResponse, status_code=201
+)
 async def mark_challenge_complete(
     completion_data: ChallengeCompletionCreate,
     # TODO: Get verified_by from authentication (admin/coach)
-    verified_by: Optional[uuid.UUID] = Query(None, description="Admin/coach verifying completion"),
+    verified_by: Optional[uuid.UUID] = Query(
+        None, description="Admin/coach verifying completion"
+    ),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Mark a challenge as complete for a member (admin/coach only)."""
     import json
-    
+
     # Verify challenge exists
-    challenge_query = select(ClubChallenge).where(ClubChallenge.id == completion_data.challenge_id)
+    challenge_query = select(ClubChallenge).where(
+        ClubChallenge.id == completion_data.challenge_id
+    )
     challenge_result = await db.execute(challenge_query)
     challenge = challenge_result.scalar_one_or_none()
-    
+
     if not challenge:
         raise HTTPException(status_code=404, detail="Club challenge not found")
-    
+
     # Check if already completed
     existing_query = select(MemberChallengeCompletion).where(
         MemberChallengeCompletion.challenge_id == completion_data.challenge_id,
-        MemberChallengeCompletion.member_id == completion_data.member_id
+        MemberChallengeCompletion.member_id == completion_data.member_id,
     )
     existing_result = await db.execute(existing_query)
     existing_completion = existing_result.scalar_one_or_none()
-    
+
     if existing_completion:
-        raise HTTPException(status_code=400, detail="Challenge already completed by this member")
-    
+        raise HTTPException(
+            status_code=400, detail="Challenge already completed by this member"
+        )
+
     completion = MemberChallengeCompletion(
         challenge_id=completion_data.challenge_id,
         member_id=completion_data.member_id,
-        result_data=json.dumps(completion_data.result_data) if completion_data.result_data else None,
-        verified_by=verified_by
+        result_data=json.dumps(completion_data.result_data)
+        if completion_data.result_data
+        else None,
+        verified_by=verified_by,
     )
-    
+
     db.add(completion)
     await db.commit()
     await db.refresh(completion)
-    
+
     completion_dict = completion.__dict__.copy()
-    completion_dict['result_data'] = json.loads(completion.result_data) if completion.result_data else None
-    
+    completion_dict["result_data"] = (
+        json.loads(completion.result_data) if completion.result_data else None
+    )
+
     return ChallengeCompletionResponse.model_validate(completion_dict)
 
 
-@challenge_router.get("/{challenge_id}/completions", response_model=List[ChallengeCompletionResponse])
+@challenge_router.get(
+    "/{challenge_id}/completions", response_model=List[ChallengeCompletionResponse]
+)
 async def list_challenge_completions(
     challenge_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all completions for a specific challenge (admin only)."""
     import json
-    
-    query = select(MemberChallengeCompletion).where(
-        MemberChallengeCompletion.challenge_id == challenge_id
-    ).order_by(MemberChallengeCompletion.completed_at.desc())
-    
+
+    query = (
+        select(MemberChallengeCompletion)
+        .where(MemberChallengeCompletion.challenge_id == challenge_id)
+        .order_by(MemberChallengeCompletion.completed_at.desc())
+    )
+
     result = await db.execute(query)
     completions = result.scalars().all()
-    
+
     completions_list = []
     for completion in completions:
         completion_dict = completion.__dict__.copy()
-        completion_dict['result_data'] = json.loads(completion.result_data) if completion.result_data else None
-        completions_list.append(ChallengeCompletionResponse.model_validate(completion_dict))
-    
+        completion_dict["result_data"] = (
+            json.loads(completion.result_data) if completion.result_data else None
+        )
+        completions_list.append(
+            ChallengeCompletionResponse.model_validate(completion_dict)
+        )
+
     return completions_list

@@ -1,4 +1,5 @@
 """Pydantic schemas for Media Service."""
+
 import uuid
 from datetime import datetime
 from typing import Optional, List
@@ -9,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 # ===== ALBUM SCHEMAS =====
 class AlbumBase(BaseModel):
     """Base album schema."""
+
     title: str
     description: Optional[str] = None
     album_type: str  # session/event/academy/general
@@ -17,11 +19,13 @@ class AlbumBase(BaseModel):
 
 class AlbumCreate(AlbumBase):
     """Schema for creating an album."""
+
     pass
 
 
 class AlbumUpdate(BaseModel):
     """Schema for updating an album."""
+
     title: Optional[str] = None
     description: Optional[str] = None
     album_type: Optional[str] = None
@@ -31,6 +35,7 @@ class AlbumUpdate(BaseModel):
 
 class AlbumResponse(AlbumBase):
     """Album response schema."""
+
     id: uuid.UUID
     cover_photo_id: Optional[uuid.UUID] = None
     created_by: uuid.UUID
@@ -44,17 +49,20 @@ class AlbumResponse(AlbumBase):
 # ===== PHOTO SCHEMAS =====
 class PhotoBase(BaseModel):
     """Base photo schema."""
+
     caption: Optional[str] = None
     taken_at: Optional[datetime] = None
 
 
 class PhotoUpload(PhotoBase):
     """Schema for photo upload (file handled separately)."""
+
     album_id: uuid.UUID
 
 
 class PhotoUpdate(BaseModel):
     """Schema for updating photo metadata."""
+
     caption: Optional[str] = None
     taken_at: Optional[datetime] = None
     is_featured: Optional[bool] = None
@@ -62,6 +70,7 @@ class PhotoUpdate(BaseModel):
 
 class PhotoResponse(PhotoBase):
     """Photo response schema."""
+
     id: uuid.UUID
     album_id: uuid.UUID
     file_url: str
@@ -78,12 +87,14 @@ class PhotoResponse(PhotoBase):
 # ===== TAG SCHEMAS =====
 class PhotoTagCreate(BaseModel):
     """Schema for creating a photo tag."""
+
     photo_id: uuid.UUID
     member_id: uuid.UUID
 
 
 class PhotoTagResponse(BaseModel):
     """Photo tag response schema."""
+
     id: uuid.UUID
     photo_id: uuid.UUID
     member_id: uuid.UUID
@@ -95,9 +106,11 @@ class PhotoTagResponse(BaseModel):
 # ===== GALLERY VIEW SCHEMAS =====
 class AlbumWithPhotos(AlbumResponse):
     """Album with photos list."""
+
     photos: List[PhotoResponse] = []
 
 
 class FeaturedPhotosResponse(BaseModel):
     """Response for featured photos (homepage)."""
+
     photos: List[PhotoResponse] = []

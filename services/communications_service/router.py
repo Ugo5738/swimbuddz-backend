@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.db.session import get_async_db
 from services.communications_service.models import Announcement
-from services.communications_service.schemas import AnnouncementResponse  # , AnnouncementCreate
+from services.communications_service.schemas import (
+    AnnouncementResponse,
+)  # , AnnouncementCreate
 
 router = APIRouter(prefix="/announcements", tags=["announcements"])
 
@@ -20,8 +22,7 @@ async def list_announcements(
     List all announcements, newest first.
     """
     query = select(Announcement).order_by(
-        Announcement.is_pinned.desc(),
-        Announcement.published_at.desc()
+        Announcement.is_pinned.desc(), Announcement.published_at.desc()
     )
     result = await db.execute(query)
     return result.scalars().all()
@@ -39,9 +40,7 @@ async def get_announcement_stats(
     result = await db.execute(query)
     recent_announcements_count = result.scalar_one() or 0
 
-    return {
-        "recent_announcements_count": recent_announcements_count
-    }
+    return {"recent_announcements_count": recent_announcements_count}
 
 
 @router.get("/{announcement_id}", response_model=AnnouncementResponse)
@@ -55,7 +54,7 @@ async def get_announcement(
     query = select(Announcement).where(Announcement.id == announcement_id)
     result = await db.execute(query)
     announcement = result.scalar_one_or_none()
-    
+
     if not announcement:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -65,10 +64,18 @@ async def get_announcement(
 
 
 # ===== CONTENT POST ENDPOINTS =====
-from services.communications_service.models import ContentPost, ContentComment, AnnouncementComment
+from services.communications_service.models import (
+    ContentPost,
+    ContentComment,
+    AnnouncementComment,
+)
 from services.communications_service.schemas import (
-    ContentPostCreate, ContentPostUpdate, ContentPostResponse,
-    CommentCreate, ContentCommentResponse, AnnouncementCommentResponse
+    ContentPostCreate,
+    ContentPostUpdate,
+    ContentPostResponse,
+    CommentCreate,
+    ContentCommentResponse,
+    AnnouncementCommentResponse,
 )
 from typing import Optional, List
 from fastapi import Query
@@ -85,18 +92,18 @@ async def list_content_posts(
 ):
     """List content posts with optional filters."""
     query = select(ContentPost)
-    
+
     if published_only:
         query = query.where(ContentPost.is_published.is_(True))
-    
+
     if category:
         query = query.where(ContentPost.category == category)
-    
+
     query = query.order_by(ContentPost.published_at.desc())
-    
+
     result = await db.execute(query)
     posts = result.scalars().all()
-    
+
     # Get comment counts for each post
     posts_with_counts = []
     for post in posts:
@@ -105,11 +112,11 @@ async def list_content_posts(
         )
         comment_result = await db.execute(comment_query)
         comment_count = comment_result.scalar_one()
-        
+
         post_dict = post.__dict__.copy()
-        post_dict['comment_count'] = comment_count
+        post_dict["comment_count"] = comment_count
         posts_with_counts.append(ContentPostResponse.model_validate(post_dict))
-    
+
     return posts_with_counts
 
 
@@ -122,20 +129,20 @@ async def get_content_post(
     query = select(ContentPost).where(ContentPost.id == post_id)
     result = await db.execute(query)
     post = result.scalar_one_or_none()
-    
+
     if not post:
         raise HTTPException(status_code=404, detail="Content post not found")
-    
+
     # Get comment count
     comment_query = select(func.count(ContentComment.id)).where(
         ContentComment.post_id == post.id
     )
     comment_result = await db.execute(comment_query)
     comment_count = comment_result.scalar_one()
-    
+
     post_dict = post.__dict__.copy()
-    post_dict['comment_count'] = comment_count
-    
+    post_dict["comment_count"] = comment_count
+
     return ContentPostResponse.model_validate(post_dict)
 
 
@@ -148,21 +155,21 @@ async def create_content_post(
 ):
     """Create a new content post (admin only)."""
     from datetime import datetime
-    
+
     post = ContentPost(
-        **post_data.model_dump(exclude={'is_published'}),
+        **post_data.model_dump(exclude={"is_published"}),
         created_by=created_by,
         is_published=post_data.is_published,
-        published_at=datetime.utcnow() if post_data.is_published else None
+        published_at=datetime.utcnow() if post_data.is_published else None,
     )
-    
+
     db.add(post)
     await db.commit()
     await db.refresh(post)
-    
+
     post_dict = post.__dict__.copy()
-    post_dict['comment_count'] = 0
-    
+    post_dict["comment_count"] = 0
+
     return ContentPostResponse.model_validate(post_dict)
 
 
@@ -174,37 +181,41 @@ async def update_content_post(
 ):
     """Update a content post (admin only)."""
     from datetime import datetime
-    
+
     query = select(ContentPost).where(ContentPost.id == post_id)
     result = await db.execute(query)
     post = result.scalar_one_or_none()
-    
+
     if not post:
         raise HTTPException(status_code=404, detail="Content post not found")
-    
+
     # Update only provided fields
     update_data = post_data.model_dump(exclude_unset=True)
-    
+
     # If publishing for the first time, set published_at
-    if 'is_published' in update_data and update_data['is_published'] and not post.published_at:
+    if (
+        "is_published" in update_data
+        and update_data["is_published"]
+        and not post.published_at
+    ):
         post.published_at = datetime.utcnow()
-    
+
     for field, value in update_data.items():
         setattr(post, field, value)
-    
+
     await db.commit()
     await db.refresh(post)
-    
+
     # Get comment count
     comment_query = select(func.count(ContentComment.id)).where(
         ContentComment.post_id == post.id
     )
     comment_result = await db.execute(comment_query)
     comment_count = comment_result.scalar_one()
-    
+
     post_dict = post.__dict__.copy()
-    post_dict['comment_count'] = comment_count
-    
+    post_dict["comment_count"] = comment_count
+
     return ContentPostResponse.model_validate(post_dict)
 
 
@@ -217,20 +228,22 @@ async def delete_content_post(
     query = select(ContentPost).where(ContentPost.id == post_id)
     result = await db.execute(query)
     post = result.scalar_one_or_none()
-    
+
     if not post:
         raise HTTPException(status_code=404, detail="Content post not found")
-    
+
     # Delete associated comments first
     await db.execute(select(ContentComment).where(ContentComment.post_id == post_id))
     await db.delete(post)
     await db.commit()
-    
+
     return None
 
 
 # ===== CONTENT COMMENT ENDPOINTS =====
-@content_router.post("/{post_id}/comments", response_model=ContentCommentResponse, status_code=201)
+@content_router.post(
+    "/{post_id}/comments", response_model=ContentCommentResponse, status_code=201
+)
 async def create_content_comment(
     post_id: uuid.UUID,
     comment_data: CommentCreate,
@@ -243,20 +256,18 @@ async def create_content_comment(
     post_query = select(ContentPost).where(ContentPost.id == post_id)
     post_result = await db.execute(post_query)
     post = post_result.scalar_one_or_none()
-    
+
     if not post:
         raise HTTPException(status_code=404, detail="Content post not found")
-    
+
     comment = ContentComment(
-        post_id=post_id,
-        member_id=member_id,
-        content=comment_data.content
+        post_id=post_id, member_id=member_id, content=comment_data.content
     )
-    
+
     db.add(comment)
     await db.commit()
     await db.refresh(comment)
-    
+
     return ContentCommentResponse.model_validate(comment)
 
 
@@ -266,18 +277,24 @@ async def list_content_comments(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all comments for a content post."""
-    query = select(ContentComment).where(
-        ContentComment.post_id == post_id
-    ).order_by(ContentComment.created_at.asc())
-    
+    query = (
+        select(ContentComment)
+        .where(ContentComment.post_id == post_id)
+        .order_by(ContentComment.created_at.asc())
+    )
+
     result = await db.execute(query)
     comments = result.scalars().all()
-    
+
     return [ContentCommentResponse.model_validate(comment) for comment in comments]
 
 
 # ===== ANNOUNCEMENT COMMENT ENDPOINTS =====
-@router.post("/{announcement_id}/comments", response_model=AnnouncementCommentResponse, status_code=201)
+@router.post(
+    "/{announcement_id}/comments",
+    response_model=AnnouncementCommentResponse,
+    status_code=201,
+)
 async def create_announcement_comment(
     announcement_id: uuid.UUID,
     comment_data: CommentCreate,
@@ -290,34 +307,38 @@ async def create_announcement_comment(
     announcement_query = select(Announcement).where(Announcement.id == announcement_id)
     announcement_result = await db.execute(announcement_query)
     announcement = announcement_result.scalar_one_or_none()
-    
+
     if not announcement:
         raise HTTPException(status_code=404, detail="Announcement not found")
-    
+
     comment = AnnouncementComment(
         announcement_id=announcement_id,
         member_id=member_id,
-        content=comment_data.content
+        content=comment_data.content,
     )
-    
+
     db.add(comment)
     await db.commit()
     await db.refresh(comment)
-    
+
     return AnnouncementCommentResponse.model_validate(comment)
 
 
-@router.get("/{announcement_id}/comments", response_model=List[AnnouncementCommentResponse])
+@router.get(
+    "/{announcement_id}/comments", response_model=List[AnnouncementCommentResponse]
+)
 async def list_announcement_comments(
     announcement_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all comments for an announcement."""
-    query = select(AnnouncementComment).where(
-        AnnouncementComment.announcement_id == announcement_id
-    ).order_by(AnnouncementComment.created_at.asc())
-    
+    query = (
+        select(AnnouncementComment)
+        .where(AnnouncementComment.announcement_id == announcement_id)
+        .order_by(AnnouncementComment.created_at.asc())
+    )
+
     result = await db.execute(query)
     comments = result.scalars().all()
-    
+
     return [AnnouncementCommentResponse.model_validate(comment) for comment in comments]

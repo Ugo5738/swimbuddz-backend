@@ -12,7 +12,6 @@ from services.gateway_service.app.main import app
 settings = get_settings()
 
 
-
 @pytest_asyncio.fixture
 async def test_engine():
     """
@@ -22,19 +21,19 @@ async def test_engine():
     """
     # Fix for running tests on host where host.docker.internal might not resolve
     db_url = settings.DATABASE_URL.replace("host.docker.internal", "localhost")
-    
+
     engine = create_async_engine(db_url, future=True)
-    
+
     # Create tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        
+
     yield engine
-    
+
     # Drop tables after session
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-    
+
     await engine.dispose()
 
 
@@ -48,15 +47,15 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     """
     connection = await test_engine.connect()
     transaction = await connection.begin()
-    
+
     session_factory = async_sessionmaker(
-        bind=connection, 
-        class_=AsyncSession, 
+        bind=connection,
+        class_=AsyncSession,
         expire_on_commit=False,
-        join_transaction_mode="create_savepoint"
+        join_transaction_mode="create_savepoint",
     )
     session = session_factory()
-    
+
     try:
         yield session
     finally:
@@ -71,12 +70,14 @@ async def client(db_session) -> AsyncGenerator[AsyncClient, None]:
     Yield an AsyncClient with the app and overridden DB dependency.
     """
     from libs.db.session import get_async_db
-    
+
     app.dependency_overrides[get_async_db] = lambda: db_session
-    
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         yield ac
-        
+
     app.dependency_overrides.clear()
 
 
@@ -86,7 +87,7 @@ def auth_headers() -> dict:
     Return headers for a mocked authenticated user.
     Since we mock the `get_current_user` dependency in specific tests or globally,
     this might just be a placeholder or used if we mock the JWT decoding.
-    For now, we'll rely on dependency overrides for auth in tests, 
+    For now, we'll rely on dependency overrides for auth in tests,
     but this can be useful if we want to pass a real-looking token.
     """
     return {"Authorization": "Bearer mock-token"}

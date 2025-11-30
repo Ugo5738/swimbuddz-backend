@@ -24,15 +24,19 @@ class Payment(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    reference: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    reference: Mapped[str] = mapped_column(
+        String, unique=True, index=True, nullable=False
+    )
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[PaymentStatus] = mapped_column(
         SAEnum(PaymentStatus, name="payment_status_enum"),
         default=PaymentStatus.PENDING,
-        nullable=False
+        nullable=False,
     )
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
@@ -42,7 +46,7 @@ class Payment(Base):
         """Generates a unique payment reference like PAY-12345."""
         # Simple implementation: PAY- + 5 random digits
         # In production, check for collision or use a sequence
-        suffix = ''.join(random.choices(string.digits, k=5))
+        suffix = "".join(random.choices(string.digits, k=5))
         return f"PAY-{suffix}"
 
     def __repr__(self):
