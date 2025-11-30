@@ -1,3 +1,7 @@
+"""Alembic configuration entrypoint for transport service."""
+
+# ruff: noqa: F401
+
 import asyncio
 import sys
 from logging.config import fileConfig
