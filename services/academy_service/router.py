@@ -16,7 +16,6 @@ from services.academy_service.models import (
     StudentProgress,
     EnrollmentStatus,
     PaymentStatus,
-    ProgressStatus,
     CohortStatus,
     Member,
 )
@@ -24,8 +23,7 @@ from services.academy_service.schemas import (
     ProgramCreate, ProgramResponse, ProgramUpdate,
     CohortCreate, CohortResponse, CohortUpdate,
     EnrollmentCreate, EnrollmentResponse, EnrollmentUpdate, EnrollmentWithStudent,
-    MilestoneCreate, MilestoneResponse, MilestoneUpdate,
-    StudentProgressResponse, StudentProgressUpdate
+    MilestoneCreate, MilestoneResponse, StudentProgressResponse, StudentProgressUpdate
 )
 
 router = APIRouter(tags=["academy"])

@@ -69,7 +69,7 @@ async def check_tables():
             if ':' in scheme_part:
                 scheme_user, _ = scheme_part.rsplit(':', 1)
                 masked_url = f"{scheme_user}:***@{host_part}"
-        except:
+        except Exception:
             pass
             
     print(f"Connecting to: {masked_url}")

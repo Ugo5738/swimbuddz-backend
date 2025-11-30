@@ -19,7 +19,7 @@ load_env_prod()
 
 async def clear_alembic_version():
     db_url = os.environ.get("DATABASE_URL")
-    print(f"Connecting to database...")
+    print("Connecting to database...")
     
     engine = create_async_engine(db_url, echo=False)
     try:

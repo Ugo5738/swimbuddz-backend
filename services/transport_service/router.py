@@ -13,7 +13,6 @@ from services.transport_service.models import (
     RidePreference,
     RideShareOption,
 )
-from fastapi import HTTPException, status
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/transport", tags=["transport"])
@@ -36,12 +35,12 @@ async def get_transport_config(
     Get transport configuration including areas, pickup locations, and routes.
     """
     # Fetch all active areas
-    areas_query = select(RideArea).where(RideArea.is_active == True).order_by(RideArea.name)
+    areas_query = select(RideArea).where(RideArea.is_active.is_(True)).order_by(RideArea.name)
     areas_result = await db.execute(areas_query)
     areas = areas_result.scalars().all()
     
     # Fetch all active locations
-    locs_query = select(PickupLocation).where(PickupLocation.is_active == True)
+    locs_query = select(PickupLocation).where(PickupLocation.is_active.is_(True))
     locs_result = await db.execute(locs_query)
     locations = locs_result.scalars().all()
     
@@ -180,7 +179,7 @@ async def get_ride_summary(
     prefs = prefs_result.scalars().all()
 
     # Fetch active locations and areas
-    loc_query = select(PickupLocation, RideArea).join(RideArea).where(PickupLocation.is_active == True)
+    loc_query = select(PickupLocation, RideArea).join(RideArea).where(PickupLocation.is_active.is_(True))
     loc_result = await db.execute(loc_query)
     loc_rows = loc_result.all()
 

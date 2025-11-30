@@ -1,8 +1,5 @@
 """FastAPI application for the Members Service."""
 from fastapi import FastAPI
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from services.members_service.router import router as members_router, pending_router
 from services.members_service.volunteer_router import volunteer_router, challenge_router

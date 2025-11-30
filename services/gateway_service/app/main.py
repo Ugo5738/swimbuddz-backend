@@ -6,11 +6,9 @@ importing them directly.
 from __future__ import annotations
 
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from services.gateway_service.app import clients
 
@@ -23,7 +21,6 @@ def create_app() -> FastAPI:
         description="API Gateway that orchestrates SwimBuddz microservices.",
     )
 
-    from fastapi.middleware.cors import CORSMiddleware
 
     app.add_middleware(
         CORSMiddleware,

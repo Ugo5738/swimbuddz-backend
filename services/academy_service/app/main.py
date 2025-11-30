@@ -1,8 +1,5 @@
 """FastAPI application for the Academy Service."""
 from fastapi import FastAPI
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from services.academy_service.router import router as academy_router
 

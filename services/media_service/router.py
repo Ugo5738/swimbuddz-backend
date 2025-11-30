@@ -6,14 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func
 
 from libs.db.session import get_async_db
-from libs.auth.dependencies import get_current_user, require_admin
+from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 
 from services.media_service.models import Album, Photo, PhotoTag
 from services.media_service.schemas import (
     AlbumCreate, AlbumUpdate, AlbumResponse, AlbumWithPhotos,
-    PhotoUpdate, PhotoResponse, 
-    PhotoTagCreate, PhotoTagResponse,
+    PhotoUpdate, PhotoResponse, # PhotoTagCreate,
+    PhotoTagResponse,
     FeaturedPhotosResponse
 )
 from services.media_service.storage import storage_service
@@ -266,7 +266,7 @@ async def get_featured_photos(
 ):
     """Get featured photos for homepage."""
     query = select(Photo)\
-        .where(Photo.is_featured == True)\
+        .where(Photo.is_featured.is_(True))\
         .order_by(desc(Photo.created_at))\
         .limit(limit)
     

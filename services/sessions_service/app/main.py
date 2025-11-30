@@ -1,10 +1,6 @@
 """FastAPI application for the Sessions Service."""
 from fastapi import FastAPI
-from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
-
-load_dotenv()
-
 from services.sessions_service.router import router as sessions_router
 from services.sessions_service.template_router import router as templates_router
 

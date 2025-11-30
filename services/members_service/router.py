@@ -314,6 +314,7 @@ async def create_member(
             detail="Email already registered",
         )
 
+    member = Member(**member_in.model_dump())
     db.add(member)
     await db.commit()
     await db.refresh(member)

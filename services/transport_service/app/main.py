@@ -1,10 +1,6 @@
 """FastAPI application for the Transport Service."""
 from fastapi import FastAPI
-from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
-
-load_dotenv()
-
 from services.transport_service.router import router as transport_router
 
 

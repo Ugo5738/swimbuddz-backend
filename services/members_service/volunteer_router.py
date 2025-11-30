@@ -32,7 +32,7 @@ async def list_volunteer_roles(
     query = select(VolunteerRole)
     
     if active_only:
-        query = query.where(VolunteerRole.is_active == True)
+        query = query.where(VolunteerRole.is_active.is_(True))
     
     query = query.order_by(VolunteerRole.created_at.desc())
     
@@ -227,7 +227,7 @@ async def list_club_challenges(
     query = select(ClubChallenge)
     
     if active_only:
-        query = query.where(ClubChallenge.is_active == True)
+        query = query.where(ClubChallenge.is_active.is_(True))
     
     if challenge_type:
         query = query.where(ClubChallenge.challenge_type == challenge_type)

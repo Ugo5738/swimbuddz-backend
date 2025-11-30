@@ -1,10 +1,6 @@
 """Media Service main application."""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from services.media_service.router import router
 
 app = FastAPI(title="SwimBuddz Media Service")

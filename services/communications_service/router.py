@@ -5,11 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.auth.dependencies import require_admin
-from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.communications_service.models import Announcement
-from services.communications_service.schemas import AnnouncementResponse, AnnouncementCreate
+from services.communications_service.schemas import AnnouncementResponse  # , AnnouncementCreate
 
 router = APIRouter(prefix="/announcements", tags=["announcements"])
 
@@ -89,7 +87,7 @@ async def list_content_posts(
     query = select(ContentPost)
     
     if published_only:
-        query = query.where(ContentPost.is_published == True)
+        query = query.where(ContentPost.is_published.is_(True))
     
     if category:
         query = query.where(ContentPost.category == category)

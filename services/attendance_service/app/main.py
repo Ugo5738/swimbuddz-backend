@@ -1,8 +1,5 @@
 """FastAPI application for the Attendance Service."""
 from fastapi import FastAPI
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from services.attendance_service.router import router as attendance_router
 

@@ -1,6 +1,6 @@
 """HTTP clients for gateway to call microservices."""
 import httpx
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from libs.common.config import get_settings
 
 settings = get_settings()
