@@ -1,4 +1,5 @@
 """FastAPI application for the Transport Service."""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from services.transport_service.router import router as transport_router

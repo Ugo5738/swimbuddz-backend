@@ -1,4 +1,5 @@
 """FastAPI application for the Attendance Service."""
+
 from fastapi import FastAPI
 
 from services.attendance_service.router import router as attendance_router

@@ -14,7 +14,12 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.communications_service.models import Announcement, AnnouncementComment, ContentPost, ContentComment  # noqa: F401
+from services.communications_service.models import (
+    Announcement,
+    AnnouncementComment,
+    ContentPost,
+    ContentComment,
+)  # noqa: F401
 
 settings = get_settings()
 config = context.config

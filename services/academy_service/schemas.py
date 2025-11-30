@@ -5,11 +5,16 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from services.academy_service.models import (
-    ProgramLevel, CohortStatus, EnrollmentStatus, PaymentStatus, ProgressStatus
+    ProgramLevel,
+    CohortStatus,
+    EnrollmentStatus,
+    PaymentStatus,
+    ProgressStatus,
 )
 
 
 # --- Program Schemas ---
+
 
 class ProgramBase(BaseModel):
     name: str
@@ -41,6 +46,7 @@ class ProgramResponse(ProgramBase):
 
 # --- Milestone Schemas ---
 
+
 class MilestoneBase(BaseModel):
     name: str
     criteria: Optional[str] = None
@@ -68,6 +74,7 @@ class MilestoneResponse(MilestoneBase):
 
 # --- Cohort Schemas ---
 
+
 class CohortBase(BaseModel):
     name: str
     start_date: datetime
@@ -93,13 +100,14 @@ class CohortResponse(CohortBase):
     program_id: UUID
     created_at: datetime
     updated_at: datetime
-    
+
     # Optional nested fields if needed, but keeping flat for now
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
 # --- Member Schemas ---
+
 
 class MemberBasicInfo(BaseModel):
     id: UUID
@@ -111,6 +119,7 @@ class MemberBasicInfo(BaseModel):
 
 
 # --- Enrollment Schemas ---
+
 
 class EnrollmentBase(BaseModel):
     status: EnrollmentStatus = EnrollmentStatus.ENROLLED
@@ -133,7 +142,7 @@ class EnrollmentResponse(EnrollmentBase):
     member_id: UUID
     created_at: datetime
     updated_at: datetime
-    
+
     # Include cohort details for "My Enrollments"
     cohort: Optional[CohortResponse] = None
 
@@ -142,10 +151,11 @@ class EnrollmentResponse(EnrollmentBase):
 
 class EnrollmentWithStudent(EnrollmentResponse):
     member: MemberBasicInfo
-    progress_records: List['StudentProgressResponse'] = []
+    progress_records: List["StudentProgressResponse"] = []
 
 
 # --- Student Progress Schemas ---
+
 
 class StudentProgressBase(BaseModel):
     status: ProgressStatus = ProgressStatus.PENDING
@@ -167,6 +177,7 @@ class StudentProgressResponse(StudentProgressBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
 
 # Resolve forward reference
 EnrollmentWithStudent.model_rebuild()

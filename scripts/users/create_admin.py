@@ -25,24 +25,25 @@ from services.members_service.models import Member
 
 settings = get_settings()
 
+
 async def create_admin_user():
     print("🚀 Starting Admin User Creation Script")
     print(f"DEBUG: SUPABASE_URL = {settings.SUPABASE_URL}")
-    
+
     email = "admin@admin.com"
     password = "admin"  # Default password, change immediately
-    
+
     # 1. Create Supabase Auth User via HTTPX
     print(f"Connecting to Supabase at {settings.SUPABASE_URL}...")
-    
+
     auth_uid = None
-    
+
     headers = {
         "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
         "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
-    
+
     async with httpx.AsyncClient() as client:
         try:
             # Create User
@@ -51,26 +52,30 @@ async def create_admin_user():
                 "email": email,
                 "password": password,
                 "email_confirm": True,
-                "user_metadata": {"full_name": "Admin User"}
+                "user_metadata": {"full_name": "Admin User"},
             }
-            
+
             print(f"Creating Supabase user {email}...")
             response = await client.post(url, json=payload, headers=headers)
-            
+
             if response.status_code == 200:
                 data = response.json()
-                auth_uid = data["id"] # or data["user"]["id"] depending on API version
+                auth_uid = data["id"]  # or data["user"]["id"] depending on API version
                 # Usually returns User object directly or wrapped
                 if "user" in data:
                     auth_uid = data["user"]["id"]
                 print(f"✅ Supabase Auth User Created: {auth_uid}")
-            elif response.status_code == 422 or "already registered" in response.text or "already exists" in response.text:
+            elif (
+                response.status_code == 422
+                or "already registered" in response.text
+                or "already exists" in response.text
+            ):
                 print("⚠️ User already exists in Supabase. Fetching ID...")
                 # Try to list users to find ID (admin only)
                 # GET /auth/v1/admin/users
                 # This might be paginated, but let's try to find by email if possible or just list
                 # Actually, sign-in is easier if we know the password
-                
+
                 # Try sign-in
                 login_url = f"{settings.SUPABASE_URL}/auth/v1/token?grant_type=password"
                 login_payload = {"email": email, "password": password}
@@ -78,10 +83,12 @@ async def create_admin_user():
                 # Let's use anon key for login just in case
                 login_headers = {
                     "apikey": settings.SUPABASE_ANON_KEY,
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 }
-                
-                login_res = await client.post(login_url, json=login_payload, headers=login_headers)
+
+                login_res = await client.post(
+                    login_url, json=login_payload, headers=login_headers
+                )
                 if login_res.status_code == 200:
                     login_data = login_res.json()
                     auth_uid = login_data["user"]["id"]
@@ -96,10 +103,14 @@ async def create_admin_user():
                         for u in users:
                             if u["email"] == email:
                                 auth_uid = u["id"]
-                                print(f"✅ Found existing user ID via Admin List: {auth_uid}")
+                                print(
+                                    f"✅ Found existing user ID via Admin List: {auth_uid}"
+                                )
                                 break
             else:
-                print(f"❌ Failed to create Supabase user: {response.status_code} {response.text}")
+                print(
+                    f"❌ Failed to create Supabase user: {response.status_code} {response.text}"
+                )
                 return
 
         except Exception as e:
@@ -117,11 +128,13 @@ async def create_admin_user():
             # Check if member exists
             result = await session.execute(select(Member).where(Member.email == email))
             existing_member = result.scalars().first()
-            
+
             if existing_member:
                 print(f"⚠️ Member record already exists for {email}.")
                 if existing_member.auth_id != auth_uid:
-                    print(f"⚠️ Updating auth_id from {existing_member.auth_id} to {auth_uid}")
+                    print(
+                        f"⚠️ Updating auth_id from {existing_member.auth_id} to {auth_uid}"
+                    )
                     existing_member.auth_id = auth_uid
                     existing_member.is_active = True
                     existing_member.registration_complete = True
@@ -143,7 +156,7 @@ async def create_admin_user():
                     city="System",
                     country="System",
                     swim_level="expert",
-                    membership_tiers=["academy", "club", "community"]
+                    membership_tiers=["academy", "club", "community"],
                 )
                 session.add(new_member)
                 print("✅ Member record created.")
@@ -152,6 +165,7 @@ async def create_admin_user():
     print(f"Email: {email}")
     print(f"Password: {password}")
     print("You can now log in at http://localhost:3000/login")
+
 
 if __name__ == "__main__":
     asyncio.run(create_admin_user())

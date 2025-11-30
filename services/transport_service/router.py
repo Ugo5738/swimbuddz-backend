@@ -35,33 +35,33 @@ async def get_transport_config(
     Get transport configuration including areas, pickup locations, and routes.
     """
     # Fetch all active areas
-    areas_query = select(RideArea).where(RideArea.is_active.is_(True)).order_by(RideArea.name)
+    areas_query = (
+        select(RideArea).where(RideArea.is_active.is_(True)).order_by(RideArea.name)
+    )
     areas_result = await db.execute(areas_query)
     areas = areas_result.scalars().all()
-    
+
     # Fetch all active locations
     locs_query = select(PickupLocation).where(PickupLocation.is_active.is_(True))
     locs_result = await db.execute(locs_query)
     locations = locs_result.scalars().all()
-    
+
     # Fetch all routes
     routes_query = select(RouteInfo)
     routes_result = await db.execute(routes_query)
     routes = routes_result.scalars().all()
-    
+
     config: List[Dict] = []
-    
+
     for area in areas:
         # Get locations for this area
         area_locs = [loc for loc in locations if loc.area_id == area.id]
-        
+
         # Get routes for this area (default)
         area_default_routes = {
-            r.destination: r 
-            for r in routes 
-            if r.origin_area_id == area.id
+            r.destination: r for r in routes if r.origin_area_id == area.id
         }
-        
+
         # Get routes for specific locations in this area
         # Convert UUID keys to strings for easier comparison
         loc_specific_routes = {
@@ -69,18 +69,18 @@ async def get_transport_config(
             for r in routes
             if r.origin_pickup_location_id is not None
         }
-        
+
         formatted_locs = []
         for loc in area_locs:
             loc_id_str = str(loc.id)
             loc_routes = {}
-            
+
             all_destinations = set(area_default_routes.keys())
             # Add specific destinations for this loc
-            for (r_loc_id, dest) in loc_specific_routes.keys():
+            for r_loc_id, dest in loc_specific_routes.keys():
                 if r_loc_id == loc_id_str:
                     all_destinations.add(dest)
-            
+
             for dest in all_destinations:
                 route = None
                 # Check specific first
@@ -89,41 +89,45 @@ async def get_transport_config(
                 # Fallback to area default
                 elif dest in area_default_routes:
                     route = area_default_routes[dest]
-                
+
                 if route:
                     loc_routes[dest] = {
                         "destination_name": route.destination_name,
                         "distance": route.distance_text,
                         "duration": route.duration_text,
-                        "departure_offset": route.departure_offset_minutes
+                        "departure_offset": route.departure_offset_minutes,
                     }
-            
-            formatted_locs.append({
-                "id": str(loc.id),
-                "name": loc.name,
-                "description": loc.description,
-                "routes": loc_routes # Granular routes attached to location
-            })
-        
+
+            formatted_locs.append(
+                {
+                    "id": str(loc.id),
+                    "name": loc.name,
+                    "description": loc.description,
+                    "routes": loc_routes,  # Granular routes attached to location
+                }
+            )
+
         # We still provide area routes as a fallback/default for the UI
         area_routes_formatted = {
             dest: {
                 "destination_name": r.destination_name,
                 "distance": r.distance_text,
                 "duration": r.duration_text,
-                "departure_offset": r.departure_offset_minutes
+                "departure_offset": r.departure_offset_minutes,
             }
             for dest, r in area_default_routes.items()
         }
-        
-        config.append({
-            "id": str(area.id),
-            "name": area.name,
-            "slug": area.slug,
-            "pickup_locations": formatted_locs,
-            "routes": area_routes_formatted
-        })
-        
+
+        config.append(
+            {
+                "id": str(area.id),
+                "name": area.name,
+                "slug": area.slug,
+                "pickup_locations": formatted_locs,
+                "routes": area_routes_formatted,
+            }
+        )
+
     return {"areas": config}
 
 
@@ -179,7 +183,11 @@ async def get_ride_summary(
     prefs = prefs_result.scalars().all()
 
     # Fetch active locations and areas
-    loc_query = select(PickupLocation, RideArea).join(RideArea).where(PickupLocation.is_active.is_(True))
+    loc_query = (
+        select(PickupLocation, RideArea)
+        .join(RideArea)
+        .where(PickupLocation.is_active.is_(True))
+    )
     loc_result = await db.execute(loc_query)
     loc_rows = loc_result.all()
 
@@ -198,34 +206,38 @@ async def get_ride_summary(
         total = len(group_prefs)
 
         if total > 0:
-            chunks = [group_prefs[i:i + 4] for i in range(0, total, 4)]
+            chunks = [group_prefs[i : i + 4] for i in range(0, total, 4)]
             for i, chunk in enumerate(chunks):
                 chunk_size = len(chunk)
                 ride_location = chunk[0].pickup_location if chunk else None
                 is_filling = chunk_size < 4
 
-                rides.append({
-                    "group": area_name,
-                    "location": ride_location,
-                    "filled_seats": chunk_size,
-                    "capacity": 4,
-                    "ride_number": i + 1
-                })
+                rides.append(
+                    {
+                        "group": area_name,
+                        "location": ride_location,
+                        "filled_seats": chunk_size,
+                        "capacity": 4,
+                        "ride_number": i + 1,
+                    }
+                )
 
                 if is_filling:
                     active_group = area_name
                     active_location = ride_location
         else:
-            rides.append({
-                "group": area_name,
-                "location": None,
-                "filled_seats": 0,
-                "capacity": 4,
-                "ride_number": 1
-            })
+            rides.append(
+                {
+                    "group": area_name,
+                    "location": None,
+                    "filled_seats": 0,
+                    "capacity": 4,
+                    "ride_number": 1,
+                }
+            )
 
     return {
         "active_group": active_group,
         "active_location": active_location,
-        "rides": rides
+        "rides": rides,
     }

@@ -1,4 +1,5 @@
 """FastAPI application for the Payments Service."""
+
 from fastapi import FastAPI
 from services.payments_service.router import router as payments_router
 

@@ -27,18 +27,18 @@ class SessionTemplate(Base):
     pool_fee = Column(Integer, nullable=False, default=0)
     ride_share_fee = Column(Integer, nullable=False, default=0)
     capacity = Column(Integer, nullable=False, default=20)
-    
+
     # Recurrence pattern
     day_of_week = Column(Integer, nullable=False)  # 0=Monday, 6=Sunday
     start_time = Column(Time, nullable=False)  # Time of day (e.g., 09:00)
     duration_minutes = Column(Integer, nullable=False)  # Duration in minutes
-    
+
     # Auto-generation
     auto_generate = Column(Boolean, default=False)  # Auto-create sessions weekly
-    
+
     # Status
     is_active = Column(Boolean, default=True)
-    
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

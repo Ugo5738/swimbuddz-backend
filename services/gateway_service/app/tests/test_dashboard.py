@@ -13,11 +13,14 @@ MOCK_USER_ID = "test-user-id"
 MOCK_ADMIN_ID = "test-admin-id"
 MOCK_MEMBER_ID = uuid.uuid4()
 
+
 async def mock_get_current_user():
     return AuthUser(sub=MOCK_USER_ID, email="test@example.com", role="authenticated")
 
+
 async def mock_require_admin():
     return AuthUser(sub=MOCK_ADMIN_ID, email="admin@example.com", role="admin")
+
 
 @pytest.mark.asyncio
 async def test_get_member_dashboard(client: AsyncClient, db_session: AsyncSession):
@@ -25,7 +28,10 @@ async def test_get_member_dashboard(client: AsyncClient, db_session: AsyncSessio
     from services.members_service.models import Member
     from services.sessions_service.models import Session, SessionLocation
     from services.attendance_service.models import AttendanceRecord
-    from services.communications_service.models import Announcement, AnnouncementCategory
+    from services.communications_service.models import (
+        Announcement,
+        AnnouncementCategory,
+    )
 
     # Create Member
     member = Member(
@@ -34,7 +40,7 @@ async def test_get_member_dashboard(client: AsyncClient, db_session: AsyncSessio
         email="test@example.com",
         first_name="Dashboard",
         last_name="User",
-        registration_complete=True
+        registration_complete=True,
     )
     db_session.add(member)
 
@@ -47,10 +53,10 @@ async def test_get_member_dashboard(client: AsyncClient, db_session: AsyncSessio
         start_time=datetime.utcnow() + timedelta(days=1),
         end_time=datetime.utcnow() + timedelta(days=1, hours=1),
         capacity=10,
-        pool_fee=500
+        pool_fee=500,
     )
     db_session.add(session)
-    await db_session.flush() # Flush session and member first
+    await db_session.flush()  # Flush session and member first
 
     # Create Attendance
     attendance = AttendanceRecord(
@@ -58,7 +64,7 @@ async def test_get_member_dashboard(client: AsyncClient, db_session: AsyncSessio
         member_id=member.id,
         status="PRESENT",
         role="SWIMMER",
-        notes="Ready"
+        notes="Ready",
     )
     db_session.add(attendance)
 
@@ -67,10 +73,10 @@ async def test_get_member_dashboard(client: AsyncClient, db_session: AsyncSessio
         title="Dashboard News",
         body="Welcome to the dashboard",
         category=AnnouncementCategory.GENERAL,
-        published_at=datetime.utcnow() - timedelta(hours=1)
+        published_at=datetime.utcnow() - timedelta(hours=1),
     )
     db_session.add(announcement)
-    
+
     await db_session.flush()
 
     # 2. Override dependency
@@ -96,9 +102,9 @@ async def test_get_member_dashboard(client: AsyncClient, db_session: AsyncSessio
 async def test_get_admin_dashboard_stats(client: AsyncClient, db_session: AsyncSession):
     # 1. Setup Data (reuse or add more)
     from services.members_service.models import Member
-    
+
     # Ensure at least one member exists (from previous test or new)
-    # Since tests share DB session in this setup (function scoped but same DB), 
+    # Since tests share DB session in this setup (function scoped but same DB),
     # we might need to be careful. But here we just add one more.
     member = Member(
         id=uuid.uuid4(),
@@ -106,7 +112,7 @@ async def test_get_admin_dashboard_stats(client: AsyncClient, db_session: AsyncS
         email="another@example.com",
         first_name="Another",
         last_name="User",
-        registration_complete=True
+        registration_complete=True,
     )
     db_session.add(member)
     await db_session.flush()
@@ -124,5 +130,5 @@ async def test_get_admin_dashboard_stats(client: AsyncClient, db_session: AsyncS
     assert data["active_members"] >= 1
     # We created one session in the previous test (or this one if run independently)
     # so upcoming_sessions_count should be >= 1
-    
+
     app.dependency_overrides.clear()

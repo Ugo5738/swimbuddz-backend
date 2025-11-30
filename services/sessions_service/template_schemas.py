@@ -48,4 +48,6 @@ class SessionTemplateResponse(SessionTemplateBase):
 
 class GenerateSessionsRequest(BaseModel):
     weeks: int = Field(..., gt=0, le=52, description="Number of weeks to generate")
-    skip_conflicts: bool = Field(True, description="Skip dates that already have sessions")
+    skip_conflicts: bool = Field(
+        True, description="Skip dates that already have sessions"
+    )

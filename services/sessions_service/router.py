@@ -10,7 +10,11 @@ from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.sessions_service.models import Session
-from services.sessions_service.schemas import SessionResponse, SessionCreate, SessionUpdate
+from services.sessions_service.schemas import (
+    SessionResponse,
+    SessionCreate,
+    SessionUpdate,
+)
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -41,9 +45,7 @@ async def get_session_stats(
     result = await db.execute(query)
     upcoming_sessions_count = result.scalar_one() or 0
 
-    return {
-        "upcoming_sessions_count": upcoming_sessions_count
-    }
+    return {"upcoming_sessions_count": upcoming_sessions_count}
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
@@ -57,7 +59,7 @@ async def get_session(
     query = select(Session).where(Session.id == session_id)
     result = await db.execute(query)
     session = result.scalar_one_or_none()
-    
+
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

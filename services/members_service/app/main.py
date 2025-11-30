@@ -1,4 +1,5 @@
 """FastAPI application for the Members Service."""
+
 from fastapi import FastAPI
 
 from services.members_service.router import router as members_router, pending_router

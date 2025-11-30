@@ -26,17 +26,21 @@ class Announcement(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     summary: Mapped[str] = mapped_column(String, nullable=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    
+
     category: Mapped[AnnouncementCategory] = mapped_column(
         SAEnum(AnnouncementCategory, name="announcement_category_enum"),
         default=AnnouncementCategory.GENERAL,
-        nullable=False
+        nullable=False,
     )
-    
+
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
-    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    published_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
@@ -47,8 +51,9 @@ class Announcement(Base):
 
 class Member(Base):
     """Reference to Member from members_service for foreign keys."""
+
     __tablename__ = "members"
-    __table_args__ = {'extend_existing': True}
+    __table_args__ = {"extend_existing": True}
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -57,6 +62,7 @@ class Member(Base):
 
 class ContentPost(Base):
     """Educational content, tips, and articles for the community."""
+
     __tablename__ = "content_posts"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -65,14 +71,22 @@ class ContentPost(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)  # Markdown support
-    category: Mapped[str] = mapped_column(String, nullable=False)  # swimming_tips/safety/breathing/technique/news/education
+    category: Mapped[str] = mapped_column(
+        String, nullable=False
+    )  # swimming_tips/safety/breathing/technique/news/education
     featured_image_url: Mapped[str] = mapped_column(String, nullable=True)
-    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
-    tier_access: Mapped[str] = mapped_column(String, default="community")  # community/club/academy
+    tier_access: Mapped[str] = mapped_column(
+        String, default="community"
+    )  # community/club/academy
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
@@ -83,6 +97,7 @@ class ContentPost(Base):
 
 class ContentComment(Base):
     """Comments on content posts."""
+
     __tablename__ = "content_comments"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -91,8 +106,10 @@ class ContentComment(Base):
     post_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
@@ -103,16 +120,21 @@ class ContentComment(Base):
 
 class AnnouncementComment(Base):
     """Comments on announcements."""
+
     __tablename__ = "announcement_comments"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    announcement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    announcement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False
+    )
     member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )

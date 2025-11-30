@@ -14,7 +14,14 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.members_service.models import Member, PendingRegistration, VolunteerRole, VolunteerInterest, ClubChallenge, MemberChallengeCompletion  # noqa: F401
+from services.members_service.models import (
+    Member,
+    PendingRegistration,
+    VolunteerRole,
+    VolunteerInterest,
+    ClubChallenge,
+    MemberChallengeCompletion,
+)  # noqa: F401
 
 settings = get_settings()
 config = context.config

@@ -1,4 +1,5 @@
 """FastAPI application for the Communications Service."""
+
 from fastapi import FastAPI
 
 from services.communications_service.router import router as communications_router

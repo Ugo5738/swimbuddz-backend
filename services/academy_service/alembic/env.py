@@ -14,7 +14,13 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.academy_service.models import Program, Cohort, Enrollment, Milestone, StudentProgress  # noqa: F401
+from services.academy_service.models import (
+    Program,
+    Cohort,
+    Enrollment,
+    Milestone,
+    StudentProgress,
+)  # noqa: F401
 
 settings = get_settings()
 config = context.config

@@ -1,4 +1,5 @@
 """Additional schemas for volunteer and challenge management."""
+
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -9,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 # ===== VOLUNTEER SCHEMAS =====
 class VolunteerRoleBase(BaseModel):
     """Base volunteer role schema."""
+
     title: str
     description: Optional[str] = None
     category: str  # media/logistics/admin/coaching_support/lane_marshal
@@ -17,11 +19,13 @@ class VolunteerRoleBase(BaseModel):
 
 class VolunteerRoleCreate(VolunteerRoleBase):
     """Schema for creating a volunteer role."""
+
     is_active: bool = True
 
 
 class VolunteerRoleUpdate(BaseModel):
     """Schema for updating a volunteer role."""
+
     title: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
@@ -31,6 +35,7 @@ class VolunteerRoleUpdate(BaseModel):
 
 class VolunteerRoleResponse(VolunteerRoleBase):
     """Volunteer role response schema."""
+
     id: uuid.UUID
     is_active: bool
     created_at: datetime
@@ -42,12 +47,14 @@ class VolunteerRoleResponse(VolunteerRoleBase):
 
 class VolunteerInterestCreate(BaseModel):
     """Schema for registering volunteer interest."""
+
     role_id: uuid.UUID
     notes: Optional[str] = None
 
 
 class VolunteerInterestResponse(BaseModel):
     """Volunteer interest response schema."""
+
     id: uuid.UUID
     role_id: uuid.UUID
     member_id: uuid.UUID
@@ -62,6 +69,7 @@ class VolunteerInterestResponse(BaseModel):
 # ===== CHALLENGE SCHEMAS =====
 class ClubChallengeBase(BaseModel):
     """Base club challenge schema."""
+
     title: str
     description: Optional[str] = None
     challenge_type: str  # time_trial/attendance/distance/technique
@@ -71,11 +79,13 @@ class ClubChallengeBase(BaseModel):
 
 class ClubChallengeCreate(ClubChallengeBase):
     """Schema for creating a club challenge."""
+
     is_active: bool = True
 
 
 class ClubChallengeUpdate(BaseModel):
     """Schema for updating a club challenge."""
+
     title: Optional[str] = None
     description: Optional[str] = None
     challenge_type: Optional[str] = None
@@ -86,6 +96,7 @@ class ClubChallengeUpdate(BaseModel):
 
 class ClubChallengeResponse(ClubChallengeBase):
     """Club challenge response schema."""
+
     id: uuid.UUID
     is_active: bool
     created_at: datetime
@@ -97,6 +108,7 @@ class ClubChallengeResponse(ClubChallengeBase):
 
 class ChallengeCompletionCreate(BaseModel):
     """Schema for marking a challenge as complete."""
+
     challenge_id: uuid.UUID
     member_id: uuid.UUID
     result_data: Optional[dict] = None
@@ -104,6 +116,7 @@ class ChallengeCompletionCreate(BaseModel):
 
 class ChallengeCompletionResponse(BaseModel):
     """Challenge completion response schema."""
+
     id: uuid.UUID
     member_id: uuid.UUID
     challenge_id: uuid.UUID
