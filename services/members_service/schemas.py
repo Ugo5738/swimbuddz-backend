@@ -106,10 +106,16 @@ class MemberCreate(MemberBase):
     auth_id: str
 
 
-class MemberUpdate(BaseModel):
+class MemberUpdate(MemberBase):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    email: Optional[EmailStr] = None
     is_active: Optional[bool] = None
+    
+    # All other fields are inherited from MemberBase as Optional
+    # We just need to ensure we can update them.
+    # MemberBase fields are already Optional, so this works.
+    pass
 
 
 class MemberResponse(MemberBase):

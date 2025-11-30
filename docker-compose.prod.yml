@@ -114,6 +114,20 @@ services:
     volumes:
       - .:/app
 
+  transport-service:
+    build:
+      context: .
+      dockerfile: services/transport_service/Dockerfile
+    container_name: swimbuddz_transport
+    env_file:
+      - .env.prod
+    ports:
+      - "8009:8009"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
   # ==================================================================
   # API GATEWAY
   # ==================================================================
@@ -140,6 +154,8 @@ services:
       media-service:
         condition: service_started
       events-service:
+        condition: service_started
+      transport-service:
         condition: service_started
     ports:
       - "8000:8000"

@@ -63,9 +63,9 @@ async def test_sign_in_to_session(client: AsyncClient, db_session: AsyncSession)
 
     # 3. Sign in
     payload = {
-        "needs_ride": True,
-        "can_offer_ride": False,
-        "ride_notes": "Need pickup from downtown"
+        "status": "PRESENT",
+        "role": "SWIMMER",
+        "notes": "Ready to swim"
     }
     
     response = await client.post(f"/api/v1/sessions/{session_id}/sign-in", json=payload)
@@ -73,8 +73,8 @@ async def test_sign_in_to_session(client: AsyncClient, db_session: AsyncSession)
     data = response.json()
     assert data["session_id"] == str(session_id)
     assert data["member_id"] == str(MOCK_MEMBER_ID)
-    assert data["needs_ride"] is True
-    assert data["payment_status"] == "pending"
+    assert data["status"] == "PRESENT"
+    assert data["role"] == "SWIMMER"
 
     app.dependency_overrides.clear()
 
@@ -82,7 +82,7 @@ async def test_sign_in_to_session(client: AsyncClient, db_session: AsyncSession)
 async def test_get_my_attendance_history(client: AsyncClient, db_session: AsyncSession):
     # 1. Create session, member and attendance
     from services.sessions_service.models import Session, SessionLocation
-    from services.attendance_service.models import SessionAttendance, PaymentStatus
+    from services.attendance_service.models import AttendanceRecord
     from services.members_service.models import Member
 
     # Create Member
@@ -110,13 +110,11 @@ async def test_get_my_attendance_history(client: AsyncClient, db_session: AsyncS
     db_session.add(session)
     await db_session.flush() # Flush session and member first
     
-    attendance = SessionAttendance(
+    attendance = AttendanceRecord(
         session_id=session_id,
         member_id=MOCK_MEMBER_ID,
-        needs_ride=False,
-        can_offer_ride=True,
-        payment_status=PaymentStatus.PAID,
-        total_fee=500
+        status="PRESENT",
+        role="SWIMMER",
     )
     db_session.add(attendance)
     await db_session.flush()

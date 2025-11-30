@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from libs.common.config import get_settings
 from services.sessions_service.models import Session, SessionLocation
-from services.attendance_service.models import SessionAttendance
+from services.attendance_service.models import AttendanceRecord
 
 settings = get_settings()
 DATABASE_URL = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")

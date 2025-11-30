@@ -25,6 +25,7 @@ class SessionTemplate(Base):
     description = Column(String, nullable=True)
     location = Column(String, nullable=False)
     pool_fee = Column(Integer, nullable=False, default=0)
+    ride_share_fee = Column(Integer, nullable=False, default=0)
     capacity = Column(Integer, nullable=False, default=20)
     
     # Recurrence pattern
