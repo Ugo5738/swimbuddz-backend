@@ -10,6 +10,7 @@ env:
   DOCKER_REGISTRY: docker.io
   DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
   DEPLOY_PATH: /opt/swimbuddz-backend
+  REPO_URL: ${{ secrets.REPO_URL }}  # e.g., git@github.com:Ugo5738/swimbuddz-backend.git
 
 jobs:
   # ------------------------------------------------------------------
@@ -135,8 +136,19 @@ jobs:
         username: ${{ secrets.DO_USERNAME }}
         key: ${{ secrets.DO_SSH_KEY }}
         script: |
-          # Navigate to project directory
-          cd ${{ env.DEPLOY_PATH }} || exit 1
+          set -euo pipefail
+
+          # Ensure project directory exists
+          mkdir -p "${{ env.DEPLOY_PATH }}"
+          cd "${{ env.DEPLOY_PATH }}"
+
+          # Clone repo if missing, otherwise fetch/reset to main
+          if [ ! -d .git ]; then
+            git clone "${{ env.REPO_URL }}" .
+          else
+            git fetch origin
+            git reset --hard origin/main
+          fi
           
           # Decode .env.prod file
           echo "${{ secrets.ENV_FILE_PROD_BASE64 }}" | base64 -d > .env.prod
