@@ -36,5 +36,11 @@ dev = [
 [tool.setuptools.packages.find]
 include = ["libs*", "services*", "mcp*", "alembic*"]
 
+[tool.ruff]
+extend-exclude = [
+    "alembic/versions",
+    "services/*/alembic/versions",
+]
+
 [tool.ruff.lint]
 ignore = ["E402"]
