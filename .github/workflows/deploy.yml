@@ -9,7 +9,7 @@ on:
 env:
   DOCKER_REGISTRY: docker.io
   DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-  DEPLOY_PATH: /opt/swimbuddz-backend
+  DEPLOY_PATH: /home/deploy/swimbuddz-backend
   REPO_URL: ${{ secrets.REPO_URL }}  # e.g., git@github.com:Ugo5738/swimbuddz-backend.git
 
 jobs:
@@ -137,6 +137,11 @@ jobs:
         key: ${{ secrets.DO_SSH_KEY }}
         script: |
           set -euo pipefail
+
+          if [ -z "${{ env.REPO_URL }}" ]; then
+            echo "REPO_URL is not set. Add it as a secret." >&2
+            exit 1
+          fi
 
           # Ensure project directory exists
           mkdir -p "${{ env.DEPLOY_PATH }}"
