@@ -9,7 +9,11 @@ app = FastAPI(title="SwimBuddz Media Service")
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure properly in production
+    allow_origins=[
+        "http://localhost:3000",
+        "https://swimbuddz.com",
+        "https://www.swimbuddz.com",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
