@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -46,7 +46,7 @@ class Settings(BaseSettings):
 
     @field_validator("DATABASE_URL")
     @classmethod
-    def assemble_db_connection(cls, v: str | None) -> str:
+    def assemble_db_connection(cls, v: Optional[str]) -> str:
         if isinstance(v, str):
             if v.startswith("postgresql://"):
                 return v.replace("postgresql://", "postgresql+psycopg://", 1)

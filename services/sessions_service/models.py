@@ -32,7 +32,7 @@ class Session(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     # Reference to event, but no FK constraint since events table is in different service
-    event_id: Mapped[uuid.UUID | None] = mapped_column(
+    event_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
         index=True,

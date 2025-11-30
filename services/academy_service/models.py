@@ -131,7 +131,7 @@ class Enrollment(Base):
         UUID(as_uuid=True), ForeignKey("cohorts.id"), nullable=False
     )
     member_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("members.id"), nullable=False, index=True
+        UUID(as_uuid=True), nullable=False, index=True
     )  # Reference to Member in members_service
 
     status: Mapped[EnrollmentStatus] = mapped_column(
