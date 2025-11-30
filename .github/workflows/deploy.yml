@@ -72,9 +72,6 @@ jobs:
             dockerfile: ./services/gateway_service/Dockerfile
             image: swimbuddz-gateway-service
           - context: .
-            dockerfile: ./services/identity_service/Dockerfile
-            image: swimbuddz-identity-service
-          - context: .
             dockerfile: ./services/media_service/Dockerfile
             image: swimbuddz-media-service
           - context: .
