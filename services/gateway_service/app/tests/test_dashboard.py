@@ -24,7 +24,7 @@ async def test_get_member_dashboard(client: AsyncClient, db_session: AsyncSessio
     # 1. Setup Data
     from services.members_service.models import Member
     from services.sessions_service.models import Session, SessionLocation
-    from services.attendance_service.models import SessionAttendance, PaymentStatus
+    from services.attendance_service.models import AttendanceRecord
     from services.communications_service.models import Announcement, AnnouncementCategory
 
     # Create Member
@@ -53,11 +53,12 @@ async def test_get_member_dashboard(client: AsyncClient, db_session: AsyncSessio
     await db_session.flush() # Flush session and member first
 
     # Create Attendance
-    attendance = SessionAttendance(
+    attendance = AttendanceRecord(
         session_id=session.id,
         member_id=member.id,
-        payment_status=PaymentStatus.PAID,
-        total_fee=500
+        status="PRESENT",
+        role="SWIMMER",
+        notes="Ready"
     )
     db_session.add(attendance)
 

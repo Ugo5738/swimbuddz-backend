@@ -2,13 +2,20 @@ import uuid
 from datetime import datetime
 import random
 import string
+import enum
 
 from sqlalchemy import String, Float, DateTime, Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from libs.db.base import Base
-from services.attendance_service.models import PaymentStatus
+
+
+class PaymentStatus(str, enum.Enum):
+    PENDING = "pending"
+    PAID = "paid"
+    WAIVED = "waived"
+    FAILED = "failed"
 
 
 class Payment(Base):
@@ -20,7 +27,7 @@ class Payment(Base):
     reference: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[PaymentStatus] = mapped_column(
-        SAEnum(PaymentStatus, name="payment_status_enum", create_type=False), # Reuse existing enum type
+        SAEnum(PaymentStatus, name="payment_status_enum"),
         default=PaymentStatus.PENDING,
         nullable=False
     )

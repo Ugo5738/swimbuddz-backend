@@ -152,65 +152,65 @@ async def complete_pending_registration(
         phone=profile_data.get("phone"),
         city=profile_data.get("city"),
         country=profile_data.get("country"),
-        time_zone=profile_data.get("timeZone"),
+        time_zone=profile_data.get("time_zone"),
 
         # Swim Profile
-        swim_level=profile_data.get("swimLevel"),
-        deep_water_comfort=profile_data.get("deepWaterComfort"),
+        swim_level=profile_data.get("swim_level"),
+        deep_water_comfort=profile_data.get("deep_water_comfort"),
         strokes=profile_data.get("strokes"),
         interests=profile_data.get("interests"),
-        goals_narrative=profile_data.get("goalsNarrative"),
-        goals_other=profile_data.get("goalsOther"),
+        goals_narrative=profile_data.get("goals_narrative"),
+        goals_other=profile_data.get("goals_other"),
 
         # Coaching
         certifications=profile_data.get("certifications"),
-        coaching_experience=profile_data.get("coachingExperience"),
-        coaching_specialties=profile_data.get("coachingSpecialties"),
-        coaching_years=profile_data.get("coachingYears"),
-        coaching_portfolio_link=profile_data.get("coachingPortfolioLink"),
-        coaching_document_link=profile_data.get("coachingDocumentLink"),
-        coaching_document_file_name=profile_data.get("coachingDocumentFileName"),
+        coaching_experience=profile_data.get("coaching_experience"),
+        coaching_specialties=profile_data.get("coaching_specialties"),
+        coaching_years=profile_data.get("coaching_years"),
+        coaching_portfolio_link=profile_data.get("coaching_portfolio_link"),
+        coaching_document_link=profile_data.get("coaching_document_link"),
+        coaching_document_file_name=profile_data.get("coaching_document_file_name"),
 
         # Logistics
-        availability_slots=profile_data.get("availabilitySlots"),
-        time_of_day_availability=profile_data.get("timeOfDayAvailability"),
-        location_preference=profile_data.get("locationPreference"),
-        location_preference_other=profile_data.get("locationPreferenceOther"),
-        travel_flexibility=profile_data.get("travelFlexibility"),
-        facility_access=profile_data.get("facilityAccess"),
-        facility_access_other=profile_data.get("facilityAccessOther"),
-        equipment_needs=profile_data.get("equipmentNeeds"),
-        equipment_needs_other=profile_data.get("equipmentNeedsOther"),
-        travel_notes=profile_data.get("travelNotes"),
+        availability_slots=profile_data.get("availability_slots"),
+        time_of_day_availability=profile_data.get("time_of_day_availability"),
+        location_preference=profile_data.get("location_preference"),
+        location_preference_other=profile_data.get("location_preference_other"),
+        travel_flexibility=profile_data.get("travel_flexibility"),
+        facility_access=profile_data.get("facility_access"),
+        facility_access_other=profile_data.get("facility_access_other"),
+        equipment_needs=profile_data.get("equipment_needs"),
+        equipment_needs_other=profile_data.get("equipment_needs_other"),
+        travel_notes=profile_data.get("travel_notes"),
 
         # Safety
-        emergency_contact_name=profile_data.get("emergencyContactName"),
-        emergency_contact_relationship=profile_data.get("emergencyContactRelationship"),
-        emergency_contact_phone=profile_data.get("emergencyContactPhone"),
-        emergency_contact_region=profile_data.get("emergencyContactRegion"),
-        medical_info=profile_data.get("medicalInfo"),
-        safety_notes=profile_data.get("safetyNotes"),
+        emergency_contact_name=profile_data.get("emergency_contact_name"),
+        emergency_contact_relationship=profile_data.get("emergency_contact_relationship"),
+        emergency_contact_phone=profile_data.get("emergency_contact_phone"),
+        emergency_contact_region=profile_data.get("emergency_contact_region"),
+        medical_info=profile_data.get("medical_info"),
+        safety_notes=profile_data.get("safety_notes"),
 
         # Community
-        volunteer_interest=profile_data.get("volunteerInterest"),
-        volunteer_roles_detail=profile_data.get("volunteerRolesDetail"),
-        discovery_source=profile_data.get("discoverySource"),
-        social_instagram=profile_data.get("socialInstagram"),
-        social_linkedin=profile_data.get("socialLinkedIn"),
-        social_other=profile_data.get("socialOther"),
+        volunteer_interest=profile_data.get("volunteer_interest"),
+        volunteer_roles_detail=profile_data.get("volunteer_roles_detail"),
+        discovery_source=profile_data.get("discovery_source"),
+        social_instagram=profile_data.get("social_instagram"),
+        social_linkedin=profile_data.get("social_linkedin"),
+        social_other=profile_data.get("social_other"),
 
         # Preferences
-        language_preference=profile_data.get("languagePreference"),
-        comms_preference=profile_data.get("commsPreference"),
-        payment_readiness=profile_data.get("paymentReadiness"),
-        currency_preference=profile_data.get("currencyPreference"),
-        consent_photo=profile_data.get("consentPhoto"),
+        language_preference=profile_data.get("language_preference"),
+        comms_preference=profile_data.get("comms_preference"),
+        payment_readiness=profile_data.get("payment_readiness"),
+        currency_preference=profile_data.get("currency_preference"),
+        consent_photo=profile_data.get("consent_photo"),
 
         # Membership
-        membership_tiers=profile_data.get("membershipTiers"),
-        academy_focus_areas=profile_data.get("academyFocusAreas"),
-        academy_focus=profile_data.get("academyFocus"),
-        payment_notes=profile_data.get("paymentNotes"),
+        membership_tiers=profile_data.get("membership_tiers"),
+        academy_focus_areas=profile_data.get("academy_focus_areas"),
+        academy_focus=profile_data.get("academy_focus"),
+        payment_notes=profile_data.get("payment_notes"),
         
         # ===== NEW TIER-BASED FIELDS =====
         # Tier Management
@@ -368,6 +368,36 @@ async def get_member_stats(
         "total_members": total_members,
         "active_members": active_members
     }
+
+
+
+@router.patch("/me", response_model=MemberResponse)
+async def update_current_member(
+    member_in: MemberUpdate,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Update the currently authenticated member's profile.
+    """
+    query = select(Member).where(Member.auth_id == current_user.user_id)
+    result = await db.execute(query)
+    member = result.scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member profile not found",
+        )
+
+    update_data = member_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(member, field, value)
+
+    db.add(member)
+    await db.commit()
+    await db.refresh(member)
+    return member
 
 
 @router.patch("/{member_id}", response_model=MemberResponse)

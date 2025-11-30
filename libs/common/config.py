@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     ACADEMY_SERVICE_URL: str = "http://academy-service:8006"
     MEDIA_SERVICE_URL: str = "http://media-service:8008"
     EVENTS_SERVICE_URL: str = "http://events-service:8007"
+    TRANSPORT_SERVICE_URL: str = "http://transport-service:8009"
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"

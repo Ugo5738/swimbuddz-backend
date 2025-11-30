@@ -5,7 +5,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from libs.db.base import Base
-from services.attendance_service.models import PickupLocation, RideArea, RouteInfo, SessionAttendance
+from services.transport_service.models import PickupLocation, RideArea, RouteInfo
+from services.attendance_service.models import AttendanceRecord
 from services.members_service.models import Member
 from services.sessions_service.models import Session
 from libs.common.config import get_settings

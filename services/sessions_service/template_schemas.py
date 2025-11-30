@@ -10,6 +10,7 @@ class SessionTemplateBase(BaseModel):
     description: Optional[str] = None
     location: str
     pool_fee: int = 0
+    ride_share_fee: int = 0
     capacity: int = 20
     day_of_week: int = Field(..., ge=0, le=6, description="0=Monday, 6=Sunday")
     start_time: time
@@ -26,6 +27,7 @@ class SessionTemplateUpdate(BaseModel):
     description: Optional[str] = None
     location: Optional[str] = None
     pool_fee: Optional[int] = None
+    ride_share_fee: Optional[int] = None
     capacity: Optional[int] = None
     day_of_week: Optional[int] = Field(None, ge=0, le=6)
     start_time: Optional[time] = None

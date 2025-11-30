@@ -2,22 +2,11 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Integer, DateTime, ForeignKey, Boolean
+from sqlalchemy import String, Integer, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from libs.db.base import Base
-
-
-class Member(Base):
-    """Reference to Member from members_service for foreign keys."""
-    __tablename__ = "members"
-    __table_args__ = {'extend_existing': True}
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    # We only need minimal fields for Events service
 
 
 class Event(Base):

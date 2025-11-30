@@ -145,6 +145,14 @@ def create_app() -> FastAPI:
         return await proxy_request(clients.media_client, f"/media/{path}", request)
 
     # ==================================================================
+    # TRANSPORT SERVICE PROXY
+    # ==================================================================
+    @app.api_route("/api/v1/transport/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+    async def proxy_transport(path: str, request: Request):
+        """Proxy all /api/v1/transport/* requests to transport service."""
+        return await proxy_request(clients.transport_client, f"/transport/{path}", request)
+
+    # ==================================================================
     # EVENTS SERVICE PROXY
     # ==================================================================
     @app.api_route("/api/v1/events/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])

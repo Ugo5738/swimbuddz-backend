@@ -3,33 +3,31 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
-
-from services.attendance_service.models import PaymentStatus, RideShareOption
-
+from services.transport_service.models import RideShareOption
 
 class AttendanceBase(BaseModel):
+    status: str = "PRESENT"
+    role: str = "SWIMMER"
+    notes: Optional[str] = None
     ride_share_option: RideShareOption = RideShareOption.NONE
     needs_ride: bool = False
     can_offer_ride: bool = False
-    ride_notes: Optional[str] = None
     pickup_location: Optional[str] = None
 
 
 class AttendanceCreate(AttendanceBase):
-    pass
+    status: str = "PRESENT"
+    role: str = "SWIMMER"
 
 
 class PublicAttendanceCreate(AttendanceBase):
     member_id: uuid.UUID
-    payment_status: PaymentStatus = PaymentStatus.PENDING
 
 
 class AttendanceResponse(AttendanceBase):
     id: uuid.UUID
     session_id: uuid.UUID
     member_id: uuid.UUID
-    payment_status: PaymentStatus
-    total_fee: float
     created_at: datetime
     updated_at: datetime
     

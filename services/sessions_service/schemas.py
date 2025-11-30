@@ -12,6 +12,7 @@ class SessionBase(BaseModel):
     description: Optional[str] = None
     location: SessionLocation
     pool_fee: float = 0.0
+    ride_share_fee: float = 0.0
     capacity: int = 20
     start_time: datetime
     end_time: datetime
@@ -26,6 +27,7 @@ class SessionUpdate(BaseModel):
     description: Optional[str] = None
     location: Optional[SessionLocation] = None
     pool_fee: Optional[float] = None
+    ride_share_fee: Optional[float] = None
     capacity: Optional[int] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None

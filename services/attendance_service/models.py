@@ -1,61 +1,59 @@
+import enum
 import uuid
 from datetime import datetime
-import enum
 
-from sqlalchemy import String, Float, Integer, DateTime, Enum as SAEnum, ForeignKey, UniqueConstraint
+from libs.db.base import Base
+from sqlalchemy import DateTime
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from libs.db.base import Base
+
+class AttendanceStatus(str, enum.Enum):
+    PRESENT = "PRESENT"
+    ABSENT = "ABSENT"
+    LATE = "LATE"
+    EXCUSED = "EXCUSED"
+    CANCELLED = "CANCELLED"
 
 
-class PaymentStatus(str, enum.Enum):
-    PENDING = "pending"
-    PAID = "paid"
-    WAIVED = "waived"
-    FAILED = "failed"
+class AttendanceRole(str, enum.Enum):
+    SWIMMER = "SWIMMER"
+    COACH = "COACH"
+    VOLUNTEER = "VOLUNTEER"
+    GUEST = "GUEST"
 
 
-class RideShareOption(str, enum.Enum):
-    NONE = "none"
-    LEAD = "lead"
-    JOIN = "join"
-
-
-class SessionAttendance(Base):
-    __tablename__ = "session_attendance"
+class AttendanceRecord(Base):
+    __tablename__ = "attendance_records"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    
+
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False, index=True
     )
     member_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("members.id"), nullable=False, index=True
     )
-    
-    # Ride share info
-    ride_share_option: Mapped[RideShareOption] = mapped_column(
-        SAEnum(RideShareOption, name="ride_share_option_enum"),
-        default=RideShareOption.NONE,
-        nullable=False
+
+    # Attendance status/details (simplified; ride-share and payment move to dedicated services)
+    status: Mapped[AttendanceStatus] = mapped_column(
+        SAEnum(AttendanceStatus, name="attendance_status_enum"),
+        default=AttendanceStatus.PRESENT,
     )
-    needs_ride: Mapped[bool] = mapped_column(default=False)
-    can_offer_ride: Mapped[bool] = mapped_column(default=False)
-    ride_notes: Mapped[str] = mapped_column(String, nullable=True)
-    pickup_location: Mapped[str] = mapped_column(String, nullable=True)
-    
-    # Payment info
-    payment_status: Mapped[PaymentStatus] = mapped_column(
-        SAEnum(PaymentStatus, name="payment_status_enum"), 
-        default=PaymentStatus.PENDING,
-        nullable=False
+    role: Mapped[AttendanceRole] = mapped_column(
+        SAEnum(AttendanceRole, name="attendance_role_enum"),
+        default=AttendanceRole.SWIMMER,
     )
-    total_fee: Mapped[float] = mapped_column(Float, default=0.0)
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    notes: Mapped[str] = mapped_column(String, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
@@ -65,83 +63,10 @@ class SessionAttendance(Base):
     # member = relationship("Member")
 
     __table_args__ = (
-        UniqueConstraint("session_id", "member_id", name="uq_session_member_attendance"),
+        UniqueConstraint(
+            "session_id", "member_id", name="uq_session_member_attendance"
+        ),
     )
 
     def __repr__(self):
-        return f"<Attendance Session={self.session_id} Member={self.member_id}>"
-
-
-class RideArea(Base):
-    __tablename__ = "ride_areas"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    name: Mapped[str] = mapped_column(String, nullable=False, unique=True) # e.g. "Agor"
-    slug: Mapped[str] = mapped_column(String, nullable=False, unique=True)
-    is_active: Mapped[bool] = mapped_column(default=True)
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
-    )
-
-    def __repr__(self):
-        return f"<RideArea {self.name}>"
-
-
-class PickupLocation(Base):
-    __tablename__ = "pickup_locations"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    name: Mapped[str] = mapped_column(String, nullable=False)
-    description: Mapped[str] = mapped_column(String, nullable=True) # e.g. "Apple Junction"
-    
-    area_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("ride_areas.id"), nullable=False
-    )
-    
-    is_active: Mapped[bool] = mapped_column(default=True)
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
-    )
-
-    def __repr__(self):
-        return f"<PickupLocation {self.name}>"
-
-
-class RouteInfo(Base):
-    __tablename__ = "route_info"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    
-    origin_area_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("ride_areas.id"), nullable=True
-    )
-    
-    origin_pickup_location_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("pickup_locations.id"), nullable=True
-    )
-    
-    # Destination (matches SessionLocation enum values or custom)
-    destination: Mapped[str] = mapped_column(String, nullable=False) 
-    destination_name: Mapped[str] = mapped_column(String, nullable=False) # e.g. "Rowe Park, Yaba"
-    
-    distance_text: Mapped[str] = mapped_column(String, nullable=False) # e.g. "13.7 km"
-    duration_text: Mapped[str] = mapped_column(String, nullable=False) # e.g. "44 mins"
-    departure_offset_minutes: Mapped[int] = mapped_column(Integer, default=120) # e.g. 120
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
-    )
-
-    def __repr__(self):
-        return f"<RouteInfo Area={self.origin_area_id} Loc={self.origin_pickup_location_id} -> {self.destination}>"
+        return f"<AttendanceRecord Session={self.session_id} Member={self.member_id}>"

@@ -1,12 +1,13 @@
+import enum
 import uuid
 from datetime import datetime
-import enum
-
-from sqlalchemy import String, Integer, DateTime, Enum as SAEnum, Text, ForeignKey, JSON, Boolean
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from libs.db.base import Base
+from sqlalchemy import JSON, Boolean, DateTime
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
 class ProgramLevel(str, enum.Enum):
@@ -45,18 +46,14 @@ class ProgressStatus(str, enum.Enum):
 
 class Member(Base):
     __tablename__ = "members"
-    __table_args__ = {'extend_existing': True}
+    __table_args__ = {"extend_existing": True}
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    auth_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    first_name: Mapped[str] = mapped_column(String, nullable=True)
-    last_name: Mapped[str] = mapped_column(String, nullable=True)
-    
-    # We only need minimal fields for Academy service
 
+    def __repr__(self) -> str:
+        return f"<Member {self.id}>"
 
 
 class Program(Base):
@@ -72,8 +69,10 @@ class Program(Base):
     )
     duration_weeks: Mapped[int] = mapped_column(Integer, nullable=False)
     curriculum_json: Mapped[dict] = mapped_column(JSON, nullable=True)
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
@@ -96,16 +95,20 @@ class Cohort(Base):
         UUID(as_uuid=True), ForeignKey("programs.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String, nullable=False)  # e.g. "Jan 2026"
-    
-    start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    start_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    
+
     capacity: Mapped[int] = mapped_column(Integer, default=10)
     status: Mapped[CohortStatus] = mapped_column(
         SAEnum(CohortStatus, name="cohort_status_enum"), default=CohortStatus.OPEN
     )
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
@@ -130,15 +133,19 @@ class Enrollment(Base):
     member_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("members.id"), nullable=False, index=True
     )  # Reference to Member in members_service
-    
+
     status: Mapped[EnrollmentStatus] = mapped_column(
-        SAEnum(EnrollmentStatus, name="enrollment_status_enum"), default=EnrollmentStatus.ENROLLED
+        SAEnum(EnrollmentStatus, name="enrollment_status_enum"),
+        default=EnrollmentStatus.ENROLLED,
     )
     payment_status: Mapped[PaymentStatus] = mapped_column(
-        SAEnum(PaymentStatus, name="payment_status_enum"), default=PaymentStatus.PENDING
+        SAEnum(PaymentStatus, name="academy_payment_status_enum"),
+        default=PaymentStatus.PENDING,
     )
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
@@ -164,8 +171,10 @@ class Milestone(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     criteria: Mapped[str] = mapped_column(Text, nullable=True)
     video_url: Mapped[str] = mapped_column(String, nullable=True)
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
@@ -189,14 +198,19 @@ class StudentProgress(Base):
     milestone_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("milestones.id"), nullable=False
     )
-    
+
     status: Mapped[ProgressStatus] = mapped_column(
-        SAEnum(ProgressStatus, name="progress_status_enum"), default=ProgressStatus.PENDING
+        SAEnum(ProgressStatus, name="progress_status_enum"),
+        default=ProgressStatus.PENDING,
     )
-    achieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    achieved_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     coach_notes: Mapped[str] = mapped_column(Text, nullable=True)
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
