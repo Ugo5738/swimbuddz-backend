@@ -9,7 +9,7 @@ on:
 env:
   DOCKER_REGISTRY: docker.io
   DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-  DEPLOY_PATH: ~/swimbuddz
+  DEPLOY_PATH: /opt/swimbuddz-backend
 
 jobs:
   # ------------------------------------------------------------------
