@@ -16,6 +16,10 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str
+    DB_POOL_SIZE: int = 3
+    DB_MAX_OVERFLOW: int = 0
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800
 
     # Supabase
     # Default placeholder values keep local/test runs from failing when Supabase

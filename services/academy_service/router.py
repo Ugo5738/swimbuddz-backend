@@ -2,7 +2,7 @@ import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user, require_admin
@@ -17,7 +17,6 @@ from services.academy_service.models import (
     EnrollmentStatus,
     PaymentStatus,
     CohortStatus,
-    Member,
 )
 from services.academy_service.schemas import (
     ProgramCreate,
@@ -324,10 +323,12 @@ async def self_enroll(
             status_code=422, detail="cohort_id is required in request body"
         )
 
-    # 1. Get Member ID
-    query = select(Member).where(Member.auth_id == current_user.user_id)
-    result = await db.execute(query)
-    member = result.scalar_one_or_none()
+    # 1. Get Member ID (via direct lookup; no ORM relationship to keep services decoupled)
+    member_row = await db.execute(
+        text("SELECT id, first_name, last_name, email FROM members WHERE auth_id = :auth_id"),
+        {"auth_id": current_user.user_id},
+    )
+    member = member_row.mappings().first()
 
     if not member:
         raise HTTPException(
@@ -350,7 +351,7 @@ async def self_enroll(
 
     # 3. Check Existing Enrollment
     query = select(Enrollment).where(
-        Enrollment.cohort_id == cohort_id, Enrollment.member_id == member.id
+        Enrollment.cohort_id == cohort_id, Enrollment.member_id == member["id"]
     )
     result = await db.execute(query)
     existing = result.scalar_one_or_none()
@@ -363,7 +364,7 @@ async def self_enroll(
     # 4. Create Enrollment (Auto-PAID for now as per plan)
     enrollment = Enrollment(
         cohort_id=cohort_id,
-        member_id=member.id,
+        member_id=member["id"],
         status=EnrollmentStatus.ENROLLED,
         payment_status=PaymentStatus.PAID,
     )
