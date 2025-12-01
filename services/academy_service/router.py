@@ -29,7 +29,6 @@ from services.academy_service.schemas import (
     EnrollmentCreate,
     EnrollmentResponse,
     EnrollmentUpdate,
-    EnrollmentWithStudent,
     MilestoneCreate,
     MilestoneResponse,
     StudentProgressResponse,
@@ -215,21 +214,21 @@ async def get_cohort(
     return cohort
 
 
-@router.get("/cohorts/{cohort_id}/students", response_model=List[EnrollmentWithStudent])
+@router.get("/cohorts/{cohort_id}/students", response_model=List[EnrollmentResponse])
 async def list_cohort_students(
     cohort_id: uuid.UUID,
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all students enrolled in a cohort with their progress."""
-    # Eager load member and progress_records
+    # Eager load progress records; member data is resolved by ID externally
     from sqlalchemy.orm import selectinload
 
     query = (
         select(Enrollment)
         .where(Enrollment.cohort_id == cohort_id)
         .options(
-            selectinload(Enrollment.member), selectinload(Enrollment.progress_records)
+            selectinload(Enrollment.progress_records)
         )
     )
     result = await db.execute(query)
