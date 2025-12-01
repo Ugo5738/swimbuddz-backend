@@ -106,18 +106,6 @@ class CohortResponse(CohortBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-# --- Member Schemas ---
-
-
-class MemberBasicInfo(BaseModel):
-    id: UUID
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: str
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 # --- Enrollment Schemas ---
 
 
@@ -149,11 +137,6 @@ class EnrollmentResponse(EnrollmentBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class EnrollmentWithStudent(EnrollmentResponse):
-    member: MemberBasicInfo
-    progress_records: List["StudentProgressResponse"] = []
-
-
 # --- Student Progress Schemas ---
 
 
@@ -180,4 +163,4 @@ class StudentProgressResponse(StudentProgressBase):
 
 
 # Resolve forward reference
-EnrollmentWithStudent.model_rebuild()
+StudentProgressResponse.model_rebuild()
