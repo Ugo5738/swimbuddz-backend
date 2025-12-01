@@ -3,11 +3,12 @@ import uuid
 from datetime import datetime
 
 from libs.db.base import Base
+from services.members_service.models import Member  # reuse members table definition
 from sqlalchemy import JSON, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, foreign
 
 
 class ProgramLevel(str, enum.Enum):
@@ -42,18 +43,6 @@ class PaymentStatus(str, enum.Enum):
 class ProgressStatus(str, enum.Enum):
     PENDING = "pending"
     ACHIEVED = "achieved"
-
-
-class Member(Base):
-    __tablename__ = "members"
-    __table_args__ = {"extend_existing": True}
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-
-    def __repr__(self) -> str:
-        return f"<Member {self.id}>"
 
 
 class Program(Base):
@@ -152,7 +141,12 @@ class Enrollment(Base):
 
     # Relationships
     cohort = relationship("Cohort", back_populates="enrollments")
-    member = relationship("Member")
+    # Explicit primaryjoin so it works without a DB-level foreign key (member_id references members service table)
+    member = relationship(
+        "Member",
+        primaryjoin=lambda: Enrollment.member_id == foreign(Member.id),
+        viewonly=True,
+    )
     progress_records = relationship("StudentProgress", back_populates="enrollment")
 
     def __repr__(self):
