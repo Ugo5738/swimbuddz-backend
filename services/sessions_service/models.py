@@ -12,17 +12,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 
 class SessionLocation(str, enum.Enum):
-    MAIN_POOL = "main_pool"
-    DIVING_POOL = "diving_pool"
-    KIDS_POOL = "kids_pool"
+    SUNFIT_POOL = "sunfit_pool"
+    ROWE_PARK_POOL = "rowe_park_pool"
+    FEDERAL_PALACE_POOL = "federal_palace_pool"
     OPEN_WATER = "open_water"
 
 
 class SessionType(str, enum.Enum):
-    CLUB_SESSION = "CLUB_SESSION"
-    ACADEMY_CLASS = "ACADEMY_CLASS"
-    MEETUP = "MEETUP"
-    SPECIAL_EVENT = "SPECIAL_EVENT"
+    CLUB = "club"
+    ACADEMY = "academy"
+    COMMUNITY = "community"
 
 
 class Session(Base):
@@ -42,7 +41,7 @@ class Session(Base):
     type: Mapped[SessionType] = mapped_column(
         SAEnum(SessionType, name="session_type_enum"),
         nullable=False,
-        default=SessionType.CLUB_SESSION,
+        default=SessionType.CLUB,
     )
     location: Mapped[SessionLocation] = mapped_column(
         SAEnum(SessionLocation, name="session_location_enum"), nullable=False

@@ -194,7 +194,9 @@ def create_app() -> FastAPI:
     )
     async def proxy_media(path: str, request: Request):
         """Proxy all /api/v1/media/* requests to media service."""
-        return await proxy_request(clients.media_client, f"/media/{path}", request)
+        return await proxy_request(
+            clients.media_client, f"/api/v1/media/{path}", request
+        )
 
     # ==================================================================
     # TRANSPORT SERVICE PROXY

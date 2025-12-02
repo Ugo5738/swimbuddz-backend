@@ -1,6 +1,7 @@
 from typing import List
 import uuid
 from datetime import datetime, timedelta
+import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, and_
@@ -14,7 +15,7 @@ from services.sessions_service.template_schemas import (
     SessionTemplateUpdate,
     GenerateSessionsRequest,
 )
-from services.sessions_service.models import Session, SessionLocation
+from services.sessions_service.models import Session, SessionLocation, SessionType
 
 router = APIRouter(prefix="/sessions/templates", tags=["session-templates"])
 
@@ -178,6 +179,7 @@ async def generate_sessions(
             title=template.title,
             description=template.description,
             location=SessionLocation(template.location),
+            type=SessionType(template.type),
             pool_fee=template.pool_fee,
             capacity=template.capacity,
             start_time=start_datetime,
@@ -186,6 +188,23 @@ async def generate_sessions(
             is_recurring_instance=True,
         )
         db.add(session)
+        await db.flush()  # Flush to get session ID
+        
+        # If template has ride share config, attach it to the session
+        if template.ride_share_config:
+            try:
+                from libs.common.config import get_settings
+                settings = get_settings()
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"{settings.TRANSPORT_SERVICE_URL}/transport/sessions/{session.id}/ride-configs",
+                        json=template.ride_share_config,
+                        timeout=5.0
+                    )
+            except Exception as e:
+                # Log error but don't fail session creation
+                print(f"Warning: Failed to attach ride config to session {session.id}: {e}")
+        
         created_sessions.append(
             {
                 "date": session_date.isoformat(),

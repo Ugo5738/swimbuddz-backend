@@ -1,14 +1,16 @@
 from datetime import datetime, time
-from typing import Optional
+from typing import Optional, List, Dict
 import uuid
 
 from pydantic import BaseModel, Field
+from services.sessions_service.models import SessionType
 
 
 class SessionTemplateBase(BaseModel):
     title: str
     description: Optional[str] = None
     location: str
+    type: SessionType = SessionType.COMMUNITY
     pool_fee: int = 0
     ride_share_fee: int = 0
     capacity: int = 20
@@ -16,6 +18,7 @@ class SessionTemplateBase(BaseModel):
     start_time: time
     duration_minutes: int
     auto_generate: bool = False
+    ride_share_config: Optional[List[Dict]] = None
 
 
 class SessionTemplateCreate(SessionTemplateBase):
@@ -34,6 +37,7 @@ class SessionTemplateUpdate(BaseModel):
     duration_minutes: Optional[int] = None
     auto_generate: Optional[bool] = None
     is_active: Optional[bool] = None
+    ride_share_config: Optional[List[Dict]] = None
 
 
 class SessionTemplateResponse(SessionTemplateBase):

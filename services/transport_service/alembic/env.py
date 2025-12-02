@@ -22,8 +22,10 @@ from services.transport_service.models import (
     RideArea,
     PickupLocation,
     RouteInfo,
-    RidePreference,
+    SessionRideConfig,
+    RideBooking,
 )  # noqa: F401
+
 from sqlalchemy import Table, Column
 from sqlalchemy.dialects.postgresql import UUID
 

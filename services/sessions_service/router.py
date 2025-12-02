@@ -1,34 +1,39 @@
-from typing import List
 import uuid
 from datetime import datetime
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.sessions_service.models import Session
 from services.sessions_service.schemas import (
-    SessionResponse,
     SessionCreate,
+    SessionResponse,
     SessionUpdate,
 )
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 @router.get("/", response_model=List[SessionResponse])
 async def list_sessions(
+    types: Optional[str] = None,
     db: AsyncSession = Depends(get_async_db),
-    # Optional: Add filtering/pagination
 ):
     """
-    List all upcoming sessions.
+    List all upcoming sessions. Optional `types` filter is a comma-separated list
+    of SessionType values (e.g., "club,community").
     """
-    # For MVP, just return all, maybe sort by start_time
     query = select(Session).order_by(Session.start_time.asc())
+
+    if types:
+        type_values = [t.strip() for t in types.split(",") if t.strip()]
+        if type_values:
+            query = query.where(Session.type.in_(type_values))
+
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -77,10 +82,15 @@ async def create_session(
     """
     Create a new session (Admin only).
     """
-    session = Session(**session_in.model_dump())
+    session_data = session_in.model_dump()
+    # Remove ride_share_areas if present in input, though schema should handle it
+    session_data.pop("ride_share_areas", None)
+
+    session = Session(**session_data)
     db.add(session)
     await db.commit()
     await db.refresh(session)
+    
     return session
 
 

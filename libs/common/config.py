@@ -16,8 +16,8 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str
-    DB_POOL_SIZE: int = 3
-    DB_MAX_OVERFLOW: int = 0
+    DB_POOL_SIZE: int = 10  # Increased from 3 to handle concurrent requests
+    DB_MAX_OVERFLOW: int = 10  # Added overflow capacity for traffic bursts
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 1800
 

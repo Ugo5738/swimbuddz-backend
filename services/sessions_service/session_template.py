@@ -1,10 +1,11 @@
-from sqlalchemy import Column, String, Integer, Boolean, Time, DateTime
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Integer, Boolean, Time, DateTime, Enum as SAEnum
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 import uuid
 import enum
 
 from libs.db.base import Base
+from services.sessions_service.models import SessionType
 
 
 class DayOfWeek(enum.IntEnum):
@@ -24,9 +25,17 @@ class SessionTemplate(Base):
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
     location = Column(String, nullable=False)
+    type = Column(
+        SAEnum(SessionType, name="session_type_enum"),
+        nullable=False,
+        default=SessionType.COMMUNITY,  # default to community-facing session
+    )
     pool_fee = Column(Integer, nullable=False, default=0)
     ride_share_fee = Column(Integer, nullable=False, default=0)
     capacity = Column(Integer, nullable=False, default=20)
+    
+    # Ride Share Configuration (List of ride areas and their settings)
+    ride_share_config = Column(JSONB, nullable=True)
 
     # Recurrence pattern
     day_of_week = Column(Integer, nullable=False)  # 0=Monday, 6=Sunday
