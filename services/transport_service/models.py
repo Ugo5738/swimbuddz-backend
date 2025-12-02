@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Integer, DateTime, ForeignKey, Enum as SAEnum
+from sqlalchemy import String, Integer, DateTime, ForeignKey, Float, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,7 +23,7 @@ class RideArea(Base):
     )
     name: Mapped[str] = mapped_column(
         String, nullable=False, unique=True
-    )  # e.g. "Agor"
+    )
     slug: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     is_active: Mapped[bool] = mapped_column(default=True)
 
@@ -47,7 +47,7 @@ class PickupLocation(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(
         String, nullable=True
-    )  # e.g. "Apple Junction"
+    )
 
     area_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("ride_areas.id"), nullable=False
@@ -104,8 +104,36 @@ class RouteInfo(Base):
         return f"<RouteInfo Area={self.origin_area_id} Loc={self.origin_pickup_location_id} -> {self.destination}>"
 
 
-class RidePreference(Base):
-    __tablename__ = "ride_preferences"
+
+class SessionRideConfig(Base):
+    """Link between a session and a ride area with session-specific configuration."""
+    __tablename__ = "session_ride_configs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), index=True, nullable=False
+    )
+    ride_area_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ride_areas.id", ondelete="CASCADE"), nullable=False
+    )
+    # Session-specific overrides
+    cost: Mapped[float] = mapped_column(Float, default=0.0)
+    capacity: Mapped[int] = mapped_column(Integer, default=4)
+    departure_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class RideBooking(Base):
+    """Member's ride booking for a session."""
+    __tablename__ = "ride_bookings"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -116,15 +144,14 @@ class RidePreference(Base):
     member_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), index=True, nullable=False
     )
-    ride_share_option: Mapped[RideShareOption] = mapped_column(
-        SAEnum(RideShareOption, name="ride_share_option_enum"),
-        default=RideShareOption.NONE,
-        nullable=False,
+    session_ride_config_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("session_ride_configs.id", ondelete="CASCADE"), nullable=False
     )
-    needs_ride: Mapped[bool] = mapped_column(default=False)
-    can_offer_ride: Mapped[bool] = mapped_column(default=False)
-    ride_notes: Mapped[str] = mapped_column(String, nullable=True)
-    pickup_location: Mapped[str] = mapped_column(String, nullable=True)
+    pickup_location_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pickup_locations.id"), nullable=False
+    )
+    assigned_ride_number: Mapped[int] = mapped_column(Integer, default=1)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
     )
@@ -132,5 +159,9 @@ class RidePreference(Base):
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
+    __table_args__ = (
+        UniqueConstraint("session_id", "member_id", name="uq_session_member_booking"),
+    )
+
     def __repr__(self):
-        return f"\u003cRidePreference session={self.session_id} member={self.member_id} option={self.ride_share_option}\u003e"
+        return f"\u003cRideBooking session={self.session_id} member={self.member_id} pickup_location={self.pickup_location_id}\u003e"

@@ -81,7 +81,6 @@ async def sign_in_to_session(
 
     await db.commit()
     await db.refresh(attendance)
-    await _send_ride_preference(session_id, current_member.id, attendance_in)
     return attendance
 
 
@@ -136,7 +135,6 @@ async def public_sign_in_to_session(
 
     await db.commit()
     await db.refresh(attendance)
-    await _send_ride_preference(session_id, attendance_in.member_id, attendance_in)
     return attendance
 
 
@@ -214,26 +212,4 @@ async def get_pool_list_csv(
     return Response(content=csv_content, media_type="text/csv")
 
 
-async def _send_ride_preference(
-    session_id: uuid.UUID, member_id: uuid.UUID, payload: AttendanceCreate
-):
-    """
-    Fire-and-forget call to transport service to upsert ride preferences.
-    """
-    try:
-        json_payload = {
-            "member_id": str(member_id),
-            "ride_share_option": payload.ride_share_option,
-            "needs_ride": payload.needs_ride,
-            "can_offer_ride": payload.can_offer_ride,
-            "ride_notes": payload.notes,
-            "pickup_location": payload.pickup_location,
-        }
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(
-                f"{settings.TRANSPORT_SERVICE_URL}/transport/sessions/{session_id}/rides",
-                json=json_payload,
-            )
-    except Exception:
-        # Do not fail attendance if transport call fails; TODO: add logging
-        pass
+

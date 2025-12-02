@@ -1,15 +1,15 @@
 """initial_migration
 
-Revision ID: bdded7e1c98c
+Revision ID: a934d10c56f7
 Revises: 
-Create Date: 2025-11-30 23:33:31.898871
+Create Date: 2025-12-02 04:13:31.140014
 """
 from alembic import op
 import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'bdded7e1c98c'
+revision = 'a934d10c56f7'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -22,6 +22,7 @@ def upgrade() -> None:
     sa.Column('title', sa.String(), nullable=False),
     sa.Column('description', sa.String(), nullable=True),
     sa.Column('location', sa.String(), nullable=False),
+    sa.Column('type', sa.Enum('CLUB', 'ACADEMY', 'COMMUNITY', name='session_type_enum'), nullable=False),
     sa.Column('pool_fee', sa.Integer(), nullable=False),
     sa.Column('ride_share_fee', sa.Integer(), nullable=False),
     sa.Column('capacity', sa.Integer(), nullable=False),
@@ -39,8 +40,8 @@ def upgrade() -> None:
     sa.Column('event_id', sa.UUID(), nullable=True),
     sa.Column('title', sa.String(), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('type', sa.Enum('CLUB_SESSION', 'ACADEMY_CLASS', 'MEETUP', 'SPECIAL_EVENT', name='session_type_enum'), nullable=False),
-    sa.Column('location', sa.Enum('MAIN_POOL', 'DIVING_POOL', 'KIDS_POOL', 'OPEN_WATER', name='session_location_enum'), nullable=False),
+    sa.Column('type', sa.Enum('CLUB', 'ACADEMY', 'COMMUNITY', name='session_type_enum'), nullable=False),
+    sa.Column('location', sa.Enum('SUNFIT_POOL', 'ROWE_PARK_POOL', 'FEDERAL_PALACE_POOL', 'OPEN_WATER', name='session_location_enum'), nullable=False),
     sa.Column('pool_fee', sa.Float(), nullable=False),
     sa.Column('ride_share_fee', sa.Float(), nullable=False),
     sa.Column('capacity', sa.Integer(), nullable=False),
