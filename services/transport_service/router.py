@@ -1,5 +1,6 @@
 import uuid
-from typing import List, Dict
+from datetime import datetime
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -10,13 +11,10 @@ from services.transport_service.models import (
     RideArea,
     PickupLocation,
     RouteInfo,
-    RideShareOption,
     SessionRideConfig,
     RideBooking,
 )
 from pydantic import BaseModel, ConfigDict
-from typing import Optional, List
-from datetime import datetime
 
 router = APIRouter(prefix="/transport", tags=["transport"])
 

@@ -2,26 +2,20 @@ import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.academy_service.models import (
-    Program,
     Cohort,
-    Enrollment,
-    Milestone,
-    StudentProgress,
-    EnrollmentStatus,
-    PaymentStatus,
     CohortStatus,
+    Enrollment,
+    EnrollmentStatus,
+    Milestone,
+    PaymentStatus,
+    Program,
+    StudentProgress,
 )
 from services.academy_service.schemas import (
-    ProgramCreate,
-    ProgramResponse,
-    ProgramUpdate,
     CohortCreate,
     CohortResponse,
     CohortUpdate,
@@ -30,9 +24,14 @@ from services.academy_service.schemas import (
     EnrollmentUpdate,
     MilestoneCreate,
     MilestoneResponse,
+    ProgramCreate,
+    ProgramResponse,
+    ProgramUpdate,
     StudentProgressResponse,
     StudentProgressUpdate,
 )
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["academy"])
 
@@ -226,9 +225,7 @@ async def list_cohort_students(
     query = (
         select(Enrollment)
         .where(Enrollment.cohort_id == cohort_id)
-        .options(
-            selectinload(Enrollment.progress_records)
-        )
+        .options(selectinload(Enrollment.progress_records))
     )
     result = await db.execute(query)
     return result.scalars().all()
@@ -303,7 +300,7 @@ async def list_enrollments(
 
     query = (
         select(Enrollment)
-        .options(selectinload(Enrollment.cohort), selectinload(Enrollment.member))
+        .options(selectinload(Enrollment.cohort))
         .order_by(Enrollment.created_at.desc())
     )
     result = await db.execute(query)
@@ -325,7 +322,9 @@ async def self_enroll(
 
     # 1. Get Member ID (via direct lookup; no ORM relationship to keep services decoupled)
     member_row = await db.execute(
-        text("SELECT id, first_name, last_name, email FROM members WHERE auth_id = :auth_id"),
+        text(
+            "SELECT id, first_name, last_name, email FROM members WHERE auth_id = :auth_id"
+        ),
         {"auth_id": current_user.user_id},
     )
     member = member_row.mappings().first()
@@ -379,9 +378,11 @@ async def get_my_enrollments(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    query = select(Member).where(Member.auth_id == current_user.user_id)
-    result = await db.execute(query)
-    member = result.scalar_one_or_none()
+    member_row = await db.execute(
+        text("SELECT id FROM members WHERE auth_id = :auth_id"),
+        {"auth_id": current_user.user_id},
+    )
+    member = member_row.mappings().first()
 
     if not member:
         raise HTTPException(status_code=404, detail="Member profile not found")
@@ -391,7 +392,7 @@ async def get_my_enrollments(
 
     query = (
         select(Enrollment)
-        .where(Enrollment.member_id == member.id)
+        .where(Enrollment.member_id == member["id"])
         .options(selectinload(Enrollment.cohort))
     )
     result = await db.execute(query)

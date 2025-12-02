@@ -1,6 +1,5 @@
 import uuid
 from typing import List
-import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy import select
@@ -210,6 +209,5 @@ async def get_pool_list_csv(
         csv_content += f"{member.first_name},{member.last_name},{member.email},{attendance.status},{attendance.role},{attendance.notes or ''}\n"
 
     return Response(content=csv_content, media_type="text/csv")
-
 
 
