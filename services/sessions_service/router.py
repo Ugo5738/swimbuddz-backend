@@ -90,7 +90,7 @@ async def create_session(
     db.add(session)
     await db.commit()
     await db.refresh(session)
-    
+
     return session
 
 

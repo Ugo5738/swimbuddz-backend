@@ -1,21 +1,20 @@
-from typing import List
 import uuid
 from datetime import datetime, timedelta
+from typing import List
+
 import httpx
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, and_
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from libs.db.session import get_async_db
+from services.sessions_service.models import Session, SessionLocation, SessionType
 from services.sessions_service.session_template import SessionTemplate
 from services.sessions_service.template_schemas import (
-    SessionTemplateResponse,
-    SessionTemplateCreate,
-    SessionTemplateUpdate,
     GenerateSessionsRequest,
+    SessionTemplateCreate,
+    SessionTemplateResponse,
+    SessionTemplateUpdate,
 )
-from services.sessions_service.models import Session, SessionLocation, SessionType
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/sessions/templates", tags=["session-templates"])
 
@@ -142,6 +141,7 @@ async def generate_sessions(
 
         # Combine date with template time and localize to configured timezone
         from zoneinfo import ZoneInfo
+
         from libs.common.config import get_settings
 
         settings = get_settings()
@@ -189,22 +189,25 @@ async def generate_sessions(
         )
         db.add(session)
         await db.flush()  # Flush to get session ID
-        
+
         # If template has ride share config, attach it to the session
         if template.ride_share_config:
             try:
                 from libs.common.config import get_settings
+
                 settings = get_settings()
                 async with httpx.AsyncClient() as client:
                     await client.post(
                         f"{settings.TRANSPORT_SERVICE_URL}/transport/sessions/{session.id}/ride-configs",
                         json=template.ride_share_config,
-                        timeout=5.0
+                        timeout=5.0,
                     )
             except Exception as e:
                 # Log error but don't fail session creation
-                print(f"Warning: Failed to attach ride config to session {session.id}: {e}")
-        
+                print(
+                    f"Warning: Failed to attach ride config to session {session.id}: {e}"
+                )
+
         created_sessions.append(
             {
                 "date": session_date.isoformat(),

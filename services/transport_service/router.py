@@ -3,42 +3,47 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from libs.db.session import get_async_db
+from pydantic import BaseModel, ConfigDict
 from services.transport_service.models import (
-    RideArea,
     PickupLocation,
+    RideArea,
+    RideBooking,
     RouteInfo,
     SessionRideConfig,
-    RideBooking,
 )
-from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/transport", tags=["transport"])
 
 
 # RideArea Management Endpoints
 
+
 class RideAreaCreate(BaseModel):
     name: str
     slug: str
+
 
 class RideAreaUpdate(BaseModel):
     name: Optional[str] = None
     slug: Optional[str] = None
     is_active: Optional[bool] = None
 
+
 class PickupLocationBase(BaseModel):
     name: str
     description: Optional[str] = None
 
+
 class PickupLocationCreate(PickupLocationBase):
     pass
 
+
 class PickupLocationUpdate(PickupLocationBase):
     is_active: Optional[bool] = None
+
 
 class PickupLocationResponse(PickupLocationBase):
     id: uuid.UUID
@@ -46,8 +51,9 @@ class PickupLocationResponse(PickupLocationBase):
     is_active: bool
     created_at: datetime
     updated_at: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
+
 
 class RideAreaResponse(BaseModel):
     id: uuid.UUID
@@ -57,8 +63,9 @@ class RideAreaResponse(BaseModel):
     pickup_locations: List[PickupLocationResponse] = []
     created_at: datetime
     updated_at: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
+
 
 class RouteInfoBase(BaseModel):
     origin_area_id: Optional[uuid.UUID] = None
@@ -69,8 +76,10 @@ class RouteInfoBase(BaseModel):
     duration_text: str
     departure_offset_minutes: int = 120
 
+
 class RouteInfoCreate(RouteInfoBase):
     pass
+
 
 class RouteInfoUpdate(BaseModel):
     origin_area_id: Optional[uuid.UUID] = None
@@ -81,12 +90,14 @@ class RouteInfoUpdate(BaseModel):
     duration_text: Optional[str] = None
     departure_offset_minutes: Optional[int] = None
 
+
 class RouteInfoResponse(RouteInfoBase):
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
 
 @router.get("/areas", response_model=List[RideAreaResponse])
 async def list_ride_areas(
@@ -96,28 +107,32 @@ async def list_ride_areas(
     query = select(RideArea).where(RideArea.is_active.is_(True)).order_by(RideArea.name)
     result = await db.execute(query)
     areas = result.scalars().all()
-    
+
     # Fetch pickup locations for each area
     responses = []
     for area in areas:
         locs_query = select(PickupLocation).where(
-            PickupLocation.area_id == area.id,
-            PickupLocation.is_active.is_(True)
+            PickupLocation.area_id == area.id, PickupLocation.is_active.is_(True)
         )
         locs_result = await db.execute(locs_query)
         locations = locs_result.scalars().all()
-        
-        responses.append(RideAreaResponse(
-            id=area.id,
-            name=area.name,
-            slug=area.slug,
-            is_active=area.is_active,
-            pickup_locations=[PickupLocationResponse.model_validate(loc) for loc in locations],
-            created_at=area.created_at,
-            updated_at=area.updated_at
-        ))
-    
+
+        responses.append(
+            RideAreaResponse(
+                id=area.id,
+                name=area.name,
+                slug=area.slug,
+                is_active=area.is_active,
+                pickup_locations=[
+                    PickupLocationResponse.model_validate(loc) for loc in locations
+                ],
+                created_at=area.created_at,
+                updated_at=area.updated_at,
+            )
+        )
+
     return responses
+
 
 @router.post("/areas", response_model=RideAreaResponse)
 async def create_ride_area(
@@ -125,15 +140,11 @@ async def create_ride_area(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Create a new ride area."""
-    area = RideArea(
-        name=area_in.name,
-        slug=area_in.slug,
-        is_active=True
-    )
+    area = RideArea(name=area_in.name, slug=area_in.slug, is_active=True)
     db.add(area)
     await db.commit()
     await db.refresh(area)
-    
+
     return RideAreaResponse(
         id=area.id,
         name=area.name,
@@ -141,8 +152,9 @@ async def create_ride_area(
         is_active=area.is_active,
         pickup_locations=[],
         created_at=area.created_at,
-        updated_at=area.updated_at
+        updated_at=area.updated_at,
     )
+
 
 @router.get("/areas/{area_id}", response_model=RideAreaResponse)
 async def get_ride_area(
@@ -153,24 +165,28 @@ async def get_ride_area(
     query = select(RideArea).where(RideArea.id == area_id)
     result = await db.execute(query)
     area = result.scalar_one_or_none()
-    
+
     if not area:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Ride area not found")
-    
+
     locs_query = select(PickupLocation).where(PickupLocation.area_id == area_id)
     locs_result = await db.execute(locs_query)
     locations = locs_result.scalars().all()
-    
+
     return RideAreaResponse(
         id=area.id,
         name=area.name,
         slug=area.slug,
         is_active=area.is_active,
-        pickup_locations=[PickupLocationResponse.model_validate(loc) for loc in locations],
+        pickup_locations=[
+            PickupLocationResponse.model_validate(loc) for loc in locations
+        ],
         created_at=area.created_at,
-        updated_at=area.updated_at
+        updated_at=area.updated_at,
     )
+
 
 @router.patch("/areas/{area_id}", response_model=RideAreaResponse)
 async def update_ride_area(
@@ -182,31 +198,35 @@ async def update_ride_area(
     query = select(RideArea).where(RideArea.id == area_id)
     result = await db.execute(query)
     area = result.scalar_one_or_none()
-    
+
     if not area:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Ride area not found")
-    
+
     update_data = area_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(area, field, value)
-    
+
     await db.commit()
     await db.refresh(area)
-    
+
     locs_query = select(PickupLocation).where(PickupLocation.area_id == area_id)
     locs_result = await db.execute(locs_query)
     locations = locs_result.scalars().all()
-    
+
     return RideAreaResponse(
         id=area.id,
         name=area.name,
         slug=area.slug,
         is_active=area.is_active,
-        pickup_locations=[PickupLocationResponse.model_validate(loc) for loc in locations],
+        pickup_locations=[
+            PickupLocationResponse.model_validate(loc) for loc in locations
+        ],
         created_at=area.created_at,
-        updated_at=area.updated_at
+        updated_at=area.updated_at,
     )
+
 
 @router.delete("/areas/{area_id}", status_code=204)
 async def delete_ride_area(
@@ -217,13 +237,15 @@ async def delete_ride_area(
     query = select(RideArea).where(RideArea.id == area_id)
     result = await db.execute(query)
     area = result.scalar_one_or_none()
-    
+
     if not area:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Ride area not found")
-    
+
     await db.delete(area)
     await db.commit()
+
 
 @router.post("/areas/{area_id}/locations", response_model=PickupLocationResponse)
 async def add_pickup_location(
@@ -237,19 +259,21 @@ async def add_pickup_location(
     area_result = await db.execute(area_query)
     if not area_result.scalar_one_or_none():
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Ride area not found")
-    
+
     location = PickupLocation(
         area_id=area_id,
         name=location_in.name,
         description=location_in.description,
-        is_active=True
+        is_active=True,
     )
     db.add(location)
     await db.commit()
     await db.refresh(location)
-    
+
     return PickupLocationResponse.model_validate(location)
+
 
 @router.patch("/locations/{location_id}", response_model=PickupLocationResponse)
 async def update_pickup_location(
@@ -261,19 +285,21 @@ async def update_pickup_location(
     query = select(PickupLocation).where(PickupLocation.id == location_id)
     result = await db.execute(query)
     location = result.scalar_one_or_none()
-    
+
     if not location:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Pickup location not found")
-    
+
     update_data = location_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(location, field, value)
-    
+
     await db.commit()
     await db.refresh(location)
-    
+
     return PickupLocationResponse.model_validate(location)
+
 
 @router.delete("/locations/{location_id}", status_code=204)
 async def delete_pickup_location(
@@ -284,11 +310,12 @@ async def delete_pickup_location(
     query = select(PickupLocation).where(PickupLocation.id == location_id)
     result = await db.execute(query)
     location = result.scalar_one_or_none()
-    
+
     if not location:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Pickup location not found")
-    
+
     await db.delete(location)
     await db.commit()
 
@@ -305,7 +332,9 @@ async def list_routes(
     if origin_area_id:
         query = query.where(RouteInfo.origin_area_id == origin_area_id)
     if origin_pickup_location_id:
-        query = query.where(RouteInfo.origin_pickup_location_id == origin_pickup_location_id)
+        query = query.where(
+            RouteInfo.origin_pickup_location_id == origin_pickup_location_id
+        )
     if destination:
         query = query.where(RouteInfo.destination == destination)
 
@@ -337,6 +366,7 @@ async def update_route(
     route = result.scalar_one_or_none()
     if not route:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Route not found")
 
     update_data = route_in.model_dump(exclude_unset=True)
@@ -358,6 +388,7 @@ async def delete_route(
     route = result.scalar_one_or_none()
     if not route:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Route not found")
 
     await db.delete(route)
@@ -366,11 +397,13 @@ async def delete_route(
 
 # Session Ride Configuration Endpoints
 
+
 class SessionRideConfigCreate(BaseModel):
     ride_area_id: uuid.UUID
     cost: float = 0.0
     capacity: int = 4
     departure_time: Optional[datetime] = None
+
 
 class SessionRideConfigResponse(BaseModel):
     id: uuid.UUID
@@ -383,10 +416,14 @@ class SessionRideConfigResponse(BaseModel):
     departure_time: Optional[datetime]
     created_at: datetime
     updated_at: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
 
-@router.post("/sessions/{session_id}/ride-configs", response_model=List[SessionRideConfigResponse])
+
+@router.post(
+    "/sessions/{session_id}/ride-configs",
+    response_model=List[SessionRideConfigResponse],
+)
 async def attach_ride_areas_to_session(
     session_id: uuid.UUID,
     configs_in: List[SessionRideConfigCreate],
@@ -399,7 +436,7 @@ async def attach_ride_areas_to_session(
     existing = result.scalars().all()
     for cfg in existing:
         await db.delete(cfg)
-    
+
     # Create new configs
     new_configs = []
     for cfg_data in configs_in:
@@ -408,44 +445,59 @@ async def attach_ride_areas_to_session(
             ride_area_id=cfg_data.ride_area_id,
             cost=cfg_data.cost,
             capacity=cfg_data.capacity,
-            departure_time=cfg_data.departure_time
+            departure_time=cfg_data.departure_time,
         )
         db.add(cfg)
         new_configs.append(cfg)
-    
+
     await db.commit()
-    
+
     # Fetch with joins to populate details
     responses = []
     for cfg in new_configs:
         await db.refresh(cfg)
-        
+
         # Get ride area details
         area_query = select(RideArea).where(RideArea.id == cfg.ride_area_id)
         area_result = await db.execute(area_query)
         area = area_result.scalar_one()
-        
+
         # Get pickup locations for this area
-        locs_query = select(PickupLocation).where(PickupLocation.area_id == cfg.ride_area_id)
+        locs_query = select(PickupLocation).where(
+            PickupLocation.area_id == cfg.ride_area_id
+        )
         locs_result = await db.execute(locs_query)
         locations = locs_result.scalars().all()
-        
-        responses.append(SessionRideConfigResponse(
-            id=cfg.id,
-            session_id=cfg.session_id,
-            ride_area_id=cfg.ride_area_id,
-            ride_area_name=area.name,
-            pickup_locations=[{"id": str(loc.id), "name": loc.name, "description": loc.description} for loc in locations],
-            cost=cfg.cost,
-            capacity=cfg.capacity,
-            departure_time=cfg.departure_time,
-            created_at=cfg.created_at,
-            updated_at=cfg.updated_at
-        ))
-    
+
+        responses.append(
+            SessionRideConfigResponse(
+                id=cfg.id,
+                session_id=cfg.session_id,
+                ride_area_id=cfg.ride_area_id,
+                ride_area_name=area.name,
+                pickup_locations=[
+                    {
+                        "id": str(loc.id),
+                        "name": loc.name,
+                        "description": loc.description,
+                    }
+                    for loc in locations
+                ],
+                cost=cfg.cost,
+                capacity=cfg.capacity,
+                departure_time=cfg.departure_time,
+                created_at=cfg.created_at,
+                updated_at=cfg.updated_at,
+            )
+        )
+
     return responses
 
-@router.get("/sessions/{session_id}/ride-configs", response_model=List[SessionRideConfigResponse])
+
+@router.get(
+    "/sessions/{session_id}/ride-configs",
+    response_model=List[SessionRideConfigResponse],
+)
 async def get_session_ride_configs(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
@@ -454,40 +506,53 @@ async def get_session_ride_configs(
     query = select(SessionRideConfig).where(SessionRideConfig.session_id == session_id)
     result = await db.execute(query)
     configs = result.scalars().all()
-    
+
     responses = []
     for cfg in configs:
         # Get ride area details
         area_query = select(RideArea).where(RideArea.id == cfg.ride_area_id)
         area_result = await db.execute(area_query)
         area = area_result.scalar_one()
-        
+
         # Get pickup locations
-        locs_query = select(PickupLocation).where(PickupLocation.area_id == cfg.ride_area_id)
+        locs_query = select(PickupLocation).where(
+            PickupLocation.area_id == cfg.ride_area_id
+        )
         locs_result = await db.execute(locs_query)
         locations = locs_result.scalars().all()
-        
-        responses.append(SessionRideConfigResponse(
-            id=cfg.id,
-            session_id=cfg.session_id,
-            ride_area_id=cfg.ride_area_id,
-            ride_area_name=area.name,
-            pickup_locations=[{"id": str(loc.id), "name": loc.name, "description": loc.description} for loc in locations],
-            cost=cfg.cost,
-            capacity=cfg.capacity,
-            departure_time=cfg.departure_time,
-            created_at=cfg.created_at,
-            updated_at=cfg.updated_at
-        ))
-    
+
+        responses.append(
+            SessionRideConfigResponse(
+                id=cfg.id,
+                session_id=cfg.session_id,
+                ride_area_id=cfg.ride_area_id,
+                ride_area_name=area.name,
+                pickup_locations=[
+                    {
+                        "id": str(loc.id),
+                        "name": loc.name,
+                        "description": loc.description,
+                    }
+                    for loc in locations
+                ],
+                cost=cfg.cost,
+                capacity=cfg.capacity,
+                departure_time=cfg.departure_time,
+                created_at=cfg.created_at,
+                updated_at=cfg.updated_at,
+            )
+        )
+
     return responses
 
 
 # Ride Booking Endpoints
 
+
 class RideBookingCreate(BaseModel):
     session_ride_config_id: uuid.UUID
     pickup_location_id: uuid.UUID
+
 
 class RideBookingResponse(BaseModel):
     id: uuid.UUID
@@ -501,8 +566,9 @@ class RideBookingResponse(BaseModel):
     cost: float  # From config
     created_at: datetime
     updated_at: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
+
 
 @router.post("/sessions/{session_id}/bookings", response_model=RideBookingResponse)
 async def create_ride_booking(
@@ -514,12 +580,11 @@ async def create_ride_booking(
     """Create or update a ride booking for a member."""
     # Check existing
     query = select(RideBooking).where(
-        RideBooking.session_id == session_id,
-        RideBooking.member_id == member_id
+        RideBooking.session_id == session_id, RideBooking.member_id == member_id
     )
     result = await db.execute(query)
     existing = result.scalar_one_or_none()
-    
+
     if existing:
         # Update
         existing.session_ride_config_id = booking_in.session_ride_config_id
@@ -530,41 +595,50 @@ async def create_ride_booking(
     else:
         # Calculate ride number
         from sqlalchemy import func
+
         count_query = select(func.count(RideBooking.id)).where(
             RideBooking.session_ride_config_id == booking_in.session_ride_config_id,
-            RideBooking.pickup_location_id == booking_in.pickup_location_id
+            RideBooking.pickup_location_id == booking_in.pickup_location_id,
         )
         count_result = await db.execute(count_query)
         count = count_result.scalar_one() or 0
-        
+
         # Get capacity from config
-        cfg_query = select(SessionRideConfig).where(SessionRideConfig.id == booking_in.session_ride_config_id)
+        cfg_query = select(SessionRideConfig).where(
+            SessionRideConfig.id == booking_in.session_ride_config_id
+        )
         cfg_result = await db.execute(cfg_query)
         cfg = cfg_result.scalar_one()
         capacity = cfg.capacity
-        
+
         assigned_ride_number = (count // capacity) + 1
-        
+
         booking = RideBooking(
             session_id=session_id,
             member_id=member_id,
             session_ride_config_id=booking_in.session_ride_config_id,
             pickup_location_id=booking_in.pickup_location_id,
-            assigned_ride_number=assigned_ride_number
+            assigned_ride_number=assigned_ride_number,
         )
         db.add(booking)
         await db.commit()
         await db.refresh(booking)
-    
+
     # Get details for response
-    cfg_query = select(SessionRideConfig, RideArea).join(RideArea).where(SessionRideConfig.id == booking.session_ride_config_id)
+    cfg_query = (
+        select(SessionRideConfig, RideArea)
+        .join(RideArea)
+        .where(SessionRideConfig.id == booking.session_ride_config_id)
+    )
     cfg_result = await db.execute(cfg_query)
     cfg, area = cfg_result.one()
-    
-    loc_query = select(PickupLocation).where(PickupLocation.id == booking.pickup_location_id)
+
+    loc_query = select(PickupLocation).where(
+        PickupLocation.id == booking.pickup_location_id
+    )
     loc_result = await db.execute(loc_query)
     location = loc_result.scalar_one()
-    
+
     return RideBookingResponse(
         id=booking.id,
         session_id=booking.session_id,
@@ -576,10 +650,13 @@ async def create_ride_booking(
         assigned_ride_number=booking.assigned_ride_number,
         cost=cfg.cost,
         created_at=booking.created_at,
-        updated_at=booking.updated_at
+        updated_at=booking.updated_at,
     )
 
-@router.get("/sessions/{session_id}/bookings/me", response_model=Optional[RideBookingResponse])
+
+@router.get(
+    "/sessions/{session_id}/bookings/me", response_model=Optional[RideBookingResponse]
+)
 async def get_my_booking(
     session_id: uuid.UUID,
     member_id: uuid.UUID,
@@ -587,24 +664,29 @@ async def get_my_booking(
 ):
     """Get current member's booking for a session."""
     query = select(RideBooking).where(
-        RideBooking.session_id == session_id,
-        RideBooking.member_id == member_id
+        RideBooking.session_id == session_id, RideBooking.member_id == member_id
     )
     result = await db.execute(query)
     booking = result.scalar_one_or_none()
-    
+
     if not booking:
         return None
-    
+
     # Get details
-    cfg_query = select(SessionRideConfig, RideArea).join(RideArea).where(SessionRideConfig.id == booking.session_ride_config_id)
+    cfg_query = (
+        select(SessionRideConfig, RideArea)
+        .join(RideArea)
+        .where(SessionRideConfig.id == booking.session_ride_config_id)
+    )
     cfg_result = await db.execute(cfg_query)
     cfg, area = cfg_result.one()
-    
-    loc_query = select(PickupLocation).where(PickupLocation.id == booking.pickup_location_id)
+
+    loc_query = select(PickupLocation).where(
+        PickupLocation.id == booking.pickup_location_id
+    )
     loc_result = await db.execute(loc_query)
     location = loc_result.scalar_one()
-    
+
     return RideBookingResponse(
         id=booking.id,
         session_id=booking.session_id,
@@ -616,5 +698,5 @@ async def get_my_booking(
         assigned_ride_number=booking.assigned_ride_number,
         cost=cfg.cost,
         created_at=booking.created_at,
-        updated_at=booking.updated_at
+        updated_at=booking.updated_at,
     )
