@@ -1,22 +1,21 @@
 import json
-from typing import List
 import uuid
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.members_service.models import Member, PendingRegistration
 from services.members_service.schemas import (
-    MemberResponse,
     MemberCreate,
+    MemberResponse,
     MemberUpdate,
     PendingRegistrationCreate,
     PendingRegistrationResponse,
 )
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/members", tags=["members"])
 pending_router = APIRouter(
@@ -74,8 +73,9 @@ async def create_pending_registration(
     # We use admin.create_user to create the user immediately with the provided password.
     # We set email_confirm=False so they still need to verify their email.
     try:
-        from supabase import create_client, Client
         from libs.common.config import get_settings
+
+        from supabase import Client, create_client
 
         settings = get_settings()
         supabase: Client = create_client(
@@ -417,6 +417,7 @@ async def get_member(
         )
 
     return member
+
 
 @router.patch("/{member_id}", response_model=MemberResponse)
 async def update_member(
