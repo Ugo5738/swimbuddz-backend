@@ -1,11 +1,13 @@
-from sqlalchemy import Column, String, Integer, Boolean, Time, DateTime, Enum as SAEnum
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.sql import func
-import uuid
 import enum
+import uuid
 
 from libs.db.base import Base
 from services.sessions_service.models import SessionType
+from sqlalchemy import Boolean, Column, DateTime
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import Integer, String, Time
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.sql import func
 
 
 class DayOfWeek(enum.IntEnum):
@@ -33,7 +35,7 @@ class SessionTemplate(Base):
     pool_fee = Column(Integer, nullable=False, default=0)
     ride_share_fee = Column(Integer, nullable=False, default=0)
     capacity = Column(Integer, nullable=False, default=20)
-    
+
     # Ride Share Configuration (List of ride areas and their settings)
     ride_share_config = Column(JSONB, nullable=True)
 

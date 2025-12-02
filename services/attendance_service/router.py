@@ -1,22 +1,21 @@
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status, Response
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
-from libs.db.session import get_async_db
 from libs.common.config import get_settings
+from libs.db.session import get_async_db
 from services.attendance_service.models import AttendanceRecord
 from services.attendance_service.schemas import (
-    AttendanceResponse,
     AttendanceCreate,
+    AttendanceResponse,
     PublicAttendanceCreate,
 )
 from services.members_service.models import Member
 from services.sessions_service.models import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["attendance"])
 settings = get_settings()
@@ -209,5 +208,3 @@ async def get_pool_list_csv(
         csv_content += f"{member.first_name},{member.last_name},{member.email},{attendance.status},{attendance.role},{attendance.notes or ''}\n"
 
     return Response(content=csv_content, media_type="text/csv")
-
-

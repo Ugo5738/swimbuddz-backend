@@ -398,6 +398,26 @@ async def update_current_member(
     return member
 
 
+@router.get("/{member_id}", response_model=MemberResponse)
+async def get_member(
+    member_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get a member by ID (admin use).
+    """
+    query = select(Member).where(Member.id == member_id)
+    result = await db.execute(query)
+    member = result.scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found",
+        )
+
+    return member
+
 @router.patch("/{member_id}", response_model=MemberResponse)
 async def update_member(
     member_id: uuid.UUID,

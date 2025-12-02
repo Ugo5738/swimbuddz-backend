@@ -1,12 +1,11 @@
+import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Integer, DateTime, ForeignKey, Float, UniqueConstraint
+from libs.db.base import Base
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
-
-from libs.db.base import Base
-import enum
 
 
 class RideShareOption(str, enum.Enum):
@@ -21,9 +20,7 @@ class RideArea(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    name: Mapped[str] = mapped_column(
-        String, nullable=False, unique=True
-    )
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     slug: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     is_active: Mapped[bool] = mapped_column(default=True)
 
@@ -45,9 +42,7 @@ class PickupLocation(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
-    description: Mapped[str] = mapped_column(
-        String, nullable=True
-    )
+    description: Mapped[str] = mapped_column(String, nullable=True)
 
     area_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("ride_areas.id"), nullable=False
@@ -104,9 +99,9 @@ class RouteInfo(Base):
         return f"<RouteInfo Area={self.origin_area_id} Loc={self.origin_pickup_location_id} -> {self.destination}>"
 
 
-
 class SessionRideConfig(Base):
     """Link between a session and a ride area with session-specific configuration."""
+
     __tablename__ = "session_ride_configs"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -116,12 +111,16 @@ class SessionRideConfig(Base):
         UUID(as_uuid=True), index=True, nullable=False
     )
     ride_area_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("ride_areas.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("ride_areas.id", ondelete="CASCADE"),
+        nullable=False,
     )
     # Session-specific overrides
     cost: Mapped[float] = mapped_column(Float, default=0.0)
     capacity: Mapped[int] = mapped_column(Integer, default=4)
-    departure_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    departure_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
@@ -133,6 +132,7 @@ class SessionRideConfig(Base):
 
 class RideBooking(Base):
     """Member's ride booking for a session."""
+
     __tablename__ = "ride_bookings"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -145,7 +145,9 @@ class RideBooking(Base):
         UUID(as_uuid=True), index=True, nullable=False
     )
     session_ride_config_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("session_ride_configs.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("session_ride_configs.id", ondelete="CASCADE"),
+        nullable=False,
     )
     pickup_location_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("pickup_locations.id"), nullable=False
