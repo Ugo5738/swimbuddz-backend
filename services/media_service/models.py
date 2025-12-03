@@ -2,27 +2,74 @@
 
 import uuid
 from datetime import datetime
+from enum import Enum
 
-from sqlalchemy import String, Text, Boolean, DateTime
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, Text, Boolean, DateTime, Integer, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from libs.db.base import Base
 
 
-class Member(Base):
-    """Reference to Member from members_service for foreign keys."""
+class MediaType(str, Enum):
+    """Type of media content."""
+    IMAGE = "IMAGE"
+    VIDEO = "VIDEO"
+    DOCUMENT = "DOCUMENT"
 
-    __tablename__ = "members"
-    __table_args__ = {"extend_existing": True}
+
+class AlbumType(str, Enum):
+    """Type of album for categorization."""
+    GENERAL = "GENERAL"
+    SESSION = "SESSION"
+    EVENT = "EVENT"
+    ACADEMY = "ACADEMY"
+    PRODUCT = "PRODUCT"
+    MARKETING = "MARKETING"
+    USER_GENERATED = "USER_GENERATED"
+
+
+class MediaItem(Base):
+    """Comprehensive media item (photo, video, etc.)."""
+
+    __tablename__ = "media_items"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    
+    media_type: Mapped[MediaType] = mapped_column(String, nullable=False, default=MediaType.IMAGE)
+    
+    # Storage URLs
+    file_url: Mapped[str] = mapped_column(String, nullable=False)  # Main file
+    thumbnail_url: Mapped[str] = mapped_column(String, nullable=True)  # Thumbnail/Preview
+    
+    # Metadata
+    title: Mapped[str] = mapped_column(String, nullable=True)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+    alt_text: Mapped[str] = mapped_column(String, nullable=True)
+    
+    # Technical Metadata (resolution, size, duration, format)
+    metadata_info: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    
+    # Processing status (for video transcoding etc)
+    is_processed: Mapped[bool] = mapped_column(Boolean, default=True)
+    
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    def __repr__(self):
+        return f"<MediaItem {self.id} {self.media_type}>"
 
 
 class Album(Base):
-    """Photo albums for organizing media."""
+    """Collection of media items."""
 
     __tablename__ = "albums"
 
@@ -31,16 +78,23 @@ class Album(Base):
     )
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=True)
-    album_type: Mapped[str] = mapped_column(
-        String, nullable=False
-    )  # session/event/academy/general
+    slug: Mapped[str] = mapped_column(String, unique=True, nullable=True)
+    
+    album_type: Mapped[AlbumType] = mapped_column(String, nullable=False, default=AlbumType.GENERAL)
 
-    # Optional link to session or event
-    linked_entity_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+    # Decoupled linkage to other entities (Session, Event, Product, etc.)
+    linked_entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
+    linked_entity_type: Mapped[str] = mapped_column(String, nullable=True) # e.g., "session", "product"
+    
+    # Owner entity (e.g. if a club owns it, or a specific user)
+    owner_entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    cover_media_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("media_items.id"), nullable=True
     )
-
-    cover_photo_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
+    
+    is_public: Mapped[bool] = mapped_column(Boolean, default=True)
+    
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -50,56 +104,89 @@ class Album(Base):
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
+    # Relationships
+    cover_media = relationship("MediaItem", foreign_keys=[cover_media_id])
+    items = relationship("AlbumItem", back_populates="album", cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<Album {self.title}>"
 
 
-class Photo(Base):
-    """Individual photos in albums."""
-
-    __tablename__ = "photos"
-
+class AlbumItem(Base):
+    """Link table for MediaItems in an Album with ordering."""
+    
+    __tablename__ = "album_items"
+    
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    album_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    album_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("albums.id"), nullable=False
+    )
+    media_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("media_items.id"), nullable=False
+    )
+    
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    
+    album = relationship("Album", back_populates="items")
+    media_item = relationship("MediaItem")
 
-    # Storage URLs
-    file_url: Mapped[str] = mapped_column(String, nullable=False)  # Full size
-    thumbnail_url: Mapped[str] = mapped_column(String, nullable=True)  # Thumbnail
 
-    caption: Mapped[str] = mapped_column(Text, nullable=True)
-    taken_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
-    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-
-    # Featured photos appear on homepage
-    is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
-
+class SiteAsset(Base):
+    """Managed assets for website UI (banners, logos, placeholders)."""
+    
+    __tablename__ = "site_assets"
+    
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    
+    key: Mapped[str] = mapped_column(String, unique=True, nullable=False) # e.g. "home_hero_banner"
+    description: Mapped[str] = mapped_column(String, nullable=True)
+    
+    media_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("media_items.id"), nullable=False
+    )
+    
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
+    
+    media_item = relationship("MediaItem")
 
-    def __repr__(self):
-        return f"<Photo {self.id}>"
 
+class MediaTag(Base):
+    """Tags members in media items."""
 
-class PhotoTag(Base):
-    """Tags members in photos (respecting media consent)."""
-
-    __tablename__ = "photo_tags"
+    __tablename__ = "media_tags"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    photo_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    media_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("media_items.id"), nullable=False
+    )
     member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    
+    # Optional coordinates for tagging in image (x, y percentages)
+    x_coord: Mapped[float] = mapped_column(nullable=True)
+    y_coord: Mapped[float] = mapped_column(nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
     )
 
+    media_item = relationship("MediaItem")
+
     def __repr__(self):
-        return f"<PhotoTag photo={self.photo_id} member={self.member_id}>"
+        return f"<MediaTag media={self.media_item_id} member={self.member_id}>"
