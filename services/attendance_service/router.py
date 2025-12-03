@@ -149,7 +149,8 @@ async def list_session_attendance(
     """
     query = (
         select(AttendanceRecord, Member)
-        .join(Member)
+        .select_from(AttendanceRecord)
+        .join(Member, Member.id == AttendanceRecord.member_id)
         .where(AttendanceRecord.session_id == session_id)
     )
     result = await db.execute(query)
@@ -196,7 +197,8 @@ async def get_pool_list_csv(
     # Join with Member to get names
     query = (
         select(AttendanceRecord, Member)
-        .join(Member)
+        .select_from(AttendanceRecord)
+        .join(Member, Member.id == AttendanceRecord.member_id)
         .where(AttendanceRecord.session_id == session_id)
     )
     result = await db.execute(query)

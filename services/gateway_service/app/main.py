@@ -248,6 +248,11 @@ async def proxy_request(client: clients.ServiceClient, path: str, request: Reque
             if k.lower() not in ["content-length", "host"]
         }
 
+        # Include query parameters
+        query_params = request.url.query
+        if query_params:
+            path = f"{path}?{query_params}"
+
         # Make request to service
         if request.method == "GET":
             result = await client.get(path, headers=headers)
