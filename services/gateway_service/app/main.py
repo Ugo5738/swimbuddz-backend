@@ -189,6 +189,15 @@ def create_app() -> FastAPI:
     # ==================================================================
     # MEDIA SERVICE PROXY
     # ==================================================================
+    # Handle media root endpoint (both with and without trailing slash)
+    @app.api_route("/api/v1/media", methods=["GET", "POST"])
+    @app.api_route("/api/v1/media/", methods=["GET", "POST"])
+    async def proxy_media_root(request: Request):
+        """Proxy media root requests (list and upload) to media service."""
+        return await proxy_request(
+            clients.media_client, "/api/v1/media/media", request
+        )
+
     @app.api_route(
         "/api/v1/media/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
     )
@@ -236,12 +245,25 @@ def create_app() -> FastAPI:
 async def proxy_request(client: clients.ServiceClient, path: str, request: Request):
     """Generic proxy function to forward requests to microservices."""
     try:
-        # Get request body if present
-        body = None
+        # Get request body
+        json_body = None
+        content_body = None
+        
         if request.method in ["POST", "PATCH", "PUT"]:
-            body = await request.json() if await request.body() else {}
+            content_type = request.headers.get("content-type", "")
+            if "application/json" in content_type:
+                body_bytes = await request.body()
+                if body_bytes:
+                    json_body = await request.json()
+                else:
+                    json_body = {}
+            else:
+                # For multipart/form-data and others, pass raw bytes
+                content_body = await request.body()
 
-        # Forward headers (excluding those that httpx handles)
+        # Forward headers (excluding those that httpx handles or that cause issues)
+        # Content-Length is handled by httpx based on the body we pass
+        # Host is set by httpx
         headers = {
             k: v
             for k, v in request.headers.items()
@@ -257,11 +279,11 @@ async def proxy_request(client: clients.ServiceClient, path: str, request: Reque
         if request.method == "GET":
             result = await client.get(path, headers=headers)
         elif request.method == "POST":
-            result = await client.post(path, json=body, headers=headers)
+            result = await client.post(path, json=json_body, content=content_body, headers=headers)
         elif request.method == "PUT":
-            result = await client.put(path, json=body, headers=headers)
+            result = await client.put(path, json=json_body, content=content_body, headers=headers)
         elif request.method == "PATCH":
-            result = await client.patch(path, json=body, headers=headers)
+            result = await client.patch(path, json=json_body, content=content_body, headers=headers)
         elif request.method == "DELETE":
             result = await client.delete(path, headers=headers)
         else:

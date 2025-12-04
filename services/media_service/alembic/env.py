@@ -19,7 +19,6 @@ sys.path.append(str(PROJECT_ROOT))
 from libs.common.config import get_settings
 from libs.db.base import Base
 from services.media_service.models import (
-    Member,
     MediaItem,
     Album,
     AlbumItem,
