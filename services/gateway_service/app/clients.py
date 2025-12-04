@@ -21,33 +21,62 @@ class ServiceClient:
             response.raise_for_status()
             return response.json()
 
-    async def post(self, path: str, json: Dict, headers: Optional[Dict] = None) -> Any:
+    async def post(
+        self,
+        path: str,
+        json: Optional[Dict] = None,
+        content: Optional[bytes] = None,
+        files: Optional[Dict] = None,
+        headers: Optional[Dict] = None,
+    ) -> Any:
         """Make POST request to service."""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
-                f"{self.base_url}{path}", json=json, headers=headers or {}
+                f"{self.base_url}{path}",
+                json=json,
+                content=content,
+                files=files,
+                headers=headers or {},
             )
             response.raise_for_status()
             if response.status_code == 204:
                 return None
             return response.json()
 
-    async def put(self, path: str, json: Dict, headers: Optional[Dict] = None) -> Any:
+    async def put(
+        self,
+        path: str,
+        json: Optional[Dict] = None,
+        content: Optional[bytes] = None,
+        headers: Optional[Dict] = None,
+    ) -> Any:
         """Make PUT request to service."""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.put(
-                f"{self.base_url}{path}", json=json, headers=headers or {}
+                f"{self.base_url}{path}",
+                json=json,
+                content=content,
+                headers=headers or {},
             )
             response.raise_for_status()
             if response.status_code == 204:
                 return None
             return response.json()
 
-    async def patch(self, path: str, json: Dict, headers: Optional[Dict] = None) -> Any:
+    async def patch(
+        self,
+        path: str,
+        json: Optional[Dict] = None,
+        content: Optional[bytes] = None,
+        headers: Optional[Dict] = None,
+    ) -> Any:
         """Make PATCH request to service."""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.patch(
-                f"{self.base_url}{path}", json=json, headers=headers or {}
+                f"{self.base_url}{path}",
+                json=json,
+                content=content,
+                headers=headers or {},
             )
             response.raise_for_status()
             if response.status_code == 204:

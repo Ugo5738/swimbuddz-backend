@@ -1,11 +1,12 @@
 """Media Service models for SwimBuddz Gallery & Media system."""
 
+from typing import Any
 import uuid
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import String, Text, Boolean, DateTime, Integer, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
+from sqlalchemy import String, Text, Boolean, DateTime, Integer, ForeignKey, Float
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from libs.db.base import Base
@@ -21,6 +22,8 @@ class MediaType(str, Enum):
 class AlbumType(str, Enum):
     """Type of album for categorization."""
     GENERAL = "GENERAL"
+    CLUB = "CLUB"
+    COMMUNITY = "COMMUNITY"
     SESSION = "SESSION"
     EVENT = "EVENT"
     ACADEMY = "ACADEMY"
@@ -50,13 +53,31 @@ class MediaItem(Base):
     alt_text: Mapped[str] = mapped_column(String, nullable=True)
     
     # Technical Metadata (resolution, size, duration, format)
-    metadata_info: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    metadata_info: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=True, default=dict
+    )
     
     # Processing status (for video transcoding etc)
     is_processed: Mapped[bool] = mapped_column(Boolean, default=True)
     
     uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     
+    album_items = relationship(
+        "AlbumItem",
+        back_populates="media_item",
+        cascade="all, delete-orphan",
+    )
+    tags = relationship(
+        "MediaTag",
+        back_populates="media_item",
+        cascade="all, delete-orphan",
+    )
+    site_assets = relationship(
+        "SiteAsset",
+        back_populates="media_item",
+        cascade="all, delete-orphan",
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
     )
@@ -134,7 +155,7 @@ class AlbumItem(Base):
     )
     
     album = relationship("Album", back_populates="items")
-    media_item = relationship("MediaItem")
+    media_item = relationship("MediaItem", back_populates="album_items")
 
 
 class SiteAsset(Base):
@@ -162,7 +183,7 @@ class SiteAsset(Base):
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
     
-    media_item = relationship("MediaItem")
+    media_item = relationship("MediaItem", back_populates="site_assets")
 
 
 class MediaTag(Base):
@@ -179,14 +200,14 @@ class MediaTag(Base):
     member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     
     # Optional coordinates for tagging in image (x, y percentages)
-    x_coord: Mapped[float] = mapped_column(nullable=True)
-    y_coord: Mapped[float] = mapped_column(nullable=True)
+    x_coord: Mapped[float] = mapped_column(Float, nullable=True)
+    y_coord: Mapped[float] = mapped_column(Float, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
     )
 
-    media_item = relationship("MediaItem")
+    media_item = relationship("MediaItem", back_populates="tags")
 
     def __repr__(self):
         return f"<MediaTag media={self.media_item_id} member={self.member_id}>"

@@ -16,8 +16,8 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str
-    DB_POOL_SIZE: int = 40  # Increased for better performance
-    DB_MAX_OVERFLOW: int = 20  # Increased for better performance
+    DB_POOL_SIZE: int = 2  # Reduced to prevent MaxClientsInSessionMode error
+    DB_MAX_OVERFLOW: int = 5  # Reduced to prevent MaxClientsInSessionMode error
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 1800
 

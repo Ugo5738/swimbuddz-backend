@@ -9,15 +9,13 @@ RUN apt-get update && apt-get install -y \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy root pyproject.toml and install project
+# Copy project files
 COPY pyproject.toml /app/
-RUN pip install --no-cache-dir -e .
-
-# Copy shared libs
 COPY libs/ /app/libs/
-
-# Copy service code
 COPY services/media_service/ /app/services/media_service/
+
+# Install the project in editable mode
+RUN pip install --no-cache-dir -e .
 
 # Expose port
 EXPOSE 8008
