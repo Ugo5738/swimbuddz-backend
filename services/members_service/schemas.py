@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class MemberBase(BaseModel):
@@ -163,11 +163,12 @@ class PendingRegistrationResponse(BaseModel):
 # ===== APPROVAL SYSTEM SCHEMAS =====
 class ApprovalAction(BaseModel):
     """Schema for approve/reject actions"""
+
     notes: Optional[str] = None  # Admin notes for the action
 
 
 class PendingMemberResponse(MemberResponse):
     """Extended response for pending members (admin view)"""
+
     # Inherits all from MemberResponse, includes vetting fields
     pass
-
