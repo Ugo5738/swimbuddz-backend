@@ -662,52 +662,6 @@ class RideBookingResponse(BaseModel):
 
 
 
-@router.get(
-    "/sessions/{session_id}/bookings", response_model=List[RideBookingResponse]
-)
-async def list_session_bookings(
-    session_id: uuid.UUID,
-    db: AsyncSession = Depends(get_async_db),
-):
-    """List all ride bookings for a session."""
-    query = select(RideBooking).where(RideBooking.session_id == session_id)
-    result = await db.execute(query)
-    bookings = result.scalars().all()
-
-    responses = []
-    for booking in bookings:
-        # Get details
-        cfg_query = (
-            select(SessionRideConfig, RideArea)
-            .join(RideArea)
-            .where(SessionRideConfig.id == booking.session_ride_config_id)
-        )
-        cfg_result = await db.execute(cfg_query)
-        cfg, area = cfg_result.one()
-
-        loc_query = select(PickupLocation).where(
-            PickupLocation.id == booking.pickup_location_id
-        )
-        loc_result = await db.execute(loc_query)
-        location = loc_result.scalar_one()
-
-        responses.append(
-            RideBookingResponse(
-                id=booking.id,
-                session_id=booking.session_id,
-                member_id=booking.member_id,
-                session_ride_config_id=booking.session_ride_config_id,
-                pickup_location_id=booking.pickup_location_id,
-                pickup_location_name=location.name,
-                ride_area_name=area.name,
-                assigned_ride_number=booking.assigned_ride_number,
-                cost=cfg.cost,
-                created_at=booking.created_at,
-                updated_at=booking.updated_at,
-            )
-        )
-
-    return responses
 
 
 @router.post("/sessions/{session_id}/bookings", response_model=RideBookingResponse)
