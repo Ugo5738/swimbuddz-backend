@@ -1,11 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Boolean, DateTime, Integer
-from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
-from sqlalchemy.orm import Mapped, mapped_column
-
 from libs.db.base import Base
+from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column
 
 
 class Member(Base):
@@ -125,9 +124,7 @@ class Member(Base):
     )  # Email of admin who approved
 
     # ===== ABOUT YOU (Vetting Questions) =====
-    occupation: Mapped[str] = mapped_column(
-        String, nullable=True
-    )  # Work/school
+    occupation: Mapped[str] = mapped_column(String, nullable=True)  # Work/school
     area_in_lagos: Mapped[str] = mapped_column(
         String, nullable=True
     )  # Which area of Lagos
@@ -305,4 +302,7 @@ class MemberChallengeCompletion(Base):
     )
 
     def __repr__(self):
-        return f"<MemberChallengeCompletion member={self.member_id} challenge={self.challenge_id}>"
+        return (
+            f"<MemberChallengeCompletion member={self.member_id} "
+            f"challenge={self.challenge_id}>"
+        )

@@ -6,6 +6,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
+from libs.common.email import send_email
 from libs.db.session import get_async_db
 from services.members_service.models import Member, PendingRegistration
 from services.members_service.schemas import (
@@ -19,13 +20,13 @@ from services.members_service.schemas import (
 )
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from libs.common.email import send_email
 
 router = APIRouter(prefix="/members", tags=["members"])
 pending_router = APIRouter(
     prefix="/pending-registrations", tags=["pending-registrations"]
 )
 admin_router = APIRouter(prefix="/admin/members", tags=["admin-members"])
+
 
 @pending_router.post(
     "/", response_model=PendingRegistrationResponse, status_code=status.HTTP_201_CREATED
@@ -74,7 +75,8 @@ async def create_pending_registration(
     await db.refresh(pending)
 
     # Trigger Supabase User Creation
-    # We use admin.create_user to create the user immediately with the provided password.
+    # We use admin.create_user to create the user immediately with the provided
+    # password.
     # We set email_confirm=False so they still need to verify their email.
     try:
         from libs.common.config import get_settings
@@ -88,7 +90,8 @@ async def create_pending_registration(
 
         # Check if we have a password (we should from frontend now)
         if registration_in.password:
-            # Use sign_up instead of admin.create_user to ensure the confirmation email is sent.
+            # Use sign_up instead of admin.create_user to ensure the confirmation
+            # email is sent.
             # sign_up mimics a real user signup flow.
             credentials = {
                 "email": registration_in.email,
@@ -255,8 +258,8 @@ async def complete_pending_registration(
         # Handle race condition where member was created by another request
         # We check for "duplicate key value" or similar in the error string
         # or just catch generic IntegrityError if we imported it.
-        # Since we didn't import IntegrityError yet, let's check the string representation
-        # or import it. Better to import it.
+        # Since we didn't import IntegrityError yet, let's check the string
+        # representation or import it. Better to import it.
         # But to be safe and quick without adding imports at top:
         error_str = str(e).lower()
         if "unique constraint" in error_str or "duplicate key" in error_str:
@@ -549,7 +552,14 @@ async def approve_member(
     await send_email(
         to_email=member.email,
         subject="Welcome to SwimBuddz! Your account is approved",
-        body=f"Hi {member.first_name},\n\nCongratulations! Your SwimBuddz membership application has been approved.\n\nYou can now log in and access all member features.\n\nWelcome to the community!\nThe SwimBuddz Team"
+        body=(
+            f"Hi {member.first_name},\n\n"
+            "Congratulations! Your SwimBuddz membership application has been "
+            "approved.\n\n"
+            "You can now log in and access all member features.\n\n"
+            "Welcome to the community!\n"
+            "The SwimBuddz Team"
+        ),
     )
 
     return member
@@ -596,8 +606,16 @@ async def reject_member(
     await send_email(
         to_email=member.email,
         subject="Update on your SwimBuddz application",
-        body=f"Hi {member.first_name},\n\nThank you for your interest in SwimBuddz.\n\nAfter reviewing your application, we are unable to approve your membership at this time.\n\nReason: {action.notes or 'Does not meet current criteria'}\n\nYou are welcome to reapply in the future.\n\nBest regards,\nThe SwimBuddz Team"
+        body=(
+            f"Hi {member.first_name},\n\n"
+            "Thank you for your interest in SwimBuddz.\n\n"
+            "After reviewing your application, we are unable to approve your "
+            "membership at this time.\n\n"
+            f"Reason: {action.notes or 'Does not meet current criteria'}\n\n"
+            "You are welcome to reapply in the future.\n\n"
+            "Best regards,\n"
+            "The SwimBuddz Team"
+        ),
     )
 
     return member
-

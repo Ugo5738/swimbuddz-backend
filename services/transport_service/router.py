@@ -504,13 +504,15 @@ async def get_session_ride_configs(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Get ride configurations for a session with route info and pickup location availability."""
+    """Get ride configurations for a session with route info and pickup location
+    availability."""
     # Get session info via API call to sessions service to maintain service decoupling
     import httpx
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
-            # Call sessions service directly (without /api/v1 prefix which is only for gateway)
+            # Call sessions service directly (without /api/v1 prefix which is only
+            # for gateway)
             response = await client.get(
                 f"http://sessions-service:8002/sessions/{session_id}"
             )
