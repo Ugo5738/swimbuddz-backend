@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str = "test-service-role-key"
     SUPABASE_JWT_SECRET: str = "test-jwt-secret"
     SUPABASE_PROJECT_ID: str = "test-project-id"
+    FRONTEND_URL: str = "http://localhost:3000"
 
     # Gateway
     GATEWAY_URL: str = "http://localhost:8000"
