@@ -2,36 +2,34 @@
 
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, func
 
-from libs.db.session import get_async_db
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-
+from libs.db.session import get_async_db
 from services.media_service.models import (
-    Album, 
-    MediaItem, 
-    MediaTag, 
-    AlbumItem, 
+    Album,
+    AlbumItem,
+    MediaItem,
+    MediaTag,
+    MediaType,
     SiteAsset,
-    MediaType
 )
 from services.media_service.schemas import (
     AlbumCreate,
-    AlbumUpdate,
     AlbumResponse,
+    AlbumUpdate,
     AlbumWithMedia,
-    MediaItemUpdate,
     MediaItemResponse,
+    MediaItemUpdate,
     MediaTagResponse,
     SiteAssetCreate,
-    SiteAssetUpdate,
     SiteAssetResponse,
+    SiteAssetUpdate,
 )
 from services.media_service.storage import storage_service
-
+from sqlalchemy import desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/v1/media", tags=["media"])
 
@@ -67,16 +65,16 @@ async def create_album(
 
 @router.get("/albums", response_model=List[AlbumResponse])
 async def list_albums(
-    album_type: Optional[str] = None, 
+    album_type: Optional[str] = None,
     linked_entity_id: Optional[uuid.UUID] = None,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
 ):
     """List all albums, optionally filtered by type or linked entity."""
     query = select(Album).order_by(desc(Album.created_at))
 
     if album_type:
         query = query.where(Album.album_type == album_type)
-    
+
     if linked_entity_id:
         query = query.where(Album.linked_entity_id == linked_entity_id)
 
@@ -92,7 +90,9 @@ async def list_albums(
         # The new schema has AlbumItem for M2M, but let's check if we kept album_id on MediaItem?
         # In the new schema I defined: AlbumItem link table. MediaItem does NOT have album_id column in the new schema.
         # So we count via AlbumItem.
-        count_query = select(func.count(AlbumItem.id)).where(AlbumItem.album_id == album.id)
+        count_query = select(func.count(AlbumItem.id)).where(
+            AlbumItem.album_id == album.id
+        )
         count_result = await db.execute(count_query)
         album_data.media_count = count_result.scalar_one()
         response_list.append(album_data)
@@ -118,7 +118,7 @@ async def get_album(album_id: uuid.UUID, db: AsyncSession = Depends(get_async_db
         .where(AlbumItem.album_id == album_id)
         .order_by(AlbumItem.order, desc(MediaItem.created_at))
     )
-    
+
     media_result = await db.execute(stmt)
     media_items = media_result.scalars().all()
 
@@ -138,7 +138,11 @@ async def get_album(album_id: uuid.UUID, db: AsyncSession = Depends(get_async_db
                 title=item.title,
                 description=item.description,
                 alt_text=item.alt_text,
-                media_type=item.media_type.value if hasattr(item.media_type, "value") else item.media_type,
+                media_type=(
+                    item.media_type.value
+                    if hasattr(item.media_type, "value")
+                    else item.media_type
+                ),
                 metadata_info=item.metadata_info,
                 is_processed=item.is_processed,
                 uploaded_by=item.uploaded_by,
@@ -214,7 +218,7 @@ async def upload_media(
     title: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     alt_text: Optional[str] = Form(None),
-    media_type: str = Form("IMAGE"), # IMAGE or VIDEO
+    media_type: str = Form("IMAGE"),  # IMAGE or VIDEO
     album_id: Optional[uuid.UUID] = Form(None),
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
@@ -244,10 +248,10 @@ async def upload_media(
         description=description,
         alt_text=alt_text,
         uploaded_by=current_user.user_id,
-        is_processed=True # Assume processed for now, for video might need async job
+        is_processed=True,  # Assume processed for now, for video might need async job
     )
     db.add(db_media)
-    await db.flush() # Get ID
+    await db.flush()  # Get ID
 
     # If album_id provided, link it
     if album_id:
@@ -255,17 +259,17 @@ async def upload_media(
         album_query = select(Album).where(Album.id == album_id)
         album_result = await db.execute(album_query)
         album = album_result.scalar_one_or_none()
-        
+
         if album:
             # Get current max order
-            order_query = select(func.max(AlbumItem.order)).where(AlbumItem.album_id == album_id)
+            order_query = select(func.max(AlbumItem.order)).where(
+                AlbumItem.album_id == album_id
+            )
             order_result = await db.execute(order_query)
             max_order = order_result.scalar() or 0
-            
+
             album_item = AlbumItem(
-                album_id=album_id,
-                media_item_id=db_media.id,
-                order=max_order + 1
+                album_id=album_id, media_item_id=db_media.id, order=max_order + 1
             )
             db.add(album_item)
 
@@ -279,7 +283,11 @@ async def upload_media(
         title=db_media.title,
         description=db_media.description,
         alt_text=db_media.alt_text,
-        media_type=db_media.media_type.value if hasattr(db_media.media_type, "value") else db_media.media_type,
+        media_type=(
+            db_media.media_type.value
+            if hasattr(db_media.media_type, "value")
+            else db_media.media_type
+        ),
         metadata_info=db_media.metadata_info,
         is_processed=db_media.is_processed,
         uploaded_by=db_media.uploaded_by,
@@ -323,7 +331,11 @@ async def list_media(
                 title=item.title,
                 description=item.description,
                 alt_text=item.alt_text,
-                media_type=item.media_type.value if hasattr(item.media_type, "value") else item.media_type,
+                media_type=(
+                    item.media_type.value
+                    if hasattr(item.media_type, "value")
+                    else item.media_type
+                ),
                 metadata_info=item.metadata_info,
                 is_processed=item.is_processed,
                 uploaded_by=item.uploaded_by,
@@ -403,20 +415,22 @@ async def create_site_asset(
     query = select(SiteAsset).where(SiteAsset.key == asset.key)
     result = await db.execute(query)
     existing = result.scalar_one_or_none()
-    
+
     if existing:
-        raise HTTPException(status_code=400, detail="Asset key already exists. Use update.")
+        raise HTTPException(
+            status_code=400, detail="Asset key already exists. Use update."
+        )
 
     db_asset = SiteAsset(**asset.model_dump())
     db.add(db_asset)
     await db.commit()
     await db.refresh(db_asset)
-    
+
     # Fetch media item for response
     media_query = select(MediaItem).where(MediaItem.id == db_asset.media_item_id)
     media_result = await db.execute(media_query)
     db_asset.media_item = media_result.scalar_one_or_none()
-    
+
     return db_asset
 
 
@@ -426,13 +440,13 @@ async def list_site_assets(db: AsyncSession = Depends(get_async_db)):
     query = select(SiteAsset).order_by(SiteAsset.key)
     result = await db.execute(query)
     assets = result.scalars().all()
-    
+
     # Eager load media items would be better, but for now loop
     for asset in assets:
         media_query = select(MediaItem).where(MediaItem.id == asset.media_item_id)
         media_result = await db.execute(media_query)
         asset.media_item = media_result.scalar_one_or_none()
-        
+
     return assets
 
 
@@ -442,14 +456,14 @@ async def get_site_asset(key: str, db: AsyncSession = Depends(get_async_db)):
     query = select(SiteAsset).where(SiteAsset.key == key)
     result = await db.execute(query)
     asset = result.scalar_one_or_none()
-    
+
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
-        
+
     media_query = select(MediaItem).where(MediaItem.id == asset.media_item_id)
     media_result = await db.execute(media_query)
     asset.media_item = media_result.scalar_one_or_none()
-    
+
     return asset
 
 
@@ -464,21 +478,21 @@ async def update_site_asset(
     query = select(SiteAsset).where(SiteAsset.key == key)
     result = await db.execute(query)
     asset = result.scalar_one_or_none()
-    
+
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
-        
+
     update_data = asset_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(asset, field, value)
-        
+
     await db.commit()
     await db.refresh(asset)
-    
+
     media_query = select(MediaItem).where(MediaItem.id == asset.media_item_id)
     media_result = await db.execute(media_query)
     asset.media_item = media_result.scalar_one_or_none()
-    
+
     return asset
 
 
@@ -515,10 +529,7 @@ async def tag_member_in_media(
 
     # Create tag
     db_tag = MediaTag(
-        media_item_id=media_id, 
-        member_id=member_id,
-        x_coord=x_coord,
-        y_coord=y_coord
+        media_item_id=media_id, member_id=member_id, x_coord=x_coord, y_coord=y_coord
     )
     db.add(db_tag)
     await db.commit()

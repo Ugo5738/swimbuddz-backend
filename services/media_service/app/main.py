@@ -2,8 +2,8 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from services.media_service.router import router
 from libs.common.config import get_settings
+from services.media_service.router import router
 
 settings = get_settings()
 

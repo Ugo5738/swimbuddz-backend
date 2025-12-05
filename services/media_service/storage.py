@@ -2,12 +2,12 @@
 
 import os
 import uuid
-from typing import Optional, Tuple
 from io import BytesIO
+from typing import Optional, Tuple
 
-from supabase import create_client, Client
 from PIL import Image
 
+from supabase import Client, create_client
 
 # Storage configuration
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "supabase")  # supabase or s3
@@ -52,14 +52,14 @@ class StorageService:
         # Generate unique filename
         file_ext = filename.split(".")[-1]
         unique_filename = f"{uuid.uuid4()}.{file_ext}"
-        
+
         thumbnail_url = None
-        
+
         # Only generate thumbnail for images
         if content_type.startswith("image/"):
             thumbnail_filename = f"thumb_{unique_filename}"
             thumbnail_data = self._create_thumbnail(file_data)
-            
+
             if self.backend == "supabase":
                 thumbnail_url = await self._upload_supabase(
                     thumbnail_filename, thumbnail_data, content_type
@@ -104,7 +104,7 @@ class StorageService:
         self, filename: str, data: bytes, content_type: str
     ) -> str:
         """Upload to Supabase Storage."""
-        path = f"media/{filename}" # Changed folder to media
+        path = f"media/{filename}"  # Changed folder to media
 
         self.supabase.storage.from_(self.bucket).upload(
             path=path, file=data, file_options={"content-type": content_type}
@@ -139,7 +139,7 @@ class StorageService:
                     thumb_path = thumbnail_url.split(f"{self.bucket}/")[-1]
                     self.supabase.storage.from_(self.bucket).remove([thumb_path])
             except Exception:
-                pass # Ignore errors during deletion
+                pass  # Ignore errors during deletion
 
         elif self.backend == "s3":
             try:
