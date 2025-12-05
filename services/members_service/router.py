@@ -492,18 +492,19 @@ async def delete_member(
     # Delete from Supabase Auth
     try:
         from libs.common.config import get_settings
+
         from supabase import Client, create_client
 
         settings = get_settings()
         supabase: Client = create_client(
             settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY
         )
-        
+
         # auth_id is the Supabase User ID
         if member.auth_id:
             supabase.auth.admin.delete_user(member.auth_id)
             print(f"Deleted Supabase user: {member.auth_id}")
-            
+
     except Exception as e:
         # Log error but proceed with local deletion to avoid getting stuck
         print(f"Failed to delete Supabase user {member.auth_id}: {e}")
