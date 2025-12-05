@@ -19,6 +19,7 @@ from services.members_service.schemas import (
 )
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from libs.common.email import send_email
 
 router = APIRouter(prefix="/members", tags=["members"])
 pending_router = APIRouter(
@@ -364,12 +365,27 @@ async def get_member_stats(
     result = await db.execute(query)
     total_members = result.scalar_one() or 0
 
-    # Active Members
+    # Active Members (registration complete)
     query = select(func.count(Member.id)).where(Member.registration_complete.is_(True))
     result = await db.execute(query)
     active_members = result.scalar_one() or 0
 
-    return {"total_members": total_members, "active_members": active_members}
+    # Approved Members
+    query = select(func.count(Member.id)).where(Member.approval_status == "approved")
+    result = await db.execute(query)
+    approved_members = result.scalar_one() or 0
+
+    # Pending Approvals
+    query = select(func.count(Member.id)).where(Member.approval_status == "pending")
+    result = await db.execute(query)
+    pending_approvals = result.scalar_one() or 0
+
+    return {
+        "total_members": total_members,
+        "active_members": active_members,
+        "approved_members": approved_members,
+        "pending_approvals": pending_approvals,
+    }
 
 
 @router.patch("/me", response_model=MemberResponse)
@@ -529,8 +545,12 @@ async def approve_member(
     await db.commit()
     await db.refresh(member)
 
-    # TODO: Send approval email notification when SMTP is configured
-    # await send_approval_email(member.email, member.first_name)
+    # Send approval email notification
+    await send_email(
+        to_email=member.email,
+        subject="Welcome to SwimBuddz! Your account is approved",
+        body=f"Hi {member.first_name},\n\nCongratulations! Your SwimBuddz membership application has been approved.\n\nYou can now log in and access all member features.\n\nWelcome to the community!\nThe SwimBuddz Team"
+    )
 
     return member
 
@@ -572,8 +592,12 @@ async def reject_member(
     await db.commit()
     await db.refresh(member)
 
-    # TODO: Send rejection email notification when SMTP is configured
-    # await send_rejection_email(member.email, member.first_name, action.notes)
+    # Send rejection email notification
+    await send_email(
+        to_email=member.email,
+        subject="Update on your SwimBuddz application",
+        body=f"Hi {member.first_name},\n\nThank you for your interest in SwimBuddz.\n\nAfter reviewing your application, we are unable to approve your membership at this time.\n\nReason: {action.notes or 'Does not meet current criteria'}\n\nYou are welcome to reapply in the future.\n\nBest regards,\nThe SwimBuddz Team"
+    )
 
     return member
 

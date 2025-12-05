@@ -26,6 +26,8 @@ class MemberDashboardResponse(BaseModel):
 class AdminDashboardStats(BaseModel):
     total_members: int
     active_members: int
+    approved_members: int
+    pending_approvals: int
     upcoming_sessions_count: int
     recent_announcements_count: int
 
@@ -89,6 +91,8 @@ async def get_admin_dashboard_stats(
     return AdminDashboardStats(
         total_members=member_stats.get("total_members", 0),
         active_members=member_stats.get("active_members", 0),
+        approved_members=member_stats.get("approved_members", 0),
+        pending_approvals=member_stats.get("pending_approvals", 0),
         upcoming_sessions_count=session_stats.get("upcoming_sessions_count", 0),
         recent_announcements_count=announcement_stats.get(
             "recent_announcements_count", 0
