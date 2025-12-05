@@ -321,6 +321,8 @@ async def delete_pickup_location(
 
 
 # Route info management (for distances/ETAs per area or pickup -> destination)
+
+
 @router.get("/routes", response_model=List[RouteInfoResponse])
 async def list_routes(
     origin_area_id: Optional[uuid.UUID] = None,
@@ -410,9 +412,8 @@ class SessionRideConfigResponse(BaseModel):
     session_id: uuid.UUID
     ride_area_id: uuid.UUID
     ride_area_name: str  # Populated via join
-    pickup_locations: List[Dict] = (
-        []
-    )  # Populated via join with availability and route info
+    # Populated via join with availability and route info
+    pickup_locations: List[Dict] = []
     cost: float
     capacity: int
     departure_time: Optional[datetime]
@@ -648,6 +649,8 @@ async def get_session_ride_configs(
 
 
 # Ride Booking Endpoints
+
+
 class RideBookingCreate(BaseModel):
     session_ride_config_id: uuid.UUID
     pickup_location_id: uuid.UUID
