@@ -8,8 +8,8 @@ COPY libs/ libs/
 COPY services/attendance_service/ services/attendance_service/
 COPY services/members_service/models.py services/members_service/
 COPY services/sessions_service/models.py services/sessions_service/
-COPY alembic/ alembic/
-COPY alembic.ini .
+COPY services/attendance_service/alembic/ alembic/
+COPY services/attendance_service/alembic.ini .
 
 # Install dependencies
 RUN pip install --no-cache-dir -e .
