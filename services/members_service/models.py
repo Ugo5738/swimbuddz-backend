@@ -110,6 +110,40 @@ class Member(Base):
     # Profile Photo
     profile_photo_url: Mapped[str] = mapped_column(String, nullable=True)
 
+    # ===== APPROVAL SYSTEM =====
+    approval_status: Mapped[str] = mapped_column(
+        String, nullable=False, default="pending", server_default="pending"
+    )  # pending, approved, rejected
+    approval_notes: Mapped[str] = mapped_column(
+        String, nullable=True
+    )  # Admin vetting notes (visible only to admins)
+    approved_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    approved_by: Mapped[str] = mapped_column(
+        String, nullable=True
+    )  # Email of admin who approved
+
+    # ===== ABOUT YOU (Vetting Questions) =====
+    occupation: Mapped[str] = mapped_column(
+        String, nullable=True
+    )  # Work/school
+    area_in_lagos: Mapped[str] = mapped_column(
+        String, nullable=True
+    )  # Which area of Lagos
+    how_found_us: Mapped[str] = mapped_column(
+        String, nullable=True
+    )  # How they found SwimBuddz
+    previous_communities: Mapped[str] = mapped_column(
+        String, nullable=True
+    )  # Sports/fitness community experience
+    hopes_from_swimbuddz: Mapped[str] = mapped_column(
+        String, nullable=True
+    )  # What they hope to gain
+    community_rules_accepted: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+
     # Community Tier - Enhanced fields
     gender: Mapped[str] = mapped_column(String, nullable=True)
     date_of_birth: Mapped[datetime] = mapped_column(

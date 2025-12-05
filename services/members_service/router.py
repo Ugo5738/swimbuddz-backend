@@ -1,16 +1,19 @@
 import json
 import uuid
+from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from libs.auth.dependencies import get_current_user
+from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.members_service.models import Member, PendingRegistration
 from services.members_service.schemas import (
+    ApprovalAction,
     MemberCreate,
     MemberResponse,
     MemberUpdate,
+    PendingMemberResponse,
     PendingRegistrationCreate,
     PendingRegistrationResponse,
 )
@@ -21,7 +24,7 @@ router = APIRouter(prefix="/members", tags=["members"])
 pending_router = APIRouter(
     prefix="/pending-registrations", tags=["pending-registrations"]
 )
-
+admin_router = APIRouter(prefix="/admin/members", tags=["admin-members"])
 
 @pending_router.post(
     "/", response_model=PendingRegistrationResponse, status_code=status.HTTP_201_CREATED
@@ -446,3 +449,131 @@ async def update_member(
     await db.commit()
     await db.refresh(member)
     return member
+
+
+@router.delete("/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_member(
+    member_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Delete a member by ID (admin only).
+    """
+    query = select(Member).where(Member.id == member_id)
+    result = await db.execute(query)
+    member = result.scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found",
+        )
+
+    await db.delete(member)
+    await db.commit()
+    return None
+
+
+# ===== ADMIN APPROVAL ENDPOINTS =====
+@admin_router.get("/pending", response_model=List[PendingMemberResponse])
+async def list_pending_members(
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    List all members with pending approval status (admin only).
+    """
+    query = (
+        select(Member)
+        .where(Member.approval_status == "pending")
+        .order_by(Member.created_at.desc())
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@admin_router.post("/{member_id}/approve", response_model=MemberResponse)
+async def approve_member(
+    member_id: uuid.UUID,
+    action: ApprovalAction,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Approve a pending member registration (admin only).
+    """
+    query = select(Member).where(Member.id == member_id)
+    result = await db.execute(query)
+    member = result.scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found",
+        )
+
+    if member.approval_status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Member is already {member.approval_status}",
+        )
+
+    member.approval_status = "approved"
+    member.approved_at = datetime.now(timezone.utc)
+    member.approved_by = current_user.email
+    if action.notes:
+        member.approval_notes = action.notes
+
+    db.add(member)
+    await db.commit()
+    await db.refresh(member)
+
+    # TODO: Send approval email notification when SMTP is configured
+    # await send_approval_email(member.email, member.first_name)
+
+    return member
+
+
+@admin_router.post("/{member_id}/reject", response_model=MemberResponse)
+async def reject_member(
+    member_id: uuid.UUID,
+    action: ApprovalAction,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Reject a pending member registration (admin only).
+    User can reapply later.
+    """
+    query = select(Member).where(Member.id == member_id)
+    result = await db.execute(query)
+    member = result.scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found",
+        )
+
+    if member.approval_status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Member is already {member.approval_status}",
+        )
+
+    member.approval_status = "rejected"
+    member.approved_at = datetime.now(timezone.utc)
+    member.approved_by = current_user.email
+    if action.notes:
+        member.approval_notes = action.notes
+
+    db.add(member)
+    await db.commit()
+    await db.refresh(member)
+
+    # TODO: Send rejection email notification when SMTP is configured
+    # await send_rejection_email(member.email, member.first_name, action.notes)
+
+    return member
+

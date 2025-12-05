@@ -2,7 +2,11 @@
 
 from fastapi import FastAPI
 
-from services.members_service.router import router as members_router, pending_router
+from services.members_service.router import (
+    router as members_router,
+    pending_router,
+    admin_router,
+)
 from services.members_service.volunteer_router import volunteer_router, challenge_router
 
 
@@ -22,6 +26,7 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(members_router)
     app.include_router(pending_router)  # Fix: Include pending registration router
+    app.include_router(admin_router)  # Admin approval endpoints
     app.include_router(volunteer_router)
     app.include_router(challenge_router)
 
@@ -29,3 +34,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+

@@ -81,6 +81,14 @@ class MemberBase(BaseModel):
     # Profile Photo
     profile_photo_url: Optional[str] = None
 
+    # ===== ABOUT YOU (Vetting Questions) =====
+    occupation: Optional[str] = None
+    area_in_lagos: Optional[str] = None
+    how_found_us: Optional[str] = None
+    previous_communities: Optional[str] = None
+    hopes_from_swimbuddz: Optional[str] = None
+    community_rules_accepted: Optional[bool] = False
+
     # Community Tier - Enhanced fields
     gender: Optional[str] = None
     date_of_birth: Optional[datetime] = None
@@ -126,6 +134,12 @@ class MemberResponse(MemberBase):
     created_at: datetime
     updated_at: datetime
 
+    # Approval fields
+    approval_status: Optional[str] = "pending"
+    approval_notes: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    approved_by: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -144,3 +158,16 @@ class PendingRegistrationResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ===== APPROVAL SYSTEM SCHEMAS =====
+class ApprovalAction(BaseModel):
+    """Schema for approve/reject actions"""
+    notes: Optional[str] = None  # Admin notes for the action
+
+
+class PendingMemberResponse(MemberResponse):
+    """Extended response for pending members (admin view)"""
+    # Inherits all from MemberResponse, includes vetting fields
+    pass
+

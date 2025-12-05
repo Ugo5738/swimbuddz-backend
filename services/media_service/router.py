@@ -309,11 +309,29 @@ async def list_media(
 
     response_list = []
     for item in items:
-        item_data = MediaItemResponse.model_validate(item)
+        # Fetch tags to avoid lazy-load error
         tags_query = select(MediaTag.member_id).where(MediaTag.media_item_id == item.id)
         tags_result = await db.execute(tags_query)
-        item_data.tags = [tag for tag in tags_result.scalars().all()]
-        response_list.append(item_data)
+        tags = [tag for tag in tags_result.scalars().all()]
+
+        # Build response manually to avoid lazy-load in Pydantic validation
+        response_list.append(
+            MediaItemResponse(
+                id=item.id,
+                file_url=item.file_url,
+                thumbnail_url=item.thumbnail_url,
+                title=item.title,
+                description=item.description,
+                alt_text=item.alt_text,
+                media_type=item.media_type.value if hasattr(item.media_type, "value") else item.media_type,
+                metadata_info=item.metadata_info,
+                is_processed=item.is_processed,
+                uploaded_by=item.uploaded_by,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+                tags=tags,
+            )
+        )
 
     return response_list
 
