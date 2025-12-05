@@ -131,16 +131,17 @@ jobs:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     steps:
-      - name: Deploy to Digital Ocean
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: ${{ secrets.DO_USERNAME }}
-          key: ${{ secrets.DO_SSH_KEY }}
-          command_timeout: 30m
-          script: |
-            set -euo pipefail
-            set -x
+    - name: Deploy to Digital Ocean
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.DO_HOST }}
+        username: ${{ secrets.DO_USERNAME }}
+        key: ${{ secrets.DO_SSH_KEY }}
+        command_timeout: 30m
+        envs: GPG_PASSPHRASE
+        script: |
+          set -euo pipefail
+          set -x
 
             # Ensure project directory exists
             mkdir -p "${{ env.DEPLOY_PATH }}"
