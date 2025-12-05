@@ -6,11 +6,10 @@ importing them directly.
 
 from __future__ import annotations
 
-from fastapi import FastAPI, Request, HTTPException
+import httpx
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import httpx
-
 from services.gateway_service.app import clients
 
 
@@ -54,7 +53,9 @@ def create_app() -> FastAPI:
     )
     async def proxy_admin_members(path: str, request: Request):
         """Proxy all /api/v1/admin/members/* requests to members service."""
-        return await proxy_request(clients.members_client, f"/admin/members/{path}", request)
+        return await proxy_request(
+            clients.members_client, f"/admin/members/{path}", request
+        )
 
     @app.api_route(
         "/api/v1/pending-registrations", methods=["GET", "POST", "PATCH", "DELETE"]
@@ -201,9 +202,7 @@ def create_app() -> FastAPI:
     @app.api_route("/api/v1/media/", methods=["GET", "POST"])
     async def proxy_media_root(request: Request):
         """Proxy media root requests (list and upload) to media service."""
-        return await proxy_request(
-            clients.media_client, "/api/v1/media/media", request
-        )
+        return await proxy_request(clients.media_client, "/api/v1/media/media", request)
 
     @app.api_route(
         "/api/v1/media/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
@@ -255,7 +254,7 @@ async def proxy_request(client: clients.ServiceClient, path: str, request: Reque
         # Get request body
         json_body = None
         content_body = None
-        
+
         if request.method in ["POST", "PATCH", "PUT"]:
             content_type = request.headers.get("content-type", "")
             if "application/json" in content_type:
@@ -286,11 +285,17 @@ async def proxy_request(client: clients.ServiceClient, path: str, request: Reque
         if request.method == "GET":
             result = await client.get(path, headers=headers)
         elif request.method == "POST":
-            result = await client.post(path, json=json_body, content=content_body, headers=headers)
+            result = await client.post(
+                path, json=json_body, content=content_body, headers=headers
+            )
         elif request.method == "PUT":
-            result = await client.put(path, json=json_body, content=content_body, headers=headers)
+            result = await client.put(
+                path, json=json_body, content=content_body, headers=headers
+            )
         elif request.method == "PATCH":
-            result = await client.patch(path, json=json_body, content=content_body, headers=headers)
+            result = await client.patch(
+                path, json=json_body, content=content_body, headers=headers
+            )
         elif request.method == "DELETE":
             result = await client.delete(path, headers=headers)
         else:

@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -13,7 +13,9 @@ class AlbumBase(BaseModel):
 
     title: str
     description: Optional[str] = None
-    album_type: str  # GENERAL, SESSION, EVENT, ACADEMY, PRODUCT, MARKETING, USER_GENERATED
+    album_type: (
+        str  # GENERAL, SESSION, EVENT, ACADEMY, PRODUCT, MARKETING, USER_GENERATED
+    )
     linked_entity_id: Optional[uuid.UUID] = None
     linked_entity_type: Optional[str] = None
     owner_entity_id: Optional[uuid.UUID] = None
@@ -97,7 +99,7 @@ class MediaItemResponse(MediaItemBase):
 # ===== SITE ASSET SCHEMAS =====
 class SiteAssetBase(BaseModel):
     """Base site asset schema."""
-    
+
     key: str
     description: Optional[str] = None
     is_active: bool = True
@@ -105,13 +107,13 @@ class SiteAssetBase(BaseModel):
 
 class SiteAssetCreate(SiteAssetBase):
     """Schema for creating a site asset."""
-    
+
     media_item_id: uuid.UUID
 
 
 class SiteAssetUpdate(BaseModel):
     """Schema for updating a site asset."""
-    
+
     description: Optional[str] = None
     is_active: Optional[bool] = None
     media_item_id: Optional[uuid.UUID] = None
@@ -119,13 +121,13 @@ class SiteAssetUpdate(BaseModel):
 
 class SiteAssetResponse(SiteAssetBase):
     """Site asset response schema."""
-    
+
     id: uuid.UUID
     media_item_id: uuid.UUID
     media_item: Optional[MediaItemResponse] = None
     created_at: datetime
     updated_at: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
