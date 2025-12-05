@@ -6,8 +6,8 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY libs/ libs/
 COPY services/members_service/ services/members_service/
-COPY alembic/ alembic/
-COPY alembic.ini .
+COPY services/members_service/alembic/ alembic/
+COPY services/members_service/alembic.ini .
 
 # Install dependencies
 RUN pip install --no-cache-dir -e .

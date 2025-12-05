@@ -6,8 +6,8 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY libs/ libs/
 COPY services/events_service/ services/events_service/
-COPY alembic/ alembic/
-COPY alembic.ini .
+COPY services/events_service/alembic/ alembic/
+COPY services/events_service/alembic.ini .
 
 # Install dependencies
 RUN pip install --no-cache-dir -e .
