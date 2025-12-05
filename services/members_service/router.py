@@ -84,6 +84,7 @@ async def create_pending_registration(
         from supabase import Client, create_client
 
         settings = get_settings()
+        redirect_url = f"{settings.FRONTEND_URL.rstrip('/')}/confirm"
         supabase: Client = create_client(
             settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY
         )
@@ -101,14 +102,13 @@ async def create_pending_registration(
                         "first_name": registration_in.first_name,
                         "last_name": registration_in.last_name,
                     },
-                    "email_redirect_to": "http://localhost:3000/confirm",
+                    "email_redirect_to": redirect_url,
                 },
             }
             response = supabase.auth.sign_up(credentials)
             print(f"User signed up in Supabase: {response}")
         else:
             # Fallback to invite if no password (shouldn't happen with new frontend)
-            redirect_url = "http://localhost:3000/confirm"
             response = supabase.auth.admin.invite_user_by_email(
                 registration_in.email, options={"redirect_to": redirect_url}
             )

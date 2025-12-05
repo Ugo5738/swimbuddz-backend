@@ -2,9 +2,9 @@ name: Backend CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main", "master", "develop" ]
+    branches: ["main", "master", "develop"]
   pull_request:
-    branches: [ "main", "master", "develop" ]
+    branches: ["main", "master", "develop"]
 
 env:
   DOCKER_REGISTRY: docker.io
@@ -12,6 +12,7 @@ env:
   DEPLOY_PATH: /home/deploy/swimbuddz-backend
   # Prefer to set REPO_URL as a secret that already includes auth (e.g., https://<token>@github.com/Ugo5738/swimbuddz-backend.git)
   REPO_URL: ${{ secrets.REPO_URL }}
+  GPG_PASSPHRASE: ${{ secrets.ENV_FILE_GPG_PASSPHRASE }}
 
 jobs:
   # ------------------------------------------------------------------
@@ -19,33 +20,33 @@ jobs:
   # ------------------------------------------------------------------
   backend-ci:
     runs-on: ubuntu-latest
-    
+
     env:
       # Set a dummy DATABASE_URL for tests (tests don't actually connect)
       DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
-    
+
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
-        cache: 'pip'
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
 
-    - name: Lint with Ruff
-      run: |
-        ruff check .
-        ruff format --check .
+      - name: Lint with Ruff
+        run: |
+          ruff check .
+          ruff format --check .
 
-    - name: Run Tests
-      run: |
-        pytest tests/
+      - name: Run Tests
+        run: |
+          pytest tests/
 
   # ------------------------------------------------------------------
   # BUILD AND PUSH DOCKER IMAGES
@@ -90,36 +91,36 @@ jobs:
             image: swimbuddz-transport-service
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Extract metadata (tags, labels) for Docker
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.DOCKER_USERNAME }}/${{ matrix.image }}
-        tags: |
-          type=raw,value=latest
-          type=sha,prefix=,format=long
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_USERNAME }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=,format=long
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: ${{ matrix.context }}
-        file: ${{ matrix.dockerfile }}
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # ------------------------------------------------------------------
   # DEPLOY TO DIGITAL OCEAN
@@ -128,60 +129,72 @@ jobs:
     needs: [build-and-push]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    
+
     steps:
-    - name: Deploy to Digital Ocean
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.DO_HOST }}
-        username: ${{ secrets.DO_USERNAME }}
-        key: ${{ secrets.DO_SSH_KEY }}
-        command_timeout: 30m
-        script: |
-          set -euo pipefail
-          set -x
+      - name: Deploy to Digital Ocean
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USERNAME }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            set -euo pipefail
+            set -x
 
-          # Ensure project directory exists
-          mkdir -p "${{ env.DEPLOY_PATH }}"
-          cd "${{ env.DEPLOY_PATH }}"
+            # Ensure project directory exists
+            mkdir -p "${{ env.DEPLOY_PATH }}"
+            cd "${{ env.DEPLOY_PATH }}"
 
-          # Clone repo if missing, otherwise fetch/reset to main
-          if [ ! -d .git ]; then
-            git clone "${{ env.REPO_URL }}" .
-          else
-            git remote set-url origin "${{ env.REPO_URL }}"
-            git fetch origin
-            git reset --hard origin/main
-          fi
+            # Clone repo if missing, otherwise fetch/reset to main
+            if [ ! -d .git ]; then
+              git clone "${{ env.REPO_URL }}" .
+            else
+              git remote set-url origin "${{ env.REPO_URL }}"
+              git fetch origin
+              git reset --hard origin/main
+            fi
 
-          # Decode .env.prod file
-          echo "${{ secrets.ENV_FILE_PROD_BASE64 }}" | base64 -d > .env.prod
+            # Decrypt .env.prod from repository (requires .env.prod.gpg and GPG_PASSPHRASE)
+            if [ ! -f .env.prod.gpg ]; then
+              echo "Missing .env.prod.gpg in repo. Aborting deploy." >&2
+              exit 1
+            fi
+            if [ -z "${GPG_PASSPHRASE:-}" ]; then
+              echo "GPG_PASSPHRASE not set. Aborting deploy." >&2
+              exit 1
+            fi
+            echo "$GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 -o .env.prod -d .env.prod.gpg
 
-          # Make DOCKER_USERNAME and LE_EMAIL available for compose
-          export DOCKER_USERNAME="${{ secrets.DOCKER_USERNAME }}"
-          export LE_EMAIL="${{ secrets.LE_EMAIL }}"
-          # Explicitly target a recent Docker API to satisfy the engine minimum supported version
-          export DOCKER_API_VERSION="1.52"
+            # Make DOCKER_USERNAME and LE_EMAIL available for compose
+            export DOCKER_USERNAME="${{ secrets.DOCKER_USERNAME }}"
+            export LE_EMAIL="${{ secrets.LE_EMAIL }}"
+            # Explicitly target a recent Docker API to satisfy the engine minimum supported version
+            export DOCKER_API_VERSION="1.52"
 
-          # Login to Docker Hub (to ensure we can pull private images if needed)
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+            # Login to Docker Hub (to ensure we can pull private images if needed)
+            echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-          # Prepare Traefik ACME storage (Let’s Encrypt)
-          mkdir -p letsencrypt
-          touch letsencrypt/acme.json
-          chmod 600 letsencrypt/acme.json
+            # Prepare Traefik ACME storage (Let’s Encrypt)
+            mkdir -p letsencrypt
+            touch letsencrypt/acme.json
+            chmod 600 letsencrypt/acme.json
 
-          # Pull latest images
-          echo "==> pulling images"
-          COMPOSE_HTTP_TIMEOUT=600 docker compose -f docker-compose.prod.yml pull --no-parallel
-          
-          # Restart services
-          echo "==> bringing up services"
-          COMPOSE_HTTP_TIMEOUT=600 docker compose -f docker-compose.prod.yml up -d --wait
-          
-          # Cleanup unused images
-          echo "==> pruning images"
-          docker image prune -f
+            # Pull latest images
+            echo "==> pulling images"
+            COMPOSE_HTTP_TIMEOUT=600 docker compose -f docker-compose.prod.yml pull --no-parallel
+
+            # Restart services
+            echo "==> bringing up services"
+            COMPOSE_HTTP_TIMEOUT=600 docker compose -f docker-compose.prod.yml up -d --wait
+
+            # Cleanup unused images
+            echo "==> pruning images"
+            docker image prune -f
 
 # base64 -i .env.prod | pbcopy
 # Paste the output directly into the secret value ENV_FILE_PROD_BASE64.
+
+# PASSPHRASE='swimbuddz'; \
+# printf '%s' "$PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --symmetric --cipher-algo AES256 .env.prod
+# unset PASSPHRASE
