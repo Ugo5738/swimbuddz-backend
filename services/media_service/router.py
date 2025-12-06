@@ -431,6 +431,8 @@ async def create_site_asset(
     media_result = await db.execute(media_query)
     media_item = media_result.scalar_one_or_none()
 
+    response = SiteAssetResponse.model_validate(db_asset)
+
     if media_item:
         # Fetch tags
         tags_query = select(MediaTag.member_id).where(
@@ -439,7 +441,7 @@ async def create_site_asset(
         tags_result = await db.execute(tags_query)
         tags = [tag for tag in tags_result.scalars().all()]
 
-        db_asset.media_item = MediaItemResponse(
+        response.media_item = MediaItemResponse(
             id=media_item.id,
             file_url=media_item.file_url,
             thumbnail_url=media_item.thumbnail_url,
@@ -459,7 +461,7 @@ async def create_site_asset(
             tags=tags,
         )
 
-    return db_asset
+    return response
 
 
 @router.get("/assets", response_model=List[SiteAssetResponse])
@@ -470,7 +472,10 @@ async def list_site_assets(db: AsyncSession = Depends(get_async_db)):
     assets = result.scalars().all()
 
     # Eager load media items would be better, but for now loop
+    response_list = []
     for asset in assets:
+        response = SiteAssetResponse.model_validate(asset)
+        
         media_query = select(MediaItem).where(MediaItem.id == asset.media_item_id)
         media_result = await db.execute(media_query)
         media_item = media_result.scalar_one_or_none()
@@ -483,7 +488,7 @@ async def list_site_assets(db: AsyncSession = Depends(get_async_db)):
             tags_result = await db.execute(tags_query)
             tags = [tag for tag in tags_result.scalars().all()]
 
-            asset.media_item = MediaItemResponse(
+            response.media_item = MediaItemResponse(
                 id=media_item.id,
                 file_url=media_item.file_url,
                 thumbnail_url=media_item.thumbnail_url,
@@ -502,8 +507,9 @@ async def list_site_assets(db: AsyncSession = Depends(get_async_db)):
                 updated_at=media_item.updated_at,
                 tags=tags,
             )
+        response_list.append(response)
 
-    return assets
+    return response_list
 
 
 @router.get("/assets/{key}", response_model=SiteAssetResponse)
@@ -520,6 +526,8 @@ async def get_site_asset(key: str, db: AsyncSession = Depends(get_async_db)):
     media_result = await db.execute(media_query)
     media_item = media_result.scalar_one_or_none()
 
+    response = SiteAssetResponse.model_validate(asset)
+
     if media_item:
         # Fetch tags
         tags_query = select(MediaTag.member_id).where(
@@ -528,7 +536,7 @@ async def get_site_asset(key: str, db: AsyncSession = Depends(get_async_db)):
         tags_result = await db.execute(tags_query)
         tags = [tag for tag in tags_result.scalars().all()]
 
-        asset.media_item = MediaItemResponse(
+        response.media_item = MediaItemResponse(
             id=media_item.id,
             file_url=media_item.file_url,
             thumbnail_url=media_item.thumbnail_url,
@@ -548,7 +556,7 @@ async def get_site_asset(key: str, db: AsyncSession = Depends(get_async_db)):
             tags=tags,
         )
 
-    return asset
+    return response
 
 
 @router.put("/assets/{key}", response_model=SiteAssetResponse)
@@ -577,6 +585,8 @@ async def update_site_asset(
     media_result = await db.execute(media_query)
     media_item = media_result.scalar_one_or_none()
 
+    response = SiteAssetResponse.model_validate(asset)
+
     if media_item:
         # Fetch tags
         tags_query = select(MediaTag.member_id).where(
@@ -585,7 +595,7 @@ async def update_site_asset(
         tags_result = await db.execute(tags_query)
         tags = [tag for tag in tags_result.scalars().all()]
 
-        asset.media_item = MediaItemResponse(
+        response.media_item = MediaItemResponse(
             id=media_item.id,
             file_url=media_item.file_url,
             thumbnail_url=media_item.thumbnail_url,
@@ -605,7 +615,7 @@ async def update_site_asset(
             tags=tags,
         )
 
-    return asset
+    return response
 
 
 # ===== TAG ENDPOINTS =====
