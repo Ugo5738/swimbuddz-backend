@@ -19,3 +19,5 @@ We no longer commit plaintext `.env.prod`/`.env.dev`. `.env.prod` should be stor
 ### Notes
 - For local dev, keep using your untracked `.env.dev`/`.env` files.
 - If you rotate secrets, re-encrypt and recommit `.env.prod.gpg`.
+
+ssh -i ~/.ssh/swimbuddz_deploy_key deploy@161.35.209.68
