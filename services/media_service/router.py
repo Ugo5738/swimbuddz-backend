@@ -475,7 +475,7 @@ async def list_site_assets(db: AsyncSession = Depends(get_async_db)):
     response_list = []
     for asset in assets:
         response = SiteAssetResponse.model_validate(asset)
-        
+
         media_query = select(MediaItem).where(MediaItem.id == asset.media_item_id)
         media_result = await db.execute(media_query)
         media_item = media_result.scalar_one_or_none()
