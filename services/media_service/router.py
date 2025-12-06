@@ -429,7 +429,35 @@ async def create_site_asset(
     # Fetch media item for response
     media_query = select(MediaItem).where(MediaItem.id == db_asset.media_item_id)
     media_result = await db.execute(media_query)
-    db_asset.media_item = media_result.scalar_one_or_none()
+    media_item = media_result.scalar_one_or_none()
+
+    if media_item:
+        # Fetch tags
+        tags_query = select(MediaTag.member_id).where(
+            MediaTag.media_item_id == media_item.id
+        )
+        tags_result = await db.execute(tags_query)
+        tags = [tag for tag in tags_result.scalars().all()]
+
+        db_asset.media_item = MediaItemResponse(
+            id=media_item.id,
+            file_url=media_item.file_url,
+            thumbnail_url=media_item.thumbnail_url,
+            title=media_item.title,
+            description=media_item.description,
+            alt_text=media_item.alt_text,
+            media_type=(
+                media_item.media_type.value
+                if hasattr(media_item.media_type, "value")
+                else media_item.media_type
+            ),
+            metadata_info=media_item.metadata_info,
+            is_processed=media_item.is_processed,
+            uploaded_by=media_item.uploaded_by,
+            created_at=media_item.created_at,
+            updated_at=media_item.updated_at,
+            tags=tags,
+        )
 
     return db_asset
 
@@ -445,7 +473,35 @@ async def list_site_assets(db: AsyncSession = Depends(get_async_db)):
     for asset in assets:
         media_query = select(MediaItem).where(MediaItem.id == asset.media_item_id)
         media_result = await db.execute(media_query)
-        asset.media_item = media_result.scalar_one_or_none()
+        media_item = media_result.scalar_one_or_none()
+
+        if media_item:
+            # Fetch tags
+            tags_query = select(MediaTag.member_id).where(
+                MediaTag.media_item_id == media_item.id
+            )
+            tags_result = await db.execute(tags_query)
+            tags = [tag for tag in tags_result.scalars().all()]
+
+            asset.media_item = MediaItemResponse(
+                id=media_item.id,
+                file_url=media_item.file_url,
+                thumbnail_url=media_item.thumbnail_url,
+                title=media_item.title,
+                description=media_item.description,
+                alt_text=media_item.alt_text,
+                media_type=(
+                    media_item.media_type.value
+                    if hasattr(media_item.media_type, "value")
+                    else media_item.media_type
+                ),
+                metadata_info=media_item.metadata_info,
+                is_processed=media_item.is_processed,
+                uploaded_by=media_item.uploaded_by,
+                created_at=media_item.created_at,
+                updated_at=media_item.updated_at,
+                tags=tags,
+            )
 
     return assets
 
@@ -462,7 +518,35 @@ async def get_site_asset(key: str, db: AsyncSession = Depends(get_async_db)):
 
     media_query = select(MediaItem).where(MediaItem.id == asset.media_item_id)
     media_result = await db.execute(media_query)
-    asset.media_item = media_result.scalar_one_or_none()
+    media_item = media_result.scalar_one_or_none()
+
+    if media_item:
+        # Fetch tags
+        tags_query = select(MediaTag.member_id).where(
+            MediaTag.media_item_id == media_item.id
+        )
+        tags_result = await db.execute(tags_query)
+        tags = [tag for tag in tags_result.scalars().all()]
+
+        asset.media_item = MediaItemResponse(
+            id=media_item.id,
+            file_url=media_item.file_url,
+            thumbnail_url=media_item.thumbnail_url,
+            title=media_item.title,
+            description=media_item.description,
+            alt_text=media_item.alt_text,
+            media_type=(
+                media_item.media_type.value
+                if hasattr(media_item.media_type, "value")
+                else media_item.media_type
+            ),
+            metadata_info=media_item.metadata_info,
+            is_processed=media_item.is_processed,
+            uploaded_by=media_item.uploaded_by,
+            created_at=media_item.created_at,
+            updated_at=media_item.updated_at,
+            tags=tags,
+        )
 
     return asset
 
@@ -491,7 +575,35 @@ async def update_site_asset(
 
     media_query = select(MediaItem).where(MediaItem.id == asset.media_item_id)
     media_result = await db.execute(media_query)
-    asset.media_item = media_result.scalar_one_or_none()
+    media_item = media_result.scalar_one_or_none()
+
+    if media_item:
+        # Fetch tags
+        tags_query = select(MediaTag.member_id).where(
+            MediaTag.media_item_id == media_item.id
+        )
+        tags_result = await db.execute(tags_query)
+        tags = [tag for tag in tags_result.scalars().all()]
+
+        asset.media_item = MediaItemResponse(
+            id=media_item.id,
+            file_url=media_item.file_url,
+            thumbnail_url=media_item.thumbnail_url,
+            title=media_item.title,
+            description=media_item.description,
+            alt_text=media_item.alt_text,
+            media_type=(
+                media_item.media_type.value
+                if hasattr(media_item.media_type, "value")
+                else media_item.media_type
+            ),
+            metadata_info=media_item.metadata_info,
+            is_processed=media_item.is_processed,
+            uploaded_by=media_item.uploaded_by,
+            created_at=media_item.created_at,
+            updated_at=media_item.updated_at,
+            tags=tags,
+        )
 
     return asset
 
