@@ -538,6 +538,52 @@ async def update_site_asset(
     return await _build_site_asset_response(db, asset)
 
 
+@router.delete("/assets/{key}")
+async def delete_site_asset(
+    key: str,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Delete site asset and, if unused elsewhere, its media + storage objects."""
+    query = select(SiteAsset).where(SiteAsset.key == key)
+    result = await db.execute(query)
+    asset = result.scalar_one_or_none()
+
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    media_item_id = asset.media_item_id
+
+    await db.delete(asset)
+    await db.flush()  # ensure subsequent queries see deletion
+
+    # Only delete media if not referenced elsewhere (other site assets or albums)
+    site_asset_count_query = select(func.count(SiteAsset.id)).where(
+        SiteAsset.media_item_id == media_item_id
+    )
+    site_asset_count_result = await db.execute(site_asset_count_query)
+    site_asset_refs = site_asset_count_result.scalar_one()
+
+    album_item_count_query = select(func.count(AlbumItem.id)).where(
+        AlbumItem.media_item_id == media_item_id
+    )
+    album_item_count_result = await db.execute(album_item_count_query)
+    album_refs = album_item_count_result.scalar_one()
+
+    if site_asset_refs == 0 and album_refs == 0:
+        media_query = select(MediaItem).where(MediaItem.id == media_item_id)
+        media_result = await db.execute(media_query)
+        media_item = media_result.scalar_one_or_none()
+        if media_item:
+            await storage_service.delete_media(
+                media_item.file_url, media_item.thumbnail_url
+            )
+            await db.delete(media_item)
+
+    await db.commit()
+    return {"message": "Asset deleted successfully"}
+
+
 # ===== TAG ENDPOINTS =====
 
 
