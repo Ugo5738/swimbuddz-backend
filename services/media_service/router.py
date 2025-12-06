@@ -34,6 +34,63 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter(prefix="/api/v1/media", tags=["media"])
 
 
+async def _build_media_item_response(
+    db: AsyncSession, media_item: MediaItem
+) -> MediaItemResponse:
+    """Builds media item response with tags without triggering lazy loads."""
+    tags_query = select(MediaTag.member_id).where(
+        MediaTag.media_item_id == media_item.id
+    )
+    tags_result = await db.execute(tags_query)
+    tags = [tag for tag in tags_result.scalars().all()]
+
+    return MediaItemResponse(
+        id=media_item.id,
+        file_url=media_item.file_url,
+        thumbnail_url=media_item.thumbnail_url,
+        title=media_item.title,
+        description=media_item.description,
+        alt_text=media_item.alt_text,
+        media_type=(
+            media_item.media_type.value
+            if hasattr(media_item.media_type, "value")
+            else media_item.media_type
+        ),
+        metadata_info=media_item.metadata_info,
+        is_processed=media_item.is_processed,
+        uploaded_by=media_item.uploaded_by,
+        created_at=media_item.created_at,
+        updated_at=media_item.updated_at,
+        tags=tags,
+    )
+
+
+async def _build_site_asset_response(
+    db: AsyncSession, asset: SiteAsset
+) -> SiteAssetResponse:
+    """Builds site asset response without letting Pydantic touch lazy relationships."""
+    media_response = None
+
+    if asset.media_item_id:
+        media_query = select(MediaItem).where(MediaItem.id == asset.media_item_id)
+        media_result = await db.execute(media_query)
+        media_item = media_result.scalar_one_or_none()
+
+        if media_item:
+            media_response = await _build_media_item_response(db, media_item)
+
+    return SiteAssetResponse(
+        id=asset.id,
+        key=asset.key,
+        description=asset.description,
+        is_active=asset.is_active,
+        media_item_id=asset.media_item_id,
+        media_item=media_response,
+        created_at=asset.created_at,
+        updated_at=asset.updated_at,
+    )
+
+
 # ===== HEALTH CHECK =====
 
 
@@ -370,11 +427,7 @@ async def update_media(
     await db.commit()
     await db.refresh(item)
 
-    response = MediaItemResponse.model_validate(item)
-    tags_query = select(MediaTag.member_id).where(MediaTag.media_item_id == item.id)
-    tags_result = await db.execute(tags_query)
-    response.tags = [tag for tag in tags_result.scalars().all()]
-    return response
+    return await _build_media_item_response(db, item)
 
 
 @router.delete("/media/{media_id}")
@@ -426,42 +479,7 @@ async def create_site_asset(
     await db.commit()
     await db.refresh(db_asset)
 
-    # Fetch media item for response
-    media_query = select(MediaItem).where(MediaItem.id == db_asset.media_item_id)
-    media_result = await db.execute(media_query)
-    media_item = media_result.scalar_one_or_none()
-
-    response = SiteAssetResponse.model_validate(db_asset)
-
-    if media_item:
-        # Fetch tags
-        tags_query = select(MediaTag.member_id).where(
-            MediaTag.media_item_id == media_item.id
-        )
-        tags_result = await db.execute(tags_query)
-        tags = [tag for tag in tags_result.scalars().all()]
-
-        response.media_item = MediaItemResponse(
-            id=media_item.id,
-            file_url=media_item.file_url,
-            thumbnail_url=media_item.thumbnail_url,
-            title=media_item.title,
-            description=media_item.description,
-            alt_text=media_item.alt_text,
-            media_type=(
-                media_item.media_type.value
-                if hasattr(media_item.media_type, "value")
-                else media_item.media_type
-            ),
-            metadata_info=media_item.metadata_info,
-            is_processed=media_item.is_processed,
-            uploaded_by=media_item.uploaded_by,
-            created_at=media_item.created_at,
-            updated_at=media_item.updated_at,
-            tags=tags,
-        )
-
-    return response
+    return await _build_site_asset_response(db, db_asset)
 
 
 @router.get("/assets", response_model=List[SiteAssetResponse])
@@ -471,43 +489,9 @@ async def list_site_assets(db: AsyncSession = Depends(get_async_db)):
     result = await db.execute(query)
     assets = result.scalars().all()
 
-    # Eager load media items would be better, but for now loop
     response_list = []
     for asset in assets:
-        response = SiteAssetResponse.model_validate(asset)
-
-        media_query = select(MediaItem).where(MediaItem.id == asset.media_item_id)
-        media_result = await db.execute(media_query)
-        media_item = media_result.scalar_one_or_none()
-
-        if media_item:
-            # Fetch tags
-            tags_query = select(MediaTag.member_id).where(
-                MediaTag.media_item_id == media_item.id
-            )
-            tags_result = await db.execute(tags_query)
-            tags = [tag for tag in tags_result.scalars().all()]
-
-            response.media_item = MediaItemResponse(
-                id=media_item.id,
-                file_url=media_item.file_url,
-                thumbnail_url=media_item.thumbnail_url,
-                title=media_item.title,
-                description=media_item.description,
-                alt_text=media_item.alt_text,
-                media_type=(
-                    media_item.media_type.value
-                    if hasattr(media_item.media_type, "value")
-                    else media_item.media_type
-                ),
-                metadata_info=media_item.metadata_info,
-                is_processed=media_item.is_processed,
-                uploaded_by=media_item.uploaded_by,
-                created_at=media_item.created_at,
-                updated_at=media_item.updated_at,
-                tags=tags,
-            )
-        response_list.append(response)
+        response_list.append(await _build_site_asset_response(db, asset))
 
     return response_list
 
@@ -522,41 +506,7 @@ async def get_site_asset(key: str, db: AsyncSession = Depends(get_async_db)):
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    media_query = select(MediaItem).where(MediaItem.id == asset.media_item_id)
-    media_result = await db.execute(media_query)
-    media_item = media_result.scalar_one_or_none()
-
-    response = SiteAssetResponse.model_validate(asset)
-
-    if media_item:
-        # Fetch tags
-        tags_query = select(MediaTag.member_id).where(
-            MediaTag.media_item_id == media_item.id
-        )
-        tags_result = await db.execute(tags_query)
-        tags = [tag for tag in tags_result.scalars().all()]
-
-        response.media_item = MediaItemResponse(
-            id=media_item.id,
-            file_url=media_item.file_url,
-            thumbnail_url=media_item.thumbnail_url,
-            title=media_item.title,
-            description=media_item.description,
-            alt_text=media_item.alt_text,
-            media_type=(
-                media_item.media_type.value
-                if hasattr(media_item.media_type, "value")
-                else media_item.media_type
-            ),
-            metadata_info=media_item.metadata_info,
-            is_processed=media_item.is_processed,
-            uploaded_by=media_item.uploaded_by,
-            created_at=media_item.created_at,
-            updated_at=media_item.updated_at,
-            tags=tags,
-        )
-
-    return response
+    return await _build_site_asset_response(db, asset)
 
 
 @router.put("/assets/{key}", response_model=SiteAssetResponse)
@@ -581,41 +531,7 @@ async def update_site_asset(
     await db.commit()
     await db.refresh(asset)
 
-    media_query = select(MediaItem).where(MediaItem.id == asset.media_item_id)
-    media_result = await db.execute(media_query)
-    media_item = media_result.scalar_one_or_none()
-
-    response = SiteAssetResponse.model_validate(asset)
-
-    if media_item:
-        # Fetch tags
-        tags_query = select(MediaTag.member_id).where(
-            MediaTag.media_item_id == media_item.id
-        )
-        tags_result = await db.execute(tags_query)
-        tags = [tag for tag in tags_result.scalars().all()]
-
-        response.media_item = MediaItemResponse(
-            id=media_item.id,
-            file_url=media_item.file_url,
-            thumbnail_url=media_item.thumbnail_url,
-            title=media_item.title,
-            description=media_item.description,
-            alt_text=media_item.alt_text,
-            media_type=(
-                media_item.media_type.value
-                if hasattr(media_item.media_type, "value")
-                else media_item.media_type
-            ),
-            metadata_info=media_item.metadata_info,
-            is_processed=media_item.is_processed,
-            uploaded_by=media_item.uploaded_by,
-            created_at=media_item.created_at,
-            updated_at=media_item.updated_at,
-            tags=tags,
-        )
-
-    return response
+    return await _build_site_asset_response(db, asset)
 
 
 # ===== TAG ENDPOINTS =====
