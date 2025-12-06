@@ -463,16 +463,20 @@ async def create_site_asset(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Create or update a site asset key."""
+    """Create or upsert a site asset key."""
     # Check if key exists
     query = select(SiteAsset).where(SiteAsset.key == asset.key)
     result = await db.execute(query)
     existing = result.scalar_one_or_none()
 
     if existing:
-        raise HTTPException(
-            status_code=400, detail="Asset key already exists. Use update."
-        )
+        # Treat POST as upsert to avoid client friction
+        existing.media_item_id = asset.media_item_id
+        existing.description = asset.description
+        existing.is_active = True
+        await db.commit()
+        await db.refresh(existing)
+        return await _build_site_asset_response(db, existing)
 
     db_asset = SiteAsset(**asset.model_dump())
     db.add(db_asset)
