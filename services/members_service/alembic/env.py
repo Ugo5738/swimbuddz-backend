@@ -7,10 +7,9 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
-
-from alembic import context
 
 # Ensure project root on sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -18,14 +17,14 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.members_service.models import (
-    Member,
-    PendingRegistration,
-    VolunteerRole,
-    VolunteerInterest,
+from services.members_service.models import (  # noqa: F401
     ClubChallenge,
+    Member,
     MemberChallengeCompletion,
-)  # noqa: F401
+    PendingRegistration,
+    VolunteerInterest,
+    VolunteerRole,
+)
 
 settings = get_settings()
 config = context.config

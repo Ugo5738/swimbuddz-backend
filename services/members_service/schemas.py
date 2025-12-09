@@ -70,6 +70,7 @@ class MemberBase(BaseModel):
 
     # Membership
     membership_tiers: Optional[list[str]] = None
+    requested_membership_tiers: Optional[list[str]] = None
     academy_focus_areas: Optional[list[str]] = None
     academy_focus: Optional[str] = None
     payment_notes: Optional[str] = None
