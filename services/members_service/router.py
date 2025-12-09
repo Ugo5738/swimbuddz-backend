@@ -411,6 +411,16 @@ async def update_current_member(
         )
 
     update_data = member_in.model_dump(exclude_unset=True)
+    
+    # Intercept membership_tiers update for non-admins (self-update)
+    if "membership_tiers" in update_data:
+        new_tiers = update_data.pop("membership_tiers")
+        # specific logic: if changing tiers, set as requested
+        # We only do this if it's different
+        if set(new_tiers) != set(member.membership_tiers or []):
+             member.requested_membership_tiers = new_tiers
+             # We could trigger a notification here
+
     for field, value in update_data.items():
         setattr(member, field, value)
 
