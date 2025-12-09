@@ -96,7 +96,9 @@ class Member(Base):
 
     # Membership
     membership_tiers: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
-    requested_membership_tiers: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    requested_membership_tiers: Mapped[list[str]] = mapped_column(
+        ARRAY(String), nullable=True
+    )
     academy_focus_areas: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
     academy_focus: Mapped[str] = mapped_column(String, nullable=True)
     payment_notes: Mapped[str] = mapped_column(String, nullable=True)
