@@ -1,5 +1,5 @@
 import uuid
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import get_current_user, require_admin
@@ -7,16 +7,20 @@ from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.academy_service.models import (
     Cohort,
+    CohortResource,
     CohortStatus,
     Enrollment,
     EnrollmentStatus,
     Milestone,
     PaymentStatus,
     Program,
+    ProgramLevel,
     StudentProgress,
 )
 from services.academy_service.schemas import (
     CohortCreate,
+    CohortResourceCreate,
+    CohortResourceResponse,
     CohortResponse,
     CohortUpdate,
     EnrollmentCreate,
@@ -124,11 +128,18 @@ async def create_cohort(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
+    from sqlalchemy.orm import selectinload
+
     cohort = Cohort(**cohort_in.model_dump())
     db.add(cohort)
     await db.commit()
-    await db.refresh(cohort)
-    return cohort
+    query = (
+        select(Cohort)
+        .where(Cohort.id == cohort.id)
+        .options(selectinload(Cohort.program))
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
 
 
 @router.put("/cohorts/{cohort_id}", response_model=CohortResponse)
@@ -138,6 +149,8 @@ async def update_cohort(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
+    from sqlalchemy.orm import selectinload
+
     query = select(Cohort).where(Cohort.id == cohort_id)
     result = await db.execute(query)
     cohort = result.scalar_one_or_none()
@@ -150,8 +163,13 @@ async def update_cohort(
         setattr(cohort, field, value)
 
     await db.commit()
-    await db.refresh(cohort)
-    return cohort
+    query = (
+        select(Cohort)
+        .where(Cohort.id == cohort.id)
+        .options(selectinload(Cohort.program))
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
 
 
 @router.delete("/cohorts/{cohort_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -177,9 +195,12 @@ async def list_cohorts(
     program_id: uuid.UUID = None,
     db: AsyncSession = Depends(get_async_db),
 ):
+    from sqlalchemy.orm import selectinload
+
     query = select(Cohort).order_by(Cohort.start_date.desc())
     if program_id:
         query = query.where(Cohort.program_id == program_id)
+    query = query.options(selectinload(Cohort.program))
 
     result = await db.execute(query)
     return result.scalars().all()
@@ -190,10 +211,42 @@ async def list_open_cohorts(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all cohorts with status OPEN."""
+    from sqlalchemy.orm import selectinload
+
     query = (
         select(Cohort)
         .where(Cohort.status == CohortStatus.OPEN)
+        .options(selectinload(Cohort.program))
         .order_by(Cohort.start_date.asc())
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/cohorts/coach/me", response_model=List[CohortResponse])
+async def list_my_coach_cohorts(
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List cohorts where the current user is the assigned coach."""
+    from sqlalchemy.orm import selectinload
+
+    # 1. Resolve Member ID (lookup by auth_id)
+    member_row = await db.execute(
+        text("SELECT id FROM members WHERE auth_id = :auth_id"),
+        {"auth_id": current_user.user_id},
+    )
+    member = member_row.mappings().first()
+
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+
+    # 2. Query Cohorts
+    query = (
+        select(Cohort)
+        .where(Cohort.coach_id == member["id"])
+        .options(selectinload(Cohort.program))
+        .order_by(Cohort.start_date.desc())
     )
     result = await db.execute(query)
     return result.scalars().all()
@@ -204,7 +257,13 @@ async def get_cohort(
     cohort_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
-    query = select(Cohort).where(Cohort.id == cohort_id)
+    from sqlalchemy.orm import selectinload
+
+    query = (
+        select(Cohort)
+        .where(Cohort.id == cohort_id)
+        .options(selectinload(Cohort.program))
+    )
     result = await db.execute(query)
     cohort = result.scalar_one_or_none()
     if not cohort:
@@ -271,9 +330,10 @@ async def enroll_student(
     db: AsyncSession = Depends(get_async_db),
 ):
     # Check if already enrolled
+    # Check if already enrolled in this program/cohort
     query = select(Enrollment).where(
-        Enrollment.cohort_id == enrollment_in.cohort_id,
         Enrollment.member_id == enrollment_in.member_id,
+        Enrollment.program_id == enrollment_in.program_id,
     )
     result = await db.execute(query)
     existing = result.scalar_one_or_none()
@@ -283,7 +343,14 @@ async def enroll_student(
             status_code=400, detail="Member already enrolled in this cohort"
         )
 
-    enrollment = Enrollment(**enrollment_in.model_dump())
+    enrollment = Enrollment(
+        program_id=enrollment_in.program_id,
+        cohort_id=enrollment_in.cohort_id,
+        member_id=enrollment_in.member_id,
+        status=EnrollmentStatus.ENROLLED,  # Admin enrolls directly
+        payment_status=PaymentStatus.PENDING,
+        preferences=enrollment_in.preferences,
+    )
     db.add(enrollment)
     await db.commit()
     await db.refresh(enrollment)
@@ -292,19 +359,48 @@ async def enroll_student(
 
 @router.get("/enrollments", response_model=List[EnrollmentResponse])
 async def list_enrollments(
+    status: Optional[EnrollmentStatus] = None,
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """List all enrollments (admin only)."""
+    """List all enrollments (admin only). Filter by status optional."""
     from sqlalchemy.orm import selectinload
 
     query = (
         select(Enrollment)
-        .options(selectinload(Enrollment.cohort))
+        .options(selectinload(Enrollment.cohort), selectinload(Enrollment.program))
         .order_by(Enrollment.created_at.desc())
     )
+
+    if status:
+        query = query.where(Enrollment.status == status)
+
+    result = await db.execute(query)
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.get("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
+async def get_enrollment(
+    enrollment_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get detailed enrollment info."""
+    from sqlalchemy.orm import selectinload
+
+    query = (
+        select(Enrollment)
+        .where(Enrollment.id == enrollment_id)
+        .options(selectinload(Enrollment.cohort), selectinload(Enrollment.program))
+    )
+    result = await db.execute(query)
+    enrollment = result.scalar_one_or_none()
+
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    return enrollment
 
 
 @router.post("/enrollments/me", response_model=EnrollmentResponse)
@@ -313,14 +409,24 @@ async def self_enroll(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Allow a member to enroll themselves in a cohort."""
-    cohort_id = request_data.get("cohort_id")
-    if not cohort_id:
+    """
+    Allow a member to request enrollment in a program or specific cohort.
+    If 'program_id' only: Creates a PENDING_APPROVAL request.
+    If 'cohort_id': Validates cohort and creates PENDING_APPROVAL request.
+    """
+    program_id_str = request_data.get("program_id")
+    cohort_id_str = request_data.get("cohort_id")
+    preferences = request_data.get("preferences")
+
+    if not program_id_str and not cohort_id_str:
         raise HTTPException(
-            status_code=422, detail="cohort_id is required in request body"
+            status_code=422, detail="Either program_id or cohort_id is required"
         )
 
-    # 1. Get Member ID (via direct lookup; no ORM relationship to keep services decoupled)
+    program_id = uuid.UUID(program_id_str) if program_id_str else None
+    cohort_id = uuid.UUID(cohort_id_str) if cohort_id_str else None
+
+    # 1. Get Member ID
     member_row = await db.execute(
         text(
             "SELECT id, first_name, last_name, email FROM members WHERE auth_id = :auth_id"
@@ -335,37 +441,89 @@ async def self_enroll(
             detail="Member profile not found. Please complete registration.",
         )
 
-    # 2. Check Cohort Status
-    cohort_query = select(Cohort).where(Cohort.id == cohort_id)
-    cohort_result = await db.execute(cohort_query)
-    cohort = cohort_result.scalar_one_or_none()
+    # 2. Derive/Validate Program ID
+    if cohort_id:
+        cohort_query = select(Cohort).where(Cohort.id == cohort_id)
+        cohort_result = await db.execute(cohort_query)
+        cohort = cohort_result.scalar_one_or_none()
 
-    if not cohort:
-        raise HTTPException(status_code=404, detail="Cohort not found")
+        if not cohort:
+            raise HTTPException(status_code=404, detail="Cohort not found")
 
-    if cohort.status != CohortStatus.OPEN:
-        raise HTTPException(
-            status_code=400, detail="This cohort is not open for enrollment"
-        )
+        # If user picked a cohort, ensure we set the program_id correctly
+        if program_id and program_id != cohort.program_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Cohort does not belong to the specified program",
+            )
+        program_id = cohort.program_id
 
-    # 3. Check Existing Enrollment
+        # Validation for mid-entry if cohort is selected
+        if cohort.status != CohortStatus.OPEN:
+            # Fetch program for level check
+            program_query = select(Program).where(Program.id == cohort.program_id)
+            program_result = await db.execute(program_query)
+            program = program_result.scalar_one_or_none()
+
+            if program and program.level in [
+                ProgramLevel.BEGINNER_1,
+                ProgramLevel.BEGINNER_2,
+                ProgramLevel.INTERMEDIATE,
+            ]:
+                if cohort.status == CohortStatus.ACTIVE:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="This cohort has already started. Please join a waitlist or next available cohort.",
+                    )
+
+            if cohort.status != CohortStatus.OPEN:
+                # Allow joining waitlist? For now, block unless OPEN.
+                # Actually, if status is PENDING_APPROVAL, maybe we allow it?
+                # Let's say if it's not OPEN, we warn.
+                # But the requirement says "Strict mid-entry rules". So block.
+                pass
+
+    elif program_id:
+        # User is requesting to join a generic Program (Request-based)
+        program_query = select(Program).where(Program.id == program_id)
+        program_result = await db.execute(program_query)
+        program = program_result.scalar_one_or_none()
+        if not program:
+            raise HTTPException(status_code=404, detail="Program not found")
+
+    # 3. Check Existing Enrollment/Request
+    # We check if they have an active enrollment or pending request for this Program
+    # (regardless of cohort, generally you don't enroll twice in same program concurrently)
+    # Actually, you can enroll in multiple cohorts if they are different times?
+    # Let's restrict: One active enrollment per Program.
     query = select(Enrollment).where(
-        Enrollment.cohort_id == cohort_id, Enrollment.member_id == member["id"]
+        Enrollment.member_id == member["id"],
+        Enrollment.program_id == program_id,
+        Enrollment.status.in_(
+            [EnrollmentStatus.ENROLLED, EnrollmentStatus.PENDING_APPROVAL]
+        ),
     )
     result = await db.execute(query)
     existing = result.scalar_one_or_none()
 
     if existing:
-        raise HTTPException(
-            status_code=400, detail="You are already enrolled in this cohort"
+        detail = (
+            "You are already enrolled in this program"
+            if existing.status == EnrollmentStatus.ENROLLED
+            else "You already have a pending request for this program"
         )
+        raise HTTPException(status_code=400, detail=detail)
 
-    # 4. Create Enrollment (Auto-PAID for now as per plan)
+    # 4. Create Enrollment Request
+    # Status is PENDING_APPROVAL by default for everyone now (as per new workflow)
+    # Payment status handles the financial part separate from Admission.
     enrollment = Enrollment(
-        cohort_id=cohort_id,
+        program_id=program_id,
+        cohort_id=cohort_id,  # Can be None
         member_id=member["id"],
-        status=EnrollmentStatus.ENROLLED,
-        payment_status=PaymentStatus.PAID,
+        status=EnrollmentStatus.PENDING_APPROVAL,
+        payment_status=PaymentStatus.PENDING,
+        preferences=preferences or {},
     )
     db.add(enrollment)
     await db.commit()

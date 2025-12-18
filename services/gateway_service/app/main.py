@@ -251,21 +251,18 @@ def create_app() -> FastAPI:
 async def proxy_request(client: clients.ServiceClient, path: str, request: Request):
     """Generic proxy function to forward requests to microservices."""
     try:
-        # Get request body
+        # Get request body.
+        #
+        # IMPORTANT: forward JSON payloads as raw bytes. Re-serializing JSON changes
+        # whitespace/key order and breaks webhook signature verification
+        # (e.g. Paystack x-paystack-signature).
         json_body = None
         content_body = None
 
         if request.method in ["POST", "PATCH", "PUT"]:
-            content_type = request.headers.get("content-type", "")
-            if "application/json" in content_type:
-                body_bytes = await request.body()
-                if body_bytes:
-                    json_body = await request.json()
-                else:
-                    json_body = {}
-            else:
-                # For multipart/form-data and others, pass raw bytes
-                content_body = await request.body()
+            body_bytes = await request.body()
+            if body_bytes:
+                content_body = body_bytes
 
         # Forward headers (excluding those that httpx handles or that cause issues)
         # Content-Length is handled by httpx based on the body we pass
@@ -285,17 +282,20 @@ async def proxy_request(client: clients.ServiceClient, path: str, request: Reque
         if request.method == "GET":
             result = await client.get(path, headers=headers)
         elif request.method == "POST":
-            result = await client.post(
-                path, json=json_body, content=content_body, headers=headers
-            )
+            if content_body is not None:
+                result = await client.post(path, content=content_body, headers=headers)
+            else:
+                result = await client.post(path, json=json_body, headers=headers)
         elif request.method == "PUT":
-            result = await client.put(
-                path, json=json_body, content=content_body, headers=headers
-            )
+            if content_body is not None:
+                result = await client.put(path, content=content_body, headers=headers)
+            else:
+                result = await client.put(path, json=json_body, headers=headers)
         elif request.method == "PATCH":
-            result = await client.patch(
-                path, json=json_body, content=content_body, headers=headers
-            )
+            if content_body is not None:
+                result = await client.patch(path, content=content_body, headers=headers)
+            else:
+                result = await client.patch(path, json=json_body, headers=headers)
         elif request.method == "DELETE":
             result = await client.delete(path, headers=headers)
         else:

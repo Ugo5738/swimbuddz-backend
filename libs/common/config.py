@@ -45,6 +45,20 @@ class Settings(BaseSettings):
     EVENTS_SERVICE_URL: str = "http://events-service:8007"
     TRANSPORT_SERVICE_URL: str = "http://transport-service:8009"
 
+    # Payments / Pricing
+    COMMUNITY_ANNUAL_FEE_NGN: int = 5000
+    CLUB_MONTHLY_FEE_NGN: int = 15000
+    CLUB_QUARTERLY_FEE_NGN: int = 42500
+    CLUB_BIANNUAL_FEE_NGN: int = 80000
+    CLUB_ANNUAL_FEE_NGN: int = 150000
+
+    # Paystack (optional; used by payments_service)
+    PAYSTACK_SECRET_KEY: str = ""
+    PAYSTACK_PUBLIC_KEY: str = ""
+    PAYSTACK_API_BASE_URL: str = "https://api.paystack.co"
+    # Where Paystack redirects the user after payment (webhook still does the real activation)
+    PAYSTACK_CALLBACK_URL: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )

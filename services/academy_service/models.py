@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 from libs.db.base import Base
-from sqlalchemy import JSON, DateTime
+from sqlalchemy import JSON, Boolean, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -26,6 +26,7 @@ class CohortStatus(str, enum.Enum):
 
 
 class EnrollmentStatus(str, enum.Enum):
+    PENDING_APPROVAL = "pending_approval"
     ENROLLED = "enrolled"
     WAITLIST = "waitlist"
     DROPPED = "dropped"
@@ -56,7 +57,13 @@ class Program(Base):
         SAEnum(ProgramLevel, name="program_level_enum"), nullable=False
     )
     duration_weeks: Mapped[int] = mapped_column(Integer, nullable=False)
+    price: Mapped[int] = mapped_column(
+        Integer, default=0
+    )  # Stored in lowest currency unit (e.g. kobo/cents) or just plain amount? Let's assume plain integer for now or 0 if free.
     curriculum_json: Mapped[dict] = mapped_column(JSON, nullable=True)
+    prep_materials: Mapped[dict] = mapped_column(
+        JSON, nullable=True
+    )  # links, docs, etc.
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
@@ -90,8 +97,17 @@ class Cohort(Base):
     end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     capacity: Mapped[int] = mapped_column(Integer, default=10)
+
+    # Coach - References Member ID (who has a CoachProfile)
+    # We reference Member ID because that's the primary identity.
+    coach_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
+
     status: Mapped[CohortStatus] = mapped_column(
         SAEnum(CohortStatus, name="cohort_status_enum"), default=CohortStatus.OPEN
+    )
+
+    allow_mid_entry: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -104,9 +120,34 @@ class Cohort(Base):
     # Relationships
     program = relationship("Program", back_populates="cohorts")
     enrollments = relationship("Enrollment", back_populates="cohort")
+    resources = relationship("CohortResource", back_populates="cohort")
 
     def __repr__(self):
         return f"<Cohort {self.name} ({self.status})>"
+
+
+class CohortResource(Base):
+    __tablename__ = "cohort_resources"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    cohort_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cohorts.id"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    resource_type: Mapped[str] = mapped_column(
+        String, nullable=False
+    )  # 'note', 'drill', 'assignment'
+    content_url: Mapped[str] = mapped_column(String, nullable=True)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+
+    # Relationships
+    cohort = relationship("Cohort", back_populates="resources")
 
 
 class Enrollment(Base):
@@ -115,16 +156,31 @@ class Enrollment(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    cohort_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("cohorts.id"), nullable=False
+    # Program is now required for the request
+    program_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("programs.id"),
+        nullable=True,  # Nullable for now to ease migration, or we backfill? strict: True if possible.
+        # Actually, let's make it nullable=True initially to avoid migration headaches with existing data if we can't easily backfill in one go,
+        # BUT logically it should be False.
+        # I'll set nullable=True for safety, and we can enforce in code or backfill later.
     )
+
+    # Cohort is optional initially (until assigned)
+    cohort_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cohorts.id"), nullable=True
+    )
+
     member_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
-    )  # References member UUID (no DB FK to keep services decoupled)
+    )
+
+    # Store user preferences for matching (Time, Location, etc)
+    preferences: Mapped[dict] = mapped_column(JSON, nullable=True)
 
     status: Mapped[EnrollmentStatus] = mapped_column(
         SAEnum(EnrollmentStatus, name="enrollment_status_enum"),
-        default=EnrollmentStatus.ENROLLED,
+        default=EnrollmentStatus.PENDING_APPROVAL,
     )
     payment_status: Mapped[PaymentStatus] = mapped_column(
         SAEnum(PaymentStatus, name="academy_payment_status_enum"),
@@ -139,6 +195,7 @@ class Enrollment(Base):
     )
 
     # Relationships
+    program = relationship("Program")
     cohort = relationship("Cohort", back_populates="enrollments")
     progress_records = relationship("StudentProgress", back_populates="enrollment")
 

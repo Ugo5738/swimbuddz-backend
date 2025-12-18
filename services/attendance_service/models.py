@@ -39,7 +39,7 @@ class AttendanceRecord(Base):
         UUID(as_uuid=True), nullable=False, index=True
     )
 
-    # Attendance status/details (simplified; ride-share and payment move to dedicated services)
+    # Attendance status/details
     status: Mapped[AttendanceStatus] = mapped_column(
         SAEnum(AttendanceStatus, name="attendance_status_enum"),
         default=AttendanceStatus.PRESENT,
