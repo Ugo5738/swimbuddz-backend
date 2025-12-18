@@ -36,6 +36,12 @@ class Session(Base):
         nullable=True,
         index=True,
     )
+    # Reference to Academy Cohort
+    cohort_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=True)
     type: Mapped[SessionType] = mapped_column(

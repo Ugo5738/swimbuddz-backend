@@ -2,9 +2,9 @@ import uuid
 from datetime import datetime
 
 from libs.db.base import Base
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
 class Member(Base):
@@ -155,6 +155,7 @@ class Member(Base):
     interest_tags: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
 
     # Club Tier - Badges & Tracking
+    club_notes: Mapped[str] = mapped_column(String, nullable=True)
     club_badges_earned: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
     club_challenges_completed: Mapped[dict] = mapped_column(JSONB, nullable=True)
     punctuality_score: Mapped[int] = mapped_column(
@@ -173,6 +174,25 @@ class Member(Base):
         ARRAY(String), nullable=True
     )
     academy_graduation_dates: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    academy_paid_until: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    academy_alumni: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+
+    # Billing / Access (Foundation + overlays)
+    community_paid_until: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    club_paid_until: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Relationships
+    coach_profile: Mapped["CoachProfile"] = relationship(
+        "CoachProfile", back_populates="member", uselist=False
+    )
 
     def __repr__(self):
         return f"<Member {self.email}>"
@@ -309,3 +329,141 @@ class MemberChallengeCompletion(Base):
             f"<MemberChallengeCompletion member={self.member_id} "
             f"challenge={self.challenge_id}>"
         )
+
+
+class CoachProfile(Base):
+    """
+    Profile for a coach, linked to a Member.
+    Allows a user to be both a regular member and a coach.
+    """
+
+    __tablename__ = "coach_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("members.id"), unique=True, nullable=False
+    )
+
+    # --- A. Identity (Extends Member) ---
+    display_name: Mapped[str] = mapped_column(
+        String, nullable=True
+    )  # e.g. "Coach Tobi"
+    coach_profile_photo_url: Mapped[str] = mapped_column(
+        String, nullable=True
+    )  # Professional headshot
+    short_bio: Mapped[str] = mapped_column(String, nullable=True)  # 1-2 lines
+    full_bio: Mapped[str] = mapped_column(Text, nullable=True)  # Detailed
+
+    # --- B. Professional ---
+    certifications: Mapped[list[str]] = mapped_column(
+        ARRAY(String), nullable=True
+    )  # ["CPR", "ASCA_1"]
+    other_certifications_note: Mapped[str] = mapped_column(Text, nullable=True)
+
+    coaching_years: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    coaching_experience_summary: Mapped[str] = mapped_column(Text, nullable=True)
+
+    coaching_specialties: Mapped[list[str]] = mapped_column(
+        ARRAY(String), nullable=True
+    )
+    levels_taught: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    age_groups_taught: Mapped[list[str]] = mapped_column(
+        ARRAY(String), nullable=True
+    )  # ["kids", "teens", "adults"]
+    preferred_cohort_types: Mapped[list[str]] = mapped_column(
+        ARRAY(String), nullable=True
+    )  # ["group", "one_to_one"]
+
+    languages_spoken: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    coaching_portfolio_link: Mapped[str] = mapped_column(String, nullable=True)
+
+    # --- C. Safety & Compliance ---
+    has_cpr_training: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    cpr_expiry_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    lifeguard_expiry_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    background_check_status: Mapped[str] = mapped_column(
+        String, default="not_required", server_default="not_required"
+    )  # pending, verified, rejected
+    background_check_document_url: Mapped[str] = mapped_column(String, nullable=True)
+
+    insurance_status: Mapped[str] = mapped_column(
+        String, default="none", server_default="none"
+    )
+    is_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+
+    # --- D. Logistics & Commercial ---
+    pools_supported: Mapped[list[str]] = mapped_column(
+        ARRAY(String), nullable=True
+    )  # Location IDs/Names
+    can_travel_between_pools: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    travel_radius_km: Mapped[float] = mapped_column(Float, nullable=True)
+
+    max_swimmers_per_session: Mapped[int] = mapped_column(
+        Integer, default=10, server_default="10"
+    )
+    max_cohorts_at_once: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1"
+    )
+
+    accepts_one_on_one: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
+    accepts_group_cohorts: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
+
+    # Availability can still be JSON for now until we have a detailed slot model
+    availability_calendar: Mapped[dict] = mapped_column(JSONB, nullable=True)
+
+    # Pricing (Nullable for now)
+    currency: Mapped[str] = mapped_column(String, default="NGN", server_default="NGN")
+    one_to_one_rate_per_hour: Mapped[int] = mapped_column(Integer, nullable=True)
+    group_session_rate_per_hour: Mapped[int] = mapped_column(Integer, nullable=True)
+    academy_cohort_stipend: Mapped[int] = mapped_column(Integer, nullable=True)
+
+    # --- E. Platform / Ops ---
+    status: Mapped[str] = mapped_column(
+        String, default="pending_review", server_default="pending_review"
+    )  # pending_review, active, inactive, suspended
+
+    show_in_directory: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    is_featured: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+
+    average_rating: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0"
+    )
+    rating_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+    admin_notes: Mapped[str] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    # Relationships
+    member: Mapped["Member"] = relationship(
+        "Member", back_populates="coach_profile", uselist=False
+    )
+
+    def __repr__(self):
+        return f"<CoachProfile {self.member_id} ({self.display_name})>"

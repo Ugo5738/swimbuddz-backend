@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,10 +8,13 @@ from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.email import send_email
 from libs.db.session import get_async_db
-from services.members_service.models import Member, PendingRegistration
+from services.members_service.models import CoachProfile, Member, PendingRegistration
 from services.members_service.schemas import (
+    ActivateClubRequest,
+    ActivateCommunityRequest,
     ApprovalAction,
     MemberCreate,
+    MemberPublicResponse,
     MemberResponse,
     MemberUpdate,
     PendingMemberResponse,
@@ -20,6 +23,7 @@ from services.members_service.schemas import (
 )
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/members", tags=["members"])
 pending_router = APIRouter(
@@ -37,7 +41,8 @@ async def create_pending_registration(
 ):
     """
     Create a pending registration.
-    This is called by the frontend before the user signs up with Supabase.
+    This is called by the frontend during signup. It stores the registration intent
+    and triggers Supabase Auth signup to send the confirmation email.
     """
     # Check if member already exists
     query = select(Member).where(Member.email == registration_in.email)
@@ -64,66 +69,96 @@ async def create_pending_registration(
 
     if pending:
         pending.profile_data_json = profile_data_json
-        # Update timestamp if we had one
     else:
         pending = PendingRegistration(
             email=registration_in.email, profile_data_json=profile_data_json
         )
         db.add(pending)
 
-    await db.commit()
-    await db.refresh(pending)
+    def _is_already_registered_error(exc: Exception) -> bool:
+        message = str(exc).lower()
+        return (
+            "already registered" in message
+            or "user already registered" in message
+            or "already exists" in message
+        )
 
-    # Trigger Supabase User Creation
-    # We use admin.create_user to create the user immediately with the provided
-    # password.
-    # We set email_confirm=False so they still need to verify their email.
+    # Trigger Supabase user signup (sends confirmation email).
+    # If this fails, fail the request so the frontend can prompt the user to retry.
     try:
+        import asyncio
+
         from libs.common.config import get_settings
 
         from supabase import Client, create_client
 
         settings = get_settings()
         redirect_url = f"{settings.FRONTEND_URL.rstrip('/')}/confirm"
+        # Use the anon key for signup to match Supabase's public signup flow.
         supabase: Client = create_client(
-            settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY
+            settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY
         )
 
-        # Check if we have a password (we should from frontend now)
-        if registration_in.password:
-            # Use sign_up instead of admin.create_user to ensure the confirmation
-            # email is sent.
-            # sign_up mimics a real user signup flow.
-            credentials = {
-                "email": registration_in.email,
-                "password": registration_in.password,
-                "options": {
-                    "data": {
-                        "first_name": registration_in.first_name,
-                        "last_name": registration_in.last_name,
-                    },
-                    "email_redirect_to": redirect_url,
-                },
-            }
-            response = supabase.auth.sign_up(credentials)
-            print(f"User signed up in Supabase: {response}")
-        else:
-            # Fallback to invite if no password (shouldn't happen with new frontend)
-            response = supabase.auth.admin.invite_user_by_email(
-                registration_in.email, options={"redirect_to": redirect_url}
+        if not registration_in.password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password is required for signup.",
             )
-            print(f"Invitation sent (fallback): {response}")
 
+        credentials = {
+            "email": registration_in.email,
+            "password": registration_in.password,
+            "options": {
+                "data": {
+                    "first_name": registration_in.first_name,
+                    "last_name": registration_in.last_name,
+                },
+                "email_redirect_to": redirect_url,
+            },
+        }
+
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = await asyncio.to_thread(supabase.auth.sign_up, credentials)
+                print(f"User signed up in Supabase: {response}")
+                last_error = None
+                break
+            except Exception as e:
+                # If the email is already registered in Supabase Auth, prompt user to login instead.
+                if _is_already_registered_error(e):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Email already registered. Please log in instead.",
+                    ) from e
+
+                last_error = e
+                if attempt < 2:
+                    await asyncio.sleep(0.5 * (2**attempt))
+                    continue
+                raise e
+
+        if last_error is not None:
+            raise last_error
+
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
-        # Log error. If user already exists in Supabase but not in our DB (edge case),
-        # we might want to handle it. For now, just log.
+        await db.rollback()
         print(f"Failed to create Supabase user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Unable to create your authentication account right now. Please try again in a moment.",
+        ) from e
 
+    await db.commit()
+    await db.refresh(pending)
     return pending
 
 
 @pending_router.post(
-    "/complete", response_model=MemberResponse, status_code=status.HTTP_201_CREATED
+    "/complete", response_model=MemberResponse, status_code=status.HTTP_200_OK
 )
 async def complete_pending_registration(
     current_user: AuthUser = Depends(get_current_user),
@@ -133,14 +168,16 @@ async def complete_pending_registration(
     Complete a pending registration.
     Called after the user has verified their email and is authenticated.
     """
-    # Check if member already exists
-    query = select(Member).where(Member.auth_id == current_user.user_id)
+    # Idempotency: if member already exists, treat as success.
+    query = (
+        select(Member)
+        .where(Member.auth_id == current_user.user_id)
+        .options(selectinload(Member.coach_profile))
+    )
     result = await db.execute(query)
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Member already exists",
-        )
+    existing_member = result.scalar_one_or_none()
+    if existing_member:
+        return existing_member
 
     # Find pending registration by email from token
     query = select(PendingRegistration).where(
@@ -150,6 +187,17 @@ async def complete_pending_registration(
     pending = result.scalar_one_or_none()
 
     if not pending:
+        # Idempotency: if pending is missing but member exists (race condition), treat as success.
+        query = (
+            select(Member)
+            .where(Member.auth_id == current_user.user_id)
+            .options(selectinload(Member.coach_profile))
+        )
+        result = await db.execute(query)
+        existing_member = result.scalar_one_or_none()
+        if existing_member:
+            return existing_member
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Pending registration not found",
@@ -164,6 +212,7 @@ async def complete_pending_registration(
         first_name=profile_data.get("first_name"),
         last_name=profile_data.get("last_name"),
         registration_complete=True,
+        approval_status="approved",
         # Contact & Location
         phone=profile_data.get("phone"),
         city=profile_data.get("city"),
@@ -195,6 +244,7 @@ async def complete_pending_registration(
         equipment_needs=profile_data.get("equipment_needs"),
         equipment_needs_other=profile_data.get("equipment_needs_other"),
         travel_notes=profile_data.get("travel_notes"),
+        club_notes=profile_data.get("club_notes"),
         # Safety
         emergency_contact_name=profile_data.get("emergency_contact_name"),
         emergency_contact_relationship=profile_data.get(
@@ -218,13 +268,14 @@ async def complete_pending_registration(
         currency_preference=profile_data.get("currency_preference"),
         consent_photo=profile_data.get("consent_photo"),
         # Membership
-        membership_tiers=profile_data.get("membership_tiers"),
+        membership_tiers=profile_data.get("membership_tiers") or ["community"],
+        requested_membership_tiers=profile_data.get("requested_membership_tiers"),
         academy_focus_areas=profile_data.get("academy_focus_areas"),
         academy_focus=profile_data.get("academy_focus"),
         payment_notes=profile_data.get("payment_notes"),
         # ===== NEW TIER-BASED FIELDS =====
         # Tier Management
-        membership_tier=profile_data.get("membership_tier", "community"),
+        membership_tier=profile_data.get("membership_tier") or "community",
         # Profile Photo
         profile_photo_url=profile_data.get("profile_photo_url"),
         # Community Tier - Enhanced fields
@@ -265,7 +316,11 @@ async def complete_pending_registration(
         if "unique constraint" in error_str or "duplicate key" in error_str:
             await db.rollback()
             # Check if member exists now
-            query = select(Member).where(Member.auth_id == current_user.user_id)
+            query = (
+                select(Member)
+                .where(Member.auth_id == current_user.user_id)
+                .options(selectinload(Member.coach_profile))
+            )
             result = await db.execute(query)
             existing_member = result.scalar_one_or_none()
             if existing_member:
@@ -278,7 +333,34 @@ async def complete_pending_registration(
             )
         raise e
 
-    return member
+    # Avoid async lazy-loading issues during response serialization by returning an eagerly-loaded member.
+    query = (
+        select(Member)
+        .where(Member.id == member.id)
+        .options(selectinload(Member.coach_profile))
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
+
+
+@router.get("/coaches", response_model=List[MemberResponse])
+async def list_coaches(
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    List all active coaches.
+    Returns Member objects that have an active CoachProfile.
+    """
+    query = (
+        select(Member)
+        .join(CoachProfile)
+        .where(CoachProfile.status == "active")
+        .options(selectinload(Member.coach_profile))
+        .order_by(Member.created_at.desc())
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
 
 
 @router.get("/me", response_model=MemberResponse)
@@ -289,7 +371,11 @@ async def get_current_member_profile(
     """
     Get the profile of the currently authenticated member.
     """
-    query = select(Member).where(Member.auth_id == current_user.user_id)
+    query = (
+        select(Member)
+        .where(Member.auth_id == current_user.user_id)
+        .options(selectinload(Member.coach_profile))
+    )
     result = await db.execute(query)
     member = result.scalar_one_or_none()
 
@@ -326,10 +412,17 @@ async def create_member(
     db.add(member)
     await db.commit()
     await db.refresh(member)
-    return member
+
+    query = (
+        select(Member)
+        .where(Member.id == member.id)
+        .options(selectinload(Member.coach_profile))
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
 
 
-@router.get("/public", response_model=List[MemberResponse])
+@router.get("/public", response_model=List[MemberPublicResponse])
 async def list_public_members(
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -351,7 +444,13 @@ async def list_members(
     """
     List all members (admin use).
     """
-    query = select(Member).offset(skip).limit(limit).order_by(Member.created_at.desc())
+    query = (
+        select(Member)
+        .options(selectinload(Member.coach_profile))
+        .offset(skip)
+        .limit(limit)
+        .order_by(Member.created_at.desc())
+    )
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -400,7 +499,11 @@ async def update_current_member(
     """
     Update the currently authenticated member's profile.
     """
-    query = select(Member).where(Member.auth_id == current_user.user_id)
+    query = (
+        select(Member)
+        .where(Member.auth_id == current_user.user_id)
+        .options(selectinload(Member.coach_profile))
+    )
     result = await db.execute(query)
     member = result.scalar_one_or_none()
 
@@ -412,14 +515,32 @@ async def update_current_member(
 
     update_data = member_in.model_dump(exclude_unset=True)
 
+    # Note: club_notes and travel_notes are distinct fields.
+
+    # Prevent self-serve tampering with billing/entitlement fields.
+    for protected_field in (
+        "community_paid_until",
+        "club_paid_until",
+        "academy_paid_until",
+        "academy_alumni",
+    ):
+        update_data.pop(protected_field, None)
+
+    # Ignore no-op tier changes (same tier as current)
+    if update_data.get("membership_tier") == member.membership_tier:
+        update_data.pop("membership_tier", None)
+
     # Intercept membership_tiers update for non-admins (self-update)
     if "membership_tiers" in update_data:
         new_tiers = update_data.pop("membership_tiers")
-        # specific logic: if changing tiers, set as requested
-        # We only do this if it's different
-        if set(new_tiers) != set(member.membership_tiers or []):
-            member.requested_membership_tiers = new_tiers
-            # We could trigger a notification here
+        if new_tiers is not None:
+            # Treat a request as a change only if the new tiers differ from current (including single-tier state)
+            current_tiers = member.membership_tiers or (
+                [member.membership_tier] if member.membership_tier else []
+            )
+            if set(new_tiers or []) != set(current_tiers):
+                member.requested_membership_tiers = new_tiers
+                # We could trigger a notification here
 
     for field, value in update_data.items():
         setattr(member, field, value)
@@ -427,18 +548,59 @@ async def update_current_member(
     db.add(member)
     await db.commit()
     await db.refresh(member)
-    return member
+    query = (
+        select(Member)
+        .where(Member.id == member.id)
+        .options(selectinload(Member.coach_profile))
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
+
+
+@router.post("/me/community/activate", response_model=MemberResponse)
+async def activate_community_membership(
+    payload: ActivateCommunityRequest,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Deprecated: Community activation is owned by payments_service.
+    """
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Community activation moved to payments. Create a payment intent via /api/v1/payments/intents.",
+    )
+
+
+@router.post("/me/club/activate", response_model=MemberResponse)
+async def activate_club_membership(
+    payload: ActivateClubRequest,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Deprecated: Club activation is owned by payments_service.
+    """
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Club activation moved to payments. Create a payment intent via /api/v1/payments/intents.",
+    )
 
 
 @router.get("/{member_id}", response_model=MemberResponse)
 async def get_member(
     member_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get a member by ID (admin use).
     """
-    query = select(Member).where(Member.id == member_id)
+    query = (
+        select(Member)
+        .where(Member.id == member_id)
+        .options(selectinload(Member.coach_profile))
+    )
     result = await db.execute(query)
     member = result.scalar_one_or_none()
 
@@ -455,12 +617,17 @@ async def get_member(
 async def update_member(
     member_id: uuid.UUID,
     member_in: MemberUpdate,
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
-    Update a member by ID.
+    Update a member by ID (admin only).
     """
-    query = select(Member).where(Member.id == member_id)
+    query = (
+        select(Member)
+        .where(Member.id == member_id)
+        .options(selectinload(Member.coach_profile))
+    )
     result = await db.execute(query)
     member = result.scalar_one_or_none()
 
@@ -477,7 +644,13 @@ async def update_member(
     db.add(member)
     await db.commit()
     await db.refresh(member)
-    return member
+    query = (
+        select(Member)
+        .where(Member.id == member.id)
+        .options(selectinload(Member.coach_profile))
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
 
 
 @router.delete("/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -536,6 +709,7 @@ async def list_pending_members(
     query = (
         select(Member)
         .where(Member.approval_status == "pending")
+        .options(selectinload(Member.coach_profile))
         .order_by(Member.created_at.desc())
     )
     result = await db.execute(query)
@@ -552,7 +726,11 @@ async def approve_member(
     """
     Approve a pending member registration (admin only).
     """
-    query = select(Member).where(Member.id == member_id)
+    query = (
+        select(Member)
+        .where(Member.id == member_id)
+        .options(selectinload(Member.coach_profile))
+    )
     result = await db.execute(query)
     member = result.scalar_one_or_none()
 
@@ -592,7 +770,13 @@ async def approve_member(
         ),
     )
 
-    return member
+    query = (
+        select(Member)
+        .where(Member.id == member.id)
+        .options(selectinload(Member.coach_profile))
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
 
 
 @admin_router.post("/{member_id}/reject", response_model=MemberResponse)
@@ -606,7 +790,11 @@ async def reject_member(
     Reject a pending member registration (admin only).
     User can reapply later.
     """
-    query = select(Member).where(Member.id == member_id)
+    query = (
+        select(Member)
+        .where(Member.id == member_id)
+        .options(selectinload(Member.coach_profile))
+    )
     result = await db.execute(query)
     member = result.scalar_one_or_none()
 
@@ -648,4 +836,179 @@ async def reject_member(
         ),
     )
 
-    return member
+    query = (
+        select(Member)
+        .where(Member.id == member.id)
+        .options(selectinload(Member.coach_profile))
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
+
+
+@admin_router.post("/{member_id}/approve-upgrade", response_model=MemberResponse)
+async def approve_member_upgrade(
+    member_id: uuid.UUID,
+    action: ApprovalAction,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Approve a pending tier upgrade for an already-approved member.
+    Moves requested tiers into active tiers and clears the request flag.
+    """
+    query = (
+        select(Member)
+        .where(Member.id == member_id)
+        .options(selectinload(Member.coach_profile))
+    )
+    result = await db.execute(query)
+    member = result.scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found",
+        )
+
+    if not member.requested_membership_tiers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No upgrade request pending for this member",
+        )
+
+    new_tiers = member.requested_membership_tiers or []
+
+    member.membership_tiers = new_tiers
+    if new_tiers:
+        member.membership_tier = new_tiers[0]
+
+    # Clear the pending upgrade request
+    member.requested_membership_tiers = None
+
+    # Track admin action
+    member.approved_by = current_user.email
+    member.approved_at = datetime.now(timezone.utc)
+    if action.notes:
+        member.approval_notes = action.notes
+
+    db.add(member)
+    await db.commit()
+    await db.refresh(member)
+
+    query = (
+        select(Member)
+        .where(Member.id == member.id)
+        .options(selectinload(Member.coach_profile))
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
+
+
+@admin_router.post(
+    "/by-auth/{auth_id}/community/activate", response_model=MemberResponse
+)
+async def admin_activate_community_membership_by_auth(
+    auth_id: str,
+    payload: ActivateCommunityRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Apply Community entitlement for a member (admin/service use, e.g. payment webhook).
+    """
+    query = (
+        select(Member)
+        .where(Member.auth_id == auth_id)
+        .options(selectinload(Member.coach_profile))
+    )
+    result = await db.execute(query)
+    member = result.scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Member not found"
+        )
+
+    now = datetime.now(timezone.utc)
+    base = (
+        member.community_paid_until
+        if member.community_paid_until and member.community_paid_until > now
+        else now
+    )
+    member.community_paid_until = base + timedelta(days=365 * payload.years)
+
+    if not member.membership_tiers:
+        member.membership_tiers = ["community"]
+    if not member.membership_tier:
+        member.membership_tier = "community"
+
+    db.add(member)
+    await db.commit()
+    await db.refresh(member)
+
+    query = (
+        select(Member)
+        .where(Member.id == member.id)
+        .options(selectinload(Member.coach_profile))
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
+
+
+@admin_router.post("/by-auth/{auth_id}/club/activate", response_model=MemberResponse)
+async def admin_activate_club_membership_by_auth(
+    auth_id: str,
+    payload: ActivateClubRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Apply Club entitlement for a member (admin/service use, e.g. payment webhook).
+    """
+    query = (
+        select(Member)
+        .where(Member.auth_id == auth_id)
+        .options(selectinload(Member.coach_profile))
+    )
+    result = await db.execute(query)
+    member = result.scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Member not found"
+        )
+
+    now = datetime.now(timezone.utc)
+    if not (member.community_paid_until and member.community_paid_until > now):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Community membership is not active for this member",
+        )
+
+    approved_tiers = set(
+        (member.membership_tiers or [])
+        + ([member.membership_tier] if member.membership_tier else [])
+    )
+    if "club" not in approved_tiers and "academy" not in approved_tiers:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Club upgrade not approved"
+        )
+
+    base = (
+        member.club_paid_until
+        if member.club_paid_until and member.club_paid_until > now
+        else now
+    )
+    member.club_paid_until = base + timedelta(days=30 * payload.months)
+
+    db.add(member)
+    await db.commit()
+    await db.refresh(member)
+
+    query = (
+        select(Member)
+        .where(Member.id == member.id)
+        .options(selectinload(Member.coach_profile))
+    )
+    result = await db.execute(query)
+    return result.scalar_one()

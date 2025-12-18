@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class MemberBase(BaseModel):
@@ -44,6 +44,7 @@ class MemberBase(BaseModel):
     equipment_needs: Optional[list[str]] = None
     equipment_needs_other: Optional[str] = None
     travel_notes: Optional[str] = None
+    club_notes: Optional[str] = None
 
     # Safety
     emergency_contact_name: Optional[str] = None
@@ -109,6 +110,82 @@ class MemberBase(BaseModel):
     academy_lesson_preference: Optional[str] = None
     academy_certifications: Optional[list[str]] = None
     academy_graduation_dates: Optional[dict] = None
+    academy_paid_until: Optional[datetime] = None
+    academy_alumni: Optional[bool] = False
+
+    # Billing / Access
+    community_paid_until: Optional[datetime] = None
+    club_paid_until: Optional[datetime] = None
+
+
+class CoachProfileResponse(BaseModel):
+    id: uuid.UUID
+    member_id: uuid.UUID
+
+    # Identity
+    display_name: Optional[str] = None
+    coach_profile_photo_url: Optional[str] = None
+    short_bio: Optional[str] = None
+    full_bio: Optional[str] = None
+
+    # Professional
+    certifications: Optional[list[str]] = None
+    other_certifications_note: Optional[str] = None
+
+    coaching_years: Optional[int] = 0
+    coaching_experience_summary: Optional[str] = None
+
+    coaching_specialties: Optional[list[str]] = None
+    levels_taught: Optional[list[str]] = None
+    age_groups_taught: Optional[list[str]] = None
+    preferred_cohort_types: Optional[list[str]] = None
+
+    languages_spoken: Optional[list[str]] = None
+    coaching_portfolio_link: Optional[str] = None
+
+    # Safety
+    has_cpr_training: Optional[bool] = False
+    cpr_expiry_date: Optional[datetime] = None
+    lifeguard_expiry_date: Optional[datetime] = None
+
+    background_check_status: Optional[str] = None
+    background_check_document_url: Optional[str] = None
+
+    insurance_status: Optional[str] = None
+    is_verified: bool
+
+    # Logistics
+    pools_supported: Optional[list[str]] = None
+    can_travel_between_pools: bool
+    travel_radius_km: Optional[float] = None
+
+    max_swimmers_per_session: Optional[int] = 10
+    max_cohorts_at_once: Optional[int] = 1
+
+    accepts_one_to_one: bool
+    accepts_group_cohorts: bool
+
+    availability_notes: Optional[str] = None
+    availability_calendar: Optional[dict] = None
+
+    # Pricing
+    currency: Optional[str] = "NGN"
+    one_to_one_rate_per_hour: Optional[int] = None
+    group_session_rate_per_hour: Optional[int] = None
+    academy_cohort_stipend: Optional[int] = None
+
+    # Platform
+    status: str
+    show_in_directory: bool
+    is_featured: bool
+
+    average_rating: float
+    rating_count: int
+
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MemberCreate(MemberBase):
@@ -141,7 +218,26 @@ class MemberResponse(MemberBase):
     approved_at: Optional[datetime] = None
     approved_by: Optional[str] = None
 
+    # Coach Profile (if exists)
+    coach_profile: Optional[CoachProfileResponse] = None
+
     model_config = ConfigDict(from_attributes=True)
+
+
+class MemberPublicResponse(BaseModel):
+    id: uuid.UUID
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ActivateCommunityRequest(BaseModel):
+    years: int = Field(default=1, ge=1, le=5)
+
+
+class ActivateClubRequest(BaseModel):
+    months: int = Field(default=1, ge=1, le=12)
 
 
 class PendingRegistrationCreate(BaseModel):

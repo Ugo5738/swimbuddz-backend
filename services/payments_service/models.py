@@ -1,14 +1,15 @@
-import uuid
-from datetime import datetime
+import enum
 import random
 import string
-import enum
-
-from sqlalchemy import String, Float, DateTime, Enum as SAEnum
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+import uuid
+from datetime import datetime
 
 from libs.db.base import Base
+from sqlalchemy import DateTime
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import Float, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column
 
 
 class PaymentStatus(str, enum.Enum):
@@ -16,6 +17,18 @@ class PaymentStatus(str, enum.Enum):
     PAID = "paid"
     WAIVED = "waived"
     FAILED = "failed"
+
+
+class PaymentPurpose(str, enum.Enum):
+    COMMUNITY_ANNUAL = "community_annual"
+    COMMUNITY_EVENT = "community_event"
+    CLUB_MONTHLY = "club_monthly"
+    CLUB_QUATERLY = "club_quaterly"
+    CLUB_BIANNUALLY = "club_biannually"
+    CLUB_ANNUALLY = "club_annually"
+    ACADEMY_COHORT = "academy_cohort"
+    POOL_FEE = "pool_fee"
+    RIDE_SHARE = "ride_share"
 
 
 class Payment(Base):
@@ -27,11 +40,41 @@ class Payment(Base):
     reference: Mapped[str] = mapped_column(
         String, unique=True, index=True, nullable=False
     )
+
+    member_auth_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    payer_email: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+
+    purpose: Mapped[PaymentPurpose] = mapped_column(
+        SAEnum(PaymentPurpose, name="payment_purpose_enum"),
+        nullable=False,
+    )
+
     amount: Mapped[float] = mapped_column(Float, nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), default="NGN", nullable=False)
+
     status: Mapped[PaymentStatus] = mapped_column(
         SAEnum(PaymentStatus, name="payment_status_enum"),
         default=PaymentStatus.PENDING,
         nullable=False,
+    )
+
+    provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    provider_reference: Mapped[str | None] = mapped_column(
+        String(128), index=True, nullable=True
+    )
+    paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    entitlement_applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    entitlement_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # "metadata" is reserved by SQLAlchemy's Declarative API, so we map the DB column
+    # named "metadata" onto a safe attribute name.
+    payment_metadata: Mapped[dict | None] = mapped_column(
+        "metadata", JSONB, nullable=True
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -43,9 +86,6 @@ class Payment(Base):
 
     @staticmethod
     def generate_reference() -> str:
-        """Generates a unique payment reference like PAY-12345."""
-        # Simple implementation: PAY- + 5 random digits
-        # In production, check for collision or use a sequence
         suffix = "".join(random.choices(string.digits, k=5))
         return f"PAY-{suffix}"
 

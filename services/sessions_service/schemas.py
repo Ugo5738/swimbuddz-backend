@@ -16,6 +16,7 @@ class SessionBase(BaseModel):
     capacity: int = 20
     start_time: datetime
     end_time: datetime
+    cohort_id: Optional[uuid.UUID] = None
 
 
 class SessionCreate(SessionBase):
@@ -32,6 +33,7 @@ class SessionUpdate(BaseModel):
     capacity: Optional[int] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    cohort_id: Optional[uuid.UUID] = None
     # TODO: Support updating ride share areas if needed
 
 
@@ -40,6 +42,7 @@ class SessionResponse(SessionBase):
     created_at: datetime
     updated_at: datetime
     template_id: Optional[uuid.UUID] = None
+    cohort_id: Optional[uuid.UUID] = None
     is_recurring_instance: bool = False
 
     model_config = ConfigDict(from_attributes=True)
