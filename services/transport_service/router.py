@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends
+from libs.auth.dependencies import require_admin
+from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from pydantic import BaseModel, ConfigDict
 from services.transport_service.models import (
@@ -12,7 +14,7 @@ from services.transport_service.models import (
     RouteInfo,
     SessionRideConfig,
 )
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/transport", tags=["transport"])
@@ -132,6 +134,22 @@ async def list_ride_areas(
         )
 
     return responses
+
+
+@router.delete("/admin/members/{member_id}")
+async def admin_delete_member_transport(
+    member_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Delete transport bookings for a member (Admin only).
+    """
+    result = await db.execute(
+        delete(RideBooking).where(RideBooking.member_id == member_id)
+    )
+    await db.commit()
+    return {"deleted": result.rowcount or 0}
 
 
 @router.post("/areas", response_model=RideAreaResponse)

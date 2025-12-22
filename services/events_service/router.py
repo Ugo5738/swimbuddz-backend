@@ -4,19 +4,20 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Query
-from sqlalchemy import select, func, and_
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from fastapi import APIRouter, Depends, HTTPException, Query
+from libs.auth.dependencies import require_admin
+from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.events_service.models import Event, EventRSVP
 from services.events_service.schemas import (
     EventCreate,
-    EventUpdate,
     EventResponse,
+    EventUpdate,
     RSVPCreate,
     RSVPResponse,
 )
+from sqlalchemy import and_, delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -58,6 +59,20 @@ async def list_events(
         events_with_counts.append(EventResponse.model_validate(event_dict))
 
     return events_with_counts
+
+
+@router.delete("/admin/members/{member_id}")
+async def admin_delete_member_event_rsvps(
+    member_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Delete event RSVPs for a member (Admin only).
+    """
+    result = await db.execute(delete(EventRSVP).where(EventRSVP.member_id == member_id))
+    await db.commit()
+    return {"deleted": result.rowcount or 0}
 
 
 @router.get("/{event_id}", response_model=EventResponse)

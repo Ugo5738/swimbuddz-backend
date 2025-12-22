@@ -239,11 +239,13 @@ def create_app() -> FastAPI:
     # ==================================================================
     # DASHBOARD (Gateway-specific aggregation)
     # ==================================================================
+    from services.gateway_service.app.routers.cleanup import router as cleanup_router
     from services.gateway_service.app.routers.dashboard import (
         router as dashboard_router,
     )
 
     app.include_router(dashboard_router, prefix="/api/v1")
+    app.include_router(cleanup_router, prefix="/api/v1")
 
     return app
 

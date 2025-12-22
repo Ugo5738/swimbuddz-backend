@@ -28,7 +28,7 @@ from services.media_service.schemas import (
     SiteAssetUpdate,
 )
 from services.media_service.storage import storage_service
-from sqlalchemy import desc, func, select
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/v1/media", tags=["media"])
@@ -647,3 +647,78 @@ async def remove_tag(
     await db.commit()
 
     return {"message": "Tag removed successfully"}
+
+
+@router.delete("/admin/members/{member_id}")
+async def admin_delete_member_media(
+    member_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Delete media artifacts for a member (Admin only).
+    """
+    media_ids = (
+        (
+            await db.execute(
+                select(MediaItem.id).where(MediaItem.uploaded_by == member_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    album_ids = (
+        (await db.execute(select(Album.id).where(Album.created_by == member_id)))
+        .scalars()
+        .all()
+    )
+
+    tags_by_member = await db.execute(
+        delete(MediaTag).where(MediaTag.member_id == member_id)
+    )
+
+    deleted_item_tags = 0
+    deleted_items = 0
+    deleted_album_items = 0
+    deleted_site_assets = 0
+    deleted_albums = 0
+
+    if media_ids:
+        tag_result = await db.execute(
+            delete(MediaTag).where(MediaTag.media_item_id.in_(media_ids))
+        )
+        deleted_item_tags = tag_result.rowcount or 0
+
+        album_item_result = await db.execute(
+            delete(AlbumItem).where(AlbumItem.media_item_id.in_(media_ids))
+        )
+        deleted_album_items += album_item_result.rowcount or 0
+
+        site_asset_result = await db.execute(
+            delete(SiteAsset).where(SiteAsset.media_item_id.in_(media_ids))
+        )
+        deleted_site_assets = site_asset_result.rowcount or 0
+
+        item_result = await db.execute(
+            delete(MediaItem).where(MediaItem.id.in_(media_ids))
+        )
+        deleted_items = item_result.rowcount or 0
+
+    if album_ids:
+        album_item_result = await db.execute(
+            delete(AlbumItem).where(AlbumItem.album_id.in_(album_ids))
+        )
+        deleted_album_items += album_item_result.rowcount or 0
+
+        album_result = await db.execute(delete(Album).where(Album.id.in_(album_ids)))
+        deleted_albums = album_result.rowcount or 0
+
+    await db.commit()
+    return {
+        "deleted_member_tags": tags_by_member.rowcount or 0,
+        "deleted_item_tags": deleted_item_tags,
+        "deleted_media_items": deleted_items,
+        "deleted_album_items": deleted_album_items,
+        "deleted_site_assets": deleted_site_assets,
+        "deleted_albums": deleted_albums,
+    }
