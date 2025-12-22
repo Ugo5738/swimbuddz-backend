@@ -1,17 +1,19 @@
-from typing import List
 import uuid
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from libs.auth.dependencies import require_admin
+from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.communications_service.models import Announcement
-from services.communications_service.schemas import (
+from services.communications_service.schemas import (  # , AnnouncementCreate
     AnnouncementResponse,
-)  # , AnnouncementCreate
+)
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/announcements", tags=["announcements"])
+admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.get("/", response_model=List[AnnouncementResponse])
@@ -63,23 +65,47 @@ async def get_announcement(
     return announcement
 
 
+from typing import List, Optional
+
 # ===== CONTENT POST ENDPOINTS =====
 from services.communications_service.models import (
-    ContentPost,
-    ContentComment,
     AnnouncementComment,
+    ContentComment,
+    ContentPost,
 )
 from services.communications_service.schemas import (
-    ContentPostCreate,
-    ContentPostUpdate,
-    ContentPostResponse,
+    AnnouncementCommentResponse,
     CommentCreate,
     ContentCommentResponse,
-    AnnouncementCommentResponse,
+    ContentPostCreate,
+    ContentPostResponse,
+    ContentPostUpdate,
 )
-from typing import Optional, List
-from fastapi import Query
 
+
+@admin_router.delete("/members/{member_id}")
+async def admin_delete_member_comments(
+    member_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Delete member comments in communications service (Admin only).
+    """
+    content_result = await db.execute(
+        delete(ContentComment).where(ContentComment.member_id == member_id)
+    )
+    announcement_result = await db.execute(
+        delete(AnnouncementComment).where(AnnouncementComment.member_id == member_id)
+    )
+    await db.commit()
+    return {
+        "deleted_content_comments": content_result.rowcount or 0,
+        "deleted_announcement_comments": announcement_result.rowcount or 0,
+    }
+
+
+from fastapi import Query
 
 content_router = APIRouter(prefix="/content", tags=["content"])
 

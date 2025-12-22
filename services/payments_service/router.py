@@ -19,7 +19,7 @@ from services.payments_service.schemas import (
     PaymentIntentResponse,
     PaymentResponse,
 )
-from sqlalchemy import desc, select
+from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -306,6 +306,20 @@ async def create_payment_intent(
         checkout_url=checkout_url,
         created_at=payment.created_at,
     )
+
+
+@router.delete("/admin/members/by-auth/{auth_id}")
+async def admin_delete_member_payments(
+    auth_id: str,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Delete payments for a member by auth ID (Admin only).
+    """
+    result = await db.execute(delete(Payment).where(Payment.member_auth_id == auth_id))
+    await db.commit()
+    return {"deleted": result.rowcount or 0}
 
 
 @router.get("/me", response_model=list[PaymentResponse])

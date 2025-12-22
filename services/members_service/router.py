@@ -8,7 +8,13 @@ from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.email import send_email
 from libs.db.session import get_async_db
-from services.members_service.models import CoachProfile, Member, PendingRegistration
+from services.members_service.models import (
+    CoachProfile,
+    Member,
+    MemberChallengeCompletion,
+    PendingRegistration,
+    VolunteerInterest,
+)
 from services.members_service.schemas import (
     ActivateClubRequest,
     ActivateCommunityRequest,
@@ -21,7 +27,7 @@ from services.members_service.schemas import (
     PendingRegistrationCreate,
     PendingRegistrationResponse,
 )
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -157,6 +163,24 @@ async def create_pending_registration(
     return pending
 
 
+@pending_router.delete("/by-email/{email}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_pending_registration_by_email(
+    email: str,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Delete a pending registration by email (admin only).
+    """
+    query = select(PendingRegistration).where(PendingRegistration.email == email)
+    result = await db.execute(query)
+    pending = result.scalar_one_or_none()
+    if pending:
+        await db.delete(pending)
+        await db.commit()
+    return None
+
+
 @pending_router.post(
     "/complete", response_model=MemberResponse, status_code=status.HTTP_200_OK
 )
@@ -215,6 +239,7 @@ async def complete_pending_registration(
         approval_status="approved",
         # Contact & Location
         phone=profile_data.get("phone"),
+        area_in_lagos=profile_data.get("area_in_lagos"),
         city=profile_data.get("city"),
         country=profile_data.get("country"),
         time_zone=profile_data.get("time_zone"),
@@ -613,6 +638,32 @@ async def get_member(
     return member
 
 
+@admin_router.get("/by-email/{email}", response_model=MemberResponse)
+async def get_member_by_email(
+    email: str,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get a member by email (admin only).
+    """
+    query = (
+        select(Member)
+        .where(func.lower(Member.email) == email.lower())
+        .options(selectinload(Member.coach_profile))
+    )
+    result = await db.execute(query)
+    member = result.scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found",
+        )
+
+    return member
+
+
 @router.patch("/{member_id}", response_model=MemberResponse)
 async def update_member(
     member_id: uuid.UUID,
@@ -691,6 +742,16 @@ async def delete_member(
     except Exception as e:
         # Log error but proceed with local deletion to avoid getting stuck
         print(f"Failed to delete Supabase user {member.auth_id}: {e}")
+
+    await db.execute(delete(CoachProfile).where(CoachProfile.member_id == member.id))
+    await db.execute(
+        delete(VolunteerInterest).where(VolunteerInterest.member_id == member.id)
+    )
+    await db.execute(
+        delete(MemberChallengeCompletion).where(
+            MemberChallengeCompletion.member_id == member.id
+        )
+    )
 
     await db.delete(member)
     await db.commit()
@@ -989,10 +1050,32 @@ async def admin_activate_club_membership_by_auth(
         (member.membership_tiers or [])
         + ([member.membership_tier] if member.membership_tier else [])
     )
-    if "club" not in approved_tiers and "academy" not in approved_tiers:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Club upgrade not approved"
-        )
+    requested_tiers = set(member.requested_membership_tiers or [])
+    club_approved = "club" in approved_tiers or "academy" in approved_tiers
+    club_requested = "club" in requested_tiers or "academy" in requested_tiers
+    readiness_complete = bool(
+        member.emergency_contact_name
+        and member.emergency_contact_relationship
+        and member.emergency_contact_phone
+        and member.location_preference
+        and len(member.location_preference) > 0
+        and member.time_of_day_availability
+        and len(member.time_of_day_availability) > 0
+        and member.availability_slots
+        and len(member.availability_slots) > 0
+    )
+
+    if not club_approved:
+        if not club_requested:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Club upgrade not requested",
+            )
+        if not readiness_complete:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Club readiness is incomplete",
+            )
 
     base = (
         member.club_paid_until
@@ -1000,6 +1083,23 @@ async def admin_activate_club_membership_by_auth(
         else now
     )
     member.club_paid_until = base + timedelta(days=30 * payload.months)
+
+    if not club_approved:
+        tier_priority = {"academy": 3, "club": 2, "community": 1}
+        updated_tiers = set(approved_tiers)
+        updated_tiers.update({"club", "community"})
+        member.membership_tiers = sorted(
+            [tier for tier in updated_tiers if tier in tier_priority],
+            key=lambda tier: tier_priority[tier],
+            reverse=True,
+        )
+        if member.requested_membership_tiers:
+            remaining_requests = [
+                tier
+                for tier in member.requested_membership_tiers
+                if tier not in {"club", "community"}
+            ]
+            member.requested_membership_tiers = remaining_requests or None
 
     db.add(member)
     await db.commit()

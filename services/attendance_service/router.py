@@ -14,7 +14,7 @@ from services.attendance_service.schemas import (
 )
 from services.members_service.models import Member
 from services.sessions_service.models import Session
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["attendance"])
@@ -210,3 +210,19 @@ async def get_pool_list_csv(
         csv_content += f"{member.first_name},{member.last_name},{member.email},{attendance.status},{attendance.role},{attendance.notes or ''}\n"
 
     return Response(content=csv_content, media_type="text/csv")
+
+
+@router.delete("/admin/members/{member_id}")
+async def admin_delete_member_attendance(
+    member_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Delete attendance records for a member (Admin only).
+    """
+    result = await db.execute(
+        delete(AttendanceRecord).where(AttendanceRecord.member_id == member_id)
+    )
+    await db.commit()
+    return {"deleted": result.rowcount or 0}

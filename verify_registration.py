@@ -1,5 +1,6 @@
-import requests
 import uuid
+
+import requests
 
 # Configuration
 GATEWAY_URL = "http://localhost:8000"

@@ -1,9 +1,8 @@
 """FastAPI application for the Communications Service."""
 
 from fastapi import FastAPI
-
+from services.communications_service.router import admin_router, content_router
 from services.communications_service.router import router as communications_router
-from services.communications_service.router import content_router
 
 
 def create_app() -> FastAPI:
@@ -22,6 +21,7 @@ def create_app() -> FastAPI:
     # Include communications routers
     app.include_router(communications_router)
     app.include_router(content_router)
+    app.include_router(admin_router)
 
     return app
 
