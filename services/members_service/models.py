@@ -191,7 +191,7 @@ class Member(Base):
 
     # Relationships
     coach_profile: Mapped["CoachProfile"] = relationship(
-        "CoachProfile", back_populates="member", uselist=False
+        "CoachProfile", back_populates="member", uselist=False, lazy="selectin"
     )
 
     def __repr__(self):

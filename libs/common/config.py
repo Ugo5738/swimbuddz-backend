@@ -59,6 +59,16 @@ class Settings(BaseSettings):
     # Where Paystack redirects the user after payment (webhook still does the real activation)
     PAYSTACK_CALLBACK_URL: Optional[str] = None
 
+    # Flutterwave (optional; alternative payment provider)
+    FLUTTERWAVE_SECRET_KEY: str = ""
+
+    # Media Service / Storage
+    STORAGE_BACKEND: str = "supabase"  # supabase or s3
+    SUPABASE_STORAGE_BUCKET: str = "swimbuddz-media"
+
+    # Admin configuration
+    ADMIN_EMAILS: list[str] = ["admin@admin.com"]
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )

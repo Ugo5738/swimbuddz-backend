@@ -20,6 +20,7 @@ from services.members_service.schemas import (
     ActivateCommunityRequest,
     ApprovalAction,
     MemberCreate,
+    MemberListResponse,
     MemberPublicResponse,
     MemberResponse,
     MemberUpdate,
@@ -36,6 +37,47 @@ pending_router = APIRouter(
     prefix="/pending-registrations", tags=["pending-registrations"]
 )
 admin_router = APIRouter(prefix="/admin/members", tags=["admin-members"])
+
+
+def _normalize_member_tiers(member: Member) -> bool:
+    """
+    Ensure membership_tiers and membership_tier reflect active entitlements.
+    Returns True if a change was made.
+    """
+    now = datetime.now(timezone.utc)
+    tier_priority = {"academy": 3, "club": 2, "community": 1}
+
+    tiers = set(member.membership_tiers or [])
+    if member.membership_tier:
+        tiers.add(member.membership_tier)
+
+    if member.club_paid_until and member.club_paid_until > now:
+        tiers.update({"club", "community"})
+    if member.community_paid_until and member.community_paid_until > now:
+        tiers.add("community")
+
+    if not tiers:
+        tiers.add("community")
+
+    sorted_tiers = sorted(
+        [tier for tier in tiers if tier in tier_priority],
+        key=lambda tier: tier_priority[tier],
+        reverse=True,
+    )
+
+    changed = False
+    if member.membership_tiers != sorted_tiers:
+        member.membership_tiers = sorted_tiers
+        changed = True
+
+    top_tier = sorted_tiers[0] if sorted_tiers else None
+    if top_tier and tier_priority.get(top_tier, 0) > tier_priority.get(
+        member.membership_tier or "", 0
+    ):
+        member.membership_tier = top_tier
+        changed = True
+
+    return changed
 
 
 @pending_router.post(
@@ -410,6 +452,11 @@ async def get_current_member_profile(
             detail="Member profile not found. Please complete registration.",
         )
 
+    if _normalize_member_tiers(member):
+        db.add(member)
+        await db.commit()
+        await db.refresh(member)
+
     return member
 
 
@@ -460,7 +507,7 @@ async def list_public_members(
     return result.scalars().all()
 
 
-@router.get("/", response_model=List[MemberResponse])
+@router.get("/", response_model=List[MemberListResponse])
 async def list_members(
     skip: int = 0,
     limit: int = 100,
@@ -477,7 +524,14 @@ async def list_members(
         .order_by(Member.created_at.desc())
     )
     result = await db.execute(query)
-    return result.scalars().all()
+    members = result.scalars().all()
+    responses: list[MemberListResponse] = []
+    for member in members:
+        base = MemberResponse.model_validate(member, from_attributes=True)
+        payload = base.model_dump(exclude={"coach_profile"})
+        payload["is_coach"] = bool(member.coach_profile)
+        responses.append(MemberListResponse(**payload))
+    return responses
 
 
 @router.get("/stats")
@@ -1077,6 +1131,8 @@ async def admin_activate_club_membership_by_auth(
                 detail="Club readiness is incomplete",
             )
 
+    tier_priority = {"academy": 3, "club": 2, "community": 1}
+
     base = (
         member.club_paid_until
         if member.club_paid_until and member.club_paid_until > now
@@ -1084,15 +1140,10 @@ async def admin_activate_club_membership_by_auth(
     )
     member.club_paid_until = base + timedelta(days=30 * payload.months)
 
+    updated_tiers = set(approved_tiers)
+    updated_tiers.update({"club", "community"})
+
     if not club_approved:
-        tier_priority = {"academy": 3, "club": 2, "community": 1}
-        updated_tiers = set(approved_tiers)
-        updated_tiers.update({"club", "community"})
-        member.membership_tiers = sorted(
-            [tier for tier in updated_tiers if tier in tier_priority],
-            key=lambda tier: tier_priority[tier],
-            reverse=True,
-        )
         if member.requested_membership_tiers:
             remaining_requests = [
                 tier
@@ -1100,6 +1151,26 @@ async def admin_activate_club_membership_by_auth(
                 if tier not in {"club", "community"}
             ]
             member.requested_membership_tiers = remaining_requests or None
+    elif member.requested_membership_tiers:
+        # Clear stale club/academy requests now that approval is in place.
+        remaining_requests = [
+            tier
+            for tier in member.requested_membership_tiers
+            if tier not in {"club", "academy", "community"}
+        ]
+        member.requested_membership_tiers = remaining_requests or None
+
+    sorted_tiers = sorted(
+        [tier for tier in updated_tiers if tier in tier_priority],
+        key=lambda tier: tier_priority[tier],
+        reverse=True,
+    )
+    if sorted_tiers:
+        member.membership_tiers = sorted_tiers
+        current_priority = tier_priority.get(member.membership_tier or "", 0)
+        top_priority = tier_priority.get(sorted_tiers[0], 0)
+        if top_priority > current_priority:
+            member.membership_tier = sorted_tiers[0]
 
     db.add(member)
     await db.commit()

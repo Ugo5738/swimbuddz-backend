@@ -157,6 +157,32 @@ async def _apply_entitlement(payment: Payment) -> None:
         path = f"/admin/members/by-auth/{payment.member_auth_id}/club/activate"
         months = int((payment.payment_metadata or {}).get("months") or 1)
         payload = {"months": months}
+    elif payment.purpose == PaymentPurpose.CLUB_ACTIVATION:
+        years = int((payment.payment_metadata or {}).get("years") or 1)
+        months = int((payment.payment_metadata or {}).get("months") or 1)
+        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            community_resp = await client.post(
+                f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/community/activate",
+                json={"years": years},
+                headers=headers,
+            )
+            if community_resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to apply community entitlement via members_service ({community_resp.status_code}): {community_resp.text}",
+                )
+            club_resp = await client.post(
+                f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/club/activate",
+                json={"months": months},
+                headers=headers,
+            )
+            if club_resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to apply club entitlement via members_service ({club_resp.status_code}): {club_resp.text}",
+                )
+        return
     else:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
@@ -175,6 +201,26 @@ async def _apply_entitlement(payment: Payment) -> None:
             )
 
 
+def _resolve_club_amount(
+    payload: CreatePaymentIntentRequest,
+) -> tuple[float, int, ClubBillingCycle]:
+    cycle = payload.club_billing_cycle or ClubBillingCycle.MONTHLY
+    if cycle == ClubBillingCycle.ANNUAL:
+        amount = float(getattr(settings, "CLUB_ANNUAL_FEE_NGN", 150000))
+        months = 12
+    elif cycle == ClubBillingCycle.BIANNUAL:
+        amount = float(getattr(settings, "CLUB_BIANNUAL_FEE_NGN", 80000))
+        months = 6
+    elif cycle == ClubBillingCycle.QUARTERLY:
+        amount = float(getattr(settings, "CLUB_QUARTERLY_FEE_NGN", 42500))
+        months = 3
+    else:
+        club_fee = int(getattr(settings, "CLUB_MONTHLY_FEE_NGN", 15000))
+        months = payload.months
+        amount = float(club_fee * months)
+    return amount, months, cycle
+
+
 async def _mark_paid_and_apply(
     db: AsyncSession,
     payment: Payment,
@@ -183,7 +229,9 @@ async def _mark_paid_and_apply(
     paid_at: datetime | None,
     provider_payload: dict | None = None,
 ) -> Payment:
-    if payment.status == PaymentStatus.PAID:
+    # Allow re-applying entitlements if the payment is already marked paid
+    # but entitlement_applied_at is still missing.
+    if payment.status == PaymentStatus.PAID and payment.entitlement_applied_at:
         return payment
 
     payment.status = PaymentStatus.PAID
@@ -232,25 +280,27 @@ async def create_payment_intent(
         )
         payment_metadata = {**(payload.payment_metadata or {}), "years": payload.years}
     elif payload.purpose == PaymentPurpose.CLUB_MONTHLY:
-        cycle = payload.club_billing_cycle or ClubBillingCycle.MONTHLY
-        if cycle == ClubBillingCycle.ANNUAL:
-            amount = float(getattr(settings, "CLUB_ANNUAL_FEE_NGN", 150000))
-            months = 12
-        elif cycle == ClubBillingCycle.BIANNUAL:
-            amount = float(getattr(settings, "CLUB_BIANNUAL_FEE_NGN", 80000))
-            months = 6
-        elif cycle == ClubBillingCycle.QUARTERLY:
-            amount = float(getattr(settings, "CLUB_QUARTERLY_FEE_NGN", 42500))
-            months = 3
-        else:
-            club_fee = int(getattr(settings, "CLUB_MONTHLY_FEE_NGN", 15000))
-            months = payload.months
-            amount = float(club_fee * months)
-
+        amount, months, cycle = _resolve_club_amount(payload)
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "months": months,
             "club_billing_cycle": str(cycle),
+        }
+    elif payload.purpose == PaymentPurpose.CLUB_ACTIVATION:
+        community_fee = float(
+            getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 5000) * payload.years
+        )
+        club_amount, months, cycle = _resolve_club_amount(payload)
+        amount = community_fee + club_amount
+        payment_metadata = {
+            **(payload.payment_metadata or {}),
+            "years": payload.years,
+            "months": months,
+            "club_billing_cycle": str(cycle),
+            "components": {
+                "community_annual": community_fee,
+                "club": club_amount,
+            },
         }
     else:
         raise HTTPException(
@@ -344,11 +394,9 @@ async def verify_my_paystack_payment(
 ):
     """
     Verify a Paystack transaction and apply entitlements.
-    Dev-only fallback for local/dev where Paystack webhooks may not reach the backend.
+    Used as a fallback when webhooks are delayed; safe for production because we still
+    verify the transaction status with Paystack before applying entitlements.
     """
-    if settings.ENVIRONMENT == "production":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-
     query = select(Payment).where(
         Payment.reference == reference,
         Payment.member_auth_id == current_user.user_id,
@@ -361,6 +409,15 @@ async def verify_my_paystack_payment(
         )
 
     if payment.status == PaymentStatus.PAID:
+        if not payment.entitlement_applied_at:
+            return await _mark_paid_and_apply(
+                db=db,
+                payment=payment,
+                provider=payment.provider or "paystack",
+                provider_reference=payment.provider_reference or reference,
+                paid_at=payment.paid_at,
+                provider_payload={"verify": "reapply_entitlement"},
+            )
         return payment
 
     data = await _verify_paystack_transaction(reference)

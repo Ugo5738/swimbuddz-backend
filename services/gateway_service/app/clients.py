@@ -1,7 +1,9 @@
 """HTTP clients for gateway to call microservices."""
 
-import httpx
+import asyncio
 from typing import Any, Dict, Optional
+
+import httpx
 from libs.common.config import get_settings
 
 settings = get_settings()
@@ -14,12 +16,35 @@ class ServiceClient:
         self.base_url = base_url
         self.timeout = timeout
 
+    async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        """Send a request with small retries to smooth over transient DNS/connection hiccups."""
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.request(
+                        method, f"{self.base_url}{path}", **kwargs
+                    )
+                    response.raise_for_status()
+                    return response
+            except (httpx.RequestError, httpx.HTTPStatusError) as exc:
+                # Only retry connection/read timeouts/errors; propagate HTTP errors immediately.
+                if isinstance(exc, httpx.HTTPStatusError):
+                    raise
+                last_exc = exc
+                if attempt < 2:
+                    await asyncio.sleep(0.2 * (2**attempt))
+                    continue
+                raise
+        # Should not reach here
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("Request failed without exception")
+
     async def get(self, path: str, headers: Optional[Dict] = None) -> Any:
         """Make GET request to service."""
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(f"{self.base_url}{path}", headers=headers or {})
-            response.raise_for_status()
-            return response.json()
+        response = await self._request("GET", path, headers=headers or {})
+        return response.json()
 
     async def post(
         self,
@@ -30,18 +55,17 @@ class ServiceClient:
         headers: Optional[Dict] = None,
     ) -> Any:
         """Make POST request to service."""
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                f"{self.base_url}{path}",
-                json=json,
-                content=content,
-                files=files,
-                headers=headers or {},
-            )
-            response.raise_for_status()
-            if response.status_code == 204:
-                return None
-            return response.json()
+        response = await self._request(
+            "POST",
+            path,
+            json=json,
+            content=content,
+            files=files,
+            headers=headers or {},
+        )
+        if response.status_code == 204:
+            return None
+        return response.json()
 
     async def put(
         self,
@@ -51,17 +75,16 @@ class ServiceClient:
         headers: Optional[Dict] = None,
     ) -> Any:
         """Make PUT request to service."""
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.put(
-                f"{self.base_url}{path}",
-                json=json,
-                content=content,
-                headers=headers or {},
-            )
-            response.raise_for_status()
-            if response.status_code == 204:
-                return None
-            return response.json()
+        response = await self._request(
+            "PUT",
+            path,
+            json=json,
+            content=content,
+            headers=headers or {},
+        )
+        if response.status_code == 204:
+            return None
+        return response.json()
 
     async def patch(
         self,
@@ -71,28 +94,23 @@ class ServiceClient:
         headers: Optional[Dict] = None,
     ) -> Any:
         """Make PATCH request to service."""
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.patch(
-                f"{self.base_url}{path}",
-                json=json,
-                content=content,
-                headers=headers or {},
-            )
-            response.raise_for_status()
-            if response.status_code == 204:
-                return None
-            return response.json()
+        response = await self._request(
+            "PATCH",
+            path,
+            json=json,
+            content=content,
+            headers=headers or {},
+        )
+        if response.status_code == 204:
+            return None
+        return response.json()
 
     async def delete(self, path: str, headers: Optional[Dict] = None) -> Any:
         """Make DELETE request to service."""
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.delete(
-                f"{self.base_url}{path}", headers=headers or {}
-            )
-            response.raise_for_status()
-            if response.status_code == 204:
-                return None
-            return response.json()
+        response = await self._request("DELETE", path, headers=headers or {})
+        if response.status_code == 204:
+            return None
+        return response.json()
 
 
 # Service client instances
