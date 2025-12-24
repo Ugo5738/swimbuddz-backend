@@ -26,6 +26,7 @@ class PaymentPurpose(str, enum.Enum):
     CLUB_QUATERLY = "club_quaterly"
     CLUB_BIANNUALLY = "club_biannually"
     CLUB_ANNUALLY = "club_annually"
+    CLUB_ACTIVATION = "club_activation"
     ACADEMY_COHORT = "academy_cohort"
     POOL_FEE = "pool_fee"
     RIDE_SHARE = "ride_share"

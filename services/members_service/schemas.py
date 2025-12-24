@@ -224,6 +224,12 @@ class MemberResponse(MemberBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MemberListResponse(MemberResponse):
+    is_coach: bool
+    # Exclude full coach profile from list payloads to avoid extra queries
+    coach_profile: Optional[CoachProfileResponse] = Field(default=None, exclude=True)
+
+
 class MemberPublicResponse(BaseModel):
     id: uuid.UUID
     first_name: Optional[str] = None
