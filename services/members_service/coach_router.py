@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.db.config import AsyncSessionLocal
 from sqlalchemy import select
@@ -375,7 +375,7 @@ async def complete_coach_onboarding(
 
 @admin_router.get("/applications", response_model=list[AdminCoachApplicationListItem])
 async def list_coach_applications(
-    status: Optional[str] = None,
+    application_status: Optional[str] = None,
     _admin: dict = Depends(require_admin),
 ):
     """List coach applications (admin only)."""
@@ -384,8 +384,8 @@ async def list_coach_applications(
             select(CoachProfile).join(Member).options(selectinload(CoachProfile.member))
         )
 
-        if status:
-            query = query.where(CoachProfile.status == status)
+        if application_status:
+            query = query.where(CoachProfile.status == application_status)
         else:
             # Default to pending applications
             query = query.where(
