@@ -3,8 +3,8 @@
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from libs.auth.dependencies import require_admin
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.media_service.models import (
@@ -352,6 +352,50 @@ async def upload_media(
         updated_at=db_media.updated_at,
         tags=[],
     )
+
+
+@router.post("/uploads/coach-documents", response_model=MediaItemResponse)
+async def upload_coach_document(
+    file: UploadFile = File(...),
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Allow authenticated users to upload supporting documents for coach applications.
+    Accepts PDFs and images; stores as DOCUMENT media type.
+    """
+    content_type = file.content_type or ""
+    is_image = content_type.startswith("image/")
+    allowed_types = {"application/pdf"}
+    if not (is_image or content_type in allowed_types):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be a PDF or image",
+        )
+
+    file_data = await file.read()
+
+    file_url, thumbnail_url = await storage_service.upload_media(
+        file_data,
+        file.filename or f"coach_document_{uuid.uuid4()}",
+        content_type or "application/octet-stream",
+    )
+
+    db_media = MediaItem(
+        media_type=MediaType.DOCUMENT,
+        file_url=file_url,
+        thumbnail_url=thumbnail_url if is_image else None,
+        title=file.filename,
+        description="Coach application document",
+        alt_text=file.filename,
+        uploaded_by=current_user.user_id,
+        is_processed=True,
+    )
+    db.add(db_media)
+    await db.commit()
+    await db.refresh(db_media)
+
+    return await _build_media_item_response(db, db_media)
 
 
 @router.get("/media", response_model=List[MediaItemResponse])

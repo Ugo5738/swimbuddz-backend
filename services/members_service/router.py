@@ -272,6 +272,13 @@ async def complete_pending_registration(
     # Create member from pending data
     profile_data = json.loads(pending.profile_data_json)
 
+    # Preserve roles from the pending payload so coach signups are identified correctly.
+    roles = profile_data.get("roles") or ["member"]
+    if isinstance(roles, list):
+        roles = list(dict.fromkeys(roles)) or ["member"]  # de-dupe while keeping order
+    else:
+        roles = ["member"]
+
     member = Member(
         auth_id=current_user.user_id,
         email=pending.email,
@@ -340,6 +347,7 @@ async def complete_pending_registration(
         academy_focus_areas=profile_data.get("academy_focus_areas"),
         academy_focus=profile_data.get("academy_focus"),
         payment_notes=profile_data.get("payment_notes"),
+        roles=roles,
         # ===== NEW TIER-BASED FIELDS =====
         # Tier Management
         membership_tier=profile_data.get("membership_tier") or "community",

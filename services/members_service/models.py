@@ -25,6 +25,11 @@ class Member(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     registration_complete: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Multi-role support (member, coach, admin)
+    roles: Mapped[list[str]] = mapped_column(
+        ARRAY(String), default=["member"], server_default="{member}"
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
     )
@@ -436,8 +441,20 @@ class CoachProfile(Base):
 
     # --- E. Platform / Ops ---
     status: Mapped[str] = mapped_column(
-        String, default="pending_review", server_default="pending_review"
-    )  # pending_review, active, inactive, suspended
+        String, default="draft", server_default="draft"
+    )  # draft, pending_review, more_info_needed, approved, rejected, active, inactive, suspended
+
+    # Application tracking
+    application_submitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    application_reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    application_reviewed_by: Mapped[str] = mapped_column(
+        String, nullable=True
+    )  # Email of reviewer
+    rejection_reason: Mapped[str] = mapped_column(Text, nullable=True)
 
     show_in_directory: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
