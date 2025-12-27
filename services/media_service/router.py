@@ -375,9 +375,14 @@ async def upload_coach_document(
 
     file_data = await file.read()
 
+    # Store under a dedicated coach-documents prefix for clarity/isolation
+    original_name = file.filename or f"coach_document_{uuid.uuid4()}"
+    file_ext = original_name.split(".")[-1] if "." in original_name else "bin"
+    storage_name = f"coach-documents/{uuid.uuid4()}.{file_ext}"
+
     file_url, thumbnail_url = await storage_service.upload_media(
         file_data,
-        file.filename or f"coach_document_{uuid.uuid4()}",
+        storage_name,
         content_type or "application/octet-stream",
     )
 
@@ -385,9 +390,9 @@ async def upload_coach_document(
         media_type=MediaType.DOCUMENT,
         file_url=file_url,
         thumbnail_url=thumbnail_url if is_image else None,
-        title=file.filename,
+        title=original_name,
         description="Coach application document",
-        alt_text=file.filename,
+        alt_text=original_name,
         uploaded_by=current_user.user_id,
         is_processed=True,
     )

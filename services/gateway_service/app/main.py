@@ -80,6 +80,25 @@ def create_app() -> FastAPI:
         )
 
     # ==================================================================
+    # COACHES SERVICE PROXY (routed to members service)
+    # ==================================================================
+    @app.api_route(
+        "/api/v1/coaches/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+    )
+    async def proxy_coaches(path: str, request: Request):
+        """Proxy all /api/v1/coaches/* requests to members service (coach router)."""
+        return await proxy_request(clients.members_client, f"/coaches/{path}", request)
+
+    @app.api_route(
+        "/api/v1/admin/coaches/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+    )
+    async def proxy_admin_coaches(path: str, request: Request):
+        """Proxy all /api/v1/admin/coaches/* requests to members service (admin coach router)."""
+        return await proxy_request(
+            clients.members_client, f"/admin/coaches/{path}", request
+        )
+
+    # ==================================================================
     # SESSIONS SERVICE PROXY
     # ==================================================================
     # Handle sessions root endpoint (both with and without trailing slash)
