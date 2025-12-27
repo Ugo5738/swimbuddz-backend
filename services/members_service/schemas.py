@@ -153,18 +153,18 @@ class CoachProfileResponse(BaseModel):
     background_check_document_url: Optional[str] = None
 
     insurance_status: Optional[str] = None
-    is_verified: bool
+    is_verified: Optional[bool] = False
 
     # Logistics
     pools_supported: Optional[list[str]] = None
-    can_travel_between_pools: bool
+    can_travel_between_pools: Optional[bool] = False
     travel_radius_km: Optional[float] = None
 
     max_swimmers_per_session: Optional[int] = 10
     max_cohorts_at_once: Optional[int] = 1
 
-    accepts_one_to_one: bool
-    accepts_group_cohorts: bool
+    accepts_one_to_one: Optional[bool] = True
+    accepts_group_cohorts: Optional[bool] = True
 
     availability_notes: Optional[str] = None
     availability_calendar: Optional[dict] = None
@@ -177,8 +177,8 @@ class CoachProfileResponse(BaseModel):
 
     # Platform
     status: str
-    show_in_directory: bool
-    is_featured: bool
+    show_in_directory: Optional[bool] = False
+    is_featured: Optional[bool] = False
 
     average_rating: float
     rating_count: int

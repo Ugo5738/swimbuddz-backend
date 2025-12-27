@@ -98,6 +98,13 @@ class CoachOnboardingUpdate(BaseModel):
     max_cohorts_at_once: int = 1
     preferred_cohort_types: Optional[list[str]] = None
 
+    # Pricing & visibility
+    currency: Optional[str] = None
+    one_to_one_rate_per_hour: Optional[int] = None
+    group_session_rate_per_hour: Optional[int] = None
+    academy_cohort_stipend: Optional[int] = None
+    show_in_directory: Optional[bool] = None
+
     # Profile
     coach_profile_photo_url: Optional[str] = None
 

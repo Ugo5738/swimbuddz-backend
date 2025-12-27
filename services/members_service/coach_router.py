@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
+from libs.auth.models import AuthUser
 from libs.db.config import AsyncSessionLocal
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -59,7 +60,7 @@ async def get_coach_profile_by_member_id(member_id: str) -> Optional[CoachProfil
 @router.post("/apply", response_model=CoachApplicationResponse)
 async def apply_as_coach(
     data: CoachApplicationCreate,
-    user: dict = Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user),
 ):
     """
     Submit a coach application.
@@ -67,7 +68,7 @@ async def apply_as_coach(
     If user already has a Member record, creates CoachProfile linked to it.
     If user doesn't have a Member record, creates both.
     """
-    auth_id = user.get("sub")
+    auth_id = current_user.user_id
     if not auth_id:
         raise HTTPException(status_code=401, detail="Invalid authentication")
 
@@ -92,7 +93,7 @@ async def apply_as_coach(
         else:
             if not member:
                 # Create new member record for coach-only account
-                email = user.get("email")
+                email = current_user.email
                 if not email:
                     raise HTTPException(status_code=400, detail="Email required")
 
@@ -168,9 +169,11 @@ async def apply_as_coach(
 
 
 @router.get("/me", response_model=CoachApplicationResponse)
-async def get_my_coach_profile(user: dict = Depends(get_current_user)):
+async def get_my_coach_profile(
+    current_user: AuthUser = Depends(get_current_user),
+):
     """Get the current user's coach profile."""
-    auth_id = user.get("sub")
+    auth_id = current_user.user_id
     if not auth_id:
         raise HTTPException(status_code=401, detail="Invalid authentication")
 
@@ -209,9 +212,11 @@ async def get_my_coach_profile(user: dict = Depends(get_current_user)):
 
 
 @router.get("/application-status", response_model=CoachApplicationStatusResponse)
-async def get_application_status(user: dict = Depends(get_current_user)):
+async def get_application_status(
+    current_user: AuthUser = Depends(get_current_user),
+):
     """Get just the application status (lightweight check)."""
-    auth_id = user.get("sub")
+    auth_id = current_user.user_id
     if not auth_id:
         raise HTTPException(status_code=401, detail="Invalid authentication")
 
@@ -244,10 +249,10 @@ async def get_application_status(user: dict = Depends(get_current_user)):
 @router.patch("/me", response_model=CoachApplicationResponse)
 async def update_my_coach_profile(
     data: CoachProfileUpdate,
-    user: dict = Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user),
 ):
     """Update the current user's coach profile."""
-    auth_id = user.get("sub")
+    auth_id = current_user.user_id
     if not auth_id:
         raise HTTPException(status_code=401, detail="Invalid authentication")
 
@@ -296,10 +301,10 @@ async def update_my_coach_profile(
 @router.post("/me/onboarding", response_model=CoachApplicationResponse)
 async def complete_coach_onboarding(
     data: CoachOnboardingUpdate,
-    user: dict = Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user),
 ):
     """Complete coach onboarding (for approved coaches)."""
-    auth_id = user.get("sub")
+    auth_id = current_user.user_id
     if not auth_id:
         raise HTTPException(status_code=401, detail="Invalid authentication")
 
@@ -343,6 +348,16 @@ async def complete_coach_onboarding(
             coach.preferred_cohort_types = data.preferred_cohort_types
         if data.coach_profile_photo_url is not None:
             coach.coach_profile_photo_url = data.coach_profile_photo_url
+        if data.currency is not None:
+            coach.currency = data.currency
+        if data.one_to_one_rate_per_hour is not None:
+            coach.one_to_one_rate_per_hour = data.one_to_one_rate_per_hour
+        if data.group_session_rate_per_hour is not None:
+            coach.group_session_rate_per_hour = data.group_session_rate_per_hour
+        if data.academy_cohort_stipend is not None:
+            coach.academy_cohort_stipend = data.academy_cohort_stipend
+        if data.show_in_directory is not None:
+            coach.show_in_directory = data.show_in_directory
 
         # Set status to active after onboarding
         coach.status = "active"
@@ -478,10 +493,10 @@ async def get_coach_application(
 async def approve_coach_application(
     coach_profile_id: str,
     data: AdminApproveCoach,
-    admin: dict = Depends(require_admin),
+    admin: AuthUser = Depends(require_admin),
 ):
     """Approve a coach application (admin only)."""
-    admin_email = admin.get("email", "admin")
+    admin_email = admin.email or "admin"
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -520,10 +535,10 @@ async def approve_coach_application(
 async def reject_coach_application(
     coach_profile_id: str,
     data: AdminRejectCoach,
-    admin: dict = Depends(require_admin),
+    admin: AuthUser = Depends(require_admin),
 ):
     """Reject a coach application (admin only)."""
-    admin_email = admin.get("email", "admin")
+    admin_email = admin.email or "admin"
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -562,10 +577,10 @@ async def reject_coach_application(
 async def request_more_info(
     coach_profile_id: str,
     data: AdminRequestMoreInfo,
-    admin: dict = Depends(require_admin),
+    admin: AuthUser = Depends(require_admin),
 ):
     """Request more information from a coach applicant (admin only)."""
-    admin_email = admin.get("email", "admin")
+    admin_email = admin.email or "admin"
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(
