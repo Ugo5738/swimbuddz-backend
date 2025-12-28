@@ -1,7 +1,7 @@
 """HTTP clients for gateway to call microservices."""
 
 import asyncio
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 import httpx
 from libs.common.config import get_settings
@@ -41,10 +41,9 @@ class ServiceClient:
             raise last_exc
         raise RuntimeError("Request failed without exception")
 
-    async def get(self, path: str, headers: Optional[Dict] = None) -> Any:
+    async def get(self, path: str, headers: Optional[Dict] = None) -> httpx.Response:
         """Make GET request to service."""
-        response = await self._request("GET", path, headers=headers or {})
-        return response.json()
+        return await self._request("GET", path, headers=headers or {})
 
     async def post(
         self,
@@ -53,9 +52,9 @@ class ServiceClient:
         content: Optional[bytes] = None,
         files: Optional[Dict] = None,
         headers: Optional[Dict] = None,
-    ) -> Any:
+    ) -> httpx.Response:
         """Make POST request to service."""
-        response = await self._request(
+        return await self._request(
             "POST",
             path,
             json=json,
@@ -63,9 +62,6 @@ class ServiceClient:
             files=files,
             headers=headers or {},
         )
-        if response.status_code == 204:
-            return None
-        return response.json()
 
     async def put(
         self,
@@ -73,18 +69,15 @@ class ServiceClient:
         json: Optional[Dict] = None,
         content: Optional[bytes] = None,
         headers: Optional[Dict] = None,
-    ) -> Any:
+    ) -> httpx.Response:
         """Make PUT request to service."""
-        response = await self._request(
+        return await self._request(
             "PUT",
             path,
             json=json,
             content=content,
             headers=headers or {},
         )
-        if response.status_code == 204:
-            return None
-        return response.json()
 
     async def patch(
         self,
@@ -92,25 +85,19 @@ class ServiceClient:
         json: Optional[Dict] = None,
         content: Optional[bytes] = None,
         headers: Optional[Dict] = None,
-    ) -> Any:
+    ) -> httpx.Response:
         """Make PATCH request to service."""
-        response = await self._request(
+        return await self._request(
             "PATCH",
             path,
             json=json,
             content=content,
             headers=headers or {},
         )
-        if response.status_code == 204:
-            return None
-        return response.json()
 
-    async def delete(self, path: str, headers: Optional[Dict] = None) -> Any:
+    async def delete(self, path: str, headers: Optional[Dict] = None) -> httpx.Response:
         """Make DELETE request to service."""
-        response = await self._request("DELETE", path, headers=headers or {})
-        if response.status_code == 204:
-            return None
-        return response.json()
+        return await self._request("DELETE", path, headers=headers or {})
 
 
 # Service client instances

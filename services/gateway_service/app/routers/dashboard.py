@@ -1,17 +1,16 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
-
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
+from pydantic import BaseModel
+from services.attendance_service.schemas import AttendanceResponse
+from services.communications_service.schemas import AnnouncementResponse
 from services.gateway_service.app import clients
 
 # Import schemas for reuse (these are just Pydantic models, safe to import)
 from services.members_service.schemas import MemberResponse
 from services.sessions_service.schemas import SessionResponse
-from services.attendance_service.schemas import AttendanceResponse
-from services.communications_service.schemas import AnnouncementResponse
 
 router = APIRouter(tags=["dashboard"])
 
@@ -42,9 +41,10 @@ async def get_member_dashboard(
     """
     # 1. Get Member Profile
     try:
-        member = await clients.members_client.get(
+        member_response = await clients.members_client.get(
             "/members/me", headers={"Authorization": f"Bearer {current_user.token}"}
         )
+        member = member_response.json()
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -53,7 +53,8 @@ async def get_member_dashboard(
 
     # 2. Get Upcoming Sessions (next 5)
     # TODO: Add limit/filter params to sessions service
-    sessions = await clients.sessions_client.get("/sessions/")
+    sessions_response = await clients.sessions_client.get("/sessions/")
+    sessions = sessions_response.json()
     upcoming_sessions = sessions[:5]  # Mock limit for now
 
     # 3. Get Recent Attendance (last 5)
@@ -61,7 +62,8 @@ async def get_member_dashboard(
     recent_attendance = []
 
     # 4. Get Latest Announcements (last 3)
-    announcements = await clients.communications_client.get("/announcements/")
+    announcements_response = await clients.communications_client.get("/announcements/")
+    announcements = announcements_response.json()
     latest_announcements = announcements[:3]
 
     return MemberDashboardResponse(
@@ -80,13 +82,18 @@ async def get_admin_dashboard_stats(
     Get statistics for the admin dashboard.
     """
     # 1. Member Stats
-    member_stats = await clients.members_client.get("/members/stats")
+    member_stats_response = await clients.members_client.get("/members/stats")
+    member_stats = member_stats_response.json()
 
     # 2. Session Stats
-    session_stats = await clients.sessions_client.get("/sessions/stats")
+    session_stats_response = await clients.sessions_client.get("/sessions/stats")
+    session_stats = session_stats_response.json()
 
     # 3. Announcement Stats
-    announcement_stats = await clients.communications_client.get("/announcements/stats")
+    announcement_stats_response = await clients.communications_client.get(
+        "/announcements/stats"
+    )
+    announcement_stats = announcement_stats_response.json()
 
     return AdminDashboardStats(
         total_members=member_stats.get("total_members", 0),

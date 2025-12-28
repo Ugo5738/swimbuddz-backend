@@ -9,7 +9,7 @@ from __future__ import annotations
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from services.gateway_service.app import clients
 
 
@@ -269,6 +269,25 @@ def create_app() -> FastAPI:
     return app
 
 
+def _filter_service_headers(headers: httpx.Headers) -> list[tuple[str, str]]:
+    """Strip hop-by-hop headers that FastAPI/starlette manages."""
+    hop_by_hop = {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailers",
+        "transfer-encoding",
+        "upgrade",
+        "content-length",
+        "content-encoding",
+        "host",
+        "content-type",
+    }
+    return [(k, v) for k, v in headers.items() if k.lower() not in hop_by_hop]
+
+
 async def proxy_request(client: clients.ServiceClient, path: str, request: Request):
     """Generic proxy function to forward requests to microservices."""
     try:
@@ -277,7 +296,6 @@ async def proxy_request(client: clients.ServiceClient, path: str, request: Reque
         # IMPORTANT: forward JSON payloads as raw bytes. Re-serializing JSON changes
         # whitespace/key order and breaks webhook signature verification
         # (e.g. Paystack x-paystack-signature).
-        json_body = None
         content_body = None
 
         if request.method in ["POST", "PATCH", "PUT"]:
@@ -301,34 +319,58 @@ async def proxy_request(client: clients.ServiceClient, path: str, request: Reque
 
         # Make request to service
         if request.method == "GET":
-            result = await client.get(path, headers=headers)
+            service_response = await client.get(path, headers=headers)
         elif request.method == "POST":
             if content_body is not None:
-                result = await client.post(path, content=content_body, headers=headers)
+                service_response = await client.post(
+                    path, content=content_body, headers=headers
+                )
             else:
-                result = await client.post(path, json=json_body, headers=headers)
+                service_response = await client.post(path, headers=headers)
         elif request.method == "PUT":
             if content_body is not None:
-                result = await client.put(path, content=content_body, headers=headers)
+                service_response = await client.put(
+                    path, content=content_body, headers=headers
+                )
             else:
-                result = await client.put(path, json=json_body, headers=headers)
+                service_response = await client.put(path, headers=headers)
         elif request.method == "PATCH":
             if content_body is not None:
-                result = await client.patch(path, content=content_body, headers=headers)
+                service_response = await client.patch(
+                    path, content=content_body, headers=headers
+                )
             else:
-                result = await client.patch(path, json=json_body, headers=headers)
+                service_response = await client.patch(path, headers=headers)
         elif request.method == "DELETE":
-            result = await client.delete(path, headers=headers)
+            service_response = await client.delete(path, headers=headers)
         else:
             raise HTTPException(status_code=405, detail="Method not allowed")
 
-        # Handle 204 No Content responses (result will be None)
-        if result is None:
-            from fastapi.responses import Response
+        forward_headers = dict(_filter_service_headers(service_response.headers))
 
-            return Response(status_code=204)
+        if service_response.status_code == 204:
+            return Response(status_code=204, headers=forward_headers)
 
-        return JSONResponse(content=result)
+        content_type = service_response.headers.get("content-type", "")
+
+        if "application/json" in content_type:
+            try:
+                payload = service_response.json()
+                return JSONResponse(
+                    content=payload,
+                    status_code=service_response.status_code,
+                    headers=forward_headers,
+                )
+            except ValueError:
+                # Fall back to raw bytes if the payload is not valid JSON.
+                pass
+
+        return Response(
+            content=service_response.content,
+            status_code=service_response.status_code,
+            media_type=content_type or None,
+            headers=forward_headers,
+        )
 
     except httpx.HTTPStatusError as e:
         # Forward HTTP errors from services

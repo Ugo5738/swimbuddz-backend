@@ -41,6 +41,20 @@ class CleanupByEmailRequest(BaseModel):
     mode: CleanupMode = CleanupMode.HARD
 
 
+def _parse_service_json(response: httpx.Response | None) -> Dict[str, Any] | None:
+    """
+    Normalize httpx responses into JSON payloads while handling empty bodies.
+    """
+    if response is None:
+        return None
+    if response.status_code == status.HTTP_204_NO_CONTENT or not response.content:
+        return {"deleted": 0}
+    try:
+        return response.json()
+    except ValueError:
+        return {"raw_response": response.text or ""}
+
+
 def _service_role_token() -> str:
     now = int(datetime.now(tz=timezone.utc).timestamp())
     payload = {
@@ -75,16 +89,17 @@ async def cleanup_member_by_email(
 
     member = None
     try:
-        member = await clients.members_client.get(
+        member_response = await clients.members_client.get(
             f"/admin/members/by-email/{quote(email)}", headers=headers
         )
+        member = _parse_service_json(member_response)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != status.HTTP_404_NOT_FOUND:
             errors.append({"service": "members", "error": str(exc)})
     except Exception as exc:
         errors.append({"service": "members", "error": str(exc)})
 
-    if member:
+    if member and member.get("id"):
         cleanup_payload = CleanupRequest(mode=payload.mode)
         return await cleanup_member(
             member_id=uuid.UUID(member["id"]),
@@ -95,7 +110,8 @@ async def cleanup_member_by_email(
     async def run_call_allow_404(name: str, coro):
         try:
             result = await coro
-            results[name] = result if result is not None else {"deleted": 0}
+            parsed = _parse_service_json(result)
+            results[name] = parsed if parsed is not None else {"deleted": 0}
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == status.HTTP_404_NOT_FOUND:
                 results[name] = {"deleted": 0}
@@ -137,9 +153,10 @@ async def cleanup_member(
     errors: List[Dict[str, str]] = []
 
     try:
-        member = await clients.members_client.get(
+        member_response = await clients.members_client.get(
             f"/members/{member_id}", headers=headers
         )
+        member = _parse_service_json(member_response) or {}
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -151,7 +168,8 @@ async def cleanup_member(
     async def run_call(name: str, coro):
         try:
             result = await coro
-            results[name] = result if result is not None else {"deleted": 0}
+            parsed = _parse_service_json(result)
+            results[name] = parsed if parsed is not None else {"deleted": 0}
         except Exception as exc:
             errors.append({"service": name, "error": str(exc)})
             results[name] = {"error": str(exc)}
