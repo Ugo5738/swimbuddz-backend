@@ -13,6 +13,7 @@ from supabase import Client, create_client
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "supabase")  # supabase or s3
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+# Note: get_public_url below assumes this bucket is configured as public in Supabase.
 SUPABASE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "swimbuddz-media")
 
 # S3 configuration (fallback)

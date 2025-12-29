@@ -1,5 +1,7 @@
-from typing import Annotated
+import time
+from typing import Annotated, Any, Dict, Optional
 
+import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
@@ -10,6 +12,39 @@ from libs.auth.models import AuthUser
 
 settings = get_settings()
 security = HTTPBearer()
+_JWKS_CACHE: dict[str, Any] = {"keys": None, "fetched_at": 0}
+_JWKS_TTL_SECONDS = 300
+
+
+async def _get_jwk_for_kid(kid: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch the Supabase JWKS and return the key matching the given kid.
+    Caches keys for a short TTL to avoid repeated network calls.
+    """
+    now = time.time()
+    if (
+        _JWKS_CACHE["keys"] is None
+        or now - _JWKS_CACHE["fetched_at"] > _JWKS_TTL_SECONDS
+    ):
+        jwks_url = f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
+        try:
+            headers = {"apikey": settings.SUPABASE_ANON_KEY}
+            async with httpx.AsyncClient(timeout=5) as client:
+                res = await client.get(jwks_url, headers=headers)
+                res.raise_for_status()
+                data = res.json()
+                _JWKS_CACHE["keys"] = data.get("keys", [])
+                _JWKS_CACHE["fetched_at"] = now
+        except Exception:
+            _JWKS_CACHE["keys"] = None
+            _JWKS_CACHE["fetched_at"] = now
+            return None
+
+    keys = _JWKS_CACHE["keys"] or []
+    for key in keys:
+        if key.get("kid") == kid:
+            return key
+    return None
 
 
 async def get_current_user(
@@ -25,12 +60,25 @@ async def get_current_user(
     )
 
     try:
-        # Decode the token using the Supabase JWT secret
-        # Supabase uses HS256 by default
+        header = jwt.get_unverified_header(token.credentials)
+        alg = header.get("alg", "HS256")
+
+        # Supabase may sign user tokens with ES256/RS256; fetch JWKs when needed.
+        if alg.startswith("HS"):
+            key = settings.SUPABASE_JWT_SECRET
+            algorithms = ["HS256"]
+        else:
+            kid = header.get("kid")
+            jwk_key = await _get_jwk_for_kid(kid) if kid else None
+            if not jwk_key:
+                raise credentials_exception
+            key = jwk_key
+            algorithms = [alg]
+
         payload = jwt.decode(
             token.credentials,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
+            key,
+            algorithms=algorithms,
             audience="authenticated",  # Optional: validate audience if needed
             options={
                 "verify_aud": False
@@ -48,22 +96,20 @@ async def require_admin(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> AuthUser:
     """
-    Ensure the user has the 'admin' role (or specific claim).
-    For now, we might check a custom claim or just the 'service_role' if using that for admin.
-    Or we can check if the email is in a hardcoded admin list for MVP.
-
-    Let's assume for now we check a custom 'app_metadata' claim or similar.
-    But Supabase 'role' claim is usually 'authenticated'.
-
-    TODO: Refine admin check based on actual Supabase RBAC or 'admin' table.
-    For this bootstrap, let's allow if role is 'service_role' OR if we add a temporary check.
+    Ensure the user has the 'admin' role (or equivalent claim).
+    Checks:
+    - app_metadata.roles contains "admin"
+    - token role is "service_role"
+    - email is in configured ADMIN_EMAILS
     """
-    # Check if user has service role OR matches the configured admin email
-    if (
-        current_user.role != "service_role"
-        and current_user.email != settings.ADMIN_EMAIL
-    ):
-        # Real implementation would check DB or custom claims
+    is_service_role = current_user.role == "service_role"
+    has_admin_role = current_user.has_role("admin")
+    is_whitelisted_email = (
+        current_user.email is not None
+        and current_user.email in (settings.ADMIN_EMAILS or [])
+    )
+
+    if not (is_service_role or has_admin_role or is_whitelisted_email):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required"
         )

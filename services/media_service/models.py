@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -17,6 +18,17 @@ class MediaType(str, Enum):
     IMAGE = "IMAGE"
     VIDEO = "VIDEO"
     DOCUMENT = "DOCUMENT"
+
+
+class MemberRef(Base):
+    """Reference to shared members table without cross-service imports."""
+
+    __tablename__ = "members"
+    __table_args__ = {"extend_existing": True, "info": {"skip_autogenerate": True}}
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
 
 
 class AlbumType(str, Enum):
@@ -84,10 +96,10 @@ class MediaItem(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     def __repr__(self):
@@ -132,10 +144,10 @@ class Album(Base):
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     # Relationships
@@ -166,7 +178,7 @@ class AlbumItem(Base):
     order: Mapped[int] = mapped_column(Integer, default=0)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
 
     album = relationship("Album", back_populates="items")
@@ -194,10 +206,10 @@ class SiteAsset(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     media_item = relationship("MediaItem", back_populates="site_assets")
@@ -221,7 +233,7 @@ class MediaTag(Base):
     y_coord: Mapped[float] = mapped_column(Float, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
 
     media_item = relationship("MediaItem", back_populates="tags")

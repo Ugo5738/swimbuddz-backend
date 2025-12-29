@@ -4,6 +4,7 @@ import string
 import uuid
 from datetime import datetime
 
+from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from sqlalchemy import DateTime
 from sqlalchemy import Enum as SAEnum
@@ -79,10 +80,10 @@ class Payment(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     @staticmethod

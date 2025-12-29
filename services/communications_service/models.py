@@ -49,11 +49,11 @@ class Announcement(Base):
         return f"<Announcement {self.title}>"
 
 
-class Member(Base):
-    """Reference to Member from members_service for foreign keys."""
+class MemberRef(Base):
+    """Reference to shared members table without cross-service imports."""
 
     __tablename__ = "members"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = {"extend_existing": True, "info": {"skip_autogenerate": True}}
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

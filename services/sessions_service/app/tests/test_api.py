@@ -28,7 +28,7 @@ async def test_create_session_admin(client: AsyncClient, db_session: AsyncSessio
     payload = {
         "title": "Morning Swim",
         "description": "Laps and drills",
-        "location": "main_pool",
+        "location": "sunfit_pool",
         "start_time": start_time.isoformat(),
         "end_time": end_time.isoformat(),
         "capacity": 20,
@@ -52,7 +52,7 @@ async def test_list_sessions(client: AsyncClient, db_session: AsyncSession):
     session = Session(
         title="Evening Swim",
         description="Relaxed pace",
-        location=SessionLocation.MAIN_POOL,  # Assuming enum exists or string
+        location=SessionLocation.SUNFIT_POOL,
         start_time=datetime.utcnow() + timedelta(days=2),
         end_time=datetime.utcnow() + timedelta(days=2, hours=1),
         capacity=15,
@@ -80,7 +80,7 @@ async def test_get_session_details(client: AsyncClient, db_session: AsyncSession
         id=session_id,
         title="Specific Session",
         description="Details here",
-        location=SessionLocation.DIVING_POOL,
+        location=SessionLocation.SUNFIT_POOL,
         start_time=datetime.utcnow() + timedelta(days=3),
         end_time=datetime.utcnow() + timedelta(days=3, hours=1),
         capacity=10,

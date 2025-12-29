@@ -6,7 +6,7 @@ from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.db.session import get_async_db
-from services.attendance_service.models import AttendanceRecord
+from services.attendance_service.models import AttendanceRecord, MemberRef
 from services.attendance_service.schemas import (
     AttendanceCreate,
     AttendanceResponse,
@@ -24,8 +24,8 @@ settings = get_settings()
 async def get_current_member(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
-) -> Member:
-    query = select(Member).where(Member.auth_id == current_user.user_id)
+) -> MemberRef:
+    query = select(MemberRef).where(MemberRef.auth_id == current_user.user_id)
     result = await db.execute(query)
     member = result.scalar_one_or_none()
     if not member:
@@ -101,7 +101,7 @@ async def public_sign_in_to_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Verify member exists
-    query = select(Member).where(Member.id == attendance_in.member_id)
+    query = select(MemberRef).where(MemberRef.id == attendance_in.member_id)
     result = await db.execute(query)
     member = result.scalar_one_or_none()
     if not member:

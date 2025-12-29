@@ -8,6 +8,7 @@ from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.email import send_email
 from libs.db.session import get_async_db
+from services.members_service import service as member_service
 from services.members_service.models import (
     CoachProfile,
     Member,
@@ -43,41 +44,37 @@ def _normalize_member_tiers(member: Member) -> bool:
     """
     Ensure membership_tiers and membership_tier reflect active entitlements.
     Returns True if a change was made.
+    
+    Delegates to service layer for testability.
     """
-    now = datetime.now(timezone.utc)
-    tier_priority = {"academy": 3, "club": 2, "community": 1}
-
-    tiers = set(member.membership_tiers or [])
-    if member.membership_tier:
-        tiers.add(member.membership_tier)
-
-    if member.club_paid_until and member.club_paid_until > now:
-        tiers.update({"club", "community"})
-    if member.community_paid_until and member.community_paid_until > now:
-        tiers.add("community")
-
-    if not tiers:
-        tiers.add("community")
-
-    sorted_tiers = sorted(
-        [tier for tier in tiers if tier in tier_priority],
-        key=lambda tier: tier_priority[tier],
-        reverse=True,
+    primary, tiers, changed = member_service.normalize_member_tiers(
+        current_tier=member.membership_tier,
+        current_tiers=member.membership_tiers,
+        community_paid_until=member.community_paid_until,
+        club_paid_until=member.club_paid_until,
+        academy_paid_until=getattr(member, "academy_paid_until", None),
     )
-
-    changed = False
-    if member.membership_tiers != sorted_tiers:
-        member.membership_tiers = sorted_tiers
-        changed = True
-
-    top_tier = sorted_tiers[0] if sorted_tiers else None
-    if top_tier and tier_priority.get(top_tier, 0) > tier_priority.get(
-        member.membership_tier or "", 0
-    ):
-        member.membership_tier = top_tier
-        changed = True
-
+    if changed:
+        member.membership_tier = primary
+        member.membership_tiers = tiers
     return changed
+
+
+async def _sync_member_roles(
+    member: Member, current_user: AuthUser, db: AsyncSession
+) -> bool:
+    """
+    Merge roles from Supabase JWT (app_metadata.roles) into Member.roles.
+    Returns True if a change was made.
+    """
+    desired_roles = set(current_user.roles or [])
+    existing_roles = set(member.roles or [])
+    merged = existing_roles | desired_roles
+    if merged != existing_roles:
+        member.roles = list(merged) if merged else None
+        await db.flush()
+        return True
+    return False
 
 
 @pending_router.post(
@@ -170,6 +167,25 @@ async def create_pending_registration(
             try:
                 response = await asyncio.to_thread(supabase.auth.sign_up, credentials)
                 print(f"User signed up in Supabase: {response}")
+
+                # Set default app_metadata roles using service role so JWT carries roles
+                try:
+                    admin_supabase: Client = create_client(
+                        settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY
+                    )
+                    user = getattr(response, "user", None)
+                    # supabase-py returns response.user.id (v2) or response.user['id'] (v1)
+                    user_id = getattr(user, "id", None) or (user or {}).get("id")
+                    if user_id:
+                        await asyncio.to_thread(
+                            admin_supabase.auth.admin.update_user_by_id,
+                            user_id,
+                            {"app_metadata": {"roles": ["member"], "role": "member"}},
+                        )
+                        print(f"Updated app_metadata roles for user {user_id}")
+                except Exception as meta_err:
+                    print(f"Warning: could not set app_metadata roles: {meta_err}")
+
                 last_error = None
                 break
             except Exception as e:
@@ -243,6 +259,11 @@ async def complete_pending_registration(
     result = await db.execute(query)
     existing_member = result.scalar_one_or_none()
     if existing_member:
+        changed = await _sync_member_roles(existing_member, current_user, db)
+        if changed:
+            _normalize_member_tiers(existing_member)
+            await db.commit()
+            await db.refresh(existing_member)
         return existing_member
 
     # Find pending registration by email from token
@@ -262,6 +283,11 @@ async def complete_pending_registration(
         result = await db.execute(query)
         existing_member = result.scalar_one_or_none()
         if existing_member:
+            changed = await _sync_member_roles(existing_member, current_user, db)
+            if changed:
+                _normalize_member_tiers(existing_member)
+                await db.commit()
+                await db.refresh(existing_member)
             return existing_member
 
         raise HTTPException(

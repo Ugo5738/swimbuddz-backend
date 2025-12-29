@@ -13,7 +13,7 @@ async def test_delete_session(client: AsyncClient, db_session):
 
     session = Session(
         title="Test Session",
-        location="main_pool",
+        location="sunfit_pool",
         start_time=datetime.utcnow() + timedelta(days=1),
         end_time=datetime.utcnow() + timedelta(days=1, hours=2),
         pool_fee=2000,

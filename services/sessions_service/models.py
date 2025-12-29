@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from sqlalchemy import Boolean, DateTime
 from sqlalchemy import Enum as SAEnum
@@ -68,10 +69,10 @@ class Session(Base):
     is_recurring_instance: Mapped[bool] = mapped_column(Boolean, default=False)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     def __repr__(self):

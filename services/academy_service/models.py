@@ -2,6 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
+from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from sqlalchemy import JSON, Boolean, DateTime
 from sqlalchemy import Enum as SAEnum
@@ -16,6 +17,17 @@ class ProgramLevel(str, enum.Enum):
     INTERMEDIATE = "intermediate"
     ADVANCED = "advanced"
     SPECIALTY = "specialty"
+
+
+class MemberRef(Base):
+    """Reference to shared members table without cross-service imports."""
+
+    __tablename__ = "members"
+    __table_args__ = {"extend_existing": True, "info": {"skip_autogenerate": True}}
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
 
 
 class CohortStatus(str, enum.Enum):
@@ -66,10 +78,10 @@ class Program(Base):
     )  # links, docs, etc.
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     # Relationships
@@ -111,10 +123,10 @@ class Cohort(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     # Relationships
@@ -143,7 +155,7 @@ class CohortResource(Base):
     description: Mapped[str] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
 
     # Relationships
@@ -188,10 +200,10 @@ class Enrollment(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     # Relationships
@@ -217,10 +229,10 @@ class Milestone(Base):
     video_url: Mapped[str] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     # Relationships
@@ -253,10 +265,10 @@ class StudentProgress(Base):
     coach_notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     # Relationships

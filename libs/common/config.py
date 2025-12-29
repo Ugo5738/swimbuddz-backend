@@ -68,6 +68,10 @@ class Settings(BaseSettings):
 
     # Admin configuration
     ADMIN_EMAILS: list[str] = ["admin@admin.com"]
+    EMAIL_FROM_SUPPORT: str = ""
+    EMAIL_FROM_BILLING: str = ""
+    EMAIL_FROM_WELCOME: str = ""
+    EMAIL_FROM_SALES: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"

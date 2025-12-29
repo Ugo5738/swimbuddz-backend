@@ -2,8 +2,9 @@ import enum
 import uuid
 from datetime import datetime
 
+from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, String
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -23,6 +24,18 @@ class AttendanceRole(str, enum.Enum):
     COACH = "COACH"
     VOLUNTEER = "VOLUNTEER"
     GUEST = "GUEST"
+
+
+class MemberRef(Base):
+    """Reference to shared members table without cross-service imports."""
+
+    __tablename__ = "members"
+    __table_args__ = {"extend_existing": True, "info": {"skip_autogenerate": True}}
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    auth_id: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
 
 
 class AttendanceRecord(Base):
@@ -52,10 +65,10 @@ class AttendanceRecord(Base):
     notes: Mapped[str] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     # Relationships (optional, but useful)

@@ -1,7 +1,7 @@
 import asyncio
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -32,6 +32,8 @@ async def create_admin_user():
 
     email = "admin@admin.com"
     password = "admin"  # Default password, change immediately
+    app_metadata = {"role": "admin", "roles": ["admin", "authenticated"]}
+    user_metadata = {"full_name": "Admin User"}
 
     # 1. Create Supabase Auth User via HTTPX
     print(f"Connecting to Supabase at {settings.SUPABASE_URL}...")
@@ -52,7 +54,8 @@ async def create_admin_user():
                 "email": email,
                 "password": password,
                 "email_confirm": True,
-                "user_metadata": {"full_name": "Admin User"},
+                "user_metadata": user_metadata,
+                "app_metadata": app_metadata,
             }
 
             print(f"Creating Supabase user {email}...")
@@ -121,6 +124,24 @@ async def create_admin_user():
         print("❌ Could not obtain Auth UID. Aborting.")
         return
 
+    # Ensure admin app_metadata is set so JWT carries the claim
+    # Use a fresh client to ensure the connection is open when updating metadata
+    try:
+        update_url = f"{settings.SUPABASE_URL}/auth/v1/admin/users/{auth_uid}"
+        update_payload = {"app_metadata": app_metadata, "user_metadata": user_metadata}
+        async with httpx.AsyncClient() as update_client:
+            update_res = await update_client.put(
+                update_url, json=update_payload, headers=headers
+            )
+        if update_res.status_code in (200, 201):
+            print("✅ Admin app_metadata updated")
+        else:
+            print(
+                f"⚠️ Could not update app_metadata: {update_res.status_code} {update_res.text}"
+            )
+    except Exception as e:
+        print(f"⚠️ Exception updating app_metadata: {e}")
+
     # 2. Create Member Record in DB
     print("Connecting to database...")
     async with AsyncSessionLocal() as session:
@@ -139,6 +160,12 @@ async def create_admin_user():
                     existing_member.is_active = True
                     existing_member.registration_complete = True
                     print("✅ Member updated.")
+                # Ensure admin role is present in roles array
+                if existing_member.roles is None or "admin" not in existing_member.roles:
+                    updated_roles = list(existing_member.roles or [])
+                    updated_roles.append("admin")
+                    existing_member.roles = updated_roles
+                    print("✅ Member roles updated with admin.")
             else:
                 print("Creating new Member record...")
                 new_member = Member(
@@ -149,16 +176,13 @@ async def create_admin_user():
                     last_name="User",
                     is_active=True,
                     registration_complete=True,
-                    # role="admin", # Member model doesn't have role column yet, handled by auth logic
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
-                    # Default profile fields
-                    city="System",
-                    country="System",
-                    swim_level="expert",
-                    membership_tiers=["academy", "club", "community"],
+                    roles=["admin", "member"],
+                    approval_status="approved",
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc),
                 )
                 session.add(new_member)
+                # Note: Admin has no membership tier - admin is a role, not a tier
                 print("✅ Member record created.")
 
     print("\n🎉 Admin setup complete!")

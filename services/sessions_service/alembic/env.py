@@ -28,13 +28,20 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # Placeholder referenced tables so FKs resolve during autogenerate ordering
+# These tables exist in other services - we just need stubs for Alembic
 Table(
     "events",
     target_metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
     extend_existing=True,
 )
-STUB_TABLES = {"events"}
+Table(
+    "cohorts",
+    target_metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    extend_existing=True,
+)
+STUB_TABLES = {"events", "cohorts"}
 
 url = settings.DATABASE_URL.replace("%", "%%")
 config.set_main_option("sqlalchemy.url", url)

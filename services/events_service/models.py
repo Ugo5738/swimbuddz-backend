@@ -3,11 +3,23 @@
 import uuid
 from datetime import datetime
 
+from libs.common.datetime_utils import utc_now
 from sqlalchemy import String, Integer, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from libs.db.base import Base
+
+
+class MemberRef(Base):
+    """Reference to shared members table without cross-service imports."""
+
+    __tablename__ = "members"
+    __table_args__ = {"extend_existing": True, "info": {"skip_autogenerate": True}}
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
 
 
 class Event(Base):
@@ -37,10 +49,10 @@ class Event(Base):
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     def __repr__(self):
@@ -60,10 +72,10 @@ class EventRSVP(Base):
     status: Mapped[str] = mapped_column(String, nullable=False)  # going/maybe/not_going
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     def __repr__(self):

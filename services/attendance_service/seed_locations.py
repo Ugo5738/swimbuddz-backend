@@ -56,7 +56,7 @@ async def seed_locations():
         # Agor Area Default (e.g. center of Agor) -> Main Pool
         agor_default = RouteInfo(
             origin_area_id=agor.id,
-            destination="main_pool",
+            destination="sunfit_pool",
             destination_name="Rowe Park, Yaba",
             distance_text="14.0 km",
             duration_text="45 mins",
@@ -66,7 +66,7 @@ async def seed_locations():
         # Mega Chicken Override (Closer, less traffic?)
         mega_chicken_route = RouteInfo(
             origin_pickup_location_id=locations[0].id,  # Mega Chicken
-            destination="main_pool",
+            destination="sunfit_pool",
             destination_name="Rowe Park, Yaba",
             distance_text="13.7 km",
             duration_text="44 mins",
@@ -76,7 +76,7 @@ async def seed_locations():
         # First Bank Override (Further, more traffic?)
         first_bank_route = RouteInfo(
             origin_pickup_location_id=locations[1].id,  # First Bank
-            destination="main_pool",
+            destination="sunfit_pool",
             destination_name="Rowe Park, Yaba",
             distance_text="14.2 km",
             duration_text="46 mins",
@@ -86,7 +86,7 @@ async def seed_locations():
         # Lekki -> Main Pool (Further away)
         lekki_main = RouteInfo(
             origin_area_id=lekki.id,
-            destination="main_pool",
+            destination="sunfit_pool",
             destination_name="Rowe Park, Yaba",
             distance_text="18.5 km",
             duration_text="55 mins",
