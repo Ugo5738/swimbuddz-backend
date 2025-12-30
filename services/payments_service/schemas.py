@@ -76,6 +76,7 @@ class CompletePaymentRequest(BaseModel):
 
 # --- Discount Schemas ---
 
+
 class DiscountCreate(BaseModel):
     code: str = Field(..., min_length=2, max_length=50)
     description: Optional[str] = None

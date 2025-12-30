@@ -3,7 +3,10 @@
 from fastapi import FastAPI
 from services.members_service.coach_router import admin_router as coach_admin_router
 from services.members_service.coach_router import router as coach_router
-from services.members_service.router import admin_router, registration_router, coaches_router
+from services.members_service.router import (
+    admin_router,
+    registration_router,
+)
 from services.members_service.router import router as members_router
 from services.members_service.volunteer_router import challenge_router, volunteer_router
 

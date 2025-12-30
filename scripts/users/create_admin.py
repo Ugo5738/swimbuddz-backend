@@ -161,7 +161,10 @@ async def create_admin_user():
                     existing_member.registration_complete = True
                     print("✅ Member updated.")
                 # Ensure admin role is present in roles array
-                if existing_member.roles is None or "admin" not in existing_member.roles:
+                if (
+                    existing_member.roles is None
+                    or "admin" not in existing_member.roles
+                ):
                     updated_roles = list(existing_member.roles or [])
                     updated_roles.append("admin")
                     existing_member.roles = updated_roles

@@ -22,10 +22,9 @@ Usage:
     if not await is_valid_id(COHORT_IDS_KEY, str(cohort_id)):
         raise HTTPException(400, "Invalid cohort_id")
 """
-from typing import Optional
 
 from libs.common.logging import get_logger
-from libs.common.redis import get_redis, ping_redis
+from libs.common.redis import get_redis
 
 logger = get_logger(__name__)
 
@@ -77,7 +76,9 @@ async def remove_valid_id(key: str, entity_id: str) -> bool:
         return False
 
 
-async def is_valid_id(key: str, entity_id: str, allow_missing_redis: bool = True) -> bool:
+async def is_valid_id(
+    key: str, entity_id: str, allow_missing_redis: bool = True
+) -> bool:
     """
     Check if an ID exists in the validation cache.
 

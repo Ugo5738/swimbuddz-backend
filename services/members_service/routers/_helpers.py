@@ -22,12 +22,12 @@ def normalize_member_tiers(member: Member) -> bool:
     """
     Ensure membership tiers reflect active entitlements.
     Returns True if a change was made.
-    
+
     Works with the decomposed Member model (membership sub-table).
     """
     if not member.membership:
         return False
-    
+
     m = member.membership
     primary, tiers, changed = member_service.normalize_member_tiers(
         current_tier=m.primary_tier,

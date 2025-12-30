@@ -116,9 +116,8 @@ async def require_admin(
     """
     is_service_role = current_user.role == "service_role"
     has_admin_role = current_user.has_role("admin")
-    is_whitelisted_email = (
-        current_user.email is not None
-        and current_user.email in (settings.ADMIN_EMAILS or [])
+    is_whitelisted_email = current_user.email is not None and current_user.email in (
+        settings.ADMIN_EMAILS or []
     )
 
     if not (is_service_role or has_admin_role or is_whitelisted_email):

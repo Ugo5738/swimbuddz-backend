@@ -134,7 +134,11 @@ async def update_current_member(
             "active_tiers",
         }
         for field, value in membership_update.items():
-            if field not in protected_fields and value is not None and hasattr(member.membership, field):
+            if (
+                field not in protected_fields
+                and value is not None
+                and hasattr(member.membership, field)
+            ):
                 setattr(member.membership, field, value)
 
         # Handle tier change requests
@@ -359,13 +363,29 @@ async def delete_member(
 
     # Delete all related sub-tables
     await db.execute(delete(MemberProfile).where(MemberProfile.member_id == member.id))
-    await db.execute(delete(MemberEmergencyContact).where(MemberEmergencyContact.member_id == member.id))
-    await db.execute(delete(MemberAvailability).where(MemberAvailability.member_id == member.id))
-    await db.execute(delete(MemberMembership).where(MemberMembership.member_id == member.id))
-    await db.execute(delete(MemberPreferences).where(MemberPreferences.member_id == member.id))
+    await db.execute(
+        delete(MemberEmergencyContact).where(
+            MemberEmergencyContact.member_id == member.id
+        )
+    )
+    await db.execute(
+        delete(MemberAvailability).where(MemberAvailability.member_id == member.id)
+    )
+    await db.execute(
+        delete(MemberMembership).where(MemberMembership.member_id == member.id)
+    )
+    await db.execute(
+        delete(MemberPreferences).where(MemberPreferences.member_id == member.id)
+    )
     await db.execute(delete(CoachProfile).where(CoachProfile.member_id == member.id))
-    await db.execute(delete(VolunteerInterest).where(VolunteerInterest.member_id == member.id))
-    await db.execute(delete(MemberChallengeCompletion).where(MemberChallengeCompletion.member_id == member.id))
+    await db.execute(
+        delete(VolunteerInterest).where(VolunteerInterest.member_id == member.id)
+    )
+    await db.execute(
+        delete(MemberChallengeCompletion).where(
+            MemberChallengeCompletion.member_id == member.id
+        )
+    )
 
     await db.delete(member)
     await db.commit()

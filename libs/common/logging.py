@@ -16,6 +16,7 @@ Usage:
 
     logger.info("Processing request")  # Automatically includes request context
 """
+
 import json
 import logging
 import sys
@@ -38,7 +39,7 @@ def set_request_context(
 ) -> str:
     """
     Set request context for the current async context.
-    
+
     Returns the request_id (generated if not provided).
     """
     rid = request_id or str(uuid.uuid4())
@@ -65,7 +66,7 @@ def get_request_id() -> Optional[str]:
 class JsonFormatter(logging.Formatter):
     """
     JSON formatter for structured logging.
-    
+
     Output format:
     {
         "timestamp": "2024-01-15T10:30:00",
@@ -90,11 +91,11 @@ class JsonFormatter(logging.Formatter):
         request_id = _request_id.get()
         if request_id:
             log_record["request_id"] = request_id
-        
+
         request_path = _request_path.get()
         if request_path:
             log_record["path"] = request_path
-            
+
         request_method = _request_method.get()
         if request_method:
             log_record["method"] = request_method
@@ -113,30 +114,30 @@ class JsonFormatter(logging.Formatter):
 class DevFormatter(logging.Formatter):
     """
     Human-readable formatter for local development.
-    
+
     Output format:
     2024-01-15 10:30:00 | INFO | services.members_service.router | [abc-123] Request processed
     """
 
     def format(self, record: logging.LogRecord) -> str:
         timestamp = self.formatTime(record, self.datefmt)
-        
+
         # Add request ID prefix if available
         request_id = _request_id.get()
         rid_part = f"[{request_id[:8]}] " if request_id else ""
-        
+
         base = f"{timestamp} | {record.levelname:5} | {record.name} | {rid_part}{record.getMessage()}"
-        
+
         if record.exc_info:
             base += f"\n{self.formatException(record.exc_info)}"
-            
+
         return base
 
 
 def configure_logging() -> None:
     """
     Configure global logging settings.
-    
+
     Uses JSON format in production, human-readable in development.
     """
     settings = get_settings()
@@ -172,7 +173,7 @@ def configure_logging() -> None:
 def get_logger(name: str) -> logging.Logger:
     """
     Get a configured logger for a specific module.
-    
+
     Usage:
         logger = get_logger(__name__)
         logger.info("Something happened")

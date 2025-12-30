@@ -2,7 +2,7 @@
 
 These tests verify the pure business logic functions without database dependencies.
 """
-import pytest
+
 from datetime import datetime, timedelta, timezone
 from services.members_service import service as member_service
 
@@ -50,7 +50,7 @@ class TestNormalizeMemberTiers:
 
     def test_expired_club_keeps_existing_tiers(self):
         """Expired club subscription should keep existing tiers (additive model).
-        
+
         Note: The tier normalization is additive - it doesn't remove tiers when
         payments expire. This is intentional to avoid accidental tier loss.
         Tier removal should be done through explicit admin action.

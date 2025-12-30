@@ -277,7 +277,8 @@ async def admin_activate_community_membership_by_auth(
 
     base = (
         member.membership.community_paid_until
-        if member.membership.community_paid_until and member.membership.community_paid_until > now
+        if member.membership.community_paid_until
+        and member.membership.community_paid_until > now
         else now
     )
     member.membership.community_paid_until = base + timedelta(days=365 * payload.years)
@@ -329,7 +330,10 @@ async def admin_activate_club_membership_by_auth(
 
     # Skip community check if explicitly requested (for bundle activations where community was just activated)
     if not payload.skip_community_check:
-        if not (member.membership.community_paid_until and member.membership.community_paid_until > now):
+        if not (
+            member.membership.community_paid_until
+            and member.membership.community_paid_until > now
+        ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Community membership is not active for this member",
@@ -343,10 +347,17 @@ async def admin_activate_club_membership_by_auth(
     ec = member.emergency_contact
     av = member.availability
     readiness_complete = bool(
-        ec and ec.name and ec.contact_relationship and ec.phone
-        and av and av.preferred_locations and len(av.preferred_locations) > 0
-        and av.preferred_times and len(av.preferred_times) > 0
-        and av.available_days and len(av.available_days) > 0
+        ec
+        and ec.name
+        and ec.contact_relationship
+        and ec.phone
+        and av
+        and av.preferred_locations
+        and len(av.preferred_locations) > 0
+        and av.preferred_times
+        and len(av.preferred_times) > 0
+        and av.available_days
+        and len(av.available_days) > 0
     )
 
     if not club_approved:
@@ -416,6 +427,7 @@ async def admin_activate_club_membership_by_auth(
 
 class MembershipPatchRequest(BaseModel):
     """Partial update for membership fields."""
+
     pending_payment_reference: str | None = None
 
 

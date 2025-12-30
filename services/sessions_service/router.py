@@ -86,7 +86,7 @@ async def create_session(
     if session_in.cohort_id:
         cohort_check = await db.execute(
             text("SELECT id FROM cohorts WHERE id = :cohort_id"),
-            {"cohort_id": session_in.cohort_id}
+            {"cohort_id": session_in.cohort_id},
         )
         if not cohort_check.scalar_one_or_none():
             raise HTTPException(

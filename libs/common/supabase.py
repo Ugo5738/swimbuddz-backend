@@ -12,6 +12,7 @@ Usage:
     # For admin operations (uses service role key)
     admin_supabase = get_supabase_admin_client()
 """
+
 from functools import lru_cache
 
 from supabase import Client, create_client

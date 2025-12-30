@@ -3,6 +3,7 @@
 Test script to verify Brevo SMTP connection.
 Run from backend root: python3 scripts/test_brevo_smtp.py
 """
+
 import os
 import sys
 import smtplib
@@ -31,15 +32,15 @@ if not SMTP_PASSWORD:
     print("❌ BREVO_KEY not found in environment")
     sys.exit(1)
 
-print(f"\n📧 Testing Brevo SMTP Connection")
-print(f"=" * 50)
+print("\n📧 Testing Brevo SMTP Connection")
+print("=" * 50)
 print(f"Host: {SMTP_HOST}")
 print(f"Port: {SMTP_PORT}")
 print(f"Username: {SMTP_USERNAME}")
 print(f"Password: {'*' * 20}...{SMTP_PASSWORD[-6:]}")
 print(f"Sender: {SENDER_NAME} <{SENDER_EMAIL}>")
 print(f"Recipient: {TEST_RECIPIENT}")
-print(f"=" * 50)
+print("=" * 50)
 
 try:
     # Create message
@@ -48,7 +49,9 @@ try:
     msg["From"] = f"{SENDER_NAME} <{SENDER_EMAIL}>"
     msg["To"] = TEST_RECIPIENT
 
-    text = "This is a test email from SwimBuddz to verify Brevo SMTP is working correctly."
+    text = (
+        "This is a test email from SwimBuddz to verify Brevo SMTP is working correctly."
+    )
     html = """
     <html>
     <body>
@@ -60,23 +63,23 @@ try:
     </body>
     </html>
     """
-    
+
     msg.attach(MIMEText(text, "plain"))
     msg.attach(MIMEText(html, "html"))
 
     print("\n🔌 Connecting to SMTP server...")
-    
+
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
         print("✓ Connected")
-        
+
         print("🔐 Starting TLS...")
         server.starttls()
         print("✓ TLS started")
-        
+
         print("🔑 Authenticating...")
         server.login(SMTP_USERNAME, SMTP_PASSWORD)
         print("✓ Authenticated successfully!")
-        
+
         print("📤 Sending test email...")
         server.sendmail(SENDER_EMAIL, TEST_RECIPIENT, msg.as_string())
         print("✓ Email sent successfully!")
@@ -94,9 +97,9 @@ except smtplib.SMTPAuthenticationError as e:
     print(f"\n❌ AUTHENTICATION FAILED: {e}")
     print("\nThe username or password is incorrect.")
     print("Double-check your BREVO_KEY matches the SMTP key in Brevo.")
-    
+
 except smtplib.SMTPException as e:
     print(f"\n❌ SMTP ERROR: {e}")
-    
+
 except Exception as e:
     print(f"\n❌ ERROR: {type(e).__name__}: {e}")

@@ -15,13 +15,14 @@ from typing import Any, Optional
 class SwimBuddzError(Exception):
     """
     Base exception for all SwimBuddz application errors.
-    
+
     Subclass this for domain-specific exceptions that should return
     structured JSON error responses.
     """
+
     code: str = "INTERNAL_ERROR"
     status_code: int = 500
-    
+
     def __init__(
         self,
         message: str,
@@ -41,9 +42,10 @@ class SwimBuddzError(Exception):
 
 class NotFoundError(SwimBuddzError):
     """Resource not found."""
+
     code = "NOT_FOUND"
     status_code = 404
-    
+
     def __init__(
         self,
         message: str = "Resource not found",
@@ -62,9 +64,10 @@ class NotFoundError(SwimBuddzError):
 
 class ValidationError(SwimBuddzError):
     """Request validation failed."""
+
     code = "VALIDATION_ERROR"
     status_code = 400
-    
+
     def __init__(
         self,
         message: str = "Validation failed",
@@ -83,15 +86,17 @@ class ValidationError(SwimBuddzError):
 
 class AuthenticationError(SwimBuddzError):
     """Authentication failed or credentials invalid."""
+
     code = "UNAUTHORIZED"
     status_code = 401
 
 
 class AuthorizationError(SwimBuddzError):
     """User lacks permission for this action."""
+
     code = "FORBIDDEN"
     status_code = 403
-    
+
     def __init__(
         self,
         message: str = "Permission denied",
@@ -107,15 +112,17 @@ class AuthorizationError(SwimBuddzError):
 
 class ConflictError(SwimBuddzError):
     """Resource already exists or state conflict."""
+
     code = "CONFLICT"
     status_code = 409
 
 
 class RateLimitError(SwimBuddzError):
     """Rate limit exceeded."""
+
     code = "RATE_LIMIT_EXCEEDED"
     status_code = 429
-    
+
     def __init__(
         self,
         message: str = "Rate limit exceeded",
@@ -131,9 +138,10 @@ class RateLimitError(SwimBuddzError):
 
 class ExternalServiceError(SwimBuddzError):
     """External service (Supabase, Paystack, etc.) failed."""
+
     code = "EXTERNAL_SERVICE_ERROR"
     status_code = 502
-    
+
     def __init__(
         self,
         message: str = "External service error",

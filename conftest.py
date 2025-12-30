@@ -17,7 +17,7 @@ env_dev_path = os.path.join(os.path.dirname(__file__), ".env.dev")
 if os.path.exists(env_dev_path):
     load_dotenv(env_dev_path, override=True)
 
-from libs.common.config import get_settings, Settings
+from libs.common.config import get_settings
 from libs.db.base import Base
 from services.gateway_service.app.main import app
 

@@ -18,7 +18,7 @@ from libs.common.config import get_settings
 def _get_client_ip(request: Request) -> str:
     """
     Get client IP from request, handling proxies.
-    
+
     Checks X-Forwarded-For header first (for proxied requests),
     then falls back to direct connection IP.
     """
@@ -32,7 +32,7 @@ def _get_client_ip(request: Request) -> str:
 def _get_user_or_ip(request: Request) -> str:
     """
     Rate limit by user ID if authenticated, otherwise by IP.
-    
+
     This prevents a single user from consuming rate limits
     that would affect other users on the same IP.
     """
@@ -46,15 +46,15 @@ def _get_user_or_ip(request: Request) -> str:
 def get_limiter() -> Limiter:
     """
     Create and return a cached Limiter instance.
-    
+
     Uses Redis for distributed rate limit state across service instances.
     Falls back to in-memory storage if Redis is unavailable.
     """
     settings = get_settings()
-    
+
     # Configure Redis storage for distributed limiting
     storage_uri = settings.REDIS_URL
-    
+
     return Limiter(
         key_func=_get_user_or_ip,
         default_limits=["100/minute"],
@@ -70,11 +70,11 @@ limiter = get_limiter()
 def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Response:
     """
     Custom handler for rate limit exceeded errors.
-    
+
     Returns a JSON response with clear error message and retry-after header.
     """
     retry_after = exc.detail.split("per")[0].strip() if exc.detail else "1 minute"
-    
+
     return JSONResponse(
         status_code=429,
         content={

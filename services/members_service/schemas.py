@@ -134,7 +134,9 @@ class MemberMembershipResponse(BaseModel):
     academy_lesson_preference: Optional[str] = None
     academy_certifications: Optional[list[str]] = None
     academy_graduation_dates: Optional[dict] = None
-    academy_alumni: bool = False  # DEPRECATED: Use Enrollment.status == GRADUATED instead
+    academy_alumni: bool = (
+        False  # DEPRECATED: Use Enrollment.status == GRADUATED instead
+    )
     academy_focus_areas: Optional[list[str]] = None
 
     created_at: Optional[datetime] = None
@@ -480,7 +482,7 @@ class ActivateClubRequest(BaseModel):
     months: int = Field(default=1, ge=1, le=12)
     skip_community_check: bool = Field(
         default=False,
-        description="Skip community active check (for bundle activations where community was just activated)"
+        description="Skip community active check (for bundle activations where community was just activated)",
     )
 
 

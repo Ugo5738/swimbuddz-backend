@@ -7,7 +7,6 @@ from libs.common.logging import get_logger
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
@@ -199,9 +198,7 @@ async def delete_pending_registration_by_email(
     return None
 
 
-@router.post(
-    "/complete", response_model=MemberResponse, status_code=status.HTTP_200_OK
-)
+@router.post("/complete", response_model=MemberResponse, status_code=status.HTTP_200_OK)
 async def complete_pending_registration(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
@@ -293,7 +290,8 @@ async def complete_pending_registration(
         deep_water_comfort=profile_data.get("deep_water_comfort"),
         strokes=profile_data.get("strokes"),
         interests=profile_data.get("interests"),
-        personal_goals=profile_data.get("goals_narrative") or profile_data.get("personal_goals"),
+        personal_goals=profile_data.get("goals_narrative")
+        or profile_data.get("personal_goals"),
         how_found_us=profile_data.get("how_found_us"),
         previous_communities=profile_data.get("previous_communities"),
         hopes_from_swimbuddz=profile_data.get("hopes_from_swimbuddz"),
@@ -319,30 +317,41 @@ async def complete_pending_registration(
 
     # Create MemberAvailability sub-record
     preferred_locations = (
-        profile_data.get("preferred_locations") or 
-        profile_data.get("location_preference") or []
+        profile_data.get("preferred_locations")
+        or profile_data.get("location_preference")
+        or []
     )
     if profile_data.get("location_preference_other"):
-        preferred_locations = list(preferred_locations) + [profile_data.get("location_preference_other")]
-    
+        preferred_locations = list(preferred_locations) + [
+            profile_data.get("location_preference_other")
+        ]
+
     accessible_facilities = (
-        profile_data.get("accessible_facilities") or 
-        profile_data.get("facility_access") or []
+        profile_data.get("accessible_facilities")
+        or profile_data.get("facility_access")
+        or []
     )
     if profile_data.get("facility_access_other"):
-        accessible_facilities = list(accessible_facilities) + [profile_data.get("facility_access_other")]
-    
+        accessible_facilities = list(accessible_facilities) + [
+            profile_data.get("facility_access_other")
+        ]
+
     equipment_needed = (
-        profile_data.get("equipment_needed") or 
-        profile_data.get("equipment_needs") or []
+        profile_data.get("equipment_needed")
+        or profile_data.get("equipment_needs")
+        or []
     )
     if profile_data.get("equipment_needs_other"):
-        equipment_needed = list(equipment_needed) + [profile_data.get("equipment_needs_other")]
+        equipment_needed = list(equipment_needed) + [
+            profile_data.get("equipment_needs_other")
+        ]
 
     member_availability = MemberAvailability(
         member_id=member.id,
-        available_days=profile_data.get("available_days") or profile_data.get("availability_slots"),
-        preferred_times=profile_data.get("preferred_times") or profile_data.get("time_of_day_availability"),
+        available_days=profile_data.get("available_days")
+        or profile_data.get("availability_slots"),
+        preferred_times=profile_data.get("preferred_times")
+        or profile_data.get("time_of_day_availability"),
         preferred_locations=preferred_locations or None,
         accessible_facilities=accessible_facilities or None,
         travel_flexibility=profile_data.get("travel_flexibility"),
@@ -353,9 +362,14 @@ async def complete_pending_registration(
     # Create MemberMembership sub-record
     member_membership = MemberMembership(
         member_id=member.id,
-        primary_tier=profile_data.get("primary_tier") or profile_data.get("membership_tier") or "community",
-        active_tiers=profile_data.get("active_tiers") or profile_data.get("membership_tiers") or ["community"],
-        requested_tiers=profile_data.get("requested_tiers") or profile_data.get("requested_membership_tiers"),
+        primary_tier=profile_data.get("primary_tier")
+        or profile_data.get("membership_tier")
+        or "community",
+        active_tiers=profile_data.get("active_tiers")
+        or profile_data.get("membership_tiers")
+        or ["community"],
+        requested_tiers=profile_data.get("requested_tiers")
+        or profile_data.get("requested_membership_tiers"),
         club_badges_earned=profile_data.get("club_badges_earned", []),
         club_challenges_completed=profile_data.get("club_challenges_completed", {}),
         punctuality_score=profile_data.get("punctuality_score", 0),
@@ -363,7 +377,9 @@ async def complete_pending_registration(
         club_notes=profile_data.get("club_notes"),
         academy_skill_assessment=profile_data.get("academy_skill_assessment", {}),
         academy_goals=profile_data.get("academy_goals"),
-        academy_preferred_coach_gender=profile_data.get("academy_preferred_coach_gender"),
+        academy_preferred_coach_gender=profile_data.get(
+            "academy_preferred_coach_gender"
+        ),
         academy_lesson_preference=profile_data.get("academy_lesson_preference"),
         academy_certifications=profile_data.get("academy_certifications", []),
         academy_graduation_dates=profile_data.get("academy_graduation_dates", {}),

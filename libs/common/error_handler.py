@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 def add_exception_handlers(app: FastAPI) -> None:
     """
     Add global exception handlers to a FastAPI application.
-    
+
     Handles:
     - SwimBuddzError subclasses → structured JSON with code
     - Starlette HTTPException → standard format
@@ -32,32 +32,36 @@ def add_exception_handlers(app: FastAPI) -> None:
     """
 
     @app.exception_handler(SwimBuddzError)
-    async def swimbuddz_error_handler(request: Request, exc: SwimBuddzError) -> JSONResponse:
+    async def swimbuddz_error_handler(
+        request: Request, exc: SwimBuddzError
+    ) -> JSONResponse:
         """Handle all SwimBuddz custom exceptions."""
         request_id = get_request_id()
-        
+
         content = {
             "detail": exc.message,
             "code": exc.code,
         }
-        
+
         if exc.details:
             content.update(exc.details)
-        
+
         headers = {}
         if request_id:
             headers["X-Request-ID"] = request_id
-        
+
         logger.warning(
             f"Application error: {exc.code}",
-            extra={"extra_fields": {
-                "error_code": exc.code,
-                "status_code": exc.status_code,
-                "message": exc.message,
-                "details": exc.details,
-            }},
+            extra={
+                "extra_fields": {
+                    "error_code": exc.code,
+                    "status_code": exc.status_code,
+                    "message": exc.message,
+                    "details": exc.details,
+                }
+            },
         )
-        
+
         return JSONResponse(
             status_code=exc.status_code,
             content=content,
@@ -65,19 +69,21 @@ def add_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    async def http_exception_handler(
+        request: Request, exc: StarletteHTTPException
+    ) -> JSONResponse:
         """Handle Starlette/FastAPI HTTPException."""
         request_id = get_request_id()
-        
+
         content = {
             "detail": exc.detail,
             "code": _status_to_code(exc.status_code),
         }
-        
+
         headers = {}
         if request_id:
             headers["X-Request-ID"] = request_id
-        
+
         return JSONResponse(
             status_code=exc.status_code,
             content=content,
@@ -85,28 +91,32 @@ def add_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    async def validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
         """Handle Pydantic validation errors."""
         request_id = get_request_id()
-        
+
         errors = []
         for error in exc.errors():
-            errors.append({
-                "field": ".".join(str(loc) for loc in error["loc"]),
-                "message": error["msg"],
-                "type": error["type"],
-            })
-        
+            errors.append(
+                {
+                    "field": ".".join(str(loc) for loc in error["loc"]),
+                    "message": error["msg"],
+                    "type": error["type"],
+                }
+            )
+
         content = {
             "detail": "Validation failed",
             "code": "VALIDATION_ERROR",
             "errors": errors,
         }
-        
+
         headers = {}
         if request_id:
             headers["X-Request-ID"] = request_id
-        
+
         return JSONResponse(
             status_code=422,
             content=content,
@@ -114,29 +124,33 @@ def add_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    async def unhandled_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
         """Handle unhandled exceptions with safe error message."""
         request_id = get_request_id()
-        
+
         logger.exception(
             "Unhandled exception",
-            extra={"extra_fields": {
-                "exception_type": type(exc).__name__,
-            }},
+            extra={
+                "extra_fields": {
+                    "exception_type": type(exc).__name__,
+                }
+            },
         )
-        
+
         content = {
             "detail": "An unexpected error occurred",
             "code": "INTERNAL_ERROR",
         }
-        
+
         if request_id:
             content["request_id"] = request_id
-        
+
         headers = {}
         if request_id:
             headers["X-Request-ID"] = request_id
-        
+
         return JSONResponse(
             status_code=500,
             content=content,

@@ -12,6 +12,7 @@ Usage:
     # On shutdown:
     await close_redis()
 """
+
 from typing import Optional
 
 from redis.asyncio import Redis, from_url

@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
 
     # Add observability (structured logging + request tracing)
     add_observability_middleware(app)
-    
+
     # Add global exception handlers for consistent error responses
     add_exception_handlers(app)
 
@@ -212,12 +212,8 @@ def create_app() -> FastAPI:
     # PAYMENTS SERVICE PROXY
     # ==================================================================
     # Payment intent initiation with strict rate limit
-    @app.api_route(
-        "/api/v1/payments/intents", methods=["POST"]
-    )
-    @app.api_route(
-        "/api/v1/payments/intents/", methods=["POST"]
-    )
+    @app.api_route("/api/v1/payments/intents", methods=["POST"])
+    @app.api_route("/api/v1/payments/intents/", methods=["POST"])
     @limiter.limit("3/minute")
     async def proxy_payment_intents(request: Request):
         """Proxy payment intent creation with rate limiting."""

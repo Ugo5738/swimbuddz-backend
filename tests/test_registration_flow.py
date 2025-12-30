@@ -3,12 +3,15 @@
 These tests use the database fixture and test the full registration flow
 through the API endpoints.
 """
+
 import pytest
 from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_complete_pending_registration_creates_member(client: AsyncClient, db_session):
+async def test_complete_pending_registration_creates_member(
+    client: AsyncClient, db_session
+):
     """Test that completing registration creates a member record."""
     from services.members_service.models import Member, PendingRegistration
     from libs.auth.dependencies import get_current_user
@@ -31,21 +34,28 @@ async def test_complete_pending_registration_creates_member(client: AsyncClient,
 
     try:
         response = await client.post("/api/v1/pending-registrations/complete")
-        
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+
+        assert (
+            response.status_code == 200
+        ), f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
         assert data["email"] == "test@example.com"
         assert data["first_name"] == "Test"
         assert data["last_name"] == "User"
         assert data["approval_status"] == "approved"
-        
+
         # Verify pending was deleted
         from sqlalchemy import select
+
         result = await db_session.execute(
-            select(PendingRegistration).where(PendingRegistration.email == "test@example.com")
+            select(PendingRegistration).where(
+                PendingRegistration.email == "test@example.com"
+            )
         )
-        assert result.scalar_one_or_none() is None, "Pending registration should be deleted"
-        
+        assert (
+            result.scalar_one_or_none() is None
+        ), "Pending registration should be deleted"
+
         # Verify member was created
         result = await db_session.execute(
             select(Member).where(Member.email == "test@example.com")
@@ -84,9 +94,11 @@ async def test_complete_registration_is_idempotent(client: AsyncClient, db_sessi
 
     try:
         response = await client.post("/api/v1/pending-registrations/complete")
-        
+
         # Should succeed and return existing member (idempotent)
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+        assert (
+            response.status_code == 200
+        ), f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
         assert data["email"] == "existing@example.com"
         assert data["first_name"] == "Existing"
@@ -95,7 +107,9 @@ async def test_complete_registration_is_idempotent(client: AsyncClient, db_sessi
 
 
 @pytest.mark.asyncio
-async def test_complete_registration_without_pending_returns_404(client: AsyncClient, db_session):
+async def test_complete_registration_without_pending_returns_404(
+    client: AsyncClient, db_session
+):
     """Test that completing without pending registration returns 404."""
     from libs.auth.dependencies import get_current_user
     from libs.auth.models import AuthUser
@@ -103,14 +117,18 @@ async def test_complete_registration_without_pending_returns_404(client: AsyncCl
 
     # Mock a user who has no pending registration
     async def mock_user():
-        return AuthUser(user_id="auth-no-pending", email="nopending@example.com", role="member")
+        return AuthUser(
+            user_id="auth-no-pending", email="nopending@example.com", role="member"
+        )
 
     app.dependency_overrides[get_current_user] = mock_user
 
     try:
         response = await client.post("/api/v1/pending-registrations/complete")
-        
-        assert response.status_code == 404, f"Expected 404, got {response.status_code}: {response.text}"
+
+        assert (
+            response.status_code == 404
+        ), f"Expected 404, got {response.status_code}: {response.text}"
     finally:
         app.dependency_overrides.clear()
 
@@ -144,8 +162,10 @@ async def test_get_current_member_profile(client: AsyncClient, db_session):
 
     try:
         response = await client.get("/api/v1/members/me")
-        
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+
+        assert (
+            response.status_code == 200
+        ), f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
         assert data["email"] == "me@example.com"
         assert data["first_name"] == "Me"

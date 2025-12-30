@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 def utc_now() -> datetime:
     """Return timezone-aware UTC datetime.
-    
+
     This replaces the deprecated datetime.utcnow() which returns naive datetimes.
     Always use this for timestamps in the database.
     """

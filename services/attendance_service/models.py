@@ -6,7 +6,7 @@ from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from sqlalchemy import DateTime, String
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import String, UniqueConstraint
+from sqlalchemy import UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,7 +35,9 @@ class MemberRef(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    auth_id: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    auth_id: Mapped[str] = mapped_column(
+        String, unique=True, index=True, nullable=False
+    )
 
 
 class AttendanceRecord(Base):

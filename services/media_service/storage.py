@@ -1,6 +1,5 @@
 """Storage utilities for handling file uploads with Supabase/S3."""
 
-import os
 import uuid
 from io import BytesIO
 from typing import Optional, Tuple
@@ -12,14 +11,14 @@ from libs.common.supabase import get_supabase_admin_client
 
 # Storage configuration
 settings = get_settings()
-STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "supabase")  # supabase or s3
+STORAGE_BACKEND = getattr(settings, "STORAGE_BACKEND", "supabase")  # supabase or s3
 SUPABASE_BUCKET = settings.SUPABASE_STORAGE_BUCKET
 
-# S3 configuration (fallback)
-AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID", "")
-AWS_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
-AWS_BUCKET = os.getenv("AWS_S3_BUCKET", "")
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+# S3 configuration (fallback) - use settings if available, else default
+AWS_ACCESS_KEY = getattr(settings, "AWS_ACCESS_KEY_ID", "")
+AWS_SECRET_KEY = getattr(settings, "AWS_SECRET_ACCESS_KEY", "")
+AWS_BUCKET = getattr(settings, "AWS_S3_BUCKET", "")
+AWS_REGION = getattr(settings, "AWS_REGION", "us-east-1")
 
 
 class StorageService:
