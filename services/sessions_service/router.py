@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,7 +12,7 @@ from services.sessions_service.schemas import (
     SessionResponse,
     SessionUpdate,
 )
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -45,7 +45,7 @@ async def get_session_stats(
     """
     Get session statistics.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     query = select(func.count(Session.id)).where(Session.start_time > now)
     result = await db.execute(query)
     upcoming_sessions_count = result.scalar_one() or 0
@@ -82,6 +82,18 @@ async def create_session(
     """
     Create a new session (Admin only).
     """
+    # Validate cohort_id exists (stub query to academy_service's cohorts table)
+    if session_in.cohort_id:
+        cohort_check = await db.execute(
+            text("SELECT id FROM cohorts WHERE id = :cohort_id"),
+            {"cohort_id": session_in.cohort_id}
+        )
+        if not cohort_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid cohort_id: cohort does not exist",
+            )
+
     session_data = session_in.model_dump()
     # Remove ride_share_areas if present in input, though schema should handle it
     session_data.pop("ride_share_areas", None)

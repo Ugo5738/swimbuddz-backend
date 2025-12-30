@@ -75,15 +75,27 @@ async def get_current_user(
             key = jwk_key
             algorithms = [alg]
 
-        payload = jwt.decode(
-            token.credentials,
-            key,
-            algorithms=algorithms,
-            audience="authenticated",  # Optional: validate audience if needed
-            options={
-                "verify_aud": False
-            },  # Supabase tokens might vary in aud, disabling for MVP simplicity
-        )
+        # First try with audience verification (Supabase user tokens use "authenticated")
+        try:
+            payload = jwt.decode(
+                token.credentials,
+                key,
+                algorithms=algorithms,
+                audience="authenticated",
+                options={"verify_aud": True},
+            )
+        except JWTError as e:
+            # If audience verification fails, try without it for service tokens
+            # that may not have the audience claim
+            if "audience" in str(e).lower() or "aud" in str(e).lower():
+                payload = jwt.decode(
+                    token.credentials,
+                    key,
+                    algorithms=algorithms,
+                    options={"verify_aud": False},
+                )
+            else:
+                raise
 
         user = AuthUser(**payload)
         return user

@@ -62,7 +62,7 @@ def _service_role_token() -> str:
         "email": settings.ADMIN_EMAIL,
         "role": "service_role",
         "iat": now,
-        "exp": now + 60,
+        "exp": now + 300,  # 5 minutes to handle long cleanup operations
     }
     return jwt.encode(payload, settings.SUPABASE_JWT_SECRET, algorithm="HS256")
 

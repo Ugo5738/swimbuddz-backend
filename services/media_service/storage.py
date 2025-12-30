@@ -7,14 +7,13 @@ from typing import Optional, Tuple
 
 from PIL import Image
 
-from supabase import Client, create_client
+from libs.common.config import get_settings
+from libs.common.supabase import get_supabase_admin_client
 
 # Storage configuration
+settings = get_settings()
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "supabase")  # supabase or s3
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-# Note: get_public_url below assumes this bucket is configured as public in Supabase.
-SUPABASE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "swimbuddz-media")
+SUPABASE_BUCKET = settings.SUPABASE_STORAGE_BUCKET
 
 # S3 configuration (fallback)
 AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID", "")
@@ -30,7 +29,7 @@ class StorageService:
         self.backend = STORAGE_BACKEND
 
         if self.backend == "supabase":
-            self.supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+            self.supabase = get_supabase_admin_client()
             self.bucket = SUPABASE_BUCKET
         elif self.backend == "s3":
             import boto3

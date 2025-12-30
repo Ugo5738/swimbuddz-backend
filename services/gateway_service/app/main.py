@@ -10,6 +10,11 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from slowapi.errors import RateLimitExceeded
+
+from libs.common.error_handler import add_exception_handlers
+from libs.common.middleware import add_observability_middleware
+from libs.common.rate_limit import limiter, rate_limit_exceeded_handler
 from services.gateway_service.app import clients
 
 
@@ -20,6 +25,10 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description="API Gateway that orchestrates SwimBuddz microservices.",
     )
+
+    # Add rate limiter state to app
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
     app.add_middleware(
         CORSMiddleware,
@@ -32,6 +41,12 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Add observability (structured logging + request tracing)
+    add_observability_middleware(app)
+    
+    # Add global exception handlers for consistent error responses
+    add_exception_handlers(app)
 
     @app.get("/health", tags=["system"])
     async def health_check() -> dict[str, str]:
@@ -63,6 +78,7 @@ def create_app() -> FastAPI:
     @app.api_route(
         "/api/v1/pending-registrations/", methods=["GET", "POST", "PATCH", "DELETE"]
     )
+    @limiter.limit("5/minute")
     async def proxy_pending_registrations_root(request: Request):
         """Proxy pending registration root requests to members service."""
         return await proxy_request(
@@ -73,6 +89,7 @@ def create_app() -> FastAPI:
         "/api/v1/pending-registrations/{path:path}",
         methods=["GET", "POST", "PATCH", "DELETE"],
     )
+    @limiter.limit("5/minute")
     async def proxy_pending_registrations(path: str, request: Request):
         """Proxy pending registration requests to members service."""
         return await proxy_request(
@@ -194,6 +211,20 @@ def create_app() -> FastAPI:
     # ==================================================================
     # PAYMENTS SERVICE PROXY
     # ==================================================================
+    # Payment intent initiation with strict rate limit
+    @app.api_route(
+        "/api/v1/payments/intents", methods=["POST"]
+    )
+    @app.api_route(
+        "/api/v1/payments/intents/", methods=["POST"]
+    )
+    @limiter.limit("3/minute")
+    async def proxy_payment_intents(request: Request):
+        """Proxy payment intent creation with rate limiting."""
+        return await proxy_request(
+            clients.payments_client, "/payments/intents", request
+        )
+
     @app.api_route(
         "/api/v1/payments/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
     )

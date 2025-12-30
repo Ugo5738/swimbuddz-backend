@@ -273,6 +273,10 @@ class MemberMembership(Base):
     academy_paid_until: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Pending payment tracking for cross-device resumption
+    pending_payment_reference: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True, index=True
+    )
 
     # Club Gamification
     club_badges_earned: Mapped[Optional[list[str]]] = mapped_column(ARRAY(String), nullable=True)

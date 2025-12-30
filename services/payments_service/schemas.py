@@ -8,7 +8,6 @@ from services.payments_service.models import PaymentPurpose, PaymentStatus
 
 
 class ClubBillingCycle(str, enum.Enum):
-    MONTHLY = "monthly"
     QUARTERLY = "quarterly"
     BIANNUAL = "biannual"
     ANNUAL = "annual"
@@ -23,6 +22,8 @@ class CreatePaymentIntentRequest(BaseModel):
     club_billing_cycle: Optional[ClubBillingCycle] = None
 
     cohort_id: Optional[uuid.UUID] = None
+    enrollment_id: Optional[uuid.UUID] = None  # For ACADEMY_COHORT payments
+    discount_code: Optional[str] = None  # Optional discount code
     # Accept "metadata" for backwards-compat, store internally as payment_metadata.
     payment_metadata: Optional[dict] = Field(default=None, alias="metadata")
 
@@ -37,6 +38,10 @@ class PaymentIntentResponse(BaseModel):
     status: PaymentStatus
     checkout_url: Optional[str] = None
     created_at: datetime
+    # Discount info
+    original_amount: Optional[float] = None  # Amount before discount (if applied)
+    discount_applied: Optional[float] = None  # Discount amount
+    discount_code: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -67,3 +72,49 @@ class CompletePaymentRequest(BaseModel):
     provider_reference: Optional[str] = Field(default=None, max_length=128)
     paid_at: Optional[datetime] = None
     note: Optional[str] = Field(default=None, max_length=500)
+
+
+# --- Discount Schemas ---
+
+class DiscountCreate(BaseModel):
+    code: str = Field(..., min_length=2, max_length=50)
+    description: Optional[str] = None
+    discount_type: str = Field(..., pattern="^(percentage|fixed)$")
+    value: float = Field(..., gt=0)
+    applies_to: Optional[list[str]] = None  # ["COMMUNITY", "CLUB", "ACADEMY_COHORT"]
+    valid_from: Optional[datetime] = None
+    valid_until: Optional[datetime] = None
+    max_uses: Optional[int] = Field(default=None, ge=1)
+    max_uses_per_user: Optional[int] = Field(default=None, ge=1)
+    is_active: bool = True
+
+
+class DiscountUpdate(BaseModel):
+    description: Optional[str] = None
+    discount_type: Optional[str] = Field(default=None, pattern="^(percentage|fixed)$")
+    value: Optional[float] = Field(default=None, gt=0)
+    applies_to: Optional[list[str]] = None
+    valid_from: Optional[datetime] = None
+    valid_until: Optional[datetime] = None
+    max_uses: Optional[int] = None
+    max_uses_per_user: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class DiscountResponse(BaseModel):
+    id: uuid.UUID
+    code: str
+    description: Optional[str] = None
+    discount_type: str
+    value: float
+    applies_to: Optional[list[str]] = None
+    valid_from: Optional[datetime] = None
+    valid_until: Optional[datetime] = None
+    max_uses: Optional[int] = None
+    current_uses: int
+    max_uses_per_user: Optional[int] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

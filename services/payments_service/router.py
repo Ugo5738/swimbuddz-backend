@@ -11,11 +11,14 @@ from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.db.session import get_async_db
-from services.payments_service.models import Payment, PaymentPurpose, PaymentStatus
+from services.payments_service.models import Discount, DiscountType, Payment, PaymentPurpose, PaymentStatus
 from services.payments_service.schemas import (
     ClubBillingCycle,
     CompletePaymentRequest,
     CreatePaymentIntentRequest,
+    DiscountCreate,
+    DiscountResponse,
+    DiscountUpdate,
     PaymentIntentResponse,
     PaymentResponse,
 )
@@ -68,6 +71,23 @@ def _service_role_jwt() -> str:
         "exp": now + 60,
     }
     return jwt.encode(payload, settings.SUPABASE_JWT_SECRET, algorithm="HS256")
+
+
+async def _update_pending_payment_reference(auth_id: str, reference: str | None) -> None:
+    """Update or clear the pending_payment_reference on a member's membership."""
+    headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.patch(
+            f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{auth_id}/membership",
+            json={"pending_payment_reference": reference},
+            headers=headers,
+        )
+        # Ignore failures - this is a best-effort feature
+        if resp.status_code >= 400:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Failed to update pending_payment_reference for {auth_id}: {resp.status_code}"
+            )
 
 
 async def _initialize_paystack(
@@ -149,15 +169,20 @@ async def _verify_paystack_transaction(reference: str) -> dict:
 
 
 async def _apply_entitlement(payment: Payment) -> None:
-    if payment.purpose == PaymentPurpose.COMMUNITY_ANNUAL:
+    # Handle Community activation
+    if payment.purpose == PaymentPurpose.COMMUNITY:
         path = f"/admin/members/by-auth/{payment.member_auth_id}/community/activate"
         years = int((payment.payment_metadata or {}).get("years") or 1)
         payload = {"years": years}
-    elif payment.purpose == PaymentPurpose.CLUB_MONTHLY:
+    
+    # Handle Club add-on
+    elif payment.purpose == PaymentPurpose.CLUB:
         path = f"/admin/members/by-auth/{payment.member_auth_id}/club/activate"
         months = int((payment.payment_metadata or {}).get("months") or 1)
         payload = {"months": months}
-    elif payment.purpose == PaymentPurpose.CLUB_ACTIVATION:
+    
+    # Handle Club bundle (Community + Club)
+    elif payment.purpose == PaymentPurpose.CLUB_BUNDLE:
         years = int((payment.payment_metadata or {}).get("years") or 1)
         months = int((payment.payment_metadata or {}).get("months") or 1)
         headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
@@ -174,7 +199,7 @@ async def _apply_entitlement(payment: Payment) -> None:
                 )
             club_resp = await client.post(
                 f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/club/activate",
-                json={"months": months},
+                json={"months": months, "skip_community_check": True},
                 headers=headers,
             )
             if club_resp.status_code >= 400:
@@ -182,7 +207,33 @@ async def _apply_entitlement(payment: Payment) -> None:
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=f"Failed to apply club entitlement via members_service ({club_resp.status_code}): {club_resp.text}",
                 )
+        # Clear pending payment reference on success
+        await _update_pending_payment_reference(payment.member_auth_id, None)
         return
+    
+    # Handle Academy cohort enrollment
+    elif payment.purpose == PaymentPurpose.ACADEMY_COHORT:
+        enrollment_id = (payment.payment_metadata or {}).get("enrollment_id")
+        if not enrollment_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="enrollment_id missing in payment metadata",
+            )
+        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{settings.ACADEMY_SERVICE_URL}/admin/enrollments/{enrollment_id}/mark-paid",
+                headers=headers,
+            )
+            if resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to mark enrollment as paid ({resp.status_code}): {resp.text}",
+                )
+        # Clear pending payment reference on success
+        await _update_pending_payment_reference(payment.member_auth_id, None)
+        return
+    
     else:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
@@ -199,27 +250,102 @@ async def _apply_entitlement(payment: Payment) -> None:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Failed to apply entitlement via members_service ({resp.status_code}): {resp.text}",
             )
+    # Clear pending payment reference on success
+    await _update_pending_payment_reference(payment.member_auth_id, None)
 
 
 def _resolve_club_amount(
     payload: CreatePaymentIntentRequest,
 ) -> tuple[float, int, ClubBillingCycle]:
-    cycle = payload.club_billing_cycle or ClubBillingCycle.MONTHLY
+    # Default to quarterly (monthly removed)
+    cycle = payload.club_billing_cycle or ClubBillingCycle.QUARTERLY
     if cycle == ClubBillingCycle.ANNUAL:
         amount = float(getattr(settings, "CLUB_ANNUAL_FEE_NGN", 150000))
         months = 12
     elif cycle == ClubBillingCycle.BIANNUAL:
         amount = float(getattr(settings, "CLUB_BIANNUAL_FEE_NGN", 80000))
         months = 6
-    elif cycle == ClubBillingCycle.QUARTERLY:
+    else:  # QUARTERLY (default)
         amount = float(getattr(settings, "CLUB_QUARTERLY_FEE_NGN", 42500))
         months = 3
-    else:
-        club_fee = int(getattr(settings, "CLUB_MONTHLY_FEE_NGN", 15000))
-        months = payload.months
-        amount = float(club_fee * months)
     return amount, months, cycle
 
+
+async def _validate_and_apply_discount(
+    db: AsyncSession,
+    discount_code: str | None,
+    purpose: PaymentPurpose,
+    original_amount: float,
+    member_auth_id: str,
+) -> tuple[float, float | None, Discount | None]:
+    """
+    Validate and apply a discount code if provided.
+    Returns: (final_amount, discount_applied, discount_obj)
+    """
+    if not discount_code:
+        return original_amount, None, None
+    
+    from libs.common.datetime_utils import utc_now
+    
+    # Lookup discount code
+    query = select(Discount).where(
+        Discount.code == discount_code.upper().strip(),
+        Discount.is_active == True,
+    )
+    result = await db.execute(query)
+    discount = result.scalar_one_or_none()
+    
+    if not discount:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid discount code: {discount_code}",
+        )
+    
+    now = utc_now()
+    
+    # Check validity period
+    if discount.valid_from and discount.valid_from > now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Discount code is not yet active",
+        )
+    if discount.valid_until and discount.valid_until < now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Discount code has expired",
+        )
+    
+    # Check usage limits
+    if discount.max_uses and discount.current_uses >= discount.max_uses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Discount code has reached its usage limit",
+        )
+    
+    # Check if discount applies to this payment purpose
+    if discount.applies_to:
+        applicable_purposes = [p.upper() for p in discount.applies_to]
+        if purpose.value.upper() not in applicable_purposes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Discount code does not apply to {purpose.value} payments",
+            )
+    
+    # Calculate discount amount
+    if discount.discount_type == DiscountType.PERCENTAGE:
+        discount_amount = original_amount * (discount.value / 100)
+    else:  # FIXED
+        discount_amount = discount.value
+    
+    # Ensure discount doesn't exceed original amount
+    discount_amount = min(discount_amount, original_amount)
+    final_amount = max(original_amount - discount_amount, 0)
+    
+    # Increment usage count
+    discount.current_uses += 1
+    db.add(discount)
+    
+    return final_amount, discount_amount, discount
 
 async def _mark_paid_and_apply(
     db: AsyncSession,
@@ -274,21 +400,26 @@ async def create_payment_intent(
     """
     Create a payment intent (records a pending payment) and (if configured) initializes Paystack checkout.
     """
-    if payload.purpose == PaymentPurpose.COMMUNITY_ANNUAL:
+    # Community activation - ₦20,000/year
+    if payload.purpose == PaymentPurpose.COMMUNITY:
         amount = float(
-            getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 5000) * payload.years
+            getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20000) * payload.years
         )
         payment_metadata = {**(payload.payment_metadata or {}), "years": payload.years}
-    elif payload.purpose == PaymentPurpose.CLUB_MONTHLY:
+    
+    # Club add-on
+    elif payload.purpose == PaymentPurpose.CLUB:
         amount, months, cycle = _resolve_club_amount(payload)
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "months": months,
             "club_billing_cycle": str(cycle),
         }
-    elif payload.purpose == PaymentPurpose.CLUB_ACTIVATION:
+    
+    # Club bundle - Community + Club together
+    elif payload.purpose == PaymentPurpose.CLUB_BUNDLE:
         community_fee = float(
-            getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 5000) * payload.years
+            getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20000) * payload.years
         )
         club_amount, months, cycle = _resolve_club_amount(payload)
         amount = community_fee + club_amount
@@ -298,15 +429,76 @@ async def create_payment_intent(
             "months": months,
             "club_billing_cycle": str(cycle),
             "components": {
-                "community_annual": community_fee,
+                "community": community_fee,
                 "club": club_amount,
             },
         }
+    
+    # Academy cohort enrollment
+    elif payload.purpose == PaymentPurpose.ACADEMY_COHORT:
+        if not payload.enrollment_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="enrollment_id is required for ACADEMY_COHORT payments",
+            )
+        # Lookup enrollment and cohort price from academy_service
+        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                f"{settings.ACADEMY_SERVICE_URL}/enrollments/{payload.enrollment_id}",
+                headers=headers,
+            )
+            if resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to fetch enrollment: {resp.text}",
+                )
+            enrollment_data = resp.json()
+            cohort_id = enrollment_data.get("cohort_id")
+            program = enrollment_data.get("program") or {}
+            amount = float(program.get("price") or 0)
+        
+        if amount == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cohort/Program has no price set",
+            )
+        
+        payment_metadata = {
+            **(payload.payment_metadata or {}),
+            "enrollment_id": str(payload.enrollment_id),
+            "cohort_id": str(cohort_id) if cohort_id else None,
+        }
+    
     else:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail=f"Payment intent not implemented for purpose={payload.purpose}",
         )
+
+    # Apply discount if provided
+    original_amount = amount
+    discount_applied = None
+    discount_code_used = None
+    
+    if payload.discount_code:
+        amount, discount_applied, discount_obj = await _validate_and_apply_discount(
+            db=db,
+            discount_code=payload.discount_code,
+            purpose=payload.purpose,
+            original_amount=original_amount,
+            member_auth_id=current_user.user_id,
+        )
+        if discount_obj:
+            discount_code_used = discount_obj.code
+            payment_metadata = {
+                **payment_metadata,
+                "discount_code": discount_obj.code,
+                "discount_type": discount_obj.discount_type.value,
+                "discount_value": discount_obj.value,
+                "discount_applied": discount_applied,
+                "original_amount": original_amount,
+            }
 
     payment = Payment(
         reference=Payment.generate_reference(),
@@ -347,6 +539,9 @@ async def create_payment_intent(
         await db.commit()
         await db.refresh(payment)
 
+    # Save pending payment reference to member for cross-device resumption
+    await _update_pending_payment_reference(current_user.user_id, payment.reference)
+
     return PaymentIntentResponse(
         reference=payment.reference,
         amount=payment.amount,
@@ -355,6 +550,9 @@ async def create_payment_intent(
         status=payment.status,
         checkout_url=checkout_url,
         created_at=payment.created_at,
+        original_amount=original_amount if discount_applied else None,
+        discount_applied=discount_applied,
+        discount_code=discount_code_used,
     )
 
 
@@ -622,3 +820,137 @@ async def list_payments_admin():
     return {
         "message": "Use /payments/me for member view; admin listing not implemented yet."
     }
+
+
+# --- Admin Discount Endpoints ---
+
+@router.post("/admin/discounts", response_model=DiscountResponse)
+async def create_discount(
+    payload: DiscountCreate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Create a new discount code (Admin only)."""
+    from services.payments_service.models import DiscountType as DT
+    
+    # Check if code already exists
+    existing = await db.execute(
+        select(Discount).where(Discount.code == payload.code.upper().strip())
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Discount code '{payload.code}' already exists",
+        )
+    
+    discount = Discount(
+        code=payload.code.upper().strip(),
+        description=payload.description,
+        discount_type=DT(payload.discount_type),
+        value=payload.value,
+        applies_to=payload.applies_to,
+        valid_from=payload.valid_from,
+        valid_until=payload.valid_until,
+        max_uses=payload.max_uses,
+        max_uses_per_user=payload.max_uses_per_user,
+        is_active=payload.is_active,
+    )
+    db.add(discount)
+    await db.commit()
+    await db.refresh(discount)
+    return discount
+
+
+@router.get("/admin/discounts", response_model=list[DiscountResponse])
+async def list_discounts(
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List all discount codes (Admin only)."""
+    result = await db.execute(select(Discount).order_by(desc(Discount.created_at)))
+    return result.scalars().all()
+
+
+@router.get("/admin/discounts/{discount_id}", response_model=DiscountResponse)
+async def get_discount(
+    discount_id: str,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get a specific discount code (Admin only)."""
+    import uuid as uuid_mod
+    
+    try:
+        uid = uuid_mod.UUID(discount_id)
+        result = await db.execute(select(Discount).where(Discount.id == uid))
+    except ValueError:
+        # Try by code
+        result = await db.execute(
+            select(Discount).where(Discount.code == discount_id.upper().strip())
+        )
+    
+    discount = result.scalar_one_or_none()
+    if not discount:
+        raise HTTPException(status_code=404, detail="Discount not found")
+    return discount
+
+
+@router.patch("/admin/discounts/{discount_id}", response_model=DiscountResponse)
+async def update_discount(
+    discount_id: str,
+    payload: DiscountUpdate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Update a discount code (Admin only)."""
+    import uuid as uuid_mod
+    from services.payments_service.models import DiscountType as DT
+    
+    try:
+        uid = uuid_mod.UUID(discount_id)
+        result = await db.execute(select(Discount).where(Discount.id == uid))
+    except ValueError:
+        result = await db.execute(
+            select(Discount).where(Discount.code == discount_id.upper().strip())
+        )
+    
+    discount = result.scalar_one_or_none()
+    if not discount:
+        raise HTTPException(status_code=404, detail="Discount not found")
+    
+    update_data = payload.model_dump(exclude_unset=True)
+    if "discount_type" in update_data and update_data["discount_type"]:
+        update_data["discount_type"] = DT(update_data["discount_type"])
+    
+    for field, value in update_data.items():
+        setattr(discount, field, value)
+    
+    await db.commit()
+    await db.refresh(discount)
+    return discount
+
+
+@router.delete("/admin/discounts/{discount_id}")
+async def delete_discount(
+    discount_id: str,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Delete a discount code (Admin only)."""
+    import uuid as uuid_mod
+    
+    try:
+        uid = uuid_mod.UUID(discount_id)
+        result = await db.execute(select(Discount).where(Discount.id == uid))
+    except ValueError:
+        result = await db.execute(
+            select(Discount).where(Discount.code == discount_id.upper().strip())
+        )
+    
+    discount = result.scalar_one_or_none()
+    if not discount:
+        raise HTTPException(status_code=404, detail="Discount not found")
+    
+    await db.delete(discount)
+    await db.commit()
+    return {"deleted": True, "code": discount.code}

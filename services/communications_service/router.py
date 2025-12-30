@@ -180,13 +180,13 @@ async def create_content_post(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Create a new content post (admin only)."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     post = ContentPost(
         **post_data.model_dump(exclude={"is_published"}),
         created_by=created_by,
         is_published=post_data.is_published,
-        published_at=datetime.utcnow() if post_data.is_published else None,
+        published_at=datetime.now(timezone.utc) if post_data.is_published else None,
     )
 
     db.add(post)
@@ -206,7 +206,7 @@ async def update_content_post(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Update a content post (admin only)."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     query = select(ContentPost).where(ContentPost.id == post_id)
     result = await db.execute(query)
@@ -224,7 +224,7 @@ async def update_content_post(
         and update_data["is_published"]
         and not post.published_at
     ):
-        post.published_at = datetime.utcnow()
+        post.published_at = datetime.now(timezone.utc)
 
     for field, value in update_data.items():
         setattr(post, field, value)

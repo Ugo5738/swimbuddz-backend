@@ -169,6 +169,7 @@ async def create_cohort(
     cohort = Cohort(**cohort_in.model_dump())
     db.add(cohort)
     await db.commit()
+    
     query = (
         select(Cohort)
         .where(Cohort.id == cohort.id)
@@ -626,6 +627,43 @@ async def update_enrollment(
     await db.commit()
     await db.refresh(enrollment)
     return enrollment
+
+
+@router.post("/admin/enrollments/{enrollment_id}/mark-paid", response_model=EnrollmentResponse)
+async def admin_mark_enrollment_paid(
+    enrollment_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Mark an enrollment as paid (service-to-service call from payments_service).
+    Updates payment_status to PAID and enrollment status to ENROLLED if pending.
+    """
+    from sqlalchemy.orm import selectinload
+
+    query = (
+        select(Enrollment)
+        .where(Enrollment.id == enrollment_id)
+        .options(selectinload(Enrollment.cohort), selectinload(Enrollment.program))
+    )
+    result = await db.execute(query)
+    enrollment = result.scalar_one_or_none()
+
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    # Update payment status to PAID
+    enrollment.payment_status = PaymentStatus.PAID
+    
+    # If enrollment was pending approval, move to enrolled
+    if enrollment.status == EnrollmentStatus.PENDING_APPROVAL:
+        enrollment.status = EnrollmentStatus.ENROLLED
+
+    await db.commit()
+    
+    # Re-fetch with relationships for response
+    result = await db.execute(query)
+    return result.scalar_one()
 
 
 # --- Progress ---

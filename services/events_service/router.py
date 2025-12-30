@@ -1,7 +1,7 @@
 """Events Service router/endpoints."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -35,7 +35,7 @@ async def list_events(
         query = query.where(Event.event_type == event_type)
 
     if upcoming_only:
-        query = query.where(Event.start_time >= datetime.utcnow())
+        query = query.where(Event.start_time >= datetime.now(timezone.utc))
 
     query = query.order_by(Event.start_time.asc())
 
@@ -212,7 +212,7 @@ async def create_or_update_rsvp(
     if existing_rsvp:
         # Update existing RSVP
         existing_rsvp.status = rsvp_data.status
-        existing_rsvp.updated_at = datetime.utcnow()
+        existing_rsvp.updated_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(existing_rsvp)
         return RSVPResponse.model_validate(existing_rsvp)
