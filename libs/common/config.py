@@ -46,8 +46,7 @@ class Settings(BaseSettings):
     TRANSPORT_SERVICE_URL: str = "http://transport-service:8009"
 
     # Payments / Pricing
-    COMMUNITY_ANNUAL_FEE_NGN: int = 5000
-    CLUB_MONTHLY_FEE_NGN: int = 15000
+    COMMUNITY_ANNUAL_FEE_NGN: int = 20000
     CLUB_QUARTERLY_FEE_NGN: int = 42500
     CLUB_BIANNUAL_FEE_NGN: int = 80000
     CLUB_ANNUAL_FEE_NGN: int = 150000
