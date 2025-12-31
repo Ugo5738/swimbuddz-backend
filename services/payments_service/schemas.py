@@ -125,3 +125,14 @@ class DiscountResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PricingConfigResponse(BaseModel):
+    """Public pricing configuration for frontend display."""
+
+    community_annual: int
+    club_quarterly: int
+    club_biannual: int
+    club_annual: int
+    currency: str = "NGN"
+
