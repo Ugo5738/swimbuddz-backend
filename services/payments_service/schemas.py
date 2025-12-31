@@ -24,7 +24,9 @@ class CreatePaymentIntentRequest(BaseModel):
     cohort_id: Optional[uuid.UUID] = None
     enrollment_id: Optional[uuid.UUID] = None  # For ACADEMY_COHORT payments
     discount_code: Optional[str] = None  # Optional discount code
-    include_community_extension: bool = False  # Include Community extension if Club exceeds
+    include_community_extension: bool = (
+        False  # Include Community extension if Club exceeds
+    )
     # Accept "metadata" for backwards-compat, store internally as payment_metadata.
     payment_metadata: Optional[dict] = Field(default=None, alias="metadata")
 
@@ -135,4 +137,3 @@ class PricingConfigResponse(BaseModel):
     club_biannual: int
     club_annual: int
     currency: str = "NGN"
-
