@@ -13,10 +13,6 @@ from services.members_service.routers import (
 
 # Re-export with original names for backwards compatibility
 router = members_router
-admin_router = admin_router
-
-# Also export the coaches router (shares /members prefix)
-coaches_router = coaches_router
 
 __all__ = [
     "router",
