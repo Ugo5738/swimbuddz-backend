@@ -18,6 +18,7 @@ from services.members_service.schemas import (
     ActivateClubRequest,
     ActivateCommunityRequest,
     ApprovalAction,
+    ExtendCommunityRequest,
     MemberResponse,
     PendingMemberResponse,
 )
@@ -282,6 +283,60 @@ async def admin_activate_community_membership_by_auth(
         else now
     )
     member.membership.community_paid_until = base + timedelta(days=365 * payload.years)
+
+    if not member.membership.active_tiers:
+        member.membership.active_tiers = ["community"]
+    if not member.membership.primary_tier:
+        member.membership.primary_tier = "community"
+
+    db.add(member)
+    await db.commit()
+    await db.refresh(member)
+
+    query = (
+        select(Member)
+        .where(Member.id == member.id)
+        .options(*member_eager_load_options())
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
+
+
+@router.post("/by-auth/{auth_id}/community/extend", response_model=MemberResponse)
+async def admin_extend_community_membership_by_auth(
+    auth_id: str,
+    payload: ExtendCommunityRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Extend Community membership by months (for stacking with Club)."""
+    query = (
+        select(Member)
+        .where(Member.auth_id == auth_id)
+        .options(*member_eager_load_options())
+    )
+    result = await db.execute(query)
+    member = result.scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Member not found"
+        )
+
+    now = datetime.now(timezone.utc)
+
+    if not member.membership:
+        member.membership = MemberMembership(member_id=member.id)
+        db.add(member.membership)
+
+    # Extend from current expiry or from now if already expired
+    base = (
+        member.membership.community_paid_until
+        if member.membership.community_paid_until
+        and member.membership.community_paid_until > now
+        else now
+    )
+    member.membership.community_paid_until = base + timedelta(days=30 * payload.months)
 
     if not member.membership.active_tiers:
         member.membership.active_tiers = ["community"]

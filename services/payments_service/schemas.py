@@ -24,6 +24,7 @@ class CreatePaymentIntentRequest(BaseModel):
     cohort_id: Optional[uuid.UUID] = None
     enrollment_id: Optional[uuid.UUID] = None  # For ACADEMY_COHORT payments
     discount_code: Optional[str] = None  # Optional discount code
+    include_community_extension: bool = False  # Include Community extension if Club exceeds
     # Accept "metadata" for backwards-compat, store internally as payment_metadata.
     payment_metadata: Optional[dict] = Field(default=None, alias="metadata")
 
@@ -42,6 +43,11 @@ class PaymentIntentResponse(BaseModel):
     original_amount: Optional[float] = None  # Amount before discount (if applied)
     discount_applied: Optional[float] = None  # Discount amount
     discount_code: Optional[str] = None
+    # Community extension info (for Club payments)
+    requires_community_extension: bool = False
+    community_extension_months: int = 0
+    community_extension_amount: float = 0
+    total_with_extension: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
 

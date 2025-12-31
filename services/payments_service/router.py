@@ -184,11 +184,40 @@ async def _apply_entitlement(payment: Payment) -> None:
         years = int((payment.payment_metadata or {}).get("years") or 1)
         payload = {"years": years}
 
-    # Handle Club add-on
+    # Handle Club add-on (may include community extension)
     elif payment.purpose == PaymentPurpose.CLUB:
-        path = f"/admin/members/by-auth/{payment.member_auth_id}/club/activate"
         months = int((payment.payment_metadata or {}).get("months") or 1)
-        payload = {"months": months}
+        community_extension_months = int((payment.payment_metadata or {}).get("community_extension_months") or 0)
+        
+        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            # If community extension was included, extend Community first
+            if community_extension_months > 0:
+                # Calculate years/months for community extension
+                ext_years = community_extension_months // 12
+                ext_months = community_extension_months % 12
+                community_resp = await client.post(
+                    f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/community/extend",
+                    json={"months": community_extension_months},
+                    headers=headers,
+                )
+                if community_resp.status_code >= 400:
+                    logger.warning(f"Failed to extend community: {community_resp.text}")
+            
+            # Activate Club
+            club_resp = await client.post(
+                f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/club/activate",
+                json={"months": months},
+                headers=headers,
+            )
+            if club_resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to apply club entitlement via members_service ({club_resp.status_code}): {club_resp.text}",
+                )
+        # Clear pending payment reference on success
+        await _update_pending_payment_reference(payment.member_auth_id, None)
+        return
 
     # Handle Club bundle (Community + Club)
     elif payment.purpose == PaymentPurpose.CLUB_BUNDLE:
@@ -417,13 +446,55 @@ async def create_payment_intent(
         )
         payment_metadata = {**(payload.payment_metadata or {}), "years": payload.years}
 
-    # Club add-on
+    # Club add-on - check if community extension needed
     elif payload.purpose == PaymentPurpose.CLUB:
         amount, months, cycle = _resolve_club_amount(payload)
+        
+        # Check if Club would exceed Community membership
+        community_extension_months = 0
+        community_extension_amount = 0.0
+        requires_community_extension = False
+        
+        # Fetch member's community_paid_until from members_service
+        try:
+            headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{current_user.user_id}",
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    member_data = resp.json()
+                    membership = member_data.get("membership") or {}
+                    community_until_str = membership.get("community_paid_until")
+                    
+                    if community_until_str:
+                        from libs.common.datetime_utils import utc_now
+                        from dateutil.relativedelta import relativedelta
+                        
+                        community_until = datetime.fromisoformat(community_until_str.replace("Z", "+00:00"))
+                        club_end = utc_now() + relativedelta(months=months)
+                        
+                        if club_end > community_until:
+                            # Calculate months needed to extend Community
+                            diff_days = (club_end - community_until).days
+                            community_extension_months = max(1, (diff_days + 29) // 30)  # Round up
+                            community_monthly_rate = getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20000) / 12
+                            community_extension_amount = round(community_monthly_rate * community_extension_months, 2)
+                            requires_community_extension = True
+        except Exception as e:
+            logger.warning(f"Could not check community status: {e}")
+        
+        # If extension required and user opted in, add to total
+        if requires_community_extension and payload.include_community_extension:
+            amount += community_extension_amount
+        
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "months": months,
             "club_billing_cycle": str(cycle),
+            "community_extension_months": community_extension_months if payload.include_community_extension else 0,
+            "community_extension_amount": community_extension_amount if payload.include_community_extension else 0,
         }
 
     # Club bundle - Community + Club together
@@ -552,6 +623,16 @@ async def create_payment_intent(
     # Save pending payment reference to member for cross-device resumption
     await _update_pending_payment_reference(current_user.user_id, payment.reference)
 
+    # Build extension info for response (only for CLUB payments)
+    response_extension_info = {}
+    if payload.purpose == PaymentPurpose.CLUB:
+        response_extension_info = {
+            "requires_community_extension": requires_community_extension,
+            "community_extension_months": community_extension_months,
+            "community_extension_amount": community_extension_amount,
+            "total_with_extension": payment.amount + community_extension_amount if not payload.include_community_extension else None,
+        }
+
     return PaymentIntentResponse(
         reference=payment.reference,
         amount=payment.amount,
@@ -563,6 +644,7 @@ async def create_payment_intent(
         original_amount=original_amount if discount_applied else None,
         discount_applied=discount_applied,
         discount_code=discount_code_used,
+        **response_extension_info,
     )
 
 

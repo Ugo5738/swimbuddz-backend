@@ -476,6 +476,12 @@ class ActivateCommunityRequest(BaseModel):
     years: int = Field(default=1, ge=1, le=5)
 
 
+class ExtendCommunityRequest(BaseModel):
+    """Request to extend community membership by months."""
+
+    months: int = Field(default=1, ge=1, le=24)
+
+
 class ActivateClubRequest(BaseModel):
     """Request to activate club membership."""
 
