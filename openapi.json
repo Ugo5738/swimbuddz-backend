@@ -32,37 +32,6 @@
         }
       }
     },
-    "/api/v1/members/coaches": {
-      "get": {
-        "tags": [
-          "members"
-        ],
-        "summary": "List Coaches",
-        "description": "List all active coaches.\nReturns Member objects that have an active CoachProfile.",
-        "operationId": "list_coaches_members_coaches_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/MemberResponse"
-                  },
-                  "type": "array",
-                  "title": "Response List Coaches Members Coaches Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
     "/api/v1/members/me": {
       "get": {
         "tags": [
@@ -277,100 +246,6 @@
             }
           }
         }
-      }
-    },
-    "/api/v1/members/me/community/activate": {
-      "post": {
-        "tags": [
-          "members"
-        ],
-        "summary": "Activate Community Membership",
-        "description": "Deprecated: Community activation is owned by payments_service.",
-        "operationId": "activate_community_membership_members_me_community_activate_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ActivateCommunityRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemberResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/v1/members/me/club/activate": {
-      "post": {
-        "tags": [
-          "members"
-        ],
-        "summary": "Activate Club Membership",
-        "description": "Deprecated: Club activation is owned by payments_service.",
-        "operationId": "activate_club_membership_members_me_club_activate_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ActivateClubRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemberResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
       }
     },
     "/api/v1/members/{member_id}": {
@@ -629,6 +504,37 @@
         ]
       }
     },
+    "/api/v1/admin/members/pending": {
+      "get": {
+        "tags": [
+          "admin-members"
+        ],
+        "summary": "List Pending Members",
+        "description": "List all members with pending approval status (admin only).",
+        "operationId": "list_pending_members_admin_members_pending_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PendingMemberResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Pending Members Admin Members Pending Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/members/by-email/{email}": {
       "get": {
         "tags": [
@@ -675,37 +581,6 @@
             }
           }
         }
-      }
-    },
-    "/api/v1/admin/members/pending": {
-      "get": {
-        "tags": [
-          "admin-members"
-        ],
-        "summary": "List Pending Members",
-        "description": "List all members with pending approval status (admin only).",
-        "operationId": "list_pending_members_admin_members_pending_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/PendingMemberResponse"
-                  },
-                  "type": "array",
-                  "title": "Response List Pending Members Admin Members Pending Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
       }
     },
     "/api/v1/admin/members/{member_id}/approve": {
@@ -891,7 +766,7 @@
           "admin-members"
         ],
         "summary": "Admin Activate Community Membership By Auth",
-        "description": "Apply Community entitlement for a member (admin/service use, e.g. payment webhook).",
+        "description": "Apply Community entitlement for a member (admin/service use).",
         "operationId": "admin_activate_community_membership_by_auth_admin_members_by_auth__auth_id__community_activate_post",
         "security": [
           {
@@ -949,7 +824,7 @@
           "admin-members"
         ],
         "summary": "Admin Activate Club Membership By Auth",
-        "description": "Apply Club entitlement for a member (admin/service use, e.g. payment webhook).",
+        "description": "Apply Club entitlement for a member (admin/service use).",
         "operationId": "admin_activate_club_membership_by_auth_admin_members_by_auth__auth_id__club_activate_post",
         "security": [
           {
@@ -973,6 +848,64 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ActivateClubRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/members/by-auth/{auth_id}/membership": {
+      "patch": {
+        "tags": [
+          "admin-members"
+        ],
+        "summary": "Admin Patch Membership By Auth",
+        "description": "Partially update membership fields for a member (admin/service use).",
+        "operationId": "admin_patch_membership_by_auth_admin_members_by_auth__auth_id__membership_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Auth Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembershipPatchRequest"
               }
             }
           }
@@ -4000,6 +3933,55 @@
         }
       }
     },
+    "/api/v1/academy/admin/enrollments/{enrollment_id}/mark-paid": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Admin Mark Enrollment Paid",
+        "description": "Mark an enrollment as paid (service-to-service call from payments_service).\nUpdates payment_status to PAID and enrollment status to ENROLLED if pending.",
+        "operationId": "admin_mark_enrollment_paid_academy_admin_enrollments__enrollment_id__mark_paid_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/progress": {
       "post": {
         "tags": [
@@ -4411,6 +4393,230 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/payments/admin/discounts": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "List Discounts",
+        "description": "List all discount codes (Admin only).",
+        "operationId": "list_discounts_payments_admin_discounts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DiscountResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Discounts Payments Admin Discounts Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Create Discount",
+        "description": "Create a new discount code (Admin only).",
+        "operationId": "create_discount_payments_admin_discounts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscountCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/payments/admin/discounts/{discount_id}": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Get Discount",
+        "description": "Get a specific discount code (Admin only).",
+        "operationId": "get_discount_payments_admin_discounts__discount_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "discount_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Discount Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Update Discount",
+        "description": "Update a discount code (Admin only).",
+        "operationId": "update_discount_payments_admin_discounts__discount_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "discount_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Discount Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscountUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Delete Discount",
+        "description": "Delete a discount code (Admin only).",
+        "operationId": "delete_discount_payments_admin_discounts__discount_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "discount_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Discount Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/announcements/": {
@@ -5038,6 +5244,12 @@
             "minimum": 1.0,
             "title": "Months",
             "default": 1
+          },
+          "skip_community_check": {
+            "type": "boolean",
+            "title": "Skip Community Check",
+            "description": "Skip community active check (for bundle activations where community was just activated)",
+            "default": false
           }
         },
         "type": "object",
@@ -7887,6 +8099,17 @@
             ],
             "title": "Academy Paid Until"
           },
+          "pending_payment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Payment Reference"
+          },
           "club_badges_earned": {
             "anyOf": [
               {
@@ -9166,6 +9389,24 @@
         "type": "object",
         "title": "MemberUpdate",
         "description": "Input for updating a member."
+      },
+      "MembershipPatchRequest": {
+        "properties": {
+          "pending_payment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Payment Reference"
+          }
+        },
+        "type": "object",
+        "title": "MembershipPatchRequest",
+        "description": "Partial update for membership fields."
       },
       "PendingMemberResponse": {
         "properties": {
@@ -11560,7 +11801,6 @@
       "ClubBillingCycle": {
         "type": "string",
         "enum": [
-          "monthly",
           "quarterly",
           "biannual",
           "annual"
@@ -11664,6 +11904,29 @@
             ],
             "title": "Cohort Id"
           },
+          "enrollment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrollment Id"
+          },
+          "discount_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Code"
+          },
           "metadata": {
             "anyOf": [
               {
@@ -11682,6 +11945,345 @@
           "purpose"
         ],
         "title": "CreatePaymentIntentRequest"
+      },
+      "DiscountCreate": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 2,
+            "title": "Code"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "discount_type": {
+            "type": "string",
+            "pattern": "^(percentage|fixed)$",
+            "title": "Discount Type"
+          },
+          "value": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Value"
+          },
+          "applies_to": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applies To"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          },
+          "max_uses": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Uses"
+          },
+          "max_uses_per_user": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Uses Per User"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "discount_type",
+          "value"
+        ],
+        "title": "DiscountCreate"
+      },
+      "DiscountResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "discount_type": {
+            "type": "string",
+            "title": "Discount Type"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "applies_to": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applies To"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          },
+          "max_uses": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Uses"
+          },
+          "current_uses": {
+            "type": "integer",
+            "title": "Current Uses"
+          },
+          "max_uses_per_user": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Uses Per User"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "discount_type",
+          "value",
+          "current_uses",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DiscountResponse"
+      },
+      "DiscountUpdate": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "discount_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(percentage|fixed)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Type"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "applies_to": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applies To"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          },
+          "max_uses": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Uses"
+          },
+          "max_uses_per_user": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Uses Per User"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "title": "DiscountUpdate"
       },
       "PaymentIntentResponse": {
         "properties": {
@@ -11718,6 +12320,39 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "original_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount"
+          },
+          "discount_applied": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Applied"
+          },
+          "discount_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Code"
           }
         },
         "type": "object",
@@ -11734,16 +12369,11 @@
       "PaymentPurpose": {
         "type": "string",
         "enum": [
-          "community_annual",
-          "community_event",
-          "club_monthly",
-          "club_quaterly",
-          "club_biannually",
-          "club_annually",
-          "club_activation",
+          "community",
+          "club",
+          "club_bundle",
           "academy_cohort",
-          "pool_fee",
-          "ride_share"
+          "session_fee"
         ],
         "title": "PaymentPurpose"
       },
