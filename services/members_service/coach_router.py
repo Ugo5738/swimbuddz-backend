@@ -54,6 +54,37 @@ async def get_coach_profile_by_member_id(member_id: str) -> Optional[CoachProfil
         return result.scalar_one_or_none()
 
 
+def _build_coach_response(member: Member, coach: CoachProfile) -> CoachApplicationResponse:
+    """Build CoachApplicationResponse from Member and CoachProfile models."""
+    return CoachApplicationResponse(
+        id=str(coach.id),
+        member_id=str(member.id),
+        email=member.email,
+        first_name=member.first_name,
+        last_name=member.last_name,
+        display_name=coach.display_name,
+        status=coach.status,
+        short_bio=coach.short_bio,
+        coaching_years=coach.coaching_years or 0,
+        coaching_specialties=coach.coaching_specialties or [],
+        certifications=coach.certifications or [],
+        other_certifications_note=coach.other_certifications_note,
+        levels_taught=coach.levels_taught,
+        age_groups_taught=coach.age_groups_taught,
+        languages_spoken=coach.languages_spoken,
+        coaching_portfolio_link=coach.coaching_portfolio_link,
+        has_cpr_training=coach.has_cpr_training,
+        cpr_expiry_date=coach.cpr_expiry_date,
+        coaching_document_link=coach.coaching_document_link,
+        coaching_document_file_name=coach.coaching_document_file_name,
+        application_submitted_at=coach.application_submitted_at,
+        application_reviewed_at=coach.application_reviewed_at,
+        rejection_reason=coach.rejection_reason,
+        created_at=coach.created_at,
+        updated_at=coach.updated_at,
+    )
+
+
 # === Coach Application Endpoints ===
 
 
@@ -128,8 +159,8 @@ async def apply_as_coach(
         coach_profile.has_cpr_training = data.has_cpr_training
         coach_profile.cpr_expiry_date = data.cpr_expiry_date
         if data.coaching_document_link:
-            member.coaching_document_link = data.coaching_document_link
-            member.coaching_document_file_name = (
+            coach_profile.coaching_document_link = data.coaching_document_link
+            coach_profile.coaching_document_file_name = (
                 data.coaching_document_file_name or data.coaching_document_link
             )
 
@@ -146,26 +177,7 @@ async def apply_as_coach(
         await session.refresh(member)
         await session.refresh(coach_profile)
 
-        return CoachApplicationResponse(
-            id=str(coach_profile.id),
-            member_id=str(member.id),
-            email=member.email,
-            first_name=member.first_name,
-            last_name=member.last_name,
-            display_name=coach_profile.display_name,
-            status=coach_profile.status,
-            short_bio=coach_profile.short_bio,
-            coaching_years=coach_profile.coaching_years or 0,
-            coaching_specialties=coach_profile.coaching_specialties or [],
-            certifications=coach_profile.certifications or [],
-            coaching_document_link=member.coaching_document_link,
-            coaching_document_file_name=member.coaching_document_file_name,
-            application_submitted_at=coach_profile.application_submitted_at,
-            application_reviewed_at=coach_profile.application_reviewed_at,
-            rejection_reason=coach_profile.rejection_reason,
-            created_at=coach_profile.created_at,
-            updated_at=coach_profile.updated_at,
-        )
+        return _build_coach_response(member, coach_profile)
 
 
 @router.get("/me", response_model=CoachApplicationResponse)
@@ -189,26 +201,7 @@ async def get_my_coach_profile(
             raise HTTPException(status_code=404, detail="No coach profile found")
 
         coach = member.coach_profile
-        return CoachApplicationResponse(
-            id=str(coach.id),
-            member_id=str(member.id),
-            email=member.email,
-            first_name=member.first_name,
-            last_name=member.last_name,
-            display_name=coach.display_name,
-            status=coach.status,
-            short_bio=coach.short_bio,
-            coaching_years=coach.coaching_years or 0,
-            coaching_specialties=coach.coaching_specialties or [],
-            certifications=coach.certifications or [],
-            coaching_document_link=member.coaching_document_link,
-            coaching_document_file_name=member.coaching_document_file_name,
-            application_submitted_at=coach.application_submitted_at,
-            application_reviewed_at=coach.application_reviewed_at,
-            rejection_reason=coach.rejection_reason,
-            created_at=coach.created_at,
-            updated_at=coach.updated_at,
-        )
+        return _build_coach_response(member, coach)
 
 
 @router.get("/application-status", response_model=CoachApplicationStatusResponse)
@@ -278,24 +271,7 @@ async def update_my_coach_profile(
         await session.commit()
         await session.refresh(coach)
 
-        return CoachApplicationResponse(
-            id=str(coach.id),
-            member_id=str(member.id),
-            email=member.email,
-            first_name=member.first_name,
-            last_name=member.last_name,
-            display_name=coach.display_name,
-            status=coach.status,
-            short_bio=coach.short_bio,
-            coaching_years=coach.coaching_years or 0,
-            coaching_specialties=coach.coaching_specialties or [],
-            certifications=coach.certifications or [],
-            application_submitted_at=coach.application_submitted_at,
-            application_reviewed_at=coach.application_reviewed_at,
-            rejection_reason=coach.rejection_reason,
-            created_at=coach.created_at,
-            updated_at=coach.updated_at,
-        )
+        return _build_coach_response(member, coach)
 
 
 @router.post("/me/onboarding", response_model=CoachApplicationResponse)
@@ -365,24 +341,7 @@ async def complete_coach_onboarding(
         await session.commit()
         await session.refresh(coach)
 
-        return CoachApplicationResponse(
-            id=str(coach.id),
-            member_id=str(member.id),
-            email=member.email,
-            first_name=member.first_name,
-            last_name=member.last_name,
-            display_name=coach.display_name,
-            status=coach.status,
-            short_bio=coach.short_bio,
-            coaching_years=coach.coaching_years or 0,
-            coaching_specialties=coach.coaching_specialties or [],
-            certifications=coach.certifications or [],
-            application_submitted_at=coach.application_submitted_at,
-            application_reviewed_at=coach.application_reviewed_at,
-            rejection_reason=coach.rejection_reason,
-            created_at=coach.created_at,
-            updated_at=coach.updated_at,
-        )
+        return _build_coach_response(member, coach)
 
 
 # === Admin Coach Review Endpoints ===
@@ -399,10 +358,10 @@ async def list_coach_applications(
             select(CoachProfile).join(Member).options(selectinload(CoachProfile.member))
         )
 
-        if application_status:
+        if application_status and application_status.lower() != "all":
             query = query.where(CoachProfile.status == application_status)
-        else:
-            # Default to pending applications
+        elif not application_status:
+            # Default (no filter provided) -> Pending applications only
             query = query.where(
                 CoachProfile.status.in_(["pending_review", "more_info_needed"])
             )
@@ -424,8 +383,8 @@ async def list_coach_applications(
                 coaching_years=p.coaching_years or 0,
                 coaching_specialties=p.coaching_specialties or [],
                 certifications=p.certifications or [],
-                coaching_document_link=p.member.coaching_document_link,
-                coaching_document_file_name=p.member.coaching_document_file_name,
+                coaching_document_link=p.coaching_document_link,
+                coaching_document_file_name=p.coaching_document_file_name,
                 application_submitted_at=p.application_submitted_at,
                 created_at=p.created_at,
             )
@@ -458,7 +417,7 @@ async def get_coach_application(
             email=coach.member.email,
             first_name=coach.member.first_name,
             last_name=coach.member.last_name,
-            phone=coach.member.phone,
+            phone=coach.member.profile.phone if coach.member.profile else None,
             display_name=coach.display_name,
             coach_profile_photo_url=coach.coach_profile_photo_url,
             short_bio=coach.short_bio,
@@ -468,8 +427,8 @@ async def get_coach_application(
             coaching_years=coach.coaching_years or 0,
             coaching_experience_summary=coach.coaching_experience_summary,
             coaching_specialties=coach.coaching_specialties or [],
-            coaching_document_link=coach.member.coaching_document_link,
-            coaching_document_file_name=coach.member.coaching_document_file_name,
+            coaching_document_link=coach.coaching_document_link,
+            coaching_document_file_name=coach.coaching_document_file_name,
             levels_taught=coach.levels_taught or [],
             age_groups_taught=coach.age_groups_taught or [],
             languages_spoken=coach.languages_spoken or [],

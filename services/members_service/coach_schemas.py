@@ -58,6 +58,15 @@ class CoachApplicationResponse(BaseModel):
     certifications: list[str] = []
     coaching_document_link: Optional[str] = None
     coaching_document_file_name: Optional[str] = None
+    other_certifications_note: Optional[str] = None
+
+    levels_taught: Optional[list[str]] = None
+    age_groups_taught: Optional[list[str]] = None
+    languages_spoken: Optional[list[str]] = None
+    coaching_portfolio_link: Optional[str] = None
+
+    has_cpr_training: bool = False
+    cpr_expiry_date: Optional[datetime] = None
 
     application_submitted_at: Optional[datetime] = None
     application_reviewed_at: Optional[datetime] = None
