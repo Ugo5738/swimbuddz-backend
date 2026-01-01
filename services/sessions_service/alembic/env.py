@@ -14,8 +14,7 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.sessions_service.models import Session  # noqa: F401
-from services.sessions_service.session_template import SessionTemplate  # noqa: F401
+from services.sessions_service.models import Session, SessionTemplate, SessionCoach  # noqa: F401
 from sqlalchemy import Table, Column
 from sqlalchemy.dialects.postgresql import UUID
 

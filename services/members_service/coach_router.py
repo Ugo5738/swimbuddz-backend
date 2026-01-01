@@ -1,12 +1,12 @@
 """Coach-specific API routes for application, onboarding, and profile management."""
 
-import logging
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
+from libs.common.logging import get_logger
 from libs.db.config import AsyncSessionLocal
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -25,7 +25,7 @@ from .coach_schemas import (
 )
 from .models import CoachProfile, Member
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/coaches", tags=["coaches"])
 admin_router = APIRouter(prefix="/admin/coaches", tags=["admin-coaches"])

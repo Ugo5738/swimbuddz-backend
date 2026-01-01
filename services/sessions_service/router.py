@@ -21,18 +21,23 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 @router.get("/", response_model=List[SessionResponse])
 async def list_sessions(
     types: Optional[str] = None,
+    cohort_id: Optional[uuid.UUID] = None,
     db: AsyncSession = Depends(get_async_db),
 ):
     """
     List all upcoming sessions. Optional `types` filter is a comma-separated list
-    of SessionType values (e.g., "club,community").
+    of SessionType values (e.g., "club,community"). Optional `cohort_id` filter
+    returns only sessions for that cohort.
     """
-    query = select(Session).order_by(Session.start_time.asc())
+    query = select(Session).order_by(Session.starts_at.asc())
 
     if types:
         type_values = [t.strip() for t in types.split(",") if t.strip()]
         if type_values:
-            query = query.where(Session.type.in_(type_values))
+            query = query.where(Session.session_type.in_(type_values))
+
+    if cohort_id:
+        query = query.where(Session.cohort_id == cohort_id)
 
     result = await db.execute(query)
     return result.scalars().all()
@@ -46,7 +51,7 @@ async def get_session_stats(
     Get session statistics.
     """
     now = datetime.now(timezone.utc)
-    query = select(func.count(Session.id)).where(Session.start_time > now)
+    query = select(func.count(Session.id)).where(Session.starts_at > now)
     result = await db.execute(query)
     upcoming_sessions_count = result.scalar_one() or 0
 

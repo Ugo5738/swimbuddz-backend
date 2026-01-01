@@ -5,8 +5,7 @@ from typing import List
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.db.session import get_async_db
-from services.sessions_service.models import Session, SessionLocation, SessionType
-from services.sessions_service.session_template import SessionTemplate
+from services.sessions_service.models import Session, SessionLocation, SessionType, SessionTemplate
 from services.sessions_service.template_schemas import (
     GenerateSessionsRequest,
     SessionTemplateCreate,
@@ -160,8 +159,8 @@ async def generate_sessions(
         if request.skip_conflicts:
             conflict_query = select(Session).where(
                 and_(
-                    Session.start_time <= end_datetime,
-                    Session.end_time >= start_datetime,
+                    Session.starts_at <= end_datetime,
+                    Session.ends_at >= start_datetime,
                 )
             )
             conflict_result = await db.execute(conflict_query)
@@ -178,12 +177,12 @@ async def generate_sessions(
         session = Session(
             title=template.title,
             description=template.description,
-            location=SessionLocation(template.location),
-            type=SessionType(template.type),
-            pool_fee=template.pool_fee,
+            location_name=template.location,  # Template uses string location
+            session_type=template.session_type,
+            pool_fee=float(template.pool_fee),
             capacity=template.capacity,
-            start_time=start_datetime,
-            end_time=end_datetime,
+            starts_at=start_datetime,
+            ends_at=end_datetime,
             template_id=template.id,
             is_recurring_instance=True,
         )

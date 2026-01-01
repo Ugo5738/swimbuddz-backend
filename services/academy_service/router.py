@@ -529,27 +529,28 @@ async def self_enroll(
             raise HTTPException(status_code=404, detail="Program not found")
 
     # 3. Check Existing Enrollment/Request
-    # We check if they have an active enrollment or pending request for this Program
-    # (regardless of cohort, generally you don't enroll twice in same program concurrently)
-    # Actually, you can enroll in multiple cohorts if they are different times?
-    # Let's restrict: One active enrollment per Program.
-    query = select(Enrollment).where(
-        Enrollment.member_id == member["id"],
-        Enrollment.program_id == program_id,
-        Enrollment.status.in_(
-            [EnrollmentStatus.ENROLLED, EnrollmentStatus.PENDING_APPROVAL]
-        ),
-    )
-    result = await db.execute(query)
-    existing = result.scalar_one_or_none()
-
-    if existing:
-        detail = (
-            "You are already enrolled in this program"
-            if existing.status == EnrollmentStatus.ENROLLED
-            else "You already have a pending request for this program"
+    # Only block enrolling in the SAME COHORT twice.
+    # Allow:
+    #   - Different cohorts in same program (e.g., future cohorts)
+    #   - Different programs simultaneously
+    if cohort_id:
+        query = select(Enrollment).where(
+            Enrollment.member_id == member["id"],
+            Enrollment.cohort_id == cohort_id,  # Only check same cohort, not program
+            Enrollment.status.in_(
+                [EnrollmentStatus.ENROLLED, EnrollmentStatus.PENDING_APPROVAL]
+            ),
         )
-        raise HTTPException(status_code=400, detail=detail)
+        result = await db.execute(query)
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            detail = (
+                "You are already enrolled in this cohort"
+                if existing.status == EnrollmentStatus.ENROLLED
+                else "You already have a pending request for this cohort"
+            )
+            raise HTTPException(status_code=400, detail=detail)
 
     # 4. Create Enrollment Request
     # Status is PENDING_APPROVAL by default for everyone now (as per new workflow)
@@ -564,8 +565,17 @@ async def self_enroll(
     )
     db.add(enrollment)
     await db.commit()
-    await db.refresh(enrollment)
-    return enrollment
+
+    # Re-fetch with relationships to avoid lazy loading issues
+    from sqlalchemy.orm import selectinload
+
+    query = (
+        select(Enrollment)
+        .where(Enrollment.id == enrollment.id)
+        .options(selectinload(Enrollment.cohort), selectinload(Enrollment.program))
+    )
+    result = await db.execute(query)
+    return result.scalar_one()
 
 
 @router.get("/my-enrollments", response_model=List[EnrollmentResponse])
@@ -582,16 +592,42 @@ async def get_my_enrollments(
     if not member:
         raise HTTPException(status_code=404, detail="Member profile not found")
 
-    # Eager load cohort details
+    # Eager load cohort, program, and nested cohort.program to avoid async issues
     from sqlalchemy.orm import selectinload
 
     query = (
         select(Enrollment)
         .where(Enrollment.member_id == member["id"])
-        .options(selectinload(Enrollment.cohort))
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+        )
     )
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.get("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
+async def get_enrollment(
+    enrollment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get a single enrollment by ID (used by payments service)."""
+    from sqlalchemy.orm import selectinload
+
+    query = (
+        select(Enrollment)
+        .where(Enrollment.id == enrollment_id)
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+        )
+    )
+    result = await db.execute(query)
+    enrollment = result.scalar_one_or_none()
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    return enrollment
 
 
 @router.get("/cohorts/{cohort_id}/enrollments", response_model=List[EnrollmentResponse])
@@ -662,6 +698,43 @@ async def admin_mark_enrollment_paid(
         enrollment.status = EnrollmentStatus.ENROLLED
 
     await db.commit()
+
+    # Send enrollment confirmation email
+    try:
+        from libs.common.email import send_enrollment_confirmation_email
+        
+        # Get member email from members service
+        import httpx
+        from libs.common.config import settings
+        from libs.auth.dependencies import _service_role_jwt
+        
+        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                f"{settings.MEMBERS_SERVICE_URL}/members/{enrollment.member_id}",
+                headers=headers,
+            )
+            if resp.status_code == 200:
+                member_data = resp.json()
+                member_email = member_data.get("email")
+                member_name = member_data.get("first_name", "Member")
+                
+                if member_email and enrollment.cohort:
+                    program_name = enrollment.program.name if enrollment.program else "Academy Program"
+                    cohort_name = enrollment.cohort.name
+                    start_date = enrollment.cohort.start_date.strftime("%B %d, %Y") if enrollment.cohort.start_date else "TBD"
+                    
+                    await send_enrollment_confirmation_email(
+                        to_email=member_email,
+                        member_name=member_name,
+                        program_name=program_name,
+                        cohort_name=cohort_name,
+                        start_date=start_date,
+                    )
+    except Exception as e:
+        # Log but don't fail the request if email fails
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to send enrollment confirmation email: {e}")
 
     # Re-fetch with relationships for response
     result = await db.execute(query)

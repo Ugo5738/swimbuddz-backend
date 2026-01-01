@@ -10,7 +10,7 @@ class SessionTemplateBase(BaseModel):
     title: str
     description: Optional[str] = None
     location: str
-    type: SessionType = SessionType.COMMUNITY
+    session_type: SessionType = SessionType.COMMUNITY
     pool_fee: int = 0
     ride_share_fee: int = 0
     capacity: int = 20

@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 from services.academy_service.models import (
+    BillingType,
     CohortStatus,
     EnrollmentStatus,
     PaymentStatus,
@@ -19,9 +20,16 @@ class ProgramBase(BaseModel):
     description: Optional[str] = None
     level: ProgramLevel
     duration_weeks: int
-    price: Optional[int] = 0
+    default_capacity: int = 10
+    # Pricing
+    currency: str = "NGN"
+    price_amount: int = 0  # In smallest unit (kobo/cents)
+    billing_type: BillingType = BillingType.ONE_TIME
+    # Content
     curriculum_json: Optional[Dict[str, Any]] = None
     prep_materials: Optional[Dict[str, Any]] = None
+    # Status
+    is_published: bool = False
 
 
 class ProgramCreate(ProgramBase):
@@ -33,13 +41,18 @@ class ProgramUpdate(BaseModel):
     description: Optional[str] = None
     level: Optional[ProgramLevel] = None
     duration_weeks: Optional[int] = None
-    price: Optional[int] = None
+    default_capacity: Optional[int] = None
+    currency: Optional[str] = None
+    price_amount: Optional[int] = None
+    billing_type: Optional[BillingType] = None
     curriculum_json: Optional[Dict[str, Any]] = None
     prep_materials: Optional[Dict[str, Any]] = None
+    is_published: Optional[bool] = None
 
 
 class ProgramResponse(ProgramBase):
     id: UUID
+    version: int = 1
     created_at: datetime
     updated_at: datetime
 

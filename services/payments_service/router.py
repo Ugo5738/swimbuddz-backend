@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import json
-import logging
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -11,6 +10,7 @@ from jose import jwt
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
+from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.payments_service.models import (
     Discount,
@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 settings = get_settings()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @router.get("/pricing", response_model=PricingConfigResponse)
@@ -110,9 +110,7 @@ async def _update_pending_payment_reference(
         )
         # Ignore failures - this is a best-effort feature
         if resp.status_code >= 400:
-            import logging
-
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 f"Failed to update pending_payment_reference for {auth_id}: {resp.status_code}"
             )
 
@@ -277,7 +275,7 @@ async def _apply_entitlement(payment: Payment) -> None:
         headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
-                f"{settings.ACADEMY_SERVICE_URL}/admin/enrollments/{enrollment_id}/mark-paid",
+                f"{settings.ACADEMY_SERVICE_URL}/academy/admin/enrollments/{enrollment_id}/mark-paid",
                 headers=headers,
             )
             if resp.status_code >= 400:
@@ -556,7 +554,7 @@ async def create_payment_intent(
         headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
-                f"{settings.ACADEMY_SERVICE_URL}/enrollments/{payload.enrollment_id}",
+                f"{settings.ACADEMY_SERVICE_URL}/academy/enrollments/{payload.enrollment_id}",
                 headers=headers,
             )
             if resp.status_code >= 400:
@@ -567,7 +565,7 @@ async def create_payment_intent(
             enrollment_data = resp.json()
             cohort_id = enrollment_data.get("cohort_id")
             program = enrollment_data.get("program") or {}
-            amount = float(program.get("price") or 0)
+            amount = float(program.get("price_amount") or 0)
 
         if amount == 0:
             raise HTTPException(

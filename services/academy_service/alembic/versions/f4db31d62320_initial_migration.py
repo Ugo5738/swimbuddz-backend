@@ -1,15 +1,15 @@
 """initial_migration
 
-Revision ID: 58581f469556
+Revision ID: f4db31d62320
 Revises: 
-Create Date: 2025-12-31 00:05:40.308908
+Create Date: 2026-01-01 08:58:06.882583
 """
 from alembic import op
 import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '58581f469556'
+revision = 'f4db31d62320'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -20,15 +20,23 @@ def upgrade() -> None:
     op.create_table('programs',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('name', sa.String(), nullable=False),
+    sa.Column('slug', sa.String(), nullable=True),
     sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('cover_image_url', sa.String(), nullable=True),
     sa.Column('level', sa.Enum('BEGINNER_1', 'BEGINNER_2', 'INTERMEDIATE', 'ADVANCED', 'SPECIALTY', name='program_level_enum'), nullable=False),
     sa.Column('duration_weeks', sa.Integer(), nullable=False),
-    sa.Column('price', sa.Integer(), nullable=False),
+    sa.Column('default_capacity', sa.Integer(), server_default='10', nullable=False),
+    sa.Column('currency', sa.String(), server_default='NGN', nullable=False),
+    sa.Column('price_amount', sa.Integer(), server_default='0', nullable=False),
+    sa.Column('billing_type', sa.Enum('ONE_TIME', 'SUBSCRIPTION', 'PER_SESSION', name='billing_type_enum'), server_default='ONE_TIME', nullable=False),
     sa.Column('curriculum_json', sa.JSON(), nullable=True),
     sa.Column('prep_materials', sa.JSON(), nullable=True),
+    sa.Column('version', sa.Integer(), server_default='1', nullable=False),
+    sa.Column('is_published', sa.Boolean(), server_default='false', nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('slug')
     )
     op.create_table('cohorts',
     sa.Column('id', sa.UUID(), nullable=False),
@@ -37,9 +45,15 @@ def upgrade() -> None:
     sa.Column('start_date', sa.DateTime(timezone=True), nullable=False),
     sa.Column('end_date', sa.DateTime(timezone=True), nullable=False),
     sa.Column('capacity', sa.Integer(), nullable=False),
+    sa.Column('timezone', sa.String(), server_default='Africa/Lagos', nullable=False),
+    sa.Column('location_type', sa.Enum('POOL', 'OPEN_WATER', 'REMOTE', name='location_type_enum'), server_default='POOL', nullable=False),
+    sa.Column('location_name', sa.String(), nullable=True),
+    sa.Column('location_address', sa.String(), nullable=True),
     sa.Column('coach_id', sa.UUID(), nullable=True),
+    sa.Column('price_override', sa.Integer(), nullable=True),
     sa.Column('status', sa.Enum('OPEN', 'ACTIVE', 'COMPLETED', 'CANCELLED', name='cohort_status_enum'), nullable=False),
     sa.Column('allow_mid_entry', sa.Boolean(), server_default='false', nullable=False),
+    sa.Column('notes_internal', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['program_id'], ['programs.id'], ),
@@ -51,6 +65,10 @@ def upgrade() -> None:
     sa.Column('name', sa.String(), nullable=False),
     sa.Column('criteria', sa.Text(), nullable=True),
     sa.Column('video_url', sa.String(), nullable=True),
+    sa.Column('order_index', sa.Integer(), server_default='0', nullable=False),
+    sa.Column('milestone_type', sa.Enum('SKILL', 'ENDURANCE', 'TECHNIQUE', 'ASSESSMENT', name='milestone_type_enum'), server_default='SKILL', nullable=False),
+    sa.Column('rubric_json', sa.JSON(), nullable=True),
+    sa.Column('required_evidence', sa.Enum('NONE', 'VIDEO', 'TIME_TRIAL', name='required_evidence_enum'), server_default='NONE', nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['program_id'], ['programs.id'], ),
@@ -64,6 +82,12 @@ def upgrade() -> None:
     sa.Column('preferences', sa.JSON(), nullable=True),
     sa.Column('status', sa.Enum('PENDING_APPROVAL', 'ENROLLED', 'WAITLIST', 'DROPPED', 'GRADUATED', name='enrollment_status_enum'), nullable=False),
     sa.Column('payment_status', sa.Enum('PENDING', 'PAID', 'FAILED', 'WAIVED', name='academy_payment_status_enum'), nullable=False),
+    sa.Column('price_snapshot_amount', sa.Integer(), nullable=True),
+    sa.Column('currency_snapshot', sa.String(), nullable=True),
+    sa.Column('payment_reference', sa.String(), nullable=True),
+    sa.Column('paid_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('enrolled_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('source', sa.Enum('WEB', 'ADMIN', 'PARTNER', name='enrollment_source_enum'), server_default='WEB', nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['cohort_id'], ['cohorts.id'], ),
@@ -77,6 +101,11 @@ def upgrade() -> None:
     sa.Column('milestone_id', sa.UUID(), nullable=False),
     sa.Column('status', sa.Enum('PENDING', 'ACHIEVED', name='progress_status_enum'), nullable=False),
     sa.Column('achieved_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('evidence_url', sa.String(), nullable=True),
+    sa.Column('score', sa.Integer(), nullable=True),
+    sa.Column('reviewed_by_coach_id', sa.UUID(), nullable=True),
+    sa.Column('reviewed_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('student_notes', sa.Text(), nullable=True),
     sa.Column('coach_notes', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
