@@ -250,6 +250,9 @@ class CurriculumLesson(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     duration_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    video_url: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # Instructional/model video for this lesson
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
