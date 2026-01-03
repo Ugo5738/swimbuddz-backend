@@ -100,7 +100,7 @@ async def list_programs(
     """List all programs. Use published_only=true for member-facing views."""
     query = select(Program).order_by(Program.name)
     if published_only:
-        query = query.where(Program.is_published == True)
+        query = query.where(Program.is_published.is_(True))
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -110,7 +110,7 @@ async def list_published_programs(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List only published programs (for member-facing pages)."""
-    query = select(Program).where(Program.is_published == True).order_by(Program.name)
+    query = select(Program).where(Program.is_published.is_(True)).order_by(Program.name)
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -268,7 +268,9 @@ async def list_open_cohorts(
         select(Cohort)
         .join(Program, Cohort.program_id == Program.id)
         .where(Cohort.status == CohortStatus.OPEN)
-        .where(Program.is_published == True)  # Only show cohorts from published programs
+        .where(
+            Program.is_published.is_(True)
+        )  # Only show cohorts from published programs
         .options(selectinload(Cohort.program))
         .order_by(Cohort.start_date.asc())
     )
@@ -510,12 +512,12 @@ async def self_enroll(
                 detail="Cohort does not belong to the specified program",
             )
         program_id = cohort.program_id
-        
+
         # Check if the cohort's program is published
         program_query = select(Program).where(Program.id == cohort.program_id)
         program_result = await db.execute(program_query)
         program = program_result.scalar_one_or_none()
-        
+
         if not program or not program.is_published:
             raise HTTPException(
                 status_code=400,
@@ -554,12 +556,12 @@ async def self_enroll(
         program = program_result.scalar_one_or_none()
         if not program:
             raise HTTPException(status_code=404, detail="Program not found")
-        
+
         # Check if program is published
         if not program.is_published:
             raise HTTPException(
                 status_code=400,
-                detail="This program is not yet available for enrollment."
+                detail="This program is not yet available for enrollment.",
             )
 
     # 3. Check Existing Enrollment/Request
@@ -642,7 +644,7 @@ async def get_my_enrollments(
 
 
 @router.get("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
-async def get_enrollment(
+async def get_enrollment_by_id(
     enrollment_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -736,12 +738,12 @@ async def admin_mark_enrollment_paid(
     # Send enrollment confirmation email
     try:
         from libs.common.email import send_enrollment_confirmation_email
-        
+
         # Get member email from members service
         import httpx
         from libs.common.config import settings
         from libs.auth.dependencies import _service_role_jwt
-        
+
         headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
@@ -752,12 +754,20 @@ async def admin_mark_enrollment_paid(
                 member_data = resp.json()
                 member_email = member_data.get("email")
                 member_name = member_data.get("first_name", "Member")
-                
+
                 if member_email and enrollment.cohort:
-                    program_name = enrollment.program.name if enrollment.program else "Academy Program"
+                    program_name = (
+                        enrollment.program.name
+                        if enrollment.program
+                        else "Academy Program"
+                    )
                     cohort_name = enrollment.cohort.name
-                    start_date = enrollment.cohort.start_date.strftime("%B %d, %Y") if enrollment.cohort.start_date else "TBD"
-                    
+                    start_date = (
+                        enrollment.cohort.start_date.strftime("%B %d, %Y")
+                        if enrollment.cohort.start_date
+                        else "TBD"
+                    )
+
                     await send_enrollment_confirmation_email(
                         to_email=member_email,
                         member_name=member_name,
@@ -768,7 +778,10 @@ async def admin_mark_enrollment_paid(
     except Exception as e:
         # Log but don't fail the request if email fails
         import logging
-        logging.getLogger(__name__).warning(f"Failed to send enrollment confirmation email: {e}")
+
+        logging.getLogger(__name__).warning(
+            f"Failed to send enrollment confirmation email: {e}"
+        )
 
     # Re-fetch with relationships for response
     result = await db.execute(query)

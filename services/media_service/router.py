@@ -453,7 +453,6 @@ async def upload_payment_proof(
     return await _build_media_item_response(db, db_media)
 
 
-
 @router.get("/media", response_model=List[MediaItemResponse])
 async def list_media(
     media_type: Optional[str] = None,

@@ -54,7 +54,9 @@ async def get_coach_profile_by_member_id(member_id: str) -> Optional[CoachProfil
         return result.scalar_one_or_none()
 
 
-def _build_coach_response(member: Member, coach: CoachProfile) -> CoachApplicationResponse:
+def _build_coach_response(
+    member: Member, coach: CoachProfile
+) -> CoachApplicationResponse:
     """Build CoachApplicationResponse from Member and CoachProfile models."""
     return CoachApplicationResponse(
         id=str(coach.id),

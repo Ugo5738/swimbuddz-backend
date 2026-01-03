@@ -19,6 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 class SessionLocation(str, enum.Enum):
     """Predefined pool locations."""
+
     SUNFIT_POOL = "sunfit_pool"
     ROWE_PARK_POOL = "rowe_park_pool"
     FEDERAL_PALACE_POOL = "federal_palace_pool"
@@ -28,16 +29,18 @@ class SessionLocation(str, enum.Enum):
 
 class SessionType(str, enum.Enum):
     """Type of session - determines which fields are relevant."""
-    COHORT_CLASS = "cohort_class"      # Academy cohort session
-    ONE_ON_ONE = "one_on_one"          # 1:1 coaching session
-    GROUP_BOOKING = "group_booking"    # Small group booking
-    CLUB = "club"                       # Club swim session
-    COMMUNITY = "community"             # Community event session
-    EVENT = "event"                     # Linked to events service
+
+    COHORT_CLASS = "cohort_class"  # Academy cohort session
+    ONE_ON_ONE = "one_on_one"  # 1:1 coaching session
+    GROUP_BOOKING = "group_booking"  # Small group booking
+    CLUB = "club"  # Club swim session
+    COMMUNITY = "community"  # Community event session
+    EVENT = "event"  # Linked to events service
 
 
 class SessionStatus(str, enum.Enum):
     """Session lifecycle status."""
+
     SCHEDULED = "scheduled"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -51,7 +54,7 @@ class SessionStatus(str, enum.Enum):
 
 class Session(Base):
     """Unified session model for all session types."""
-    
+
     __tablename__ = "sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -78,12 +81,8 @@ class Session(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # === Timing ===
-    starts_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    ends_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     timezone: Mapped[str] = mapped_column(
         String, default="Africa/Lagos", server_default="Africa/Lagos"
     )
@@ -98,7 +97,9 @@ class Session(Base):
     # === Capacity & Fees ===
     capacity: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
     pool_fee: Mapped[float] = mapped_column(Float, default=0.0, server_default="0.0")
-    ride_share_fee: Mapped[float] = mapped_column(Float, default=0.0, server_default="0.0")
+    ride_share_fee: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0"
+    )
 
     # === Context Links (nullable based on session_type) ===
     # For COHORT_CLASS sessions
@@ -149,7 +150,7 @@ class Session(Base):
 
 class SessionCoach(Base):
     """Junction table: multiple coaches per session."""
-    
+
     __tablename__ = "session_coaches"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -183,7 +184,7 @@ class SessionCoach(Base):
 
 class SessionTemplate(Base):
     """Template for recurring sessions."""
-    
+
     __tablename__ = "session_templates"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -191,16 +192,16 @@ class SessionTemplate(Base):
     )
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    
+
     session_type: Mapped[SessionType] = mapped_column(
         SAEnum(SessionType, name="session_type_enum", create_type=False),
         nullable=False,
         default=SessionType.COMMUNITY,
     )
-    
+
     # Location - string for flexibility (can be predefined or custom)
     location: Mapped[str] = mapped_column(String, nullable=False)
-    
+
     # Capacity & Fees
     capacity: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
     pool_fee: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -210,8 +211,12 @@ class SessionTemplate(Base):
     ride_share_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Recurrence pattern
-    day_of_week: Mapped[int] = mapped_column(Integer, nullable=False)  # 0=Monday, 6=Sunday
-    start_time: Mapped[time] = mapped_column(Time, nullable=False)  # Time of day (e.g., 09:00)
+    day_of_week: Mapped[int] = mapped_column(
+        Integer, nullable=False
+    )  # 0=Monday, 6=Sunday
+    start_time: Mapped[time] = mapped_column(
+        Time, nullable=False
+    )  # Time of day (e.g., 09:00)
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
 
     # Auto-generation
@@ -233,4 +238,3 @@ class SessionTemplate(Base):
 
     def __repr__(self):
         return f"<SessionTemplate {self.title}>"
-

@@ -1,6 +1,7 @@
 """
 Email sending utilities using Brevo SMTP.
 """
+
 import os
 import smtplib
 from email.mime.text import MIMEText
@@ -29,7 +30,7 @@ async def send_email(
 ) -> bool:
     """
     Send an email using Brevo SMTP.
-    
+
     Args:
         to_email: Recipient email address
         subject: Email subject line
@@ -37,21 +38,21 @@ async def send_email(
         html_body: Optional HTML body (if not provided, plain text is used)
         from_email: Sender email (defaults to no-reply@swimbuddz.com)
         from_name: Sender name (defaults to SwimBuddz)
-    
+
     Returns:
         True if email was sent successfully, False otherwise
     """
     smtp_password = os.environ.get("BREVO_KEY")
-    
+
     if not smtp_password:
         logger.warning("BREVO_KEY not found in environment - email not sent")
         logger.info(f"Would have sent email to {to_email}: {subject}")
         logger.debug(f"Email body: {body[:200]}...")
         return False
-    
+
     sender_email = from_email or DEFAULT_FROM_EMAIL
     sender_name = from_name or DEFAULT_FROM_NAME
-    
+
     try:
         # Create message
         if html_body:
@@ -60,21 +61,21 @@ async def send_email(
             msg.attach(MIMEText(html_body, "html"))
         else:
             msg = MIMEText(body, "plain")
-        
+
         msg["Subject"] = subject
         msg["From"] = f"{sender_name} <{sender_email}>"
         msg["To"] = to_email
-        
+
         logger.info(f"Sending email to {to_email}: {subject}")
-        
+
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
             server.starttls()
             server.login(SMTP_USERNAME, smtp_password)
             server.sendmail(sender_email, to_email, msg.as_string())
-        
+
         logger.info(f"Email sent successfully to {to_email}")
         return True
-        
+
     except smtplib.SMTPAuthenticationError as e:
         logger.error(f"SMTP authentication failed: {e}")
         return False
@@ -97,7 +98,7 @@ async def send_enrollment_confirmation_email(
     Send enrollment confirmation email to a member.
     """
     subject = f"Welcome to {program_name}! Your enrollment is confirmed."
-    
+
     body = f"""Hi {member_name},
 
 Congratulations! Your enrollment in the SwimBuddz Academy has been confirmed.
@@ -169,7 +170,7 @@ See you in the water!
 </body>
 </html>
 """
-    
+
     return await send_email(to_email, subject, body, html_body)
 
 
@@ -184,10 +185,12 @@ async def send_payment_approved_email(
     Send payment approval notification to a member.
     """
     purpose_display = purpose.replace("_", " ").title()
-    amount_display = f"₦{amount:,.0f}" if currency == "NGN" else f"{currency} {amount:,.2f}"
-    
+    amount_display = (
+        f"₦{amount:,.0f}" if currency == "NGN" else f"{currency} {amount:,.2f}"
+    )
+
     subject = f"Payment Approved - {purpose_display}"
-    
+
     body = f"""Hi there,
 
 Great news! Your manual payment has been verified and approved.
@@ -248,6 +251,5 @@ Thank you for being part of SwimBuddz!
 </body>
 </html>
 """
-    
-    return await send_email(to_email, subject, body, html_body)
 
+    return await send_email(to_email, subject, body, html_body)

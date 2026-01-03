@@ -5,7 +5,10 @@ from typing import List
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.db.session import get_async_db
-from services.sessions_service.models import Session, SessionLocation, SessionType, SessionTemplate
+from services.sessions_service.models import (
+    Session,
+    SessionTemplate,
+)
 from services.sessions_service.template_schemas import (
     GenerateSessionsRequest,
     SessionTemplateCreate,

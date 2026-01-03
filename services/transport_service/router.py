@@ -545,7 +545,9 @@ async def get_session_ride_configs(
             session_data = response.json()
 
             # Extract needed fields - sessions service uses starts_at, not start_time
-            start_time_str = session_data.get("starts_at") or session_data.get("start_time")
+            start_time_str = session_data.get("starts_at") or session_data.get(
+                "start_time"
+            )
             session_start_time = datetime.fromisoformat(
                 start_time_str.replace("Z", "+00:00")
             )

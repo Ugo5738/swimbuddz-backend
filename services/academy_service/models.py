@@ -7,7 +7,7 @@ from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from sqlalchemy import JSON, Boolean, DateTime
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import Float, ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,8 +42,6 @@ class LocationType(str, enum.Enum):
     POOL = "pool"
     OPEN_WATER = "open_water"
     REMOTE = "remote"
-
-
 
 
 class EnrollmentStatus(str, enum.Enum):
@@ -204,7 +202,9 @@ class ProgramCurriculum(Base):
     # Relationships
     program = relationship("Program", back_populates="curricula")
     weeks = relationship(
-        "CurriculumWeek", back_populates="curriculum", order_by="CurriculumWeek.order_index"
+        "CurriculumWeek",
+        back_populates="curriculum",
+        order_by="CurriculumWeek.order_index",
     )
 
 
@@ -231,7 +231,9 @@ class CurriculumWeek(Base):
     # Relationships
     curriculum = relationship("ProgramCurriculum", back_populates="weeks")
     lessons = relationship(
-        "CurriculumLesson", back_populates="week", order_by="CurriculumLesson.order_index"
+        "CurriculumLesson",
+        back_populates="week",
+        order_by="CurriculumLesson.order_index",
     )
 
 
@@ -368,8 +370,6 @@ class Cohort(Base):
 
     def __repr__(self):
         return f"<Cohort {self.name} ({self.status})>"
-
-
 
 
 # ============================================================================

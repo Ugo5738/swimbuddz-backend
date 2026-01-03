@@ -331,12 +331,13 @@ async def _validate_and_apply_discount(
     purpose: PaymentPurpose,
     original_amount: float,
     member_auth_id: str,
-    components: dict[str, float] | None = None,  # e.g., {"community": 20000, "club": 150000}
+    components: dict[str, float]
+    | None = None,  # e.g., {"community": 20000, "club": 150000}
 ) -> tuple[float, float | None, Discount | None, str | None]:
     """
     Validate and apply a discount code if provided.
     Returns: (final_amount, discount_applied, discount_obj, applies_to_component)
-    
+
     Smart Component Matching:
     - If payment is CLUB_BUNDLE and discount only applies to COMMUNITY,
       discount is calculated on the COMMUNITY portion only.
@@ -384,17 +385,17 @@ async def _validate_and_apply_discount(
     # Smart Component Matching
     applicable_purposes = [p.upper() for p in (discount.applies_to or [])]
     purpose_upper = purpose.value.upper()
-    
+
     # Determine what amount the discount applies to
     applicable_amount = original_amount
     applies_to_component = None
-    
+
     if applicable_purposes:
         # Direct match - discount applies to the exact purpose
         if purpose_upper in applicable_purposes:
             applicable_amount = original_amount
             applies_to_component = purpose_upper.lower()
-        
+
         # Smart component matching for bundles
         elif purpose_upper == "CLUB_BUNDLE" and components:
             # Check if discount applies to COMMUNITY portion
@@ -624,9 +625,18 @@ async def create_payment_intent(
 
     if payload.discount_code:
         # Get components for smart discount matching (CLUB_BUNDLE has components in metadata)
-        discount_components = payment_metadata.get("components") if payload.purpose == PaymentPurpose.CLUB_BUNDLE else None
-        
-        amount, discount_applied, discount_obj, applies_to_component = await _validate_and_apply_discount(
+        discount_components = (
+            payment_metadata.get("components")
+            if payload.purpose == PaymentPurpose.CLUB_BUNDLE
+            else None
+        )
+
+        (
+            amount,
+            discount_applied,
+            discount_obj,
+            applies_to_component,
+        ) = await _validate_and_apply_discount(
             db=db,
             discount_code=payload.discount_code,
             purpose=payload.purpose,
@@ -991,7 +1001,9 @@ class DiscountPreviewRequest(BaseModel):
     purpose: str  # e.g., "club", "community", "club_bundle", "academy_cohort"
     subtotal: float  # The pre-discount total amount
     # Component breakdown for smart discount matching (optional)
-    components: dict[str, float] | None = None  # e.g., {"community": 20000, "club": 150000}
+    components: dict[str, float] | None = (
+        None  # e.g., {"community": 20000, "club": 150000}
+    )
 
 
 class DiscountPreviewResponse(BaseModel):
@@ -1005,7 +1017,6 @@ class DiscountPreviewResponse(BaseModel):
     message: str | None = None
 
 
-
 @router.post("/discounts/preview", response_model=DiscountPreviewResponse)
 async def preview_discount(
     payload: DiscountPreviewRequest,
@@ -1016,15 +1027,15 @@ async def preview_discount(
     Preview a discount code without creating a payment.
     Returns the calculated discount amount for display before checkout.
     Does NOT increment usage count.
-    
+
     Smart Component Matching:
-    - If discount applies to COMMUNITY and payment is CLUB_BUNDLE, 
+    - If discount applies to COMMUNITY and payment is CLUB_BUNDLE,
       discount only applies to the COMMUNITY portion.
     """
     from libs.common.datetime_utils import utc_now
 
     code = payload.code.upper().strip()
-    
+
     # Lookup discount code
     query = select(Discount).where(
         Discount.code == code,
@@ -1051,7 +1062,7 @@ async def preview_discount(
             final_total=payload.subtotal,
             message="Discount code is not yet active",
         )
-    
+
     if discount.valid_until and discount.valid_until < now:
         return DiscountPreviewResponse(
             valid=False,
@@ -1073,17 +1084,17 @@ async def preview_discount(
     # For bundle payments, check if discount applies to any individual component
     applicable_purposes = [p.upper() for p in (discount.applies_to or [])]
     purpose_upper = payload.purpose.upper()
-    
+
     # Determine what amount the discount applies to
     applicable_amount = payload.subtotal
     applies_to_component = None
-    
+
     if applicable_purposes:
         # Direct match - discount applies to the exact purpose
         if purpose_upper in applicable_purposes:
             applicable_amount = payload.subtotal
             applies_to_component = purpose_upper.lower()
-        
+
         # Smart component matching for bundles
         elif purpose_upper == "CLUB_BUNDLE" and payload.components:
             # Check if discount applies to COMMUNITY portion
@@ -1100,7 +1111,7 @@ async def preview_discount(
                     valid=False,
                     code=code,
                     final_total=payload.subtotal,
-                    message=f"Discount code does not apply to any component in this payment",
+                    message="Discount code does not apply to any component in this payment",
                 )
         else:
             # Discount doesn't apply to this purpose
@@ -1120,7 +1131,7 @@ async def preview_discount(
     # Ensure discount doesn't exceed applicable amount
     discount_amount = min(discount_amount, applicable_amount)
     final_total = max(payload.subtotal - discount_amount, 0)
-    
+
     # Build message
     if applies_to_component:
         component_label = applies_to_component.replace("_", " ").title()
@@ -1300,29 +1311,28 @@ async def submit_proof_of_payment(
         )
     )
     payment = result.scalar_one_or_none()
-    
+
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
-    
+
     if payment.payment_method != "manual_transfer":
         raise HTTPException(
-            status_code=400,
-            detail="Proof upload is only for manual transfer payments"
+            status_code=400, detail="Proof upload is only for manual transfer payments"
         )
-    
+
     if payment.status not in [PaymentStatus.PENDING, PaymentStatus.FAILED]:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot upload proof for payment in status: {payment.status.value}"
+            detail=f"Cannot upload proof for payment in status: {payment.status.value}",
         )
-    
+
     payment.proof_of_payment_url = payload.proof_url
     payment.status = PaymentStatus.PENDING_REVIEW
     payment.admin_review_note = None  # Clear any previous rejection note
-    
+
     await db.commit()
     await db.refresh(payment)
-    
+
     logger.info(f"Proof submitted for payment {reference}, status: PENDING_REVIEW")
     return payment
 
@@ -1356,45 +1366,48 @@ async def approve_manual_payment(
     This marks the payment as PAID and applies entitlements.
     Admin only.
     """
-    result = await db.execute(
-        select(Payment).where(Payment.reference == reference)
-    )
+    result = await db.execute(select(Payment).where(Payment.reference == reference))
     payment = result.scalar_one_or_none()
-    
+
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
-    
+
     if payment.status != PaymentStatus.PENDING_REVIEW:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot approve payment in status: {payment.status.value}"
+            detail=f"Cannot approve payment in status: {payment.status.value}",
         )
-    
+
     from datetime import datetime, timezone
-    
+
     payment.status = PaymentStatus.PAID
     payment.provider = "manual_transfer"
     payment.paid_at = datetime.now(timezone.utc)
     payment.admin_review_note = payload.note
-    
+
     await db.commit()
     await db.refresh(payment)
-    
+
     logger.info(f"Payment {reference} approved by admin {current_user.email}")
-    
+
     # Apply entitlements (same logic as Paystack webhook)
     try:
-        await _apply_payment_entitlements(payment.id, db)
+        await _apply_entitlement(payment)
+        payment.entitlement_applied_at = datetime.now(timezone.utc)
+        payment.entitlement_error = None
+        await db.commit()
+        await db.refresh(payment)
     except Exception as e:
         logger.error(f"Failed to apply entitlements for {reference}: {e}")
         payment.entitlement_error = str(e)
         await db.commit()
         await db.refresh(payment)
-    
+
     # Send email notification to member
     if payment.payer_email:
         try:
             from libs.common.email import send_payment_approved_email
+
             await send_payment_approved_email(
                 to_email=payment.payer_email,
                 payment_reference=payment.reference,
@@ -1404,7 +1417,7 @@ async def approve_manual_payment(
             )
         except Exception as e:
             logger.warning(f"Failed to send approval email for {reference}: {e}")
-    
+
     return payment
 
 
@@ -1420,27 +1433,25 @@ async def reject_manual_payment(
     User can re-upload proof to try again.
     Admin only.
     """
-    result = await db.execute(
-        select(Payment).where(Payment.reference == reference)
-    )
+    result = await db.execute(select(Payment).where(Payment.reference == reference))
     payment = result.scalar_one_or_none()
-    
+
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
-    
+
     if payment.status != PaymentStatus.PENDING_REVIEW:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot reject payment in status: {payment.status.value}"
+            detail=f"Cannot reject payment in status: {payment.status.value}",
         )
-    
+
     # Set back to FAILED so user can re-upload
     payment.status = PaymentStatus.FAILED
     payment.admin_review_note = payload.note or "Payment proof rejected by admin"
-    
+
     await db.commit()
     await db.refresh(payment)
-    
+
     logger.info(f"Payment {reference} rejected by admin {current_user.email}")
-    
+
     return payment
