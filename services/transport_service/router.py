@@ -254,7 +254,7 @@ async def delete_ride_area(
     area_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Delete a ride area."""
+    """Delete a ride area and its pickup locations."""
     query = select(RideArea).where(RideArea.id == area_id)
     result = await db.execute(query)
     area = result.scalar_one_or_none()
@@ -263,6 +263,16 @@ async def delete_ride_area(
         from fastapi import HTTPException
 
         raise HTTPException(status_code=404, detail="Ride area not found")
+
+    # Delete pickup locations first to avoid FK constraint violation
+    from sqlalchemy import delete
+
+    await db.execute(delete(PickupLocation).where(PickupLocation.area_id == area_id))
+
+    # Delete associated session ride configs
+    await db.execute(
+        delete(SessionRideConfig).where(SessionRideConfig.ride_area_id == area_id)
+    )
 
     await db.delete(area)
     await db.commit()
