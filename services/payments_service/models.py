@@ -14,10 +14,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 
 class PaymentStatus(str, enum.Enum):
-    PENDING = "pending"
+    PENDING = "pending"  # Initial state, awaiting payment
+    PENDING_REVIEW = "pending_review"  # Manual payment submitted, awaiting admin review
     PAID = "paid"
     WAIVED = "waived"
     FAILED = "failed"
+
+
+class PaymentMethod(str, enum.Enum):
+    PAYSTACK = "paystack"  # Online payment via Paystack
+    MANUAL_TRANSFER = "manual_transfer"  # Bank transfer with proof upload
 
 
 class PaymentPurpose(str, enum.Enum):
@@ -65,6 +71,15 @@ class Payment(Base):
     paid_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    # Payment method (paystack for online, manual_transfer for bank transfer)
+    payment_method: Mapped[str | None] = mapped_column(
+        String(32), default="paystack", nullable=True
+    )
+    # Proof of payment URL for manual transfers
+    proof_of_payment_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Admin review note (for rejected payments)
+    admin_review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     entitlement_applied_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

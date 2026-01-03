@@ -1,15 +1,15 @@
 """initial_migration
 
-Revision ID: 2df635f44586
+Revision ID: 453ddf388978
 Revises: 
-Create Date: 2026-01-01 09:02:03.730516
+Create Date: 2026-01-03 09:33:20.678322
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '2df635f44586'
+revision = '453ddf388978'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -43,10 +43,13 @@ def upgrade() -> None:
     sa.Column('purpose', sa.Enum('COMMUNITY', 'CLUB', 'CLUB_BUNDLE', 'ACADEMY_COHORT', 'SESSION_FEE', name='payment_purpose_enum'), nullable=False),
     sa.Column('amount', sa.Float(), nullable=False),
     sa.Column('currency', sa.String(length=8), nullable=False),
-    sa.Column('status', sa.Enum('PENDING', 'PAID', 'WAIVED', 'FAILED', name='payment_status_enum'), nullable=False),
+    sa.Column('status', sa.Enum('PENDING', 'PENDING_REVIEW', 'PAID', 'WAIVED', 'FAILED', name='payment_status_enum'), nullable=False),
     sa.Column('provider', sa.String(length=32), nullable=True),
     sa.Column('provider_reference', sa.String(length=128), nullable=True),
     sa.Column('paid_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('payment_method', sa.String(length=32), nullable=True),
+    sa.Column('proof_of_payment_url', sa.String(length=512), nullable=True),
+    sa.Column('admin_review_note', sa.Text(), nullable=True),
     sa.Column('entitlement_applied_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('entitlement_error', sa.Text(), nullable=True),
     sa.Column('metadata', postgresql.JSONB(astext_type=sa.Text()), nullable=True),

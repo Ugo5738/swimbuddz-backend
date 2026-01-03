@@ -94,9 +94,23 @@ async def admin_delete_member_academy_records(
 
 @router.get("/programs", response_model=List[ProgramResponse])
 async def list_programs(
+    published_only: bool = False,
     db: AsyncSession = Depends(get_async_db),
 ):
+    """List all programs. Use published_only=true for member-facing views."""
     query = select(Program).order_by(Program.name)
+    if published_only:
+        query = query.where(Program.is_published == True)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/programs/published", response_model=List[ProgramResponse])
+async def list_published_programs(
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List only published programs (for member-facing pages)."""
+    query = select(Program).where(Program.is_published == True).order_by(Program.name)
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -247,12 +261,14 @@ async def list_cohorts(
 async def list_open_cohorts(
     db: AsyncSession = Depends(get_async_db),
 ):
-    """List all cohorts with status OPEN."""
+    """List all cohorts with status OPEN, only from published programs."""
     from sqlalchemy.orm import selectinload
 
     query = (
         select(Cohort)
+        .join(Program, Cohort.program_id == Program.id)
         .where(Cohort.status == CohortStatus.OPEN)
+        .where(Program.is_published == True)  # Only show cohorts from published programs
         .options(selectinload(Cohort.program))
         .order_by(Cohort.start_date.asc())
     )
@@ -494,6 +510,17 @@ async def self_enroll(
                 detail="Cohort does not belong to the specified program",
             )
         program_id = cohort.program_id
+        
+        # Check if the cohort's program is published
+        program_query = select(Program).where(Program.id == cohort.program_id)
+        program_result = await db.execute(program_query)
+        program = program_result.scalar_one_or_none()
+        
+        if not program or not program.is_published:
+            raise HTTPException(
+                status_code=400,
+                detail="This program is not yet available for enrollment.",
+            )
 
         # Validation for mid-entry if cohort is selected
         if cohort.status != CohortStatus.OPEN:
@@ -527,6 +554,13 @@ async def self_enroll(
         program = program_result.scalar_one_or_none()
         if not program:
             raise HTTPException(status_code=404, detail="Program not found")
+        
+        # Check if program is published
+        if not program.is_published:
+            raise HTTPException(
+                status_code=400,
+                detail="This program is not yet available for enrollment."
+            )
 
     # 3. Check Existing Enrollment/Request
     # Only block enrolling in the SAME COHORT twice.

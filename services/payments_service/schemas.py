@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from services.payments_service.models import PaymentPurpose, PaymentStatus
+from services.payments_service.models import PaymentMethod, PaymentPurpose, PaymentStatus
 
 
 class ClubBillingCycle(str, enum.Enum):
@@ -16,6 +16,7 @@ class ClubBillingCycle(str, enum.Enum):
 class CreatePaymentIntentRequest(BaseModel):
     purpose: PaymentPurpose
     currency: str = Field(default="NGN", min_length=3, max_length=8)
+    payment_method: str = Field(default="paystack")  # paystack or manual_transfer
 
     years: int = Field(default=1, ge=1, le=5)
     months: int = Field(default=1, ge=1, le=24)
@@ -65,6 +66,9 @@ class PaymentResponse(BaseModel):
     status: PaymentStatus
     provider: Optional[str] = None
     provider_reference: Optional[str] = None
+    payment_method: Optional[str] = None  # paystack or manual_transfer
+    proof_of_payment_url: Optional[str] = None  # URL for uploaded proof
+    admin_review_note: Optional[str] = None  # Note from admin review
     paid_at: Optional[datetime] = None
     entitlement_applied_at: Optional[datetime] = None
     entitlement_error: Optional[str] = None
@@ -76,9 +80,19 @@ class PaymentResponse(BaseModel):
 
 
 class CompletePaymentRequest(BaseModel):
-    provider: str = Field(default="manual", min_length=2, max_length=32)
+    provider: str = Field(default="paystack", min_length=2, max_length=32)
     provider_reference: Optional[str] = Field(default=None, max_length=128)
     paid_at: Optional[datetime] = None
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class SubmitProofRequest(BaseModel):
+    """Submit proof of payment for manual transfer."""
+    proof_url: str = Field(..., max_length=512)  # URL of uploaded proof image
+
+
+class AdminReviewRequest(BaseModel):
+    """Admin review action for a manual payment."""
     note: Optional[str] = Field(default=None, max_length=500)
 
 

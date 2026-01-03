@@ -37,6 +37,9 @@ class RideAreaUpdate(BaseModel):
 class PickupLocationBase(BaseModel):
     name: str
     description: Optional[str] = None
+    address: Optional[str] = None  # Exact street address
+    latitude: Optional[float] = None  # GPS coordinates
+    longitude: Optional[float] = None
 
 
 class PickupLocationCreate(PickupLocationBase):
@@ -284,6 +287,9 @@ async def add_pickup_location(
         area_id=area_id,
         name=location_in.name,
         description=location_in.description,
+        address=location_in.address,
+        latitude=location_in.latitude,
+        longitude=location_in.longitude,
         is_active=True,
     )
     db.add(location)
@@ -538,9 +544,10 @@ async def get_session_ride_configs(
             response.raise_for_status()
             session_data = response.json()
 
-            # Extract needed fields
+            # Extract needed fields - sessions service uses starts_at, not start_time
+            start_time_str = session_data.get("starts_at") or session_data.get("start_time")
             session_start_time = datetime.fromisoformat(
-                session_data["start_time"].replace("Z", "+00:00")
+                start_time_str.replace("Z", "+00:00")
             )
             session_location = session_data["location"]
         except httpx.HTTPError:

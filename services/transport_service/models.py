@@ -55,6 +55,9 @@ class PickupLocation(Base):
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(String, nullable=True)
+    address: Mapped[str] = mapped_column(String, nullable=True)  # Exact street address
+    latitude: Mapped[float] = mapped_column(Float, nullable=True)  # Optional GPS coords
+    longitude: Mapped[float] = mapped_column(Float, nullable=True)
 
     area_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("ride_areas.id"), nullable=False

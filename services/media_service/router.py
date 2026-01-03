@@ -403,6 +403,57 @@ async def upload_coach_document(
     return await _build_media_item_response(db, db_media)
 
 
+@router.post("/uploads/payment-proofs", response_model=MediaItemResponse)
+async def upload_payment_proof(
+    file: UploadFile = File(...),
+    payment_reference: str = Form(...),
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Allow authenticated users to upload proof of payment for manual bank transfers.
+    Accepts PDFs and images; stores as DOCUMENT media type.
+    """
+    content_type = file.content_type or ""
+    is_image = content_type.startswith("image/")
+    allowed_types = {"application/pdf"}
+    if not (is_image or content_type in allowed_types):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be a PDF or image",
+        )
+
+    file_data = await file.read()
+
+    # Store under payment-proofs prefix with the payment reference for traceability
+    original_name = file.filename or f"payment_proof_{uuid.uuid4()}"
+    file_ext = original_name.split(".")[-1] if "." in original_name else "bin"
+    storage_name = f"payment-proofs/{payment_reference}/{uuid.uuid4()}.{file_ext}"
+
+    file_url, thumbnail_url = await storage_service.upload_media(
+        file_data,
+        storage_name,
+        content_type or "application/octet-stream",
+    )
+
+    db_media = MediaItem(
+        media_type=MediaType.DOCUMENT,
+        file_url=file_url,
+        thumbnail_url=thumbnail_url if is_image else None,
+        title=f"Payment Proof - {payment_reference}",
+        description=f"Proof of payment for reference {payment_reference}",
+        alt_text=original_name,
+        uploaded_by=current_user.user_id,
+        is_processed=True,
+    )
+    db.add(db_media)
+    await db.commit()
+    await db.refresh(db_media)
+
+    return await _build_media_item_response(db, db_media)
+
+
+
 @router.get("/media", response_model=List[MediaItemResponse])
 async def list_media(
     media_type: Optional[str] = None,
