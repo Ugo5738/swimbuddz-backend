@@ -18,12 +18,13 @@ from services.academy_service.models import (
 class ProgramBase(BaseModel):
     name: str
     description: Optional[str] = None
+    cover_image_url: Optional[str] = None
     level: ProgramLevel
     duration_weeks: int
     default_capacity: int = 10
     # Pricing
     currency: str = "NGN"
-    price_amount: int = 0  # In smallest unit (kobo/cents)
+    price_amount: int = 0  # In naira (major unit)
     billing_type: BillingType = BillingType.ONE_TIME
     # Content
     curriculum_json: Optional[Dict[str, Any]] = None
@@ -39,6 +40,7 @@ class ProgramCreate(ProgramBase):
 class ProgramUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    cover_image_url: Optional[str] = None
     level: Optional[ProgramLevel] = None
     duration_weeks: Optional[int] = None
     default_capacity: Optional[int] = None
