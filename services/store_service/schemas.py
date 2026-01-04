@@ -173,6 +173,7 @@ class ProductResponse(ProductBase):
 
 class ProductDetail(ProductResponse):
     """Full product detail with variants and images."""
+
     variants: list[ProductVariantWithInventory] = []
     images: list[ProductImageResponse] = []
     category: Optional[CategoryResponse] = None
@@ -180,6 +181,7 @@ class ProductDetail(ProductResponse):
 
 class ProductListResponse(BaseModel):
     """Paginated product list."""
+
     items: list[ProductResponse]
     total: int
     page: int
@@ -246,12 +248,14 @@ class InventoryItemResponse(BaseModel):
 
 class InventoryAdjustment(BaseModel):
     """Adjust inventory (restock, correction, etc.)."""
+
     quantity: int = Field(..., description="Positive to add, negative to subtract")
     notes: Optional[str] = None
 
 
 class LowStockItem(BaseModel):
     """Low stock alert item."""
+
     variant_id: uuid.UUID
     sku: str
     product_name: str
@@ -357,6 +361,7 @@ class PickupLocationResponse(PickupLocationBase):
 
 class DeliveryAddress(BaseModel):
     """Delivery address for home delivery."""
+
     street: str = Field(..., max_length=255)
     city: str = Field(..., max_length=100)
     state: str = Field(..., max_length=100)
@@ -366,6 +371,7 @@ class DeliveryAddress(BaseModel):
 
 class CheckoutStartRequest(BaseModel):
     """Start checkout process."""
+
     fulfillment_type: FulfillmentType = FulfillmentType.PICKUP
     pickup_location_id: Optional[uuid.UUID] = None
     delivery_address: Optional[DeliveryAddress] = None
@@ -375,6 +381,7 @@ class CheckoutStartRequest(BaseModel):
 
 class CheckoutStartResponse(BaseModel):
     """Checkout started, pending payment."""
+
     order_id: uuid.UUID
     order_number: str
     total_ngn: Decimal
@@ -384,11 +391,13 @@ class CheckoutStartResponse(BaseModel):
 
 class PaymentInitRequest(BaseModel):
     """Initialize payment for order."""
+
     order_id: uuid.UUID
 
 
 class PaymentInitResponse(BaseModel):
     """Payment initialization response."""
+
     payment_reference: str
     authorization_url: str
     access_code: str
@@ -453,6 +462,7 @@ class OrderResponse(BaseModel):
 
 class OrderListResponse(BaseModel):
     """Paginated order list."""
+
     items: list[OrderResponse]
     total: int
     page: int
@@ -461,6 +471,7 @@ class OrderListResponse(BaseModel):
 
 class OrderStatusUpdate(BaseModel):
     """Update order status (admin)."""
+
     status: OrderStatus
     admin_notes: Optional[str] = None
 
@@ -472,6 +483,7 @@ class OrderStatusUpdate(BaseModel):
 
 class StoreCreditCreate(BaseModel):
     """Issue store credit (admin)."""
+
     member_auth_id: str
     amount_ngn: Decimal = Field(..., gt=0)
     source_type: StoreCreditSourceType = StoreCreditSourceType.ADMIN
@@ -497,5 +509,6 @@ class StoreCreditResponse(BaseModel):
 
 class MemberStoreCreditSummary(BaseModel):
     """Summary of member's store credits."""
+
     total_balance_ngn: Decimal
     credits: list[StoreCreditResponse]

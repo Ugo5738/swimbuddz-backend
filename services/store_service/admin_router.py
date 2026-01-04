@@ -111,7 +111,9 @@ async def list_all_categories(
     return result.scalars().all()
 
 
-@router.post("/categories", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/categories", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_category(
     category_in: CategoryCreate,
     current_user: AuthUser = Depends(require_admin),
@@ -123,7 +125,9 @@ async def create_category(
         select(Category).where(Category.slug == category_in.slug)
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Category with this slug already exists")
+        raise HTTPException(
+            status_code=400, detail="Category with this slug already exists"
+        )
 
     category = Category(**category_in.model_dump())
     db.add(category)
@@ -131,8 +135,12 @@ async def create_category(
     await db.refresh(category)
 
     await log_audit(
-        db, AuditEntityType.CATEGORY, category.id, "created",
-        current_user.user_id, new_value=category_in.model_dump()
+        db,
+        AuditEntityType.CATEGORY,
+        category.id,
+        "created",
+        current_user.user_id,
+        new_value=category_in.model_dump(),
     )
     await db.commit()
 
@@ -165,8 +173,13 @@ async def update_category(
         setattr(category, field, value)
 
     await log_audit(
-        db, AuditEntityType.CATEGORY, category.id, "updated",
-        current_user.user_id, old_value=old_values, new_value=update_data
+        db,
+        AuditEntityType.CATEGORY,
+        category.id,
+        "updated",
+        current_user.user_id,
+        old_value=old_values,
+        new_value=update_data,
     )
 
     await db.commit()
@@ -190,8 +203,7 @@ async def delete_category(
 
     category.is_active = False
     await log_audit(
-        db, AuditEntityType.CATEGORY, category.id, "archived",
-        current_user.user_id
+        db, AuditEntityType.CATEGORY, category.id, "archived", current_user.user_id
     )
     await db.commit()
     return None
@@ -244,7 +256,9 @@ async def list_all_products(
     )
 
 
-@router.post("/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_product(
     product_in: ProductCreate,
     current_user: AuthUser = Depends(require_admin),
@@ -252,11 +266,11 @@ async def create_product(
 ):
     """Create a new product."""
     # Check slug uniqueness
-    existing = await db.execute(
-        select(Product).where(Product.slug == product_in.slug)
-    )
+    existing = await db.execute(select(Product).where(Product.slug == product_in.slug))
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Product with this slug already exists")
+        raise HTTPException(
+            status_code=400, detail="Product with this slug already exists"
+        )
 
     product = Product(**product_in.model_dump())
     db.add(product)
@@ -264,8 +278,12 @@ async def create_product(
     await db.refresh(product)
 
     await log_audit(
-        db, AuditEntityType.PRODUCT, product.id, "created",
-        current_user.user_id, new_value={"name": product.name, "slug": product.slug}
+        db,
+        AuditEntityType.PRODUCT,
+        product.id,
+        "created",
+        current_user.user_id,
+        new_value={"name": product.name, "slug": product.slug},
     )
     await db.commit()
 
@@ -321,15 +339,22 @@ async def update_product(
     # Log price change specifically
     if "base_price_ngn" in update_data:
         await log_audit(
-            db, AuditEntityType.PRODUCT, product.id, "price_changed",
+            db,
+            AuditEntityType.PRODUCT,
+            product.id,
+            "price_changed",
             current_user.user_id,
             old_value={"base_price_ngn": old_price},
-            new_value={"base_price_ngn": float(update_data["base_price_ngn"])}
+            new_value={"base_price_ngn": float(update_data["base_price_ngn"])},
         )
     else:
         await log_audit(
-            db, AuditEntityType.PRODUCT, product.id, "updated",
-            current_user.user_id, new_value=update_data
+            db,
+            AuditEntityType.PRODUCT,
+            product.id,
+            "updated",
+            current_user.user_id,
+            new_value=update_data,
         )
 
     await db.commit()
@@ -355,8 +380,7 @@ async def archive_product(
 
     product.status = ProductStatus.ARCHIVED
     await log_audit(
-        db, AuditEntityType.PRODUCT, product.id, "archived",
-        current_user.user_id
+        db, AuditEntityType.PRODUCT, product.id, "archived", current_user.user_id
     )
     await db.commit()
     return None
@@ -367,7 +391,11 @@ async def archive_product(
 # ============================================================================
 
 
-@router.post("/products/{product_id}/variants", response_model=ProductVariantResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/products/{product_id}/variants",
+    response_model=ProductVariantResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_variant(
     product_id: uuid.UUID,
     variant_in: ProductVariantCreate,
@@ -385,12 +413,11 @@ async def create_variant(
         select(ProductVariant).where(ProductVariant.sku == variant_in.sku)
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Variant with this SKU already exists")
+        raise HTTPException(
+            status_code=400, detail="Variant with this SKU already exists"
+        )
 
-    variant = ProductVariant(
-        product_id=product_id,
-        **variant_in.model_dump()
-    )
+    variant = ProductVariant(product_id=product_id, **variant_in.model_dump())
     db.add(variant)
     await db.flush()
 
@@ -403,7 +430,10 @@ async def create_variant(
     return variant
 
 
-@router.patch("/products/{product_id}/variants/{variant_id}", response_model=ProductVariantResponse)
+@router.patch(
+    "/products/{product_id}/variants/{variant_id}",
+    response_model=ProductVariantResponse,
+)
 async def update_variant(
     product_id: uuid.UUID,
     variant_id: uuid.UUID,
@@ -431,7 +461,10 @@ async def update_variant(
     return variant
 
 
-@router.delete("/products/{product_id}/variants/{variant_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/products/{product_id}/variants/{variant_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 async def delete_variant(
     product_id: uuid.UUID,
     variant_id: uuid.UUID,
@@ -459,7 +492,11 @@ async def delete_variant(
 # ============================================================================
 
 
-@router.post("/products/{product_id}/images", response_model=ProductImageResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/products/{product_id}/images",
+    response_model=ProductImageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def add_product_image(
     product_id: uuid.UUID,
     image_in: ProductImageCreate,
@@ -471,17 +508,16 @@ async def add_product_image(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    image = ProductImage(
-        product_id=product_id,
-        **image_in.model_dump()
-    )
+    image = ProductImage(product_id=product_id, **image_in.model_dump())
     db.add(image)
     await db.commit()
     await db.refresh(image)
     return image
 
 
-@router.delete("/products/{product_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/products/{product_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_product_image(
     product_id: uuid.UUID,
     image_id: uuid.UUID,
@@ -516,10 +552,7 @@ async def list_inventory(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List inventory items."""
-    query = (
-        select(InventoryItem)
-        .options(selectinload(InventoryItem.variant))
-    )
+    query = select(InventoryItem).options(selectinload(InventoryItem.variant))
 
     if low_stock_only:
         query = query.where(
@@ -564,7 +597,9 @@ async def get_low_stock_items(
         LowStockItem(
             variant_id=item.variant_id,
             sku=item.variant.sku,
-            product_name=item.variant.product.name if item.variant.product else "Unknown",
+            product_name=item.variant.product.name
+            if item.variant.product
+            else "Unknown",
             variant_name=item.variant.name,
             quantity_on_hand=item.quantity_on_hand,
             quantity_available=item.quantity_available,
@@ -598,7 +633,7 @@ async def adjust_inventory(
     if new_quantity < item.quantity_reserved:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot reduce below reserved quantity ({item.quantity_reserved})"
+            detail=f"Cannot reduce below reserved quantity ({item.quantity_reserved})",
         )
 
     item.quantity_on_hand = new_quantity
@@ -622,7 +657,10 @@ async def adjust_inventory(
     db.add(movement)
 
     await log_audit(
-        db, AuditEntityType.INVENTORY, item.id, "stock_adjusted",
+        db,
+        AuditEntityType.INVENTORY,
+        item.id,
+        "stock_adjusted",
         current_user.user_id,
         old_value={"quantity_on_hand": old_quantity},
         new_value={"quantity_on_hand": new_quantity},
@@ -740,7 +778,10 @@ async def update_order_status(
         # TODO: Release inventory reservations
 
     await log_audit(
-        db, AuditEntityType.ORDER, order.id, "status_changed",
+        db,
+        AuditEntityType.ORDER,
+        order.id,
+        "status_changed",
         current_user.user_id,
         old_value={"status": old_status.value},
         new_value={"status": status_update.status.value},
@@ -769,12 +810,14 @@ async def issue_refund(
         raise HTTPException(status_code=404, detail="Order not found")
 
     if not order.member_auth_id:
-        raise HTTPException(status_code=400, detail="Cannot issue credit to guest order")
+        raise HTTPException(
+            status_code=400, detail="Cannot issue credit to guest order"
+        )
 
     if amount_ngn > order.total_ngn:
         raise HTTPException(
             status_code=400,
-            detail=f"Refund amount cannot exceed order total ({order.total_ngn})"
+            detail=f"Refund amount cannot exceed order total ({order.total_ngn})",
         )
 
     # Create store credit
@@ -794,7 +837,10 @@ async def issue_refund(
         order.status = OrderStatus.REFUNDED
 
     await log_audit(
-        db, AuditEntityType.STORE_CREDIT, credit.id, "issued",
+        db,
+        AuditEntityType.STORE_CREDIT,
+        credit.id,
+        "issued",
         current_user.user_id,
         new_value={"amount_ngn": float(amount_ngn), "order_id": str(order_id)},
         notes=reason,
@@ -819,12 +865,18 @@ async def list_all_pickup_locations(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all pickup locations (including inactive)."""
-    query = select(PickupLocation).order_by(PickupLocation.sort_order, PickupLocation.name)
+    query = select(PickupLocation).order_by(
+        PickupLocation.sort_order, PickupLocation.name
+    )
     result = await db.execute(query)
     return result.scalars().all()
 
 
-@router.post("/pickup-locations", response_model=PickupLocationResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/pickup-locations",
+    response_model=PickupLocationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_pickup_location(
     location_in: PickupLocationCreate,
     current_user: AuthUser = Depends(require_admin),
@@ -837,8 +889,12 @@ async def create_pickup_location(
     await db.refresh(location)
 
     await log_audit(
-        db, AuditEntityType.PICKUP_LOCATION, location.id, "created",
-        current_user.user_id, new_value=location_in.model_dump()
+        db,
+        AuditEntityType.PICKUP_LOCATION,
+        location.id,
+        "created",
+        current_user.user_id,
+        new_value=location_in.model_dump(),
     )
     await db.commit()
 
@@ -865,8 +921,12 @@ async def update_pickup_location(
         setattr(location, field, value)
 
     await log_audit(
-        db, AuditEntityType.PICKUP_LOCATION, location.id, "updated",
-        current_user.user_id, new_value=update_data
+        db,
+        AuditEntityType.PICKUP_LOCATION,
+        location.id,
+        "updated",
+        current_user.user_id,
+        new_value=update_data,
     )
 
     await db.commit()
@@ -874,7 +934,9 @@ async def update_pickup_location(
     return location
 
 
-@router.delete("/pickup-locations/{location_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/pickup-locations/{location_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_pickup_location(
     location_id: uuid.UUID,
     current_user: AuthUser = Depends(require_admin),
@@ -890,8 +952,11 @@ async def delete_pickup_location(
 
     location.is_active = False
     await log_audit(
-        db, AuditEntityType.PICKUP_LOCATION, location.id, "deactivated",
-        current_user.user_id
+        db,
+        AuditEntityType.PICKUP_LOCATION,
+        location.id,
+        "deactivated",
+        current_user.user_id,
     )
     await db.commit()
     return None
@@ -918,7 +983,9 @@ async def list_all_store_credits(
     return result.scalars().all()
 
 
-@router.post("/credits", response_model=StoreCreditResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/credits", response_model=StoreCreditResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_store_credit(
     credit_in: StoreCreditCreate,
     current_user: AuthUser = Depends(require_admin),
@@ -938,7 +1005,10 @@ async def create_store_credit(
     db.add(credit)
 
     await log_audit(
-        db, AuditEntityType.STORE_CREDIT, credit.id, "issued",
+        db,
+        AuditEntityType.STORE_CREDIT,
+        credit.id,
+        "issued",
         current_user.user_id,
         new_value={
             "amount_ngn": float(credit_in.amount_ngn),
@@ -969,7 +1039,11 @@ async def list_all_collections(
     return result.scalars().all()
 
 
-@router.post("/collections", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/collections",
+    response_model=CollectionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_collection(
     collection_in: CollectionCreate,
     current_user: AuthUser = Depends(require_admin),
@@ -1007,7 +1081,10 @@ async def update_collection(
     return collection
 
 
-@router.post("/collections/{collection_id}/products/{product_id}", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/collections/{collection_id}/products/{product_id}",
+    status_code=status.HTTP_201_CREATED,
+)
 async def add_product_to_collection(
     collection_id: uuid.UUID,
     product_id: uuid.UUID,
@@ -1046,7 +1123,10 @@ async def add_product_to_collection(
     return {"message": "Product added to collection"}
 
 
-@router.delete("/collections/{collection_id}/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/collections/{collection_id}/products/{product_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 async def remove_product_from_collection(
     collection_id: uuid.UUID,
     product_id: uuid.UUID,

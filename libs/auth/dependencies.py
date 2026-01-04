@@ -132,7 +132,9 @@ optional_security = HTTPBearer(auto_error=False)
 
 
 async def get_optional_user(
-    token: Annotated[Optional[HTTPAuthorizationCredentials], Depends(optional_security)],
+    token: Annotated[
+        Optional[HTTPAuthorizationCredentials], Depends(optional_security)
+    ],
 ) -> Optional[AuthUser]:
     """
     Optionally validate Supabase JWT if present.

@@ -145,7 +145,9 @@ class Category(Base):
     )
 
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
@@ -184,16 +186,18 @@ class Product(Base):
     short_description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Pricing (base, before discounts) - stored in kobo for precision
-    base_price_ngn: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2), nullable=False
-    )
+    base_price_ngn: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     compare_at_price_ngn: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(12, 2), nullable=True
     )  # "was" price for sales display
 
     # Status
     status: Mapped[ProductStatus] = mapped_column(
-        SAEnum(ProductStatus, values_callable=lambda x: [e.value for e in x], name="store_product_status_enum"),
+        SAEnum(
+            ProductStatus,
+            values_callable=lambda x: [e.value for e in x],
+            name="store_product_status_enum",
+        ),
         default=ProductStatus.DRAFT,
         server_default="draft",
     )
@@ -215,7 +219,11 @@ class Product(Base):
 
     # Sourcing
     sourcing_type: Mapped[SourcingType] = mapped_column(
-        SAEnum(SourcingType, values_callable=lambda x: [e.value for e in x], name="store_sourcing_type_enum"),
+        SAEnum(
+            SourcingType,
+            values_callable=lambda x: [e.value for e in x],
+            name="store_sourcing_type_enum",
+        ),
         default=SourcingType.STOCKED,
         server_default="stocked",
     )
@@ -283,7 +291,9 @@ class ProductVariant(Base):
     weight_grams: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Status
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
@@ -357,7 +367,9 @@ class Collection(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
 
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     created_at: Mapped[datetime] = mapped_column(
@@ -457,7 +469,9 @@ class InventoryItem(Base):
     # Relationships
     variant = relationship("ProductVariant", back_populates="inventory_item")
     movements = relationship(
-        "InventoryMovement", back_populates="inventory_item", cascade="all, delete-orphan"
+        "InventoryMovement",
+        back_populates="inventory_item",
+        cascade="all, delete-orphan",
     )
 
     @property
@@ -484,7 +498,11 @@ class InventoryMovement(Base):
     )
 
     movement_type: Mapped[InventoryMovementType] = mapped_column(
-        SAEnum(InventoryMovementType, values_callable=lambda x: [e.value for e in x], name="store_inventory_movement_type_enum"),
+        SAEnum(
+            InventoryMovementType,
+            values_callable=lambda x: [e.value for e in x],
+            name="store_inventory_movement_type_enum",
+        ),
         nullable=False,
     )
     quantity: Mapped[int] = mapped_column(
@@ -542,7 +560,11 @@ class Cart(Base):
 
     # Status
     status: Mapped[CartStatus] = mapped_column(
-        SAEnum(CartStatus, values_callable=lambda x: [e.value for e in x], name="store_cart_status_enum"),
+        SAEnum(
+            CartStatus,
+            values_callable=lambda x: [e.value for e in x],
+            name="store_cart_status_enum",
+        ),
         default=CartStatus.ACTIVE,
         server_default="active",
     )
@@ -666,7 +688,11 @@ class Order(Base):
 
     # Status
     status: Mapped[OrderStatus] = mapped_column(
-        SAEnum(OrderStatus, values_callable=lambda x: [e.value for e in x], name="store_order_status_enum"),
+        SAEnum(
+            OrderStatus,
+            values_callable=lambda x: [e.value for e in x],
+            name="store_order_status_enum",
+        ),
         default=OrderStatus.PENDING_PAYMENT,
         server_default="pending_payment",
     )
@@ -678,7 +704,11 @@ class Order(Base):
 
     # Fulfillment
     fulfillment_type: Mapped[FulfillmentType] = mapped_column(
-        SAEnum(FulfillmentType, values_callable=lambda x: [e.value for e in x], name="store_fulfillment_type_enum"),
+        SAEnum(
+            FulfillmentType,
+            values_callable=lambda x: [e.value for e in x],
+            name="store_fulfillment_type_enum",
+        ),
         default=FulfillmentType.PICKUP,
         server_default="pickup",
     )
@@ -730,7 +760,9 @@ class Order(Base):
     def generate_order_number() -> str:
         """Generate a unique order number like SB-20260104-A1B2C."""
         date_part = datetime.utcnow().strftime("%Y%m%d")
-        random_part = "".join(random.choices(string.ascii_uppercase + string.digits, k=5))
+        random_part = "".join(
+            random.choices(string.ascii_uppercase + string.digits, k=5)
+        )
         return f"SB-{date_part}-{random_part}"
 
     def __repr__(self):
@@ -807,7 +839,9 @@ class PickupLocation(Base):
     contact_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Availability
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     created_at: Mapped[datetime] = mapped_column(
@@ -834,16 +868,18 @@ class StoreCredit(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    member_auth_id: Mapped[str] = mapped_column(
-        String(255), index=True, nullable=False
-    )
+    member_auth_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
 
     amount_ngn: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     balance_ngn: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
     # Source
     source_type: Mapped[StoreCreditSourceType] = mapped_column(
-        SAEnum(StoreCreditSourceType, values_callable=lambda x: [e.value for e in x], name="store_credit_source_type_enum"),
+        SAEnum(
+            StoreCreditSourceType,
+            values_callable=lambda x: [e.value for e in x],
+            name="store_credit_source_type_enum",
+        ),
         nullable=False,
     )
     source_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -926,7 +962,11 @@ class StoreAuditLog(Base):
     )
 
     entity_type: Mapped[AuditEntityType] = mapped_column(
-        SAEnum(AuditEntityType, values_callable=lambda x: [e.value for e in x], name="store_audit_entity_type_enum"),
+        SAEnum(
+            AuditEntityType,
+            values_callable=lambda x: [e.value for e in x],
+            name="store_audit_entity_type_enum",
+        ),
         nullable=False,
     )
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

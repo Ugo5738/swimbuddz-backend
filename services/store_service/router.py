@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import get_current_user, get_optional_user
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
@@ -24,7 +24,6 @@ from services.store_service.models import (
     Collection,
     CollectionProduct,
     FulfillmentType,
-    InventoryItem,
     InventoryMovement,
     InventoryMovementType,
     Order,
@@ -32,11 +31,9 @@ from services.store_service.models import (
     OrderStatus,
     PickupLocation,
     Product,
-    ProductImage,
     ProductStatus,
     ProductVariant,
     StoreCredit,
-    StoreCreditTransaction,
 )
 from services.store_service.schemas import (
     ApplyDiscountRequest,
@@ -381,12 +378,12 @@ async def enrich_cart_response(cart: Cart, db: AsyncSession) -> CartResponse:
         select(Cart)
         .where(Cart.id == cart.id)
         .options(
-            selectinload(Cart.items).selectinload(CartItem.variant).selectinload(
-                ProductVariant.product
-            ),
-            selectinload(Cart.items).selectinload(CartItem.variant).selectinload(
-                ProductVariant.images
-            ),
+            selectinload(Cart.items)
+            .selectinload(CartItem.variant)
+            .selectinload(ProductVariant.product),
+            selectinload(Cart.items)
+            .selectinload(CartItem.variant)
+            .selectinload(ProductVariant.images),
         )
     )
     result = await db.execute(query)
@@ -456,7 +453,9 @@ async def add_to_cart(
     # Get variant and check availability
     query = (
         select(ProductVariant)
-        .where(ProductVariant.id == item_in.variant_id, ProductVariant.is_active.is_(True))
+        .where(
+            ProductVariant.id == item_in.variant_id, ProductVariant.is_active.is_(True)
+        )
         .options(
             selectinload(ProductVariant.product),
             selectinload(ProductVariant.inventory_item),
@@ -529,7 +528,9 @@ async def update_cart_item(
     query = (
         select(CartItem)
         .where(CartItem.id == item_id, CartItem.cart_id == cart.id)
-        .options(selectinload(CartItem.variant).selectinload(ProductVariant.inventory_item))
+        .options(
+            selectinload(CartItem.variant).selectinload(ProductVariant.inventory_item)
+        )
     )
     result = await db.execute(query)
     cart_item = result.scalar_one_or_none()
@@ -623,12 +624,12 @@ async def start_checkout(
             Cart.status == CartStatus.ACTIVE,
         )
         .options(
-            selectinload(Cart.items).selectinload(CartItem.variant).selectinload(
-                ProductVariant.product
-            ),
-            selectinload(Cart.items).selectinload(CartItem.variant).selectinload(
-                ProductVariant.inventory_item
-            ),
+            selectinload(Cart.items)
+            .selectinload(CartItem.variant)
+            .selectinload(ProductVariant.product),
+            selectinload(Cart.items)
+            .selectinload(CartItem.variant)
+            .selectinload(ProductVariant.inventory_item),
         )
     )
     result = await db.execute(query)
@@ -690,9 +691,11 @@ async def start_checkout(
 
     # Get member info for order
     member_row = await db.execute(
-        text("SELECT email, first_name, last_name, profile.phone FROM members "
-             "LEFT JOIN member_profiles profile ON profile.member_id = members.id "
-             "WHERE members.auth_id = :auth_id"),
+        text(
+            "SELECT email, first_name, last_name, profile.phone FROM members "
+            "LEFT JOIN member_profiles profile ON profile.member_id = members.id "
+            "WHERE members.auth_id = :auth_id"
+        ),
         {"auth_id": current_user.user_id},
     )
     member = member_row.mappings().first()
@@ -703,7 +706,11 @@ async def start_checkout(
     subtotal, discount_amount, total = await calculate_cart_totals(cart)
 
     # Add delivery fee if applicable
-    delivery_fee = DELIVERY_FEE_NGN if request.fulfillment_type == FulfillmentType.DELIVERY else Decimal("0")
+    delivery_fee = (
+        DELIVERY_FEE_NGN
+        if request.fulfillment_type == FulfillmentType.DELIVERY
+        else Decimal("0")
+    )
     final_total = total + delivery_fee
 
     # Check for store credits
@@ -716,9 +723,8 @@ async def start_checkout(
         member_auth_id=current_user.user_id,
         customer_email=member["email"],
         customer_name=f"{member['first_name']} {member['last_name']}",
-        customer_phone=member.get("phone") or (
-            request.delivery_address.phone if request.delivery_address else None
-        ),
+        customer_phone=member.get("phone")
+        or (request.delivery_address.phone if request.delivery_address else None),
         subtotal_ngn=subtotal,
         discount_amount_ngn=discount_amount,
         store_credit_applied_ngn=store_credit_applied,
@@ -732,7 +738,9 @@ async def start_checkout(
         status=OrderStatus.PENDING_PAYMENT,
         fulfillment_type=request.fulfillment_type,
         pickup_location_id=request.pickup_location_id,
-        delivery_address=request.delivery_address.model_dump() if request.delivery_address else None,
+        delivery_address=request.delivery_address.model_dump()
+        if request.delivery_address
+        else None,
         customer_notes=request.customer_notes,
     )
     db.add(order)
@@ -752,7 +760,8 @@ async def start_checkout(
             unit_price_ngn=item.unit_price_ngn,
             line_total_ngn=item.unit_price_ngn * item.quantity,
             is_preorder=product.sourcing_type.value == "preorder",
-            estimated_ship_date=datetime.utcnow() + timedelta(days=product.preorder_lead_days or 0)
+            estimated_ship_date=datetime.utcnow()
+            + timedelta(days=product.preorder_lead_days or 0)
             if product.sourcing_type.value == "preorder"
             else None,
         )
