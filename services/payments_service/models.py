@@ -36,6 +36,9 @@ class PaymentPurpose(str, enum.Enum):
     # One-off fees
     SESSION_FEE = "session_fee"  # Pool fees, ride share, event tickets
 
+    # E-commerce
+    STORE_ORDER = "store_order"  # Store product purchase
+
 
 class Payment(Base):
     __tablename__ = "payments"

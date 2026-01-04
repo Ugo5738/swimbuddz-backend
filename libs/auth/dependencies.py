@@ -125,3 +125,67 @@ async def require_admin(
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required"
         )
     return current_user
+
+
+# Optional bearer security - allows missing token
+optional_security = HTTPBearer(auto_error=False)
+
+
+async def get_optional_user(
+    token: Annotated[Optional[HTTPAuthorizationCredentials], Depends(optional_security)],
+) -> Optional[AuthUser]:
+    """
+    Optionally validate Supabase JWT if present.
+    Returns None if no token provided (for guest users).
+    Returns AuthUser if valid token provided.
+    Raises 401 only if token is present but invalid.
+    """
+    if token is None:
+        return None
+
+    try:
+        header = jwt.get_unverified_header(token.credentials)
+        alg = header.get("alg", "HS256")
+
+        if alg.startswith("HS"):
+            key = settings.SUPABASE_JWT_SECRET
+            algorithms = ["HS256"]
+        else:
+            kid = header.get("kid")
+            jwk_key = await _get_jwk_for_kid(kid) if kid else None
+            if not jwk_key:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Could not validate credentials",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            key = jwk_key
+            algorithms = [alg]
+
+        try:
+            payload = jwt.decode(
+                token.credentials,
+                key,
+                algorithms=algorithms,
+                audience="authenticated",
+                options={"verify_aud": True},
+            )
+        except JWTError as e:
+            if "audience" in str(e).lower() or "aud" in str(e).lower():
+                payload = jwt.decode(
+                    token.credentials,
+                    key,
+                    algorithms=algorithms,
+                    options={"verify_aud": False},
+                )
+            else:
+                raise
+
+        return AuthUser(**payload)
+
+    except (JWTError, ValidationError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
