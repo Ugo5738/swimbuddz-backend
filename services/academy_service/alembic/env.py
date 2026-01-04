@@ -24,6 +24,11 @@ from services.academy_service.models import (
     Enrollment,
     Milestone,
     StudentProgress,
+    ProgramCurriculum,
+    CurriculumWeek,
+    CurriculumLesson,
+    Skill,
+    LessonSkill,
 )  # noqa: F401
 
 settings = get_settings()
@@ -40,6 +45,11 @@ SERVICE_TABLES = {
     "enrollments",
     "milestones",
     "student_progress",
+    "program_curricula",
+    "curriculum_weeks",
+    "curriculum_lessons",
+    "skills",
+    "lesson_skills",
 }
 
 url = settings.DATABASE_URL.replace("%", "%%")
