@@ -7,6 +7,7 @@ from services.academy_service.models import (
     BillingType,
     CohortStatus,
     EnrollmentStatus,
+    LocationType,
     PaymentStatus,
     ProgramLevel,
     ProgressStatus,
@@ -99,6 +100,14 @@ class CohortBase(BaseModel):
     capacity: int
     status: CohortStatus = CohortStatus.OPEN
     allow_mid_entry: bool = False
+    # Location
+    timezone: Optional[str] = None
+    location_type: Optional[LocationType] = None
+    location_name: Optional[str] = None
+    location_address: Optional[str] = None
+    # Pricing override
+    price_override: Optional[int] = None
+    notes_internal: Optional[str] = None
 
 
 class CohortCreate(CohortBase):
@@ -114,6 +123,14 @@ class CohortUpdate(BaseModel):
     status: Optional[CohortStatus] = None
     coach_id: Optional[UUID] = None
     allow_mid_entry: Optional[bool] = None
+    # Location
+    timezone: Optional[str] = None
+    location_type: Optional[LocationType] = None
+    location_name: Optional[str] = None
+    location_address: Optional[str] = None
+    # Pricing override
+    price_override: Optional[int] = None
+    notes_internal: Optional[str] = None
 
 
 class CohortResponse(CohortBase):
