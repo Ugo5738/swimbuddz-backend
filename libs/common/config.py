@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     MEDIA_SERVICE_URL: str = "http://media-service:8008"
     EVENTS_SERVICE_URL: str = "http://events-service:8007"
     TRANSPORT_SERVICE_URL: str = "http://transport-service:8009"
+    STORE_SERVICE_URL: str = "http://store-service:8010"
 
     # Payments / Pricing
     COMMUNITY_ANNUAL_FEE_NGN: int = 20000

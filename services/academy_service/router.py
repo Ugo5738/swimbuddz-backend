@@ -333,16 +333,20 @@ async def list_cohort_students(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all students enrolled in a cohort with their progress."""
-    # Eager load progress records; member data is resolved by ID externally
-    from sqlalchemy.orm import selectinload
+    # Eager load progress records, cohort, and program; member data is resolved by ID externally
+    from sqlalchemy.orm import selectinload, joinedload
 
     query = (
         select(Enrollment)
         .where(Enrollment.cohort_id == cohort_id)
-        .options(selectinload(Enrollment.progress_records))
+        .options(
+            selectinload(Enrollment.progress_records),
+            joinedload(Enrollment.cohort).joinedload(Cohort.program),
+            joinedload(Enrollment.program),
+        )
     )
     result = await db.execute(query)
-    return result.scalars().all()
+    return result.unique().scalars().all()
 
 
 # --- Milestones ---

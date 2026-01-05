@@ -283,6 +283,26 @@ def create_app() -> FastAPI:
         return await proxy_request(clients.events_client, f"/events/{path}", request)
 
     # ==================================================================
+    # STORE SERVICE PROXY
+    # ==================================================================
+    @app.api_route(
+        "/api/v1/store/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+    )
+    async def proxy_store(path: str, request: Request):
+        """Proxy all /api/v1/store/* requests to store service."""
+        return await proxy_request(clients.store_client, f"/store/{path}", request)
+
+    @app.api_route(
+        "/api/v1/admin/store/{path:path}",
+        methods=["GET", "POST", "PATCH", "DELETE"],
+    )
+    async def proxy_admin_store(path: str, request: Request):
+        """Proxy all /api/v1/admin/store/* requests to store service."""
+        return await proxy_request(
+            clients.store_client, f"/admin/store/{path}", request
+        )
+
+    # ==================================================================
     # DASHBOARD (Gateway-specific aggregation)
     # ==================================================================
     from services.gateway_service.app.routers.cleanup import router as cleanup_router
