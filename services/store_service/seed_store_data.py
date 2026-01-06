@@ -9,7 +9,6 @@ Usage:
 """
 
 import asyncio
-import uuid
 from decimal import Decimal
 
 from sqlalchemy import text
@@ -17,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from libs.common.config import get_settings
-from libs.db.base import Base
 from services.store_service.models import (
     Category,
     Collection,
@@ -170,7 +168,9 @@ async def seed_store_data():
             base_price_ngn=Decimal("18000"),
             status=ProductStatus.ACTIVE,
             has_variants=True,
-            variant_options={"Size": ["S (35-36)", "M (37-38)", "L (39-40)", "XL (41-42)"]},
+            variant_options={
+                "Size": ["S (35-36)", "M (37-38)", "L (39-40)", "XL (41-42)"]
+            },
             sourcing_type=SourcingType.STOCKED,
         )
         products.append(fins)

@@ -272,7 +272,7 @@ async def send_store_order_confirmation_email(
     Send order confirmation email when payment is successful.
     """
     subject = f"Order Confirmed - #{order_number}"
-    
+
     # Build items list
     items_text = "\n".join(
         f"  - {item['name']} x{item['quantity']} - ₦{item['price']:,.0f}"
@@ -282,7 +282,7 @@ async def send_store_order_confirmation_email(
         f"<tr><td>{item['name']}</td><td style='text-align:center'>{item['quantity']}</td><td style='text-align:right'>₦{item['price']:,.0f}</td></tr>"
         for item in items
     )
-    
+
     fulfillment_text = (
         f"Pickup Location: {pickup_location}"
         if fulfillment_type == "pickup"
@@ -410,7 +410,9 @@ async def send_store_order_ready_email(
         title = "Ready for Pickup!"
     else:
         subject = f"Your Order #{order_number} has been Shipped!"
-        tracking_info = f"\n\nTracking Number: {tracking_number}" if tracking_number else ""
+        tracking_info = (
+            f"\n\nTracking Number: {tracking_number}" if tracking_number else ""
+        )
         action_text = f"Your order is on its way!{tracking_info}"
         action_html = f"""
             <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; border-left: 4px solid #22c55e;">
@@ -471,4 +473,3 @@ Thank you for shopping with SwimBuddz!
 """
 
     return await send_email(to_email, subject, body, html_body)
-

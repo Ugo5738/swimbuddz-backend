@@ -810,6 +810,7 @@ async def update_order_status(
             )
         except Exception as e:
             import logging
+
             logging.getLogger(__name__).error(f"Failed to send order status email: {e}")
 
     return order
@@ -869,11 +870,13 @@ async def mark_order_paid(
             }
             for item in order.items
         ]
-        
+
         pickup_location_str = None
         if order.pickup_location:
-            pickup_location_str = f"{order.pickup_location.name}\n{order.pickup_location.address or ''}"
-        
+            pickup_location_str = (
+                f"{order.pickup_location.name}\n{order.pickup_location.address or ''}"
+            )
+
         delivery_address_str = None
         if order.delivery_address:
             addr = order.delivery_address
@@ -895,7 +898,10 @@ async def mark_order_paid(
     except Exception as e:
         # Log but don't fail the order
         import logging
-        logging.getLogger(__name__).error(f"Failed to send order confirmation email: {e}")
+
+        logging.getLogger(__name__).error(
+            f"Failed to send order confirmation email: {e}"
+        )
 
     return order
 
