@@ -791,7 +791,111 @@ async def update_order_status(
     await db.commit()
     await db.refresh(order)
 
-    # TODO: Send notification to customer
+    # Send notification to customer for ready/shipped status changes
+    if status_update.status in [OrderStatus.READY_FOR_PICKUP, OrderStatus.SHIPPED]:
+        try:
+            from libs.common.email import send_store_order_ready_email
+
+            pickup_location_str = None
+            if order.pickup_location:
+                pickup_location_str = f"{order.pickup_location.name}\n{order.pickup_location.address or ''}"
+
+            await send_store_order_ready_email(
+                to_email=order.customer_email,
+                customer_name=order.customer_name,
+                order_number=order.order_number,
+                fulfillment_type=order.fulfillment_type.value,
+                pickup_location=pickup_location_str,
+                tracking_number=order.delivery_notes,  # tracking stored in delivery_notes
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to send order status email: {e}")
+
+    return order
+
+
+@router.post("/orders/{order_id}/mark-paid", response_model=OrderResponse)
+async def mark_order_paid(
+    order_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Mark an order as paid.
+    Called by payments_service when Paystack webhook confirms payment.
+    """
+    query = (
+        select(Order)
+        .where(Order.id == order_id)
+        .options(selectinload(Order.items), selectinload(Order.pickup_location))
+    )
+    result = await db.execute(query)
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if order.status == OrderStatus.PAID:
+        # Already paid, idempotent return
+        return order
+
+    old_status = order.status
+    order.status = OrderStatus.PAID
+
+    await log_audit(
+        db,
+        AuditEntityType.ORDER,
+        order.id,
+        "payment_confirmed",
+        current_user.user_id,
+        old_value={"status": old_status.value},
+        new_value={"status": OrderStatus.PAID.value},
+        notes="Payment confirmed via webhook",
+    )
+
+    await db.commit()
+    await db.refresh(order)
+
+    # Send order confirmation email to customer
+    try:
+        from libs.common.email import send_store_order_confirmation_email
+
+        items = [
+            {
+                "name": f"{item.product_name} - {item.variant_name or 'Default'}",
+                "quantity": item.quantity,
+                "price": float(item.line_total_ngn),
+            }
+            for item in order.items
+        ]
+        
+        pickup_location_str = None
+        if order.pickup_location:
+            pickup_location_str = f"{order.pickup_location.name}\n{order.pickup_location.address or ''}"
+        
+        delivery_address_str = None
+        if order.delivery_address:
+            addr = order.delivery_address
+            delivery_address_str = f"{addr.get('street', '')}, {addr.get('city', '')}, {addr.get('state', '')}"
+
+        await send_store_order_confirmation_email(
+            to_email=order.customer_email,
+            customer_name=order.customer_name,
+            order_number=order.order_number,
+            items=items,
+            subtotal=float(order.subtotal_ngn),
+            discount=float(order.discount_amount_ngn),
+            delivery_fee=float(order.delivery_fee_ngn),
+            total=float(order.total_ngn),
+            fulfillment_type=order.fulfillment_type.value,
+            pickup_location=pickup_location_str,
+            delivery_address=delivery_address_str,
+        )
+    except Exception as e:
+        # Log but don't fail the order
+        import logging
+        logging.getLogger(__name__).error(f"Failed to send order confirmation email: {e}")
 
     return order
 

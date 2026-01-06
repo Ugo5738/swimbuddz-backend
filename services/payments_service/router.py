@@ -288,6 +288,28 @@ async def _apply_entitlement(payment: Payment) -> None:
         await _update_pending_payment_reference(payment.member_auth_id, None)
         return
 
+    # Handle Store order payment
+    elif payment.purpose == PaymentPurpose.STORE_ORDER:
+        order_id = (payment.payment_metadata or {}).get("order_id")
+        if not order_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="order_id missing in payment metadata",
+            )
+        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{settings.STORE_SERVICE_URL}/store/admin/orders/{order_id}/mark-paid",
+                headers=headers,
+            )
+            if resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to mark store order as paid ({resp.status_code}): {resp.text}",
+                )
+        # No pending_payment_reference to clear for store orders
+        return
+
     else:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
@@ -587,7 +609,7 @@ async def create_payment_intent(
         headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
-                f"{settings.ACADEMY_SERVICE_URL}/academy/enrollments/{payload.enrollment_id}",
+                f"{settings.ACADEMY_SERVICE_URL}/academy/internal/enrollments/{payload.enrollment_id}",
                 headers=headers,
             )
             if resp.status_code >= 400:
@@ -610,6 +632,40 @@ async def create_payment_intent(
             **(payload.payment_metadata or {}),
             "enrollment_id": str(payload.enrollment_id),
             "cohort_id": str(cohort_id) if cohort_id else None,
+        }
+
+    # Store order payment
+    elif payload.purpose == PaymentPurpose.STORE_ORDER:
+        if not payload.order_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="order_id is required for STORE_ORDER payments",
+            )
+        # Lookup order and total from store_service
+        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                f"{settings.STORE_SERVICE_URL}/store/admin/orders/{payload.order_id}",
+                headers=headers,
+            )
+            if resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to fetch order: {resp.text}",
+                )
+            order_data = resp.json()
+            amount = float(order_data.get("total_ngn") or 0)
+
+        if amount <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Order total must be greater than zero",
+            )
+
+        payment_metadata = {
+            **(payload.payment_metadata or {}),
+            "order_id": str(payload.order_id),
+            "order_number": order_data.get("order_number"),
         }
 
     else:

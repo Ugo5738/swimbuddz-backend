@@ -647,12 +647,16 @@ async def get_my_enrollments(
     return result.scalars().all()
 
 
-@router.get("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
-async def get_enrollment_by_id(
+@router.get("/internal/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
+async def get_enrollment_internal(
     enrollment_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Get a single enrollment by ID (used by payments service)."""
+    """
+    Get a single enrollment by ID (internal service-to-service call).
+    Used by payments service to lookup enrollment details.
+    No auth required as this is called with service role token.
+    """
     from sqlalchemy.orm import selectinload
 
     query = (
@@ -745,9 +749,10 @@ async def admin_mark_enrollment_paid(
 
         # Get member email from members service
         import httpx
-        from libs.common.config import settings
+        from libs.common.config import get_settings
         from libs.auth.dependencies import _service_role_jwt
 
+        settings = get_settings()
         headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(

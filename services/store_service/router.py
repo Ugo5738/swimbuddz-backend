@@ -194,6 +194,7 @@ async def list_products(
 
     # Pagination
     query = query.order_by(Product.is_featured.desc(), Product.name)
+    query = query.options(selectinload(Product.images))  # Load images for cards
     query = query.offset((page - 1) * page_size).limit(page_size)
 
     result = await db.execute(query)
@@ -713,9 +714,30 @@ async def start_checkout(
     )
     final_total = total + delivery_fee
 
-    # Check for store credits
+    # Apply store credits if requested
     store_credit_applied = Decimal("0")
-    # TODO: Apply available store credits
+    if request.apply_store_credit:
+        # Get available store credits for member
+        credits_query = (
+            select(StoreCredit)
+            .where(
+                StoreCredit.member_auth_id == current_user.user_id,
+                StoreCredit.balance_ngn > 0,
+            )
+            .order_by(StoreCredit.created_at)  # FIFO - oldest credits first
+        )
+        credits_result = await db.execute(credits_query)
+        available_credits = list(credits_result.scalars().all())
+
+        remaining_to_cover = final_total
+        for credit in available_credits:
+            if remaining_to_cover <= 0:
+                break
+            # Apply from this credit
+            apply_amount = min(credit.balance_ngn, remaining_to_cover)
+            credit.balance_ngn -= apply_amount
+            store_credit_applied += apply_amount
+            remaining_to_cover -= apply_amount
 
     # Create order
     order = Order(

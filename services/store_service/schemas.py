@@ -169,6 +169,7 @@ class ProductResponse(ProductBase):
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    images: list[ProductImageResponse] = []  # Include images for list views
 
 
 class ProductDetail(ProductResponse):
@@ -377,6 +378,7 @@ class CheckoutStartRequest(BaseModel):
     delivery_address: Optional[DeliveryAddress] = None
     customer_notes: Optional[str] = None
     size_chart_acknowledged: bool = False  # Required if any product needs it
+    apply_store_credit: bool = False  # Apply available store credit to reduce total
 
 
 class CheckoutStartResponse(BaseModel):
