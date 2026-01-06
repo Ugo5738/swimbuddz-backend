@@ -136,6 +136,18 @@ services:
     volumes:
       - .:/app
 
+  store-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-store-service:latest
+    container_name: swimbuddz_store
+    env_file:
+      - .env.prod
+    ports:
+      - "8010:8010"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
   # ==================================================================
   # API GATEWAY
   # ==================================================================
@@ -162,6 +174,8 @@ services:
       events-service:
         condition: service_started
       transport-service:
+        condition: service_started
+      store-service:
         condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"

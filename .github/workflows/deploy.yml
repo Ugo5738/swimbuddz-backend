@@ -87,6 +87,9 @@ jobs:
             dockerfile: ./services/sessions_service/Dockerfile
             image: swimbuddz-sessions-service
           - context: .
+            dockerfile: ./services/store_service/Dockerfile
+            image: swimbuddz-store-service
+          - context: .
             dockerfile: ./services/transport_service/Dockerfile
             image: swimbuddz-transport-service
 
