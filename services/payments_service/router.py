@@ -310,6 +310,72 @@ async def _apply_entitlement(payment: Payment) -> None:
         # No pending_payment_reference to clear for store orders
         return
 
+    # Handle Session fee payment - create attendance and optionally ride booking
+    elif payment.purpose == PaymentPurpose.SESSION_FEE:
+        session_id = (payment.payment_metadata or {}).get("session_id")
+        ride_config_id = (payment.payment_metadata or {}).get("ride_config_id")
+        pickup_location_id = (payment.payment_metadata or {}).get("pickup_location_id")
+        attendance_status = (payment.payment_metadata or {}).get(
+            "attendance_status", "PRESENT"
+        )
+
+        if not session_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="session_id missing in payment metadata",
+            )
+
+        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            # First, look up the member_id from auth_id via members service
+            member_resp = await client.get(
+                f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{payment.member_auth_id}",
+                headers=headers,
+            )
+            if member_resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to look up member ({member_resp.status_code}): {member_resp.text}",
+                )
+            member_data = member_resp.json()
+            member_id = member_data.get("id")
+
+            # Create attendance record via attendance service
+            attendance_resp = await client.post(
+                f"{settings.ATTENDANCE_SERVICE_URL}/attendance/sessions/{session_id}/attendance/public",
+                json={
+                    "member_id": member_id,
+                    "status": attendance_status,
+                    "role": "SWIMMER",
+                    "notes": f"Payment ref: {payment.reference}",
+                },
+                headers=headers,
+            )
+            if attendance_resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to create attendance ({attendance_resp.status_code}): {attendance_resp.text}",
+                )
+
+            # If ride share was selected, create the booking via transport service
+            if ride_config_id and pickup_location_id:
+                transport_resp = await client.post(
+                    f"{settings.TRANSPORT_SERVICE_URL}/transport/sessions/{session_id}/bookings",
+                    json={
+                        "session_ride_config_id": ride_config_id,
+                        "pickup_location_id": pickup_location_id,
+                    },
+                    params={"member_id": member_id},
+                    headers=headers,
+                )
+                # Log but don't fail if ride booking fails
+                if transport_resp.status_code >= 400:
+                    logger.warning(f"Ride booking failed: {transport_resp.text}")
+
+        # Clear pending payment reference on success
+        await _update_pending_payment_reference(payment.member_auth_id, None)
+        return
+
     else:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
@@ -666,6 +732,31 @@ async def create_payment_intent(
             **(payload.payment_metadata or {}),
             "order_id": str(payload.order_id),
             "order_number": order_data.get("order_number"),
+        }
+
+    # Session fee payment (pool fee + ride share)
+    elif payload.purpose == PaymentPurpose.SESSION_FEE:
+        if not payload.session_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="session_id is required for SESSION_FEE payments",
+            )
+        if not payload.direct_amount or payload.direct_amount <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="direct_amount is required and must be greater than zero for SESSION_FEE payments",
+            )
+        amount = float(payload.direct_amount)
+        payment_metadata = {
+            **(payload.payment_metadata or {}),
+            "session_id": str(payload.session_id),
+            "ride_config_id": str(payload.ride_config_id)
+            if payload.ride_config_id
+            else None,
+            "pickup_location_id": str(payload.pickup_location_id)
+            if payload.pickup_location_id
+            else None,
+            "attendance_status": payload.attendance_status,
         }
 
     else:

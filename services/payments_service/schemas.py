@@ -32,6 +32,14 @@ class CreatePaymentIntentRequest(BaseModel):
     include_community_extension: bool = (
         False  # Include Community extension if Club exceeds
     )
+
+    # SESSION_FEE related fields
+    session_id: Optional[uuid.UUID] = None  # For SESSION_FEE payments
+    ride_config_id: Optional[uuid.UUID] = None  # Optional ride share config
+    pickup_location_id: Optional[uuid.UUID] = None  # Optional pickup location
+    attendance_status: str = Field(default="PRESENT")  # PRESENT, LATE, EARLY
+    direct_amount: Optional[float] = None  # Direct amount for session fees
+
     # Accept "metadata" for backwards-compat, store internally as payment_metadata.
     payment_metadata: Optional[dict] = Field(default=None, alias="metadata")
 

@@ -310,7 +310,7 @@ async def get_or_create_cart(
     session_id: Optional[str] = None,
 ) -> Cart:
     """Get existing active cart or create new one.
-    
+
     If user is authenticated AND session_id is provided, merge any guest cart
     items into the member's cart. This preserves the shopping cart when a guest
     logs in.
@@ -351,7 +351,8 @@ async def get_or_create_cart(
             if not member_cart:
                 member_cart = Cart(
                     member_auth_id=user.user_id,
-                    expires_at=datetime.utcnow() + timedelta(minutes=CART_EXPIRY_MINUTES),
+                    expires_at=datetime.utcnow()
+                    + timedelta(minutes=CART_EXPIRY_MINUTES),
                 )
                 db.add(member_cart)
                 await db.flush()
