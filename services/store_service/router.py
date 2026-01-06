@@ -309,17 +309,82 @@ async def get_or_create_cart(
     user: Optional[AuthUser],
     session_id: Optional[str] = None,
 ) -> Cart:
-    """Get existing active cart or create new one."""
+    """Get existing active cart or create new one.
+    
+    If user is authenticated AND session_id is provided, merge any guest cart
+    items into the member's cart. This preserves the shopping cart when a guest
+    logs in.
+    """
     # If authenticated, look for member cart
     if user:
-        query = select(Cart).where(
-            Cart.member_auth_id == user.user_id,
-            Cart.status == CartStatus.ACTIVE,
+        query = (
+            select(Cart)
+            .where(
+                Cart.member_auth_id == user.user_id,
+                Cart.status == CartStatus.ACTIVE,
+            )
+            .order_by(Cart.created_at.desc())
+            .options(selectinload(Cart.items))
         )
         result = await db.execute(query)
-        cart = result.scalar_one_or_none()
-        if cart:
-            return cart
+        member_cart = result.scalars().first()
+
+        # Check for guest cart to merge (if session_id provided)
+        guest_cart = None
+        if session_id:
+            guest_query = (
+                select(Cart)
+                .where(
+                    Cart.session_id == session_id,
+                    Cart.status == CartStatus.ACTIVE,
+                    Cart.member_auth_id.is_(None),  # Must be a guest cart
+                )
+                .order_by(Cart.created_at.desc())
+                .options(selectinload(Cart.items))
+            )
+            guest_result = await db.execute(guest_query)
+            guest_cart = guest_result.scalars().first()
+
+        # If we have a guest cart with items, merge into member cart
+        if guest_cart and guest_cart.items:
+            # Create member cart if needed
+            if not member_cart:
+                member_cart = Cart(
+                    member_auth_id=user.user_id,
+                    expires_at=datetime.utcnow() + timedelta(minutes=CART_EXPIRY_MINUTES),
+                )
+                db.add(member_cart)
+                await db.flush()
+
+            # Merge items from guest cart
+            existing_variant_ids = {item.variant_id for item in member_cart.items}
+            for guest_item in guest_cart.items:
+                if guest_item.variant_id in existing_variant_ids:
+                    # Update quantity if item already in member cart
+                    for member_item in member_cart.items:
+                        if member_item.variant_id == guest_item.variant_id:
+                            member_item.quantity += guest_item.quantity
+                            break
+                else:
+                    # Transfer item to member cart
+                    new_item = CartItem(
+                        cart_id=member_cart.id,
+                        variant_id=guest_item.variant_id,
+                        quantity=guest_item.quantity,
+                        unit_price_ngn=guest_item.unit_price_ngn,
+                    )
+                    db.add(new_item)
+                    existing_variant_ids.add(guest_item.variant_id)
+
+            # Mark guest cart as merged (change status to prevent reuse)
+            guest_cart.status = CartStatus.ABANDONED
+            await db.commit()
+            await db.refresh(member_cart)
+            return member_cart
+
+        # Return existing member cart or create new one
+        if member_cart:
+            return member_cart
 
         # Create new cart for member
         cart = Cart(
@@ -331,14 +396,18 @@ async def get_or_create_cart(
         await db.refresh(cart)
         return cart
 
-    # Guest cart by session_id
+    # Guest cart by session_id (not authenticated)
     if session_id:
-        query = select(Cart).where(
-            Cart.session_id == session_id,
-            Cart.status == CartStatus.ACTIVE,
+        query = (
+            select(Cart)
+            .where(
+                Cart.session_id == session_id,
+                Cart.status == CartStatus.ACTIVE,
+            )
+            .order_by(Cart.created_at.desc())
         )
         result = await db.execute(query)
-        cart = result.scalar_one_or_none()
+        cart = result.scalars().first()
         if cart:
             return cart
 
