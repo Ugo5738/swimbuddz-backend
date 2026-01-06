@@ -24,7 +24,6 @@ from services.gateway_service.app.main import app
 # Import all models so metadata includes every table (e.g., session_templates)
 from services.members_service import models as _member_models  # noqa: F401
 from services.sessions_service import models as _session_models  # noqa: F401
-from services.sessions_service import session_template as _session_template  # noqa: F401
 
 # Clear cached settings to reload with new env vars
 get_settings.cache_clear()
