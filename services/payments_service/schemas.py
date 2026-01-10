@@ -4,10 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from services.payments_service.models import (
-    PaymentPurpose,
-    PaymentStatus,
-)
+from services.payments_service.models import PaymentPurpose, PaymentStatus
 
 
 class ClubBillingCycle(str, enum.Enum):
@@ -79,7 +76,8 @@ class PaymentResponse(BaseModel):
     provider: Optional[str] = None
     provider_reference: Optional[str] = None
     payment_method: Optional[str] = None  # paystack or manual_transfer
-    proof_of_payment_url: Optional[str] = None  # URL for uploaded proof
+    proof_of_payment_media_id: Optional[str] = None  # Media ID for uploaded proof
+    proof_of_payment_url: Optional[str] = None  # Resolved URL for display (not stored)
     admin_review_note: Optional[str] = None  # Note from admin review
     paid_at: Optional[datetime] = None
     entitlement_applied_at: Optional[datetime] = None
@@ -101,7 +99,7 @@ class CompletePaymentRequest(BaseModel):
 class SubmitProofRequest(BaseModel):
     """Submit proof of payment for manual transfer."""
 
-    proof_url: str = Field(..., max_length=512)  # URL of uploaded proof image
+    proof_media_id: str = Field(..., max_length=64)  # Media ID of uploaded proof
 
 
 class AdminReviewRequest(BaseModel):

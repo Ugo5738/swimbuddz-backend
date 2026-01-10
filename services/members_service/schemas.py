@@ -15,7 +15,6 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-
 # ============================================================================
 # SUB-TABLE RESPONSE SCHEMAS
 # ============================================================================
@@ -181,7 +180,8 @@ class CoachProfileResponse(BaseModel):
 
     # Identity
     display_name: Optional[str] = None
-    coach_profile_photo_url: Optional[str] = None
+    coach_profile_photo_media_id: Optional[uuid.UUID] = None
+    coach_profile_photo_url: Optional[str] = None  # Resolved from media_id
     short_bio: Optional[str] = None
     full_bio: Optional[str] = None
 
@@ -204,7 +204,8 @@ class CoachProfileResponse(BaseModel):
     cpr_expiry_date: Optional[datetime] = None
     lifeguard_expiry_date: Optional[datetime] = None
     background_check_status: Optional[str] = None
-    background_check_document_url: Optional[str] = None
+    background_check_document_media_id: Optional[uuid.UUID] = None
+    background_check_document_url: Optional[str] = None  # Resolved from media_id
     insurance_status: Optional[str] = None
     is_verified: bool = False
 
@@ -264,7 +265,8 @@ class MemberResponse(BaseModel):
     approved_by: Optional[str] = None
 
     # Profile Photo (on core for quick access)
-    profile_photo_url: Optional[str] = None
+    profile_photo_media_id: Optional[uuid.UUID] = None
+    profile_photo_url: Optional[str] = None  # Resolved from media_id
 
     # Timestamps
     created_at: datetime
@@ -293,7 +295,8 @@ class MemberListResponse(BaseModel):
     registration_complete: bool
     roles: Optional[list[str]] = None
     approval_status: str = "pending"
-    profile_photo_url: Optional[str] = None
+    profile_photo_media_id: Optional[uuid.UUID] = None
+    profile_photo_url: Optional[str] = None  # Resolved from media_id
     created_at: datetime
 
     # Convenience field
@@ -417,7 +420,7 @@ class MemberUpdate(BaseModel):
     last_name: Optional[str] = None
     email: Optional[EmailStr] = None
     is_active: Optional[bool] = None
-    profile_photo_url: Optional[str] = None
+    profile_photo_media_id: Optional[uuid.UUID] = None
 
     # Nested updates
     profile: Optional[MemberProfileInput] = None

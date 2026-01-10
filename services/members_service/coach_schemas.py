@@ -1,5 +1,6 @@
 """Coach-specific schemas for application, onboarding, and admin review."""
 
+import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -115,7 +116,7 @@ class CoachOnboardingUpdate(BaseModel):
     show_in_directory: Optional[bool] = None
 
     # Profile
-    coach_profile_photo_url: Optional[str] = None
+    coach_profile_photo_media_id: Optional[uuid.UUID] = None
 
 
 # === Coach Profile Update ===
@@ -127,7 +128,7 @@ class CoachProfileUpdate(BaseModel):
     display_name: Optional[str] = None
     short_bio: Optional[str] = None
     full_bio: Optional[str] = None
-    coach_profile_photo_url: Optional[str] = None
+    coach_profile_photo_media_id: Optional[uuid.UUID] = None
 
     coaching_years: Optional[int] = None
     coaching_experience_summary: Optional[str] = None

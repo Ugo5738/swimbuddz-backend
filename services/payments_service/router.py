@@ -1,18 +1,20 @@
 import hashlib
 import hmac
 import json
+import uuid
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 import httpx
-from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import jwt
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
+from libs.common.email import send_session_confirmation_email
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
+from pydantic import BaseModel
 from services.payments_service.models import (
     Discount,
     DiscountType,
@@ -77,13 +79,14 @@ def _verify_paystack_signature(raw_body: bytes, signature: str) -> bool:
     return hmac.compare_digest(digest, signature)
 
 
-def _callback_url(reference: str) -> str:
+def _callback_url(reference: str, redirect_path: str = None) -> str:
     if settings.PAYSTACK_CALLBACK_URL:
         return settings.PAYSTACK_CALLBACK_URL
     base = settings.FRONTEND_URL.rstrip("/")
     # Paystack appends `trxref` and `reference` query params automatically.
-    # Avoid duplicating `reference` in our callback URL.
-    return f"{base}/dashboard/billing?provider=paystack"
+    # Use custom redirect_path if provided (e.g., enrollment detail page)
+    path = redirect_path or "/account/billing"
+    return f"{base}{path}?provider=paystack"
 
 
 def _service_role_jwt() -> str:
@@ -117,7 +120,7 @@ async def _update_pending_payment_reference(
 
 
 async def _initialize_paystack(
-    payment: Payment, email: str
+    payment: Payment, email: str, redirect_path: str = None
 ) -> tuple[str | None, str | None]:
     """
     Initialize a Paystack transaction and return (authorization_url, access_code).
@@ -130,7 +133,7 @@ async def _initialize_paystack(
         "amount": _to_kobo(payment.amount),
         "currency": payment.currency,
         "reference": payment.reference,
-        "callback_url": _callback_url(payment.reference),
+        "callback_url": _callback_url(payment.reference, redirect_path),
         "metadata": {
             "internal_reference": payment.reference,
             "purpose": str(payment.purpose),
@@ -372,6 +375,103 @@ async def _apply_entitlement(payment: Payment) -> None:
                 if transport_resp.status_code >= 400:
                     logger.warning(f"Ride booking failed: {transport_resp.text}")
 
+            # Send session confirmation email
+            try:
+                # Fetch session details for email
+                session_resp = await client.get(
+                    f"{settings.SESSIONS_SERVICE_URL}/sessions/{session_id}",
+                    headers=headers,
+                )
+                session_data = {}
+                if session_resp.status_code < 400:
+                    session_data = session_resp.json()
+
+                # Get member email and name
+                member_email = member_data.get("email", "")
+                member_name = f"{member_data.get('first_name', '')} {member_data.get('last_name', '')}".strip()
+
+                # Parse session times
+                starts_at = session_data.get("starts_at", "")
+                session_date = ""
+                session_time = ""
+                if starts_at:
+                    try:
+                        dt = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
+                        session_date = dt.strftime("%A, %B %d, %Y")
+                        session_time = f"{dt.strftime('%I:%M %p')} - "
+                        ends_at = session_data.get("ends_at", "")
+                        if ends_at:
+                            end_dt = datetime.fromisoformat(
+                                ends_at.replace("Z", "+00:00")
+                            )
+                            session_time += end_dt.strftime("%I:%M %p")
+                    except Exception:
+                        session_date = (
+                            starts_at[:10] if len(starts_at) >= 10 else starts_at
+                        )
+
+                # Get ride share details if booked
+                ride_share_area = None
+                pickup_name = None
+                pickup_description = None
+                departure_time = None
+                ride_distance = None
+                ride_duration = None
+                if ride_config_id and pickup_location_id:
+                    ride_areas = session_data.get(
+                        "rideShareAreas", []
+                    ) or session_data.get("ride_share_areas", [])
+                    for area in ride_areas:
+                        if area.get("id") == ride_config_id:
+                            ride_share_area = area.get(
+                                "ride_area_name", ""
+                            ) or area.get("area_name", "")
+                            ride_distance = area.get("distance_km", "")
+                            ride_duration = area.get("duration_minutes", "")
+                            if ride_distance:
+                                ride_distance = f"{ride_distance} km"
+                            if ride_duration:
+                                ride_duration = f"{ride_duration} min"
+
+                            pickup_locs = area.get("pickup_locations", [])
+                            for loc in pickup_locs:
+                                if loc.get("id") == pickup_location_id:
+                                    pickup_name = loc.get("name", "")
+                                    pickup_description = loc.get(
+                                        "description", ""
+                                    ) or loc.get("address", "")
+                                    departure_time = loc.get(
+                                        "departure_time_calculated", ""
+                                    ) or loc.get("departure_time", "")
+                                    break
+                            break
+
+                # Send the email
+                if member_email:
+                    await send_session_confirmation_email(
+                        to_email=member_email,
+                        member_name=member_name or "Member",
+                        member_id=member_id,
+                        session_title=session_data.get("title", "Swimming Session"),
+                        session_date=session_date,
+                        session_time=session_time,
+                        session_location=session_data.get("location_name", "")
+                        or session_data.get("location", ""),
+                        session_address=session_data.get("address", ""),
+                        amount_paid=float(payment.amount),
+                        ride_share_area=ride_share_area,
+                        pickup_location=pickup_name,
+                        pickup_description=pickup_description,
+                        departure_time=departure_time,
+                        ride_distance=ride_distance,
+                        ride_duration=ride_duration,
+                        currency=payment.currency,
+                    )
+                    logger.info(f"Session confirmation email sent to {member_email}")
+            except Exception as e:
+                # Log but don't fail if email fails
+                logger.error(f"Failed to send session confirmation email: {e}")
+
         # Clear pending payment reference on success
         await _update_pending_payment_reference(payment.member_auth_id, None)
         return
@@ -419,8 +519,9 @@ async def _validate_and_apply_discount(
     purpose: PaymentPurpose,
     original_amount: float,
     member_auth_id: str,
-    components: dict[str, float]
-    | None = None,  # e.g., {"community": 20000, "club": 150000}
+    components: (
+        dict[str, float] | None
+    ) = None,  # e.g., {"community": 20000, "club": 150000}
 ) -> tuple[float, float | None, Discount | None, str | None]:
     """
     Validate and apply a discount code if provided.
@@ -530,6 +631,12 @@ async def _mark_paid_and_apply(
     paid_at: datetime | None,
     provider_payload: dict | None = None,
 ) -> Payment:
+    # Reload and lock the payment row to avoid double application (e.g., webhook + verify racing)
+    result = await db.execute(
+        select(Payment).where(Payment.id == payment.id).with_for_update()
+    )
+    payment = result.scalar_one()
+
     # Allow re-applying entitlements if the payment is already marked paid
     # but entitlement_applied_at is still missing.
     if payment.status == PaymentStatus.PAID and payment.entitlement_applied_at:
@@ -605,8 +712,8 @@ async def create_payment_intent(
                     community_until_str = membership.get("community_paid_until")
 
                     if community_until_str:
-                        from libs.common.datetime_utils import utc_now
                         from dateutil.relativedelta import relativedelta
+                        from libs.common.datetime_utils import utc_now
 
                         community_until = datetime.fromisoformat(
                             community_until_str.replace("Z", "+00:00")
@@ -638,12 +745,12 @@ async def create_payment_intent(
             **(payload.payment_metadata or {}),
             "months": months,
             "club_billing_cycle": str(cycle),
-            "community_extension_months": community_extension_months
-            if payload.include_community_extension
-            else 0,
-            "community_extension_amount": community_extension_amount
-            if payload.include_community_extension
-            else 0,
+            "community_extension_months": (
+                community_extension_months if payload.include_community_extension else 0
+            ),
+            "community_extension_amount": (
+                community_extension_amount if payload.include_community_extension else 0
+            ),
         }
 
     # Club bundle - Community + Club together
@@ -750,12 +857,12 @@ async def create_payment_intent(
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "session_id": str(payload.session_id),
-            "ride_config_id": str(payload.ride_config_id)
-            if payload.ride_config_id
-            else None,
-            "pickup_location_id": str(payload.pickup_location_id)
-            if payload.pickup_location_id
-            else None,
+            "ride_config_id": (
+                str(payload.ride_config_id) if payload.ride_config_id else None
+            ),
+            "pickup_location_id": (
+                str(payload.pickup_location_id) if payload.pickup_location_id else None
+            ),
             "attendance_status": payload.attendance_status,
         }
 
@@ -827,8 +934,13 @@ async def create_payment_intent(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Authenticated user email is required to initialize Paystack",
             )
+        # Determine redirect path based on purpose
+        redirect_path = None
+        if payload.purpose == PaymentPurpose.ACADEMY_COHORT and payload.enrollment_id:
+            redirect_path = f"/account/academy/enrollments/{payload.enrollment_id}"
+
         authorization_url, access_code = await _initialize_paystack(
-            payment, current_user.email
+            payment, current_user.email, redirect_path
         )
         checkout_url = authorization_url
         payment.provider = "paystack"
@@ -854,9 +966,11 @@ async def create_payment_intent(
             "requires_community_extension": requires_community_extension,
             "community_extension_months": community_extension_months,
             "community_extension_amount": community_extension_amount,
-            "total_with_extension": payment.amount + community_extension_amount
-            if not payload.include_community_extension
-            else None,
+            "total_with_extension": (
+                payment.amount + community_extension_amount
+                if not payload.include_community_extension
+                else None
+            ),
         }
 
     return PaymentIntentResponse(
@@ -1381,6 +1495,7 @@ async def update_discount(
 ):
     """Update a discount code (Admin only)."""
     import uuid as uuid_mod
+
     from services.payments_service.models import DiscountType as DT
 
     try:
@@ -1437,7 +1552,7 @@ async def delete_discount(
 # Manual Payment Endpoints
 # ========================================================================
 
-from services.payments_service.schemas import SubmitProofRequest, AdminReviewRequest
+from services.payments_service.schemas import AdminReviewRequest, SubmitProofRequest
 
 
 @router.post("/{reference}/proof", response_model=PaymentResponse)
@@ -1473,7 +1588,7 @@ async def submit_proof_of_payment(
             detail=f"Cannot upload proof for payment in status: {payment.status.value}",
         )
 
-    payment.proof_of_payment_url = payload.proof_url
+    payment.proof_of_payment_media_id = uuid.UUID(payload.proof_media_id)
     payment.status = PaymentStatus.PENDING_REVIEW
     payment.admin_review_note = None  # Clear any previous rejection note
 

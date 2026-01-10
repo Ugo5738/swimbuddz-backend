@@ -1,9 +1,9 @@
 """Shared helper functions for members service routers."""
 
-from sqlalchemy.orm import selectinload
-
+from libs.common.media_utils import resolve_media_urls
 from services.members_service import service as member_service
 from services.members_service.models import Member
+from sqlalchemy.orm import selectinload
 
 
 def member_eager_load_options():
@@ -55,3 +55,52 @@ async def sync_member_roles(member: Member, current_user, db) -> bool:
         await db.flush()
         return True
     return False
+
+
+async def resolve_member_media_urls(member_data: dict) -> dict:
+    """
+    Resolve media IDs to URLs in a member response dict.
+
+    Args:
+        member_data: Dictionary of member data (from model_dump or dict conversion)
+
+    Returns:
+        Enriched member_data with URL fields populated
+    """
+
+    # Collect all media IDs that need resolution
+    media_ids = []
+    if member_data.get("profile_photo_media_id"):
+        media_ids.append(member_data["profile_photo_media_id"])
+
+    # Also check coach_profile if present
+    coach = member_data.get("coach_profile")
+    if coach:
+        if coach.get("coach_profile_photo_media_id"):
+            media_ids.append(coach["coach_profile_photo_media_id"])
+        if coach.get("background_check_document_media_id"):
+            media_ids.append(coach["background_check_document_media_id"])
+
+    if not media_ids:
+        return member_data
+
+    # Resolve all URLs via HTTP call to media service
+    url_map = await resolve_media_urls(media_ids)
+
+    # Populate URL fields
+    if member_data.get("profile_photo_media_id"):
+        member_data["profile_photo_url"] = url_map.get(
+            member_data["profile_photo_media_id"]
+        )
+
+    if coach:
+        if coach.get("coach_profile_photo_media_id"):
+            coach["coach_profile_photo_url"] = url_map.get(
+                coach["coach_profile_photo_media_id"]
+            )
+        if coach.get("background_check_document_media_id"):
+            coach["background_check_document_url"] = url_map.get(
+                coach["background_check_document_media_id"]
+            )
+
+    return member_data

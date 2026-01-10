@@ -79,8 +79,11 @@ class Payment(Base):
     payment_method: Mapped[str | None] = mapped_column(
         String(32), default="paystack", nullable=True
     )
-    # Proof of payment URL for manual transfers
-    proof_of_payment_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Media ID for proof of payment - links to media_service.media_items (cross-service)
+    # Used for manual bank transfer proof uploads
+    proof_of_payment_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     # Admin review note (for rejected payments)
     admin_review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 

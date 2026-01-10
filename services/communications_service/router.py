@@ -4,6 +4,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
+from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.db.session import get_async_db
 from services.communications_service.models import Announcement
 from services.communications_service.schemas import (  # , AnnouncementCreate
@@ -130,6 +131,10 @@ async def list_content_posts(
     result = await db.execute(query)
     posts = result.scalars().all()
 
+    # Resolve featured image URLs
+    media_ids = [p.featured_image_media_id for p in posts if p.featured_image_media_id]
+    url_map = await resolve_media_urls(media_ids) if media_ids else {}
+
     # Get comment counts for each post
     posts_with_counts = []
     for post in posts:
@@ -141,6 +146,9 @@ async def list_content_posts(
 
         post_dict = post.__dict__.copy()
         post_dict["comment_count"] = comment_count
+        # Add resolved URL
+        if post.featured_image_media_id:
+            post_dict["featured_image_url"] = url_map.get(post.featured_image_media_id)
         posts_with_counts.append(ContentPostResponse.model_validate(post_dict))
 
     return posts_with_counts
@@ -166,8 +174,12 @@ async def get_content_post(
     comment_result = await db.execute(comment_query)
     comment_count = comment_result.scalar_one()
 
+    # Resolve featured image URL
     post_dict = post.__dict__.copy()
     post_dict["comment_count"] = comment_count
+    post_dict["featured_image_url"] = await resolve_media_url(
+        post.featured_image_media_id
+    )
 
     return ContentPostResponse.model_validate(post_dict)
 
@@ -193,8 +205,12 @@ async def create_content_post(
     await db.commit()
     await db.refresh(post)
 
+    # Resolve featured image URL
     post_dict = post.__dict__.copy()
     post_dict["comment_count"] = 0
+    post_dict["featured_image_url"] = await resolve_media_url(
+        post.featured_image_media_id
+    )
 
     return ContentPostResponse.model_validate(post_dict)
 
@@ -239,8 +255,12 @@ async def update_content_post(
     comment_result = await db.execute(comment_query)
     comment_count = comment_result.scalar_one()
 
+    # Resolve featured image URL
     post_dict = post.__dict__.copy()
     post_dict["comment_count"] = comment_count
+    post_dict["featured_image_url"] = await resolve_media_url(
+        post.featured_image_media_id
+    )
 
     return ContentPostResponse.model_validate(post_dict)
 

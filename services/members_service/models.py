@@ -61,8 +61,10 @@ class Member(Base):
     )
     approved_by: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
-    # Profile photo (frequently accessed)
-    profile_photo_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Profile photo
+    profile_photo_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # FK to media_service.media_items
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -559,13 +561,12 @@ class CoachProfile(Base):
         UUID(as_uuid=True), ForeignKey("members.id"), unique=True, nullable=False
     )
 
-    # Identity
     display_name: Mapped[Optional[str]] = mapped_column(
         String, nullable=True
     )  # e.g. "Coach Tobi"
-    coach_profile_photo_url: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )
+    coach_profile_photo_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # FK to media_service.media_items
     short_bio: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     full_bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -616,9 +617,9 @@ class CoachProfile(Base):
     background_check_status: Mapped[str] = mapped_column(
         String, default="not_required", server_default="not_required"
     )
-    background_check_document_url: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )
+    background_check_document_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # FK to media_service.media_items
     insurance_status: Mapped[str] = mapped_column(
         String, default="none", server_default="none"
     )

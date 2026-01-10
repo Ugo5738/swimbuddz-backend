@@ -1,9 +1,14 @@
 import uuid
 from typing import List, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from libs.auth.dependencies import get_current_user, require_admin
+from libs.auth.dependencies import _service_role_jwt, get_current_user, require_admin
 from libs.auth.models import AuthUser
+from libs.common.config import get_settings
+from libs.common.datetime_utils import utc_now
+from libs.common.email import send_enrollment_confirmation_email
+from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.db.session import get_async_db
 from services.academy_service.models import (
     Cohort,
@@ -14,6 +19,7 @@ from services.academy_service.models import (
     PaymentStatus,
     Program,
     ProgramLevel,
+    ProgressStatus,
     StudentProgress,
 )
 from services.academy_service.schemas import (
@@ -23,6 +29,7 @@ from services.academy_service.schemas import (
     EnrollmentCreate,
     EnrollmentResponse,
     EnrollmentUpdate,
+    MemberMilestoneClaimRequest,
     MilestoneCreate,
     MilestoneResponse,
     ProgramCreate,
@@ -33,6 +40,7 @@ from services.academy_service.schemas import (
 )
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 router = APIRouter(tags=["academy"])
 
@@ -102,7 +110,19 @@ async def list_programs(
     if published_only:
         query = query.where(Program.is_published.is_(True))
     result = await db.execute(query)
-    return result.scalars().all()
+    programs = result.scalars().all()
+
+    # Resolve cover image URLs
+    media_ids = [p.cover_image_media_id for p in programs if p.cover_image_media_id]
+    url_map = await resolve_media_urls(media_ids) if media_ids else {}
+
+    responses = []
+    for program in programs:
+        resp = ProgramResponse.model_validate(program).model_dump()
+        if program.cover_image_media_id:
+            resp["cover_image_url"] = url_map.get(program.cover_image_media_id)
+        responses.append(resp)
+    return responses
 
 
 @router.get("/programs/published", response_model=List[ProgramResponse])
@@ -112,7 +132,19 @@ async def list_published_programs(
     """List only published programs (for member-facing pages)."""
     query = select(Program).where(Program.is_published.is_(True)).order_by(Program.name)
     result = await db.execute(query)
-    return result.scalars().all()
+    programs = result.scalars().all()
+
+    # Resolve cover image URLs
+    media_ids = [p.cover_image_media_id for p in programs if p.cover_image_media_id]
+    url_map = await resolve_media_urls(media_ids) if media_ids else {}
+
+    responses = []
+    for program in programs:
+        resp = ProgramResponse.model_validate(program).model_dump()
+        if program.cover_image_media_id:
+            resp["cover_image_url"] = url_map.get(program.cover_image_media_id)
+        responses.append(resp)
+    return responses
 
 
 @router.get("/programs/{program_id}", response_model=ProgramResponse)
@@ -125,7 +157,11 @@ async def get_program(
     program = result.scalar_one_or_none()
     if not program:
         raise HTTPException(status_code=404, detail="Program not found")
-    return program
+
+    # Resolve cover image URL
+    resp = ProgramResponse.model_validate(program).model_dump()
+    resp["cover_image_url"] = await resolve_media_url(program.cover_image_media_id)
+    return resp
 
 
 @router.put("/programs/{program_id}", response_model=ProgramResponse)
@@ -148,7 +184,11 @@ async def update_program(
 
     await db.commit()
     await db.refresh(program)
-    return program
+
+    # Resolve cover image URL
+    resp = ProgramResponse.model_validate(program).model_dump()
+    resp["cover_image_url"] = await resolve_media_url(program.cover_image_media_id)
+    return resp
 
 
 @router.delete("/programs/{program_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -334,7 +374,7 @@ async def list_cohort_students(
 ):
     """List all students enrolled in a cohort with their progress."""
     # Eager load progress records, cohort, and program; member data is resolved by ID externally
-    from sqlalchemy.orm import selectinload, joinedload
+    from sqlalchemy.orm import joinedload, selectinload
 
     query = (
         select(Enrollment)
@@ -599,6 +639,7 @@ async def self_enroll(
         program_id=program_id,
         cohort_id=cohort_id,  # Can be None
         member_id=member["id"],
+        member_auth_id=current_user.user_id,  # For decoupled ownership verification
         status=EnrollmentStatus.PENDING_APPROVAL,
         payment_status=PaymentStatus.PENDING,
         preferences=preferences or {},
@@ -623,21 +664,11 @@ async def get_my_enrollments(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    member_row = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": current_user.user_id},
-    )
-    member = member_row.mappings().first()
-
-    if not member:
-        raise HTTPException(status_code=404, detail="Member profile not found")
-
-    # Eager load cohort, program, and nested cohort.program to avoid async issues
-    from sqlalchemy.orm import selectinload
+    """Get all enrollments for the current user."""
 
     query = (
         select(Enrollment)
-        .where(Enrollment.member_id == member["id"])
+        .where(Enrollment.member_auth_id == current_user.user_id)
         .options(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
@@ -645,6 +676,34 @@ async def get_my_enrollments(
     )
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.get("/my-enrollments/{enrollment_id}", response_model=EnrollmentResponse)
+async def get_my_enrollment(
+    enrollment_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get a specific enrollment for the current member."""
+
+    query = (
+        select(Enrollment)
+        .where(
+            Enrollment.id == enrollment_id,
+            Enrollment.member_auth_id == current_user.user_id,
+        )
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+        )
+    )
+    result = await db.execute(query)
+    enrollment = result.scalar_one_or_none()
+
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    return enrollment
 
 
 @router.get("/internal/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
@@ -693,7 +752,15 @@ async def update_enrollment(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Update enrollment status and/or payment status."""
-    query = select(Enrollment).where(Enrollment.id == enrollment_id)
+
+    query = (
+        select(Enrollment)
+        .where(Enrollment.id == enrollment_id)
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+        )
+    )
     result = await db.execute(query)
     enrollment = result.scalar_one_or_none()
 
@@ -705,7 +772,10 @@ async def update_enrollment(
         setattr(enrollment, field, value)
 
     await db.commit()
-    await db.refresh(enrollment)
+
+    # Reload with relationships eager loaded to avoid lazy-load during response serialization
+    refreshed = await db.execute(query)
+    enrollment = refreshed.scalar_one_or_none()
     return enrollment
 
 
@@ -737,21 +807,18 @@ async def admin_mark_enrollment_paid(
     # Update payment status to PAID
     enrollment.payment_status = PaymentStatus.PAID
 
-    # If enrollment was pending approval, move to enrolled
+    # If enrollment was pending approval, check if cohort requires manual approval
     if enrollment.status == EnrollmentStatus.PENDING_APPROVAL:
-        enrollment.status = EnrollmentStatus.ENROLLED
+        cohort = enrollment.cohort
+        # Only auto-promote if cohort doesn't require approval
+        if not cohort or not cohort.require_approval:
+            enrollment.status = EnrollmentStatus.ENROLLED
 
     await db.commit()
 
     # Send enrollment confirmation email
     try:
-        from libs.common.email import send_enrollment_confirmation_email
-
         # Get member email from members service
-        import httpx
-        from libs.common.config import get_settings
-        from libs.auth.dependencies import _service_role_jwt
-
         settings = get_settings()
         headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
         async with httpx.AsyncClient(timeout=30) as client:
@@ -808,6 +875,8 @@ async def update_student_progress(
     current_user: AuthUser = Depends(require_admin),  # Coach/Admin
     db: AsyncSession = Depends(get_async_db),
 ):
+    """Update or create student progress (Coach/Admin only)."""
+
     # Check if record exists
     query = select(StudentProgress).where(
         StudentProgress.enrollment_id == enrollment_id,
@@ -820,6 +889,13 @@ async def update_student_progress(
         progress.status = progress_in.status
         progress.achieved_at = progress_in.achieved_at
         progress.coach_notes = progress_in.coach_notes
+        # Set review fields if provided or auto-fill for verification
+        if progress_in.reviewed_by_coach_id:
+            progress.reviewed_by_coach_id = progress_in.reviewed_by_coach_id
+        elif progress_in.reviewed_at or progress_in.coach_notes:
+            # Auto-fill review info when coach adds notes or review timestamp
+            progress.reviewed_by_coach_id = current_user.user_id
+            progress.reviewed_at = progress_in.reviewed_at or utc_now()
     else:
         progress = StudentProgress(
             enrollment_id=enrollment_id,
@@ -827,6 +903,9 @@ async def update_student_progress(
             status=progress_in.status,
             achieved_at=progress_in.achieved_at,
             coach_notes=progress_in.coach_notes,
+            reviewed_by_coach_id=progress_in.reviewed_by_coach_id
+            or current_user.user_id,
+            reviewed_at=progress_in.reviewed_at or utc_now(),
         )
         db.add(progress)
 
@@ -848,3 +927,96 @@ async def get_student_progress(
     )
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.post(
+    "/enrollments/{enrollment_id}/progress/{milestone_id}/claim",
+    response_model=StudentProgressResponse,
+)
+async def claim_milestone(
+    enrollment_id: uuid.UUID,
+    milestone_id: uuid.UUID,
+    claim_in: MemberMilestoneClaimRequest,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Allow a member to claim completion of a milestone.
+
+    The member must own the enrollment. Creates or updates a StudentProgress
+    record with ACHIEVED status and optional evidence.
+    """
+
+    # Verify enrollment exists and belongs to the current user
+    enrollment_query = select(Enrollment).where(Enrollment.id == enrollment_id)
+    enrollment_result = await db.execute(enrollment_query)
+    enrollment = enrollment_result.scalar_one_or_none()
+
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Enrollment not found",
+        )
+
+    # Verify ownership using member_auth_id (decoupled architecture)
+    if enrollment.member_auth_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only claim milestones for your own enrollments",
+        )
+
+    # Check enrollment is approved and paid before allowing claims
+    if enrollment.status == EnrollmentStatus.PENDING_APPROVAL:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your enrollment is awaiting admin approval. You cannot claim milestones yet.",
+        )
+
+    if enrollment.payment_status != PaymentStatus.PAID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Payment is required before claiming milestones.",
+        )
+
+    # Verify milestone exists and belongs to the program
+    milestone_query = select(Milestone).where(Milestone.id == milestone_id)
+    milestone_result = await db.execute(milestone_query)
+    milestone = milestone_result.scalar_one_or_none()
+
+    if not milestone:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Milestone not found",
+        )
+
+    # Get or create progress record
+    progress_query = select(StudentProgress).where(
+        StudentProgress.enrollment_id == enrollment_id,
+        StudentProgress.milestone_id == milestone_id,
+    )
+    progress_result = await db.execute(progress_query)
+    progress = progress_result.scalar_one_or_none()
+
+    if progress:
+        # Update existing record
+        progress.status = ProgressStatus.ACHIEVED
+        progress.achieved_at = utc_now()
+        if claim_in.evidence_media_id:
+            progress.evidence_media_id = claim_in.evidence_media_id
+        if claim_in.student_notes:
+            progress.student_notes = claim_in.student_notes
+    else:
+        # Create new record
+        progress = StudentProgress(
+            enrollment_id=enrollment_id,
+            milestone_id=milestone_id,
+            status=ProgressStatus.ACHIEVED,
+            achieved_at=utc_now(),
+            evidence_media_id=claim_in.evidence_media_id,
+            student_notes=claim_in.student_notes,
+        )
+        db.add(progress)
+
+    await db.commit()
+    await db.refresh(progress)
+    return progress

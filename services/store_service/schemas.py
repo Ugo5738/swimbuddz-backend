@@ -5,17 +5,15 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, Field, ConfigDict
-
+from pydantic import BaseModel, ConfigDict, Field
 from services.store_service.models import (
+    CartStatus,
+    FulfillmentType,
+    OrderStatus,
     ProductStatus,
     SourcingType,
-    CartStatus,
-    OrderStatus,
-    FulfillmentType,
     StoreCreditSourceType,
 )
-
 
 # ============================================================================
 # CATEGORY SCHEMAS
@@ -26,7 +24,7 @@ class CategoryBase(BaseModel):
     name: str = Field(..., max_length=100)
     slug: str = Field(..., max_length=100)
     description: Optional[str] = None
-    image_url: Optional[str] = None
+    image_media_id: Optional[uuid.UUID] = None
     parent_id: Optional[uuid.UUID] = None
     sort_order: int = 0
     is_active: bool = True
@@ -40,7 +38,7 @@ class CategoryUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
     slug: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = None
-    image_url: Optional[str] = None
+    image_media_id: Optional[uuid.UUID] = None
     parent_id: Optional[uuid.UUID] = None
     sort_order: Optional[int] = None
     is_active: Optional[bool] = None
@@ -50,6 +48,7 @@ class CategoryResponse(CategoryBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    image_url: Optional[str] = None  # Resolved from media_id
     created_at: datetime
     updated_at: datetime
 
@@ -80,7 +79,7 @@ class ProductBase(BaseModel):
     sourcing_type: SourcingType = SourcingType.STOCKED
     preorder_lead_days: Optional[int] = Field(None, ge=1)
     requires_size_chart_ack: bool = False
-    size_chart_url: Optional[str] = None
+    size_chart_media_id: Optional[uuid.UUID] = None
 
 
 class ProductCreate(ProductBase):
@@ -104,7 +103,7 @@ class ProductUpdate(BaseModel):
     sourcing_type: Optional[SourcingType] = None
     preorder_lead_days: Optional[int] = Field(None, ge=1)
     requires_size_chart_ack: Optional[bool] = None
-    size_chart_url: Optional[str] = None
+    size_chart_media_id: Optional[uuid.UUID] = None
 
 
 class ProductVariantBase(BaseModel):
@@ -167,6 +166,7 @@ class ProductResponse(ProductBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    size_chart_url: Optional[str] = None  # Resolved from media_id
     created_at: datetime
     updated_at: datetime
     images: list[ProductImageResponse] = []  # Include images for list views
@@ -199,7 +199,7 @@ class CollectionBase(BaseModel):
     name: str = Field(..., max_length=100)
     slug: str = Field(..., max_length=100)
     description: Optional[str] = None
-    image_url: Optional[str] = None
+    image_media_id: Optional[uuid.UUID] = None
     is_active: bool = True
     sort_order: int = 0
 
@@ -212,7 +212,7 @@ class CollectionUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
     slug: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = None
-    image_url: Optional[str] = None
+    image_media_id: Optional[uuid.UUID] = None
     is_active: Optional[bool] = None
     sort_order: Optional[int] = None
 
@@ -221,6 +221,7 @@ class CollectionResponse(CollectionBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    image_url: Optional[str] = None  # Resolved from media_id
     created_at: datetime
     updated_at: datetime
 

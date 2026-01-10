@@ -13,6 +13,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
+from libs.common.media_utils import resolve_media_urls
 from libs.db.session import get_async_db
 from services.academy_service.curriculum_schemas import (
     CurriculumLessonCreate,
@@ -280,6 +281,17 @@ async def get_program_curriculum(
         weeks=[],
     )
 
+    # Resolve lesson video URLs in one batch
+    lesson_media_ids = [
+        lesson.video_media_id
+        for week in curriculum.weeks
+        for lesson in week.lessons
+        if getattr(lesson, "video_media_id", None)
+    ]
+    media_url_map = (
+        await resolve_media_urls(lesson_media_ids) if lesson_media_ids else {}
+    )
+
     for week in sorted(curriculum.weeks, key=lambda w: w.order_index):
         week_response = CurriculumWeekResponse(
             id=week.id,
@@ -306,13 +318,17 @@ async def get_program_curriculum(
                 if ls.skill
             ]
 
+            video_url = None
+            if getattr(lesson, "video_media_id", None):
+                video_url = media_url_map.get(lesson.video_media_id)
+
             lesson_response = CurriculumLessonResponse(
                 id=lesson.id,
                 week_id=lesson.week_id,
                 title=lesson.title,
                 description=lesson.description,
                 duration_minutes=lesson.duration_minutes,
-                video_url=lesson.video_url,
+                video_url=video_url,
                 order_index=lesson.order_index,
                 created_at=lesson.created_at,
                 skills=skills,

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
+from libs.common.media_utils import resolve_media_url
 from libs.db.config import AsyncSessionLocal
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -324,8 +325,8 @@ async def complete_coach_onboarding(
             coach.max_cohorts_at_once = data.max_cohorts_at_once
         if data.preferred_cohort_types is not None:
             coach.preferred_cohort_types = data.preferred_cohort_types
-        if data.coach_profile_photo_url is not None:
-            coach.coach_profile_photo_url = data.coach_profile_photo_url
+        if data.coach_profile_photo_media_id is not None:
+            coach.coach_profile_photo_media_id = data.coach_profile_photo_media_id
         if data.currency is not None:
             coach.currency = data.currency
         if data.one_to_one_rate_per_hour is not None:
@@ -402,6 +403,7 @@ async def get_coach_application(
     _admin: dict = Depends(require_admin),
 ):
     """Get a single coach application for review (admin only)."""
+
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(CoachProfile)
@@ -413,6 +415,13 @@ async def get_coach_application(
         if not coach:
             raise HTTPException(status_code=404, detail="Coach application not found")
 
+        # Resolve coach profile photo URL from media_id
+        coach_photo_url = (
+            await resolve_media_url(coach.coach_profile_photo_media_id)
+            if coach.coach_profile_photo_media_id
+            else None
+        )
+
         return AdminCoachApplicationDetail(
             id=str(coach.id),
             member_id=str(coach.member_id),
@@ -421,7 +430,7 @@ async def get_coach_application(
             last_name=coach.member.last_name,
             phone=coach.member.profile.phone if coach.member.profile else None,
             display_name=coach.display_name,
-            coach_profile_photo_url=coach.coach_profile_photo_url,
+            coach_profile_photo_url=coach_photo_url,
             short_bio=coach.short_bio,
             full_bio=coach.full_bio,
             certifications=coach.certifications or [],
@@ -438,7 +447,7 @@ async def get_coach_application(
             has_cpr_training=coach.has_cpr_training,
             cpr_expiry_date=coach.cpr_expiry_date,
             background_check_status=coach.background_check_status,
-            background_check_document_url=coach.background_check_document_url,
+            background_check_document_url=None,  # TODO: Resolve from coach.background_check_document_media_id
             status=coach.status,
             application_submitted_at=coach.application_submitted_at,
             application_reviewed_at=coach.application_reviewed_at,

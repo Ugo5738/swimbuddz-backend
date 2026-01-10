@@ -100,6 +100,44 @@ async def health_check():
     return {"status": "healthy", "service": "media"}
 
 
+# ===== URL RESOLUTION =====
+
+
+@router.post("/urls")
+async def resolve_media_urls(
+    media_ids: list[str],
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Batch resolve media IDs to their file URLs.
+
+    This endpoint is designed for internal service-to-service calls.
+    Other services should use this instead of direct DB queries.
+
+    Returns a dict mapping media_id -> file_url (only for found items).
+    """
+    if not media_ids:
+        return {}
+
+    # Filter out empty strings and convert to UUIDs
+    valid_ids = []
+    for id_str in media_ids:
+        if id_str and id_str.strip():
+            try:
+                valid_ids.append(uuid.UUID(id_str))
+            except ValueError:
+                continue
+
+    if not valid_ids:
+        return {}
+
+    query = select(MediaItem.id, MediaItem.file_url).where(MediaItem.id.in_(valid_ids))
+    result = await db.execute(query)
+    rows = result.fetchall()
+
+    return {str(row[0]): row[1] for row in rows if row[1]}
+
+
 # ===== ALBUM ENDPOINTS =====
 
 
@@ -354,31 +392,93 @@ async def upload_media(
     )
 
 
-@router.post("/uploads/coach-documents", response_model=MediaItemResponse)
-async def upload_coach_document(
+@router.post("/uploads", response_model=MediaItemResponse)
+async def upload_file(
     file: UploadFile = File(...),
+    purpose: str = Form(
+        ...
+    ),  # "coach_document" | "payment_proof" | "milestone_evidence" | "general"
+    linked_id: Optional[str] = Form(
+        None
+    ),  # For storage path organization (e.g., payment_reference, enrollment_id)
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
-    Allow authenticated users to upload supporting documents for coach applications.
-    Accepts PDFs and images; stores as DOCUMENT media type.
+    Generic file upload endpoint for authenticated users.
+
+    Supports multiple purposes:
+    - coach_document: Documents for coach applications (PDF, images)
+    - payment_proof: Proof of payment screenshots (PDF, images)
+    - milestone_evidence: Video/image evidence for milestone completion
+    - general: General uploads
+
+    Returns MediaItem with file_url. The calling service should store the media_id
+    in its own table to track the relationship.
     """
     content_type = file.content_type or ""
     is_image = content_type.startswith("image/")
-    allowed_types = {"application/pdf"}
-    if not (is_image or content_type in allowed_types):
+    is_video = content_type.startswith("video/")
+    is_pdf = content_type == "application/pdf"
+
+    # Validate file type based on purpose
+    allowed_purposes = {
+        "coach_document",
+        "payment_proof",
+        "milestone_evidence",
+        "general",
+        "profile_photo",
+        "cover_image",
+    }
+    if purpose not in allowed_purposes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be a PDF or image",
+            detail=f"Invalid purpose. Must be one of: {', '.join(allowed_purposes)}",
         )
+
+    # Different purposes have different allowed file types
+    if purpose in ("coach_document", "payment_proof"):
+        if not (is_image or is_pdf):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be a PDF or image",
+            )
+    elif purpose == "milestone_evidence":
+        if not (is_image or is_video):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be an image or video",
+            )
+    elif purpose in ("profile_photo", "cover_image"):
+        if not is_image:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be an image",
+            )
+    # "general" allows any file type
 
     file_data = await file.read()
 
-    # Store under a dedicated coach-documents prefix for clarity/isolation
-    original_name = file.filename or f"coach_document_{uuid.uuid4()}"
+    # Determine storage path based on purpose
+    original_name = file.filename or f"upload_{uuid.uuid4()}"
     file_ext = original_name.split(".")[-1] if "." in original_name else "bin"
-    storage_name = f"coach-documents/{uuid.uuid4()}.{file_ext}"
+
+    storage_prefixes = {
+        "coach_document": "coach-documents",
+        "payment_proof": (
+            f"payment-proofs/{linked_id}" if linked_id else "payment-proofs"
+        ),
+        "milestone_evidence": (
+            f"milestone-evidence/{linked_id}" if linked_id else "milestone-evidence"
+        ),
+        "profile_photo": "profile-photos",
+        "cover_image": "cover-images",
+        "general": "uploads",
+    }
+    storage_prefix = storage_prefixes.get(purpose, "uploads")
+    storage_name = f"{storage_prefix}/{uuid.uuid4()}.{file_ext}"
 
     file_url, thumbnail_url = await storage_service.upload_media(
         file_data,
@@ -386,12 +486,33 @@ async def upload_coach_document(
         content_type or "application/octet-stream",
     )
 
+    # Determine media type
+    if is_video:
+        media_type = MediaType.VIDEO
+    elif is_pdf:
+        media_type = MediaType.DOCUMENT
+    else:
+        media_type = MediaType.IMAGE
+
+    # Auto-generate title/description if not provided
+    auto_title = title or original_name
+    auto_description = description
+    if not auto_description:
+        if purpose == "coach_document":
+            auto_description = "Coach application document"
+        elif purpose == "payment_proof":
+            auto_description = (
+                f"Proof of payment for {linked_id}" if linked_id else "Proof of payment"
+            )
+        elif purpose == "milestone_evidence":
+            auto_description = "Milestone evidence submission"
+
     db_media = MediaItem(
-        media_type=MediaType.DOCUMENT,
+        media_type=media_type,
         file_url=file_url,
         thumbnail_url=thumbnail_url if is_image else None,
-        title=original_name,
-        description="Coach application document",
+        title=auto_title,
+        description=auto_description,
         alt_text=original_name,
         uploaded_by=current_user.user_id,
         is_processed=True,
@@ -403,46 +524,71 @@ async def upload_coach_document(
     return await _build_media_item_response(db, db_media)
 
 
-@router.post("/uploads/payment-proofs", response_model=MediaItemResponse)
-async def upload_payment_proof(
-    file: UploadFile = File(...),
-    payment_reference: str = Form(...),
+@router.post("/register-url", response_model=MediaItemResponse)
+async def register_external_url(
+    url: str = Form(...),
+    purpose: str = Form(
+        ...
+    ),  # Same as upload: coach_document, milestone_evidence, etc.
+    media_type: str = Form("link"),  # "image", "video", "link"
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    linked_id: Optional[str] = Form(None),
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
-    Allow authenticated users to upload proof of payment for manual bank transfers.
-    Accepts PDFs and images; stores as DOCUMENT media type.
+    Register an external URL (YouTube, image URL, etc.) as a media item.
+
+    This allows the same media_id pattern for both uploads and external links.
+    The URL is stored directly without downloading/hosting.
+
+    Returns MediaItem with the external URL as file_url.
     """
-    content_type = file.content_type or ""
-    is_image = content_type.startswith("image/")
-    allowed_types = {"application/pdf"}
-    if not (is_image or content_type in allowed_types):
+    # Validate URL format
+    if not url.startswith(("http://", "https://")):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be a PDF or image",
+            detail="Invalid URL. Must start with http:// or https://",
         )
 
-    file_data = await file.read()
+    allowed_purposes = {
+        "coach_document",
+        "payment_proof",
+        "milestone_evidence",
+        "general",
+        "profile_photo",
+        "cover_image",
+    }
+    if purpose not in allowed_purposes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid purpose. Must be one of: {', '.join(allowed_purposes)}",
+        )
 
-    # Store under payment-proofs prefix with the payment reference for traceability
-    original_name = file.filename or f"payment_proof_{uuid.uuid4()}"
-    file_ext = original_name.split(".")[-1] if "." in original_name else "bin"
-    storage_name = f"payment-proofs/{payment_reference}/{uuid.uuid4()}.{file_ext}"
+    # Map media_type string to enum
+    type_mapping = {
+        "image": MediaType.IMAGE,
+        "video": MediaType.VIDEO,
+        "link": MediaType.DOCUMENT,
+    }
+    db_media_type = type_mapping.get(media_type, MediaType.DOCUMENT)
 
-    file_url, thumbnail_url = await storage_service.upload_media(
-        file_data,
-        storage_name,
-        content_type or "application/octet-stream",
-    )
+    # Auto-generate title if not provided
+    auto_title = title
+    if not auto_title:
+        if "youtube.com" in url or "youtu.be" in url:
+            auto_title = "YouTube Video"
+        else:
+            auto_title = f"External {media_type}"
 
     db_media = MediaItem(
-        media_type=MediaType.DOCUMENT,
-        file_url=file_url,
-        thumbnail_url=thumbnail_url if is_image else None,
-        title=f"Payment Proof - {payment_reference}",
-        description=f"Proof of payment for reference {payment_reference}",
-        alt_text=original_name,
+        media_type=db_media_type,
+        file_url=url,  # Store external URL directly
+        thumbnail_url=None,  # No thumbnail for external URLs
+        title=auto_title,
+        description=description or f"{purpose} - external URL",
+        alt_text=auto_title,
         uploaded_by=current_user.user_id,
         is_processed=True,
     )
@@ -502,6 +648,22 @@ async def list_media(
         )
 
     return response_list
+
+
+@router.get("/media/{media_id}", response_model=MediaItemResponse)
+async def get_media_item(
+    media_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get a single media item by ID."""
+    query = select(MediaItem).where(MediaItem.id == media_id)
+    result = await db.execute(query)
+    item = result.scalar_one_or_none()
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Media item not found")
+
+    return await _build_media_item_response(db, item)
 
 
 @router.put("/media/{media_id}", response_model=MediaItemResponse)

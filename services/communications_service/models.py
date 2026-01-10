@@ -1,13 +1,14 @@
+import enum
 import uuid
 from datetime import datetime
-import enum
 
-from sqlalchemy import String, Text, Boolean, DateTime, Enum as SAEnum
+from libs.common.datetime_utils import utc_now
+from libs.db.base import Base
+from sqlalchemy import Boolean, DateTime
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
-
-from libs.db.base import Base
-from libs.common.datetime_utils import utc_now
 
 
 class AnnouncementCategory(str, enum.Enum):
@@ -75,7 +76,9 @@ class ContentPost(Base):
     category: Mapped[str] = mapped_column(
         String, nullable=False
     )  # swimming_tips/safety/breathing/technique/news/education
-    featured_image_url: Mapped[str] = mapped_column(String, nullable=True)
+    featured_image_media_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # FK to media_service.media_items
     published_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

@@ -11,7 +11,6 @@ from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-
 # ============================================================================
 # ENUMS
 # ============================================================================
@@ -124,7 +123,9 @@ class Program(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     slug: Mapped[Optional[str]] = mapped_column(String, unique=True, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    cover_image_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    cover_image_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # FK to media_service.media_items
 
     level: Mapped[ProgramLevel] = mapped_column(
         SAEnum(ProgramLevel, name="program_level_enum"), nullable=False
@@ -252,9 +253,9 @@ class CurriculumLesson(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     duration_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    video_url: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )  # Instructional/model video for this lesson
+    video_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # FK to media_service.media_items - Instructional video
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
@@ -354,6 +355,9 @@ class Cohort(Base):
     allow_mid_entry: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="false"
     )
+    require_approval: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
     notes_internal: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -398,7 +402,9 @@ class CohortResource(Base):
         default=ResourceSourceType.URL,
         server_default="URL",
     )
-    content_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    content_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # FK to media_service.media_items
     storage_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     mime_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     file_size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -440,6 +446,10 @@ class Enrollment(Base):
     )
     member_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
+    )
+    # Auth ID for ownership verification (avoids cross-service calls)
+    member_auth_id: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, index=True
     )
 
     # User preferences for matching
@@ -504,7 +514,9 @@ class Milestone(Base):
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     criteria: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    video_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    video_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # FK to media_service.media_items
 
     # Organization & Type
     order_index: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -558,7 +570,10 @@ class StudentProgress(Base):
     )
 
     # Evidence & Scoring
-    evidence_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Links to media_service.media_items - can be uploaded file OR external URL
+    evidence_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Review tracking

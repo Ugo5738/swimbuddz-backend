@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
-
 from services.communications_service.models import AnnouncementCategory
 
 
@@ -36,7 +35,7 @@ class ContentPostBase(BaseModel):
     summary: Optional[str] = None
     body: str  # Markdown content
     category: str  # swimming_tips/safety/breathing/technique/news/education
-    featured_image_url: Optional[str] = None
+    featured_image_media_id: Optional[uuid.UUID] = None
     tier_access: str = "community"  # community/club/academy
 
 
@@ -53,7 +52,7 @@ class ContentPostUpdate(BaseModel):
     summary: Optional[str] = None
     body: Optional[str] = None
     category: Optional[str] = None
-    featured_image_url: Optional[str] = None
+    featured_image_media_id: Optional[uuid.UUID] = None
     tier_access: Optional[str] = None
     is_published: Optional[bool] = None
 
@@ -68,6 +67,7 @@ class ContentPostResponse(ContentPostBase):
     created_at: datetime
     updated_at: datetime
     comment_count: Optional[int] = 0
+    featured_image_url: Optional[str] = None  # Resolved from media_id
 
     model_config = ConfigDict(from_attributes=True)
 

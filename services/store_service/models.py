@@ -20,10 +20,9 @@ from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
+from sqlalchemy import Boolean, CheckConstraint, DateTime
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy import (
-    Boolean,
-    CheckConstraint,
-    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -32,10 +31,8 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 
 # ============================================================================
 # ENUMS
@@ -135,7 +132,9 @@ class Category(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    image_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    image_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # FK to media_service.media_items
 
     # Subcategory support
     parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -235,7 +234,9 @@ class Product(Base):
     requires_size_chart_ack: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
     )
-    size_chart_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    size_chart_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # FK to media_service.media_items
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
@@ -365,7 +366,9 @@ class Collection(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    image_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    image_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # FK to media_service.media_items
 
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
