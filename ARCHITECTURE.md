@@ -40,7 +40,19 @@ The **Gateway Service** acts as the single entry point for clients and **proxies
 - **Independent deployment** - Deploy services separately
 - **Clear boundaries** - Enforced separation of concerns
 
-Each domain service is a complete FastAPI application with its own endpoints, models, and business logic. Services communicate via HTTP when needed, typically through the Gateway.
+Each domain service is a complete FastAPI application with its own endpoints, models, and business logic.
+
+### ⚠️ Service Communication Rules
+
+**Services MUST communicate only via HTTP APIs - NO direct imports between services.**
+
+- **❌ FORBIDDEN:** Importing code from other services (e.g., `from services.members_service import ...`)
+- **❌ FORBIDDEN:** Direct database access to other services' tables
+- **❌ FORBIDDEN:** Shared models between services (except through `libs/`)
+- **✅ ALLOWED:** HTTP API calls between services
+- **✅ ALLOWED:** Using shared libraries in `libs/` for common utilities
+
+**See [docs/reference/SERVICE_COMMUNICATION.md](../docs/reference/SERVICE_COMMUNICATION.md) for complete communication patterns and code examples.**
 
 ---
 

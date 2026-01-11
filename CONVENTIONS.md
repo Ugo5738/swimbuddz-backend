@@ -36,6 +36,29 @@ We use **async FastAPI endpoints** plus SQLAlchemy 2.x's async ORM/session APIs.
 - MCP:
   - `mcp/swimbuddz_core_mcp/` – MCP server and tools.
 
+### ⚠️ CRITICAL - Service Isolation Rules
+
+**Services MUST NOT import code from other services. Services communicate ONLY via HTTP APIs.**
+
+```python
+# ❌ FORBIDDEN - Do NOT do this
+from services.members_service.models import Member
+from services.academy_service.schemas import ProgramRead
+
+# ❌ FORBIDDEN - Do NOT query other services' tables
+member = db.query(Member).filter(Member.id == member_id).first()
+
+# ✅ CORRECT - Call other services via HTTP
+import httpx
+
+async def get_member_info(member_id: str):
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{MEMBERS_SERVICE_URL}/api/v1/members/{member_id}")
+        return response.json() if response.status_code == 200 else None
+```
+
+**See [docs/reference/SERVICE_COMMUNICATION.md](../docs/reference/SERVICE_COMMUNICATION.md) for complete patterns.**
+
 ---
 
 ## 3. Python Style
