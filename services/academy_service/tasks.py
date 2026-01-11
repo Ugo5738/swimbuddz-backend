@@ -2,13 +2,15 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+# from datetime import datetime, timedelta
+
 
 from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.academy_service.models import Cohort, CohortStatus
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+# from sqlalchemy.ext.asyncio import AsyncSession
+
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,9 @@ async def transition_cohort_statuses():
 
             for cohort in open_cohorts:
                 cohort.status = CohortStatus.ACTIVE
-                logger.info(f"Transitioned cohort {cohort.id} ({cohort.name}) from OPEN to ACTIVE")
+                logger.info(
+                    f"Transitioned cohort {cohort.id} ({cohort.name}) from OPEN to ACTIVE"
+                )
 
             # Transition ACTIVE → COMPLETED for cohorts that have ended
             active_query = select(Cohort).where(
@@ -47,13 +51,17 @@ async def transition_cohort_statuses():
 
             for cohort in active_cohorts:
                 cohort.status = CohortStatus.COMPLETED
-                logger.info(f"Transitioned cohort {cohort.id} ({cohort.name}) from ACTIVE to COMPLETED")
+                logger.info(
+                    f"Transitioned cohort {cohort.id} ({cohort.name}) from ACTIVE to COMPLETED"
+                )
 
             await db.commit()
 
             total_transitions = len(open_cohorts) + len(active_cohorts)
             if total_transitions > 0:
-                logger.info(f"Cohort status transitions completed: {len(open_cohorts)} OPEN→ACTIVE, {len(active_cohorts)} ACTIVE→COMPLETED")
+                logger.info(
+                    f"Cohort status transitions completed: {len(open_cohorts)} OPEN→ACTIVE, {len(active_cohorts)} ACTIVE→COMPLETED"
+                )
 
         except Exception as e:
             logger.error(f"Error transitioning cohort statuses: {e}")

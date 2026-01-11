@@ -753,7 +753,9 @@ async def get_enrollment_internal(
     return enrollment
 
 
-@router.get("/my-enrollments/{enrollment_id}/onboarding", response_model=OnboardingResponse)
+@router.get(
+    "/my-enrollments/{enrollment_id}/onboarding", response_model=OnboardingResponse
+)
 async def get_enrollment_onboarding(
     enrollment_id: uuid.UUID,
     current_user: AuthUser = Depends(get_current_user),
@@ -793,9 +795,7 @@ async def get_enrollment_onboarding(
     coach_name = None
     if cohort.coach_id:
         coach_row = await db.execute(
-            text(
-                "SELECT first_name, last_name FROM members WHERE id = :coach_id"
-            ),
+            text("SELECT first_name, last_name FROM members WHERE id = :coach_id"),
             {"coach_id": cohort.coach_id},
         )
         coach = coach_row.mappings().first()
