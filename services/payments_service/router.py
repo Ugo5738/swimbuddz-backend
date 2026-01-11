@@ -937,7 +937,7 @@ async def create_payment_intent(
         # Determine redirect path based on purpose
         redirect_path = None
         if payload.purpose == PaymentPurpose.ACADEMY_COHORT and payload.enrollment_id:
-            redirect_path = f"/account/academy/enrollments/{payload.enrollment_id}"
+            redirect_path = f"/account/academy/enrollment-success?enrollment_id={payload.enrollment_id}"
 
         authorization_url, access_code = await _initialize_paystack(
             payment, current_user.email, redirect_path
