@@ -8,7 +8,7 @@ Backend monorepo for the SwimBuddz application, built with FastAPI, SQLAlchemy (
 ## Tech Stack
 
 - **Framework**: FastAPI
-- **Database**: PostgreSQL (Async via `asyncpg`)
+- **Database**: PostgreSQL (Async via `psycopg3`)
 - **ORM**: SQLAlchemy 2.0+
 - **Migrations**: Alembic
 - **Authentication**: Supabase (JWT)
@@ -31,6 +31,12 @@ swimbuddz-backend/
 │   ├── members_service/  # Member management
 │   ├── sessions_service/ # Session management
 │   ├── attendance_service/ # Attendance tracking
+│   ├── payments_service/ # Payment processing
+│   ├── academy_service/ # Academy management
+│   ├── events_service/ # Events management
+│   ├── media_service/ # Media management
+│   ├── transport_service/ # Transport management
+│   ├── store_service/ # Store management
 │   └── communications_service/ # Announcements
 └── tests/                # Integration tests
 ```
@@ -39,12 +45,21 @@ swimbuddz-backend/
 
 **SwimBuddz** uses a **microservices architecture** where each domain service runs independently:
 
-- **Gateway Service** (Port 8000) - API Gateway that routes requests to domain services
-- **Members Service** (Port 8001) - Member management
-- **Sessions Service** (Port 8002) - Session scheduling
-- **Attendance Service** (Port 8003) - Attendance tracking
-- **Communications Service** (Port 8004) - Announcements
-- **Payments Service** (Port 8005) - Payment processing
+| Service | Port | Status | Purpose |
+|---------|------|--------|---------|
+| **Gateway Service** | 8000 | Production | API Gateway - Single entry point for all requests |
+| **Members Service** | 8001 | Production | Member profiles and registration |
+| **Sessions Service** | 8002 | Production | Session scheduling and management |
+| **Attendance Service** | 8003 | Production | Session check-ins and tracking |
+| **Communications Service** | 8004 | Production | Announcements and notifications |
+| **Payments Service** | 8005 | Production | Payment processing and Paystack integration |
+| **Academy Service** | 8006 | Production | Cohort-based programs and curriculum |
+| **Events Service** | 8007 | Minimal | Community events (basic implementation) |
+| **Media Service** | 8008 | Minimal | Photo/video galleries (basic implementation) |
+| **Transport Service** | 8009 | Production | Ride-sharing and route management |
+| **Store Service** | 8010 | Minimal | E-commerce platform (extensive models, basic routes) |
+
+**Complete Service Details:** See [docs/reference/SERVICE_REGISTRY.md](../docs/reference/SERVICE_REGISTRY.md)
 
 The Gateway proxies requests to the appropriate service via HTTP, allowing each service to be:
 - Scaled independently
@@ -70,10 +85,10 @@ The Gateway proxies requests to the appropriate service via HTTP, allowing each 
     ```bash
     docker compose up --build
     ```
-    
-    This will start all 6 services:
-    - Gateway at `http://localhost:8000`
-    - Individual services at ports 8001-8005
+
+    This will start all services:
+    - Gateway at `http://localhost:8000` (main entry point)
+    - Individual services at ports 8001-8010
 
 3.  **Run Migrations**:
     ```bash
@@ -82,12 +97,18 @@ The Gateway proxies requests to the appropriate service via HTTP, allowing each 
 
 ### Testing Individual Services
 
-Each service can be accessed directly during development:
+Each service exposes its own FastAPI docs during development:
+- Gateway: `http://localhost:8000/docs`
 - Members: `http://localhost:8001/docs`
 - Sessions: `http://localhost:8002/docs`
 - Attendance: `http://localhost:8003/docs`
 - Communications: `http://localhost:8004/docs`
 - Payments: `http://localhost:8005/docs`
+- Academy: `http://localhost:8006/docs`
+- Events: `http://localhost:8007/docs`
+- Media: `http://localhost:8008/docs`
+- Transport: `http://localhost:8009/docs`
+- Store: `http://localhost:8010/docs`
 
 ### Local Development
 

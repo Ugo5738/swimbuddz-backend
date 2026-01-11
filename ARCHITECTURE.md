@@ -22,6 +22,11 @@ The backend uses a **microservices architecture** where each domain service runs
    - `attendance_service` (Port 8003): session sign-ins, ride-share, pool lists.
    - `communications_service` (Port 8004): announcements / noticeboard.
    - `payments_service` (Port 8005): payment records and status.
+   - `academy_service` (Port 8006): cohort-based programs and curriculum.
+   - `events_service` (Port 8007): community events (basic implementation).
+   - `media_service` (Port 8008): photo/video galleries (basic implementation).
+   - `transport_service` (Port 8009): ride-sharing and route management.
+   - `store_service` (Port 8010): e-commerce platform (extensive models, basic routes).
    - `gateway_service` (Port 8000): **API Gateway** that proxies requests to domain services via HTTP.
 3. **MCP server (`mcp/`)** – `swimbuddz_core_mcp` exposes high-level tools to AI agents.
 4. **Migrations (`alembic/`)** – Alembic manages the Postgres schema.
@@ -64,6 +69,10 @@ swimbuddz-backend/
     sessions_service/
     attendance_service/
     communications_service/
+    events_service/
+    media_service/
+    transport_service/
+    store_service/
     academy_service/
     payments_service/
   mcp/
@@ -119,15 +128,26 @@ services/<service_name>/
     tests/           # unit tests
 ```
 
-### 3.1 Identity Service (`services/identity_service/`)
+### Service Overview
 
-- **Responsibilities**
-  - Connect Supabase auth users to SwimBuddz members and roles.
-  - Provide identity/role information to clients and other services.
-- **Key Capabilities**
-  - `GET /api/v1/identity/me` returns Supabase user ID, email, inferred role (member, admin, volunteer), and linked `member_id`.
+| Service | Port | Status | Key Models | Frontend Integration |
+|---------|------|--------|------------|---------------------|
+| gateway_service | 8000 | Production | - | All routes |
+| members_service | 8001 | Production | Member, PendingRegistration | `/account/profile`, `/admin/members` |
+| sessions_service | 8002 | Production | Session | `/sessions`, `/admin/sessions` |
+| attendance_service | 8003 | Production | SessionAttendance | `/sessions/[id]/sign-in`, `/account/attendance` |
+| communications_service | 8004 | Production | Announcement | `/announcements` |
+| payments_service | 8005 | Production | PaymentRecord, PaymentIntent | `/checkout`, `/account/billing` |
+| academy_service | 8006 | Production | Program, Cohort, Enrollment, Progress | `/academy/*`, `/account/academy/*`, `/admin/academy/*` |
+| events_service | 8007 | Minimal | Event, EventRSVP | `/community/events/*` |
+| media_service | 8008 | Minimal | MediaItem, Album, Gallery | `/gallery/*` |
+| transport_service | 8009 | Production | RideArea, PickupLocation, RideBooking | `/admin/transport/*` |
+| store_service | 8010 | Minimal | Product, Order, Cart, Inventory | `/store/*`, `/admin/store/*` |
+| identity_service | N/A | **Not Implemented** | - | N/A |
 
-### 3.2 Members Service (`services/members_service/`)
+**Complete Service Registry:** See [docs/reference/SERVICE_REGISTRY.md](../../docs/reference/SERVICE_REGISTRY.md)
+
+### 3.1 Members Service (`services/members_service/`) - Port 8001
 
 - **Responsibilities**
   - Store and manage member profiles, replacing the Google Form workflow.
@@ -137,7 +157,7 @@ services/<service_name>/
   - Retrieve and update the logged-in member profile.
   - Provide admin listing/filtering of members.
 
-### 3.3 Sessions Service (`services/sessions_service/`)
+### 3.2 Sessions Service (`services/sessions_service/`) - Port 8002
 
 - **Responsibilities**
   - Represent all SwimBuddz sessions/events: Yaba club, Sunfit, Federal Palace meetups, trips, camps, open water, scuba, etc.
@@ -146,7 +166,7 @@ services/<service_name>/
   - Publish upcoming sessions.
   - Serve session details for the sign-in flow.
 
-### 3.4 Attendance Service (`services/attendance_service/`)
+### 3.3 Attendance Service (`services/attendance_service/`) - Port 8003
 
 - **Responsibilities**
   - Manage attendance for each session, including sign-ins, ride-share options (drivers/passengers), payment flags, and attendance history.
@@ -156,7 +176,7 @@ services/<service_name>/
   - Pool list export for administrators.
   - Member attendance history and statistics.
 
-### 3.5 Communications Service (`services/communications_service/`)
+### 3.4 Communications Service (`services/communications_service/`) - Port 8004
 
 - **Responsibilities**
   - Manage announcements and noticeboard posts (rain updates, schedule changes, events like Dermatologist Q&A, meetups, competitions).
@@ -164,22 +184,63 @@ services/<service_name>/
   - Admins create/edit announcements.
   - Clients retrieve a public list of recent announcements.
 
-### 3.6 Academy Service (`services/academy_service/`)
+### 3.5 Payments Service (`services/payments_service/`) - Port 8005
 
 - **Responsibilities**
-  - Model the SwimBuddz Academy layer with structured programs, courses, and enrolments (scorecards/progress later).
+  - Track payment records for sessions, programs, and merchandise.
+  - Integrate with Paystack for payment processing.
 - **Key Capabilities**
-  - Create and list programs.
-  - Enrol members into programs.
-  - Provide admin visibility into enrolments.
+  - Create payment intents and manage Paystack checkouts.
+  - Handle payment webhooks for automated verification.
+  - Manual payment verification for admin overrides.
+  - Link payments to sessions, cohorts, or store orders.
 
-### 3.7 Payments Service (`services/payments_service/`)
+### 3.6 Academy Service (`services/academy_service/`) - Port 8006 ⭐
 
 - **Responsibilities**
-  - Track payment records for sessions, programs, and future offerings (plans, merchandise).
+  - Complete cohort-based learning system with programs, curriculum, enrollments, and progress tracking.
+- **Status:** **Production-ready** - Fully implemented backend with minor operational gaps.
+- **Key Models:** Program, ProgramCurriculum, Cohort, Enrollment, Milestone, StudentProgress (20,332 lines total)
 - **Key Capabilities**
-  - Create payment records and manage lifecycle status (`pending`, `succeeded`, `failed`).
-  - Integrate with gateways (Paystack/Flutterwave) via webhooks in future iterations.
+  - Create and manage academy programs with structured curriculum.
+  - Cohort management with enrollment workflows.
+  - Student progress tracking with milestone assessment.
+  - Payment integration for program fees.
+  - 33+ API endpoints for complete academy operations.
+- **Known Gaps:** Coach dashboard, capacity enforcement, waitlist automation (see [ACADEMY_REVIEW.md](../../docs/ACADEMY_REVIEW.md))
+
+### 3.7 Events Service (`services/events_service/`) - Port 8007
+
+- **Responsibilities**
+  - Community events distinct from recurring sessions (one-off meets, trips, camps).
+- **Status:** Minimal implementation - basic models and routes only.
+- **Key Models:** Event, EventRSVP
+
+### 3.8 Media Service (`services/media_service/`) - Port 8008
+
+- **Responsibilities**
+  - Photo and video management, gallery creation, site asset storage.
+- **Status:** Minimal implementation - basic models and routes only.
+- **Key Models:** MediaItem, Album, Gallery, SiteAsset
+
+### 3.9 Transport Service (`services/transport_service/`) - Port 8009
+
+- **Responsibilities**
+  - Ride-sharing system for session transportation with pickup locations and route management.
+- **Status:** Production - Complete implementation (6,229 lines of models).
+- **Key Models:** RideArea, PickupLocation, RouteInfo, RideBooking
+
+### 3.10 Store Service (`services/store_service/`) - Port 8010
+
+- **Responsibilities**
+  - E-commerce platform for swim gear, merchandise, and equipment sales.
+- **Status:** Minimal routes - Extensive models (998 lines) with basic CRUD endpoints.
+- **Key Models:** Product, ProductVariant, Order, OrderItem, Cart, Inventory
+- **Architecture Docs:** [STORE_ARCHITECTURE.md](../../docs/STORE_ARCHITECTURE.md)
+
+### 3.11 Identity Service - **Not Implemented**
+
+This service exists as an empty directory but has no implementation. Authentication is handled via Supabase JWT validation in `libs/auth/dependencies.py`. If identity aggregation or advanced RBAC is needed, this service can be implemented in the future.
 
 ---
 
