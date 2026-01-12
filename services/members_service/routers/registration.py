@@ -2,14 +2,10 @@
 
 import json
 
-from libs.common.logging import get_logger
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
+from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.members_service.models import (
     Member,
@@ -20,16 +16,18 @@ from services.members_service.models import (
     MemberProfile,
     PendingRegistration,
 )
-from services.members_service.schemas import (
-    MemberResponse,
-    PendingRegistrationCreate,
-    PendingRegistrationResponse,
-)
 from services.members_service.routers._helpers import (
     member_eager_load_options,
     normalize_member_tiers,
     sync_member_roles,
 )
+from services.members_service.schemas import (
+    MemberResponse,
+    PendingRegistrationCreate,
+    PendingRegistrationResponse,
+)
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/pending-registrations", tags=["pending-registrations"])
@@ -91,7 +89,7 @@ async def create_pending_registration(
         import asyncio
 
         from libs.common.config import get_settings
-        from libs.common.supabase import get_supabase_client, get_supabase_admin_client
+        from libs.common.supabase import get_supabase_admin_client, get_supabase_client
 
         settings = get_settings()
         redirect_url = f"{settings.FRONTEND_URL.rstrip('/')}/confirm"
@@ -270,7 +268,7 @@ async def complete_pending_registration(
         registration_complete=True,
         approval_status="approved",
         roles=roles,
-        profile_photo_url=profile_data.get("profile_photo_url"),
+        profile_photo_media_id=profile_data.get("profile_photo_media_id"),
     )
     db.add(member)
     await db.flush()

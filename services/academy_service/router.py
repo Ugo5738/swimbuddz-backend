@@ -3,7 +3,13 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from libs.auth.dependencies import _service_role_jwt, get_current_user, require_admin
+from libs.auth.dependencies import (
+    _service_role_jwt,
+    get_current_user,
+    require_admin,
+    require_coach,
+    require_coach_for_cohort,
+)
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
@@ -389,10 +395,18 @@ async def get_cohort(
 @router.get("/cohorts/{cohort_id}/students", response_model=List[EnrollmentResponse])
 async def list_cohort_students(
     cohort_id: uuid.UUID,
-    current_user: AuthUser = Depends(require_admin),
+    current_user: AuthUser = Depends(require_coach),  # Coach or Admin
     db: AsyncSession = Depends(get_async_db),
 ):
-    """List all students enrolled in a cohort with their progress."""
+    """List all students enrolled in a cohort with their progress.
+
+    Accessible by:
+    - Admins (can view any cohort)
+    - Coaches (can only view their assigned cohorts)
+    """
+    # Verify coach has access to this specific cohort
+    await require_coach_for_cohort(current_user, str(cohort_id), db)
+
     # Eager load progress records, cohort, and program; member data is resolved by ID externally
     from sqlalchemy.orm import joinedload, selectinload
 
@@ -971,10 +985,38 @@ async def update_student_progress(
     progress_in: StudentProgressUpdate,
     enrollment_id: uuid.UUID,
     milestone_id: uuid.UUID,
-    current_user: AuthUser = Depends(require_admin),  # Coach/Admin
+    current_user: AuthUser = Depends(require_coach),  # Coach or Admin
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Update or create student progress (Coach/Admin only)."""
+    """Update or create student progress (Coach/Admin only).
+
+    Accessible by:
+    - Admins (can update any enrollment)
+    - Coaches (can only update enrollments in their assigned cohorts)
+    """
+    # First, get the enrollment to check cohort access
+    enrollment_query = select(Enrollment).where(Enrollment.id == enrollment_id)
+    enrollment_result = await db.execute(enrollment_query)
+    enrollment = enrollment_result.scalar_one_or_none()
+
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Enrollment not found",
+        )
+
+    # Verify coach has access to this cohort
+    if enrollment.cohort_id:
+        await require_coach_for_cohort(current_user, str(enrollment.cohort_id), db)
+    else:
+        # If no cohort assigned, only admins can update
+        from libs.auth.dependencies import is_admin_or_service
+
+        if not is_admin_or_service(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can update progress for enrollments without a cohort",
+            )
 
     # Check if record exists
     query = select(StudentProgress).where(

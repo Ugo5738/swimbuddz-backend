@@ -1,13 +1,16 @@
 """Coach-specific API routes for application, onboarding, and profile management."""
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
+from libs.common.email import send_email
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url
+from libs.common.supabase import get_supabase_admin_client
 from libs.db.config import AsyncSessionLocal
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -496,7 +499,59 @@ async def approve_coach_application(
 
         logger.info(f"Coach application {coach_profile_id} approved by {admin_email}")
 
-        # TODO: Send approval email to coach
+        # Add "coach" role to Supabase app_metadata.roles
+        # This ensures the JWT includes the coach role for auth checks
+        member = coach.member
+        if member and member.auth_id:
+            try:
+                admin_supabase = get_supabase_admin_client()
+                # Get current user to preserve existing roles
+                current_user = await asyncio.to_thread(
+                    admin_supabase.auth.admin.get_user_by_id, member.auth_id
+                )
+                existing_roles = []
+                if current_user and current_user.user:
+                    existing_metadata = (
+                        getattr(current_user.user, "app_metadata", {}) or {}
+                    )
+                    existing_roles = existing_metadata.get("roles", [])
+
+                # Add coach role if not already present
+                if "coach" not in existing_roles:
+                    new_roles = list(set(existing_roles + ["coach"]))
+                    await asyncio.to_thread(
+                        admin_supabase.auth.admin.update_user_by_id,
+                        member.auth_id,
+                        {"app_metadata": {"roles": new_roles}},
+                    )
+                    logger.info(
+                        f"Added coach role to Supabase for user {member.auth_id}",
+                        extra={"extra_fields": {"roles": new_roles}},
+                    )
+            except Exception as e:
+                # Log but don't fail the approval if Supabase update fails
+                # The coach can still be activated later
+                logger.warning(
+                    f"Could not update Supabase app_metadata for coach: {e}",
+                    extra={
+                        "extra_fields": {"auth_id": member.auth_id, "error": str(e)}
+                    },
+                )
+
+        # Send approval email to coach
+        await send_email(
+            to_email=coach.member.email,
+            subject="Congratulations! Your SwimBuddz Coach Application is Approved",
+            body=(
+                f"Hi {coach.display_name or coach.member.first_name},\n\n"
+                "We are thrilled to welcome you as an approved SwimBuddz coach!\n\n"
+                "You can now access your coach dashboard, complete your onboarding profile, "
+                "and start creating sessions.\n\n"
+                "Log in here: https://swimbuddz.com/dashboard\n\n"
+                "Welcome to the team!\n"
+                "The SwimBuddz Team"
+            ),
+        )
 
         return {"message": "Coach application approved", "status": "approved"}
 
@@ -538,7 +593,20 @@ async def reject_coach_application(
 
         logger.info(f"Coach application {coach_profile_id} rejected by {admin_email}")
 
-        # TODO: Send rejection email to coach
+        # Send rejection email to coach
+        await send_email(
+            to_email=coach.member.email,
+            subject="Update on your SwimBuddz Coach Application",
+            body=(
+                f"Hi {coach.display_name or coach.member.first_name},\n\n"
+                "Thank you for your interest in becoming a SwimBuddz coach.\n\n"
+                "After careful review, we are unable to approve your application at this time.\n\n"
+                f"Reason: {data.rejection_reason}\n\n"
+                "You may re-apply in the future if your qualifications change.\n\n"
+                "Best regards,\n"
+                "The SwimBuddz Team"
+            ),
+        )
 
         return {"message": "Coach application rejected", "status": "rejected"}
 
@@ -580,6 +648,19 @@ async def request_more_info(
             f"More info requested for coach application {coach_profile_id} by {admin_email}"
         )
 
-        # TODO: Send email to coach requesting more info
+        # Send email to coach requesting more info
+        await send_email(
+            to_email=coach.member.email,
+            subject="Action Required: Additional Information for SwimBuddz Coach Application",
+            body=(
+                f"Hi {coach.display_name or coach.member.first_name},\n\n"
+                "We are reviewing your coach application and need some additional information "
+                "before we can proceed.\n\n"
+                f"Request: {data.message}\n\n"
+                "Please log in to your dashboard to update your application or reply to this email.\n\n"
+                "Best regards,\n"
+                "The SwimBuddz Team"
+            ),
+        )
 
         return {"message": "More info requested", "status": "more_info_needed"}

@@ -150,6 +150,105 @@ async def require_admin(
     return current_user
 
 
+async def require_coach(
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> AuthUser:
+    """
+    Ensure the user has the 'coach' role (or is admin/service_role).
+    Checks:
+    - app_metadata.roles contains "coach"
+    - OR token role is "service_role"
+    - OR user is admin (has admin role or whitelisted email)
+    """
+    is_service_role = current_user.role == "service_role"
+    has_coach_role = current_user.has_role("coach")
+    has_admin_role = current_user.has_role("admin")
+    is_whitelisted_email = current_user.email is not None and current_user.email in (
+        settings.ADMIN_EMAILS or []
+    )
+
+    if not (
+        is_service_role or has_coach_role or has_admin_role or is_whitelisted_email
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Coach privileges required"
+        )
+    return current_user
+
+
+def is_admin_or_service(user: AuthUser) -> bool:
+    """Helper to check if user has admin or service privileges."""
+    is_service_role = user.role == "service_role"
+    has_admin_role = user.has_role("admin")
+    is_whitelisted_email = user.email is not None and user.email in (
+        settings.ADMIN_EMAILS or []
+    )
+    return is_service_role or has_admin_role or is_whitelisted_email
+
+
+async def require_coach_for_cohort(
+    user: AuthUser,
+    cohort_id: str,
+    db,  # AsyncSession - avoiding import for flexibility
+) -> None:
+    """
+    Verify the user is the assigned coach for a specific cohort.
+    Raises 403 if not authorized.
+
+    Admins and service_role bypass this check.
+
+    Args:
+        user: The authenticated user
+        cohort_id: UUID of the cohort to check
+        db: AsyncSession for database queries
+
+    Raises:
+        HTTPException: 403 if user is not coach for this cohort
+        HTTPException: 404 if cohort not found
+    """
+    from sqlalchemy import text
+
+    # Admins and service roles can access any cohort
+    if is_admin_or_service(user):
+        return
+
+    # Must have coach role
+    if not user.has_role("coach"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Coach privileges required"
+        )
+
+    # Resolve member_id from auth_id
+    member_row = await db.execute(
+        text("SELECT id FROM members WHERE auth_id = :auth_id"),
+        {"auth_id": user.user_id},
+    )
+    member = member_row.mappings().first()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Member profile not found"
+        )
+
+    # Check if coach is assigned to this cohort
+    cohort_row = await db.execute(
+        text("SELECT coach_id FROM cohorts WHERE id = :cohort_id"),
+        {"cohort_id": cohort_id},
+    )
+    cohort = cohort_row.mappings().first()
+
+    if not cohort:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Cohort not found"
+        )
+
+    if str(cohort["coach_id"]) != str(member["id"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not the assigned coach for this cohort",
+        )
+
+
 # Optional bearer security - allows missing token
 optional_security = HTTPBearer(auto_error=False)
 
