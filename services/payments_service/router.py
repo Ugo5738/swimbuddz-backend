@@ -7,7 +7,6 @@ from decimal import ROUND_HALF_UP, Decimal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from jose import jwt
 from libs.auth.dependencies import _service_role_jwt, get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
