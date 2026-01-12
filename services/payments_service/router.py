@@ -8,7 +8,7 @@ from decimal import ROUND_HALF_UP, Decimal
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import jwt
-from libs.auth.dependencies import get_current_user, require_admin
+from libs.auth.dependencies import _service_role_jwt, get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.email import send_session_confirmation_email
@@ -89,23 +89,11 @@ def _callback_url(reference: str, redirect_path: str = None) -> str:
     return f"{base}{path}?provider=paystack"
 
 
-def _service_role_jwt() -> str:
-    now = int(datetime.now(tz=timezone.utc).timestamp())
-    payload = {
-        "sub": "service:payments",
-        "email": settings.ADMIN_EMAIL,
-        "role": "service_role",
-        "iat": now,
-        "exp": now + 60,
-    }
-    return jwt.encode(payload, settings.SUPABASE_JWT_SECRET, algorithm="HS256")
-
-
 async def _update_pending_payment_reference(
     auth_id: str, reference: str | None
 ) -> None:
     """Update or clear the pending_payment_reference on a member's membership."""
-    headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+    headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.patch(
             f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{auth_id}/membership",
@@ -211,7 +199,7 @@ async def _apply_entitlement(payment: Payment) -> None:
             (payment.payment_metadata or {}).get("community_extension_months") or 0
         )
 
-        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
         async with httpx.AsyncClient(timeout=30) as client:
             # If community extension was included, extend Community first
             if community_extension_months > 0:
@@ -242,7 +230,7 @@ async def _apply_entitlement(payment: Payment) -> None:
     elif payment.purpose == PaymentPurpose.CLUB_BUNDLE:
         years = int((payment.payment_metadata or {}).get("years") or 1)
         months = int((payment.payment_metadata or {}).get("months") or 1)
-        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
         async with httpx.AsyncClient(timeout=30) as client:
             community_resp = await client.post(
                 f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/community/activate",
@@ -276,7 +264,7 @@ async def _apply_entitlement(payment: Payment) -> None:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="enrollment_id missing in payment metadata",
             )
-        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 f"{settings.ACADEMY_SERVICE_URL}/academy/admin/enrollments/{enrollment_id}/mark-paid",
@@ -299,7 +287,7 @@ async def _apply_entitlement(payment: Payment) -> None:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="order_id missing in payment metadata",
             )
-        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 f"{settings.STORE_SERVICE_URL}/store/admin/orders/{order_id}/mark-paid",
@@ -328,7 +316,7 @@ async def _apply_entitlement(payment: Payment) -> None:
                 detail="session_id missing in payment metadata",
             )
 
-        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
         async with httpx.AsyncClient(timeout=30) as client:
             # First, look up the member_id from auth_id via members service
             member_resp = await client.get(
@@ -482,7 +470,7 @@ async def _apply_entitlement(payment: Payment) -> None:
             detail=f"Entitlement application not implemented for purpose={payment.purpose}",
         )
 
-    headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+    headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             f"{settings.MEMBERS_SERVICE_URL}{path}", json=payload, headers=headers
@@ -700,7 +688,7 @@ async def create_payment_intent(
 
         # Fetch member's community_paid_until from members_service
         try:
-            headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+            headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{current_user.user_id}",
@@ -779,7 +767,7 @@ async def create_payment_intent(
                 detail="enrollment_id is required for ACADEMY_COHORT payments",
             )
         # Lookup enrollment and cohort price from academy_service
-        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
                 f"{settings.ACADEMY_SERVICE_URL}/academy/internal/enrollments/{payload.enrollment_id}",
@@ -815,7 +803,7 @@ async def create_payment_intent(
                 detail="order_id is required for STORE_ORDER payments",
             )
         # Lookup order and total from store_service
-        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
                 f"{settings.STORE_SERVICE_URL}/store/admin/orders/{payload.order_id}",

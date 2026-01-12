@@ -1,16 +1,39 @@
 import time
+from datetime import datetime, timezone
 from typing import Annotated, Any, Dict, Optional
 
 import httpx
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
+from libs.auth.models import AuthUser
+from libs.common.config import get_settings
 from pydantic import ValidationError
 
-from libs.common.config import get_settings
-from libs.auth.models import AuthUser
-
 settings = get_settings()
+
+
+def _service_role_jwt(service_name: str = "internal") -> str:
+    """
+    Generate a short-lived service role JWT for service-to-service communication.
+
+    Args:
+        service_name: Name of the calling service (for audit purposes)
+
+    Returns:
+        JWT token string valid for 60 seconds
+    """
+    now = int(datetime.now(tz=timezone.utc).timestamp())
+    payload = {
+        "sub": f"service:{service_name}",
+        "email": settings.ADMIN_EMAIL if hasattr(settings, "ADMIN_EMAIL") else None,
+        "role": "service_role",
+        "iat": now,
+        "exp": now + 60,
+    }
+    return jwt.encode(payload, settings.SUPABASE_JWT_SECRET, algorithm="HS256")
+
+
 security = HTTPBearer()
 _JWKS_CACHE: dict[str, Any] = {"keys": None, "fetched_at": 0}
 _JWKS_TTL_SECONDS = 300

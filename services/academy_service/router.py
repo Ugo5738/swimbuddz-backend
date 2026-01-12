@@ -919,7 +919,7 @@ async def admin_mark_enrollment_paid(
     try:
         # Get member email from members service
         settings = get_settings()
-        headers = {"Authorization": f"Bearer {_service_role_jwt()}"}
+        headers = {"Authorization": f"Bearer {_service_role_jwt('academy')}"}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
                 f"{settings.MEMBERS_SERVICE_URL}/members/{enrollment.member_id}",

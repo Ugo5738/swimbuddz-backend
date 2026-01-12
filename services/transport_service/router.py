@@ -770,13 +770,18 @@ async def create_ride_booking(
         .where(SessionRideConfig.id == booking.session_ride_config_id)
     )
     cfg_result = await db.execute(cfg_query)
-    cfg, area = cfg_result.one()
+    row = cfg_result.first()
+    if not row:
+        # Graceful fallback if config is missing
+        cfg, area = None, None
+    else:
+        cfg, area = row
 
     loc_query = select(PickupLocation).where(
         PickupLocation.id == booking.pickup_location_id
     )
     loc_result = await db.execute(loc_query)
-    location = loc_result.scalar_one()
+    location = loc_result.scalar_one_or_none()
 
     return RideBookingResponse(
         id=booking.id,
@@ -784,10 +789,10 @@ async def create_ride_booking(
         member_id=booking.member_id,
         session_ride_config_id=booking.session_ride_config_id,
         pickup_location_id=booking.pickup_location_id,
-        pickup_location_name=location.name,
-        ride_area_name=area.name,
+        pickup_location_name=location.name if location else "Unknown Location",
+        ride_area_name=area.name if area else "Unknown Area",
         assigned_ride_number=booking.assigned_ride_number,
-        cost=cfg.cost,
+        cost=cfg.cost if cfg else 0.0,
         created_at=booking.created_at,
         updated_at=booking.updated_at,
     )
@@ -818,13 +823,17 @@ async def get_my_booking(
         .where(SessionRideConfig.id == booking.session_ride_config_id)
     )
     cfg_result = await db.execute(cfg_query)
-    cfg, area = cfg_result.one()
+    row = cfg_result.first()
+    if not row:
+        cfg, area = None, None
+    else:
+        cfg, area = row
 
     loc_query = select(PickupLocation).where(
         PickupLocation.id == booking.pickup_location_id
     )
     loc_result = await db.execute(loc_query)
-    location = loc_result.scalar_one()
+    location = loc_result.scalar_one_or_none()
 
     return RideBookingResponse(
         id=booking.id,
@@ -832,10 +841,10 @@ async def get_my_booking(
         member_id=booking.member_id,
         session_ride_config_id=booking.session_ride_config_id,
         pickup_location_id=booking.pickup_location_id,
-        pickup_location_name=location.name,
-        ride_area_name=area.name,
+        pickup_location_name=location.name if location else "Unknown Location",
+        ride_area_name=area.name if area else "Unknown Area",
         assigned_ride_number=booking.assigned_ride_number,
-        cost=cfg.cost,
+        cost=cfg.cost if cfg else 0.0,
         created_at=booking.created_at,
         updated_at=booking.updated_at,
     )
@@ -860,13 +869,17 @@ async def list_session_bookings(
             .where(SessionRideConfig.id == booking.session_ride_config_id)
         )
         cfg_result = await db.execute(cfg_query)
-        cfg, area = cfg_result.one()
+        row = cfg_result.first()
+        if not row:
+            cfg, area = None, None
+        else:
+            cfg, area = row
 
         loc_query = select(PickupLocation).where(
             PickupLocation.id == booking.pickup_location_id
         )
         loc_result = await db.execute(loc_query)
-        location = loc_result.scalar_one()
+        location = loc_result.scalar_one_or_none()
 
         responses.append(
             RideBookingResponse(
@@ -875,10 +888,10 @@ async def list_session_bookings(
                 member_id=booking.member_id,
                 session_ride_config_id=booking.session_ride_config_id,
                 pickup_location_id=booking.pickup_location_id,
-                pickup_location_name=location.name,
-                ride_area_name=area.name,
+                pickup_location_name=location.name if location else "Unknown Location",
+                ride_area_name=area.name if area else "Unknown Area",
                 assigned_ride_number=booking.assigned_ride_number,
-                cost=cfg.cost,
+                cost=cfg.cost if cfg else 0.0,
                 created_at=booking.created_at,
                 updated_at=booking.updated_at,
             )

@@ -204,10 +204,10 @@ async def get_pool_list_csv(
     result = await db.execute(query)
     rows = result.all()
 
-    # Simple CSV generation
-    csv_content = "First Name,Last Name,Email,Status,Role,Notes\n"
+    # Simple CSV generation (status/role removed per request)
+    csv_content = "First Name,Last Name,Email,Notes\n"
     for attendance, member in rows:
-        csv_content += f"{member.first_name},{member.last_name},{member.email},{attendance.status},{attendance.role},{attendance.notes or ''}\n"
+        csv_content += f"{member.first_name},{member.last_name},{member.email},{attendance.notes or ''}\n"
 
     return Response(content=csv_content, media_type="text/csv")
 

@@ -8,7 +8,9 @@ from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.db.session import get_async_db
 from services.communications_service.models import Announcement
 from services.communications_service.schemas import (  # , AnnouncementCreate
+    AnnouncementCreate,
     AnnouncementResponse,
+    AnnouncementUpdate,
 )
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -64,6 +66,80 @@ async def get_announcement(
             detail="Announcement not found",
         )
     return announcement
+
+
+@router.post("/", response_model=AnnouncementResponse, status_code=201)
+async def create_announcement(
+    announcement_data: AnnouncementCreate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Create a new announcement (Admin only).
+    """
+    announcement = Announcement(**announcement_data.model_dump())
+    db.add(announcement)
+    await db.commit()
+    await db.refresh(announcement)
+    return announcement
+
+
+@router.patch("/{announcement_id}", response_model=AnnouncementResponse)
+async def update_announcement(
+    announcement_id: uuid.UUID,
+    announcement_data: AnnouncementUpdate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Update an announcement (Admin only).
+    """
+    query = select(Announcement).where(Announcement.id == announcement_id)
+    result = await db.execute(query)
+    announcement = result.scalar_one_or_none()
+
+    if not announcement:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Announcement not found",
+        )
+
+    update_data = announcement_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(announcement, field, value)
+
+    await db.commit()
+    await db.refresh(announcement)
+    return announcement
+
+
+@router.delete("/{announcement_id}", status_code=204)
+async def delete_announcement(
+    announcement_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Delete an announcement (Admin only).
+    """
+    query = select(Announcement).where(Announcement.id == announcement_id)
+    result = await db.execute(query)
+    announcement = result.scalar_one_or_none()
+
+    if not announcement:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Announcement not found",
+        )
+
+    # Delete comments first
+    await db.execute(
+        delete(AnnouncementComment).where(
+            AnnouncementComment.announcement_id == announcement_id
+        )
+    )
+    await db.delete(announcement)
+    await db.commit()
 
 
 from typing import List, Optional

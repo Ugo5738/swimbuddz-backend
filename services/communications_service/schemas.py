@@ -19,6 +19,15 @@ class AnnouncementCreate(AnnouncementBase):
     pass
 
 
+class AnnouncementUpdate(BaseModel):
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    body: Optional[str] = None
+    category: Optional[AnnouncementCategory] = None
+    is_pinned: Optional[bool] = None
+    published_at: Optional[datetime] = None
+
+
 class AnnouncementResponse(AnnouncementBase):
     id: uuid.UUID
     created_at: datetime
