@@ -18,6 +18,7 @@ from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.db.session import get_async_db
 from services.academy_service.models import (
     Cohort,
+    CohortResource,
     CohortStatus,
     Enrollment,
     EnrollmentStatus,
@@ -30,6 +31,7 @@ from services.academy_service.models import (
 )
 from services.academy_service.schemas import (
     CohortCreate,
+    CohortResourceResponse,
     CohortResponse,
     CohortUpdate,
     EnrollmentCreate,
@@ -368,6 +370,217 @@ async def list_my_coach_cohorts(
         .where(Cohort.coach_id == member["id"])
         .options(selectinload(Cohort.program))
         .order_by(Cohort.start_date.desc())
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/coach/me/students", response_model=List[EnrollmentResponse])
+async def list_my_coach_students(
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List all students across all cohorts where the current user is the assigned coach.
+
+    Returns enrollments with cohort, program, and progress data.
+    """
+    from sqlalchemy.orm import joinedload, selectinload
+
+    # 1. Resolve Member ID (lookup by auth_id)
+    member_row = await db.execute(
+        text("SELECT id FROM members WHERE auth_id = :auth_id"),
+        {"auth_id": current_user.user_id},
+    )
+    member = member_row.mappings().first()
+
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+
+    # 2. Get all cohorts for this coach
+    cohorts_query = select(Cohort.id).where(Cohort.coach_id == member["id"])
+    cohorts_result = await db.execute(cohorts_query)
+    cohort_ids = [row[0] for row in cohorts_result.fetchall()]
+
+    if not cohort_ids:
+        return []
+
+    # 3. Get all enrollments from those cohorts with progress data
+    query = (
+        select(Enrollment)
+        .where(
+            Enrollment.cohort_id.in_(cohort_ids),
+            Enrollment.status.in_(
+                [EnrollmentStatus.ENROLLED, EnrollmentStatus.PENDING_APPROVAL]
+            ),
+        )
+        .options(
+            selectinload(Enrollment.progress_records),
+            joinedload(Enrollment.cohort).joinedload(Cohort.program),
+            joinedload(Enrollment.program),
+        )
+        .order_by(Enrollment.created_at.desc())
+    )
+    result = await db.execute(query)
+    return result.unique().scalars().all()
+
+
+@router.get("/coach/me/earnings")
+async def get_my_coach_earnings(
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get earnings summary for the current coach.
+
+    Calculates earnings based on:
+    - academy_cohort_stipend from CoachProfile
+    - Number of active/completed cohorts
+    """
+    from sqlalchemy.orm import selectinload
+
+    # 1. Resolve Member ID (lookup by auth_id)
+    member_row = await db.execute(
+        text("SELECT id FROM members WHERE auth_id = :auth_id"),
+        {"auth_id": current_user.user_id},
+    )
+    member = member_row.mappings().first()
+
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+
+    member_id = member["id"]
+
+    # 2. Get coach profile for rate information
+    coach_profile_row = await db.execute(
+        text(
+            "SELECT academy_cohort_stipend, one_to_one_rate_per_hour, group_session_rate_per_hour "
+            "FROM coach_profiles WHERE member_id = :member_id"
+        ),
+        {"member_id": member_id},
+    )
+    coach_profile = coach_profile_row.mappings().first()
+
+    stipend = coach_profile["academy_cohort_stipend"] if coach_profile else 0
+    one_to_one_rate = coach_profile["one_to_one_rate_per_hour"] if coach_profile else 0
+    group_rate = coach_profile["group_session_rate_per_hour"] if coach_profile else 0
+
+    # 3. Get all cohorts for this coach
+    query = (
+        select(Cohort)
+        .where(Cohort.coach_id == member_id)
+        .options(selectinload(Cohort.program))
+    )
+    result = await db.execute(query)
+    cohorts = result.scalars().all()
+
+    # 4. Calculate earnings per cohort
+    cohort_earnings = []
+    total_earnings = 0
+    active_cohorts = 0
+    completed_cohorts = 0
+
+    for cohort in cohorts:
+        if cohort.status == CohortStatus.ACTIVE:
+            active_cohorts += 1
+            # Active cohorts earn the stipend
+            earnings = stipend or 0
+        elif cohort.status == CohortStatus.COMPLETED:
+            completed_cohorts += 1
+            # Completed cohorts have earned the stipend
+            earnings = stipend or 0
+        else:
+            # Open/cancelled cohorts don't earn
+            earnings = 0
+
+        if earnings > 0:
+            total_earnings += earnings
+            cohort_earnings.append(
+                {
+                    "cohort_id": str(cohort.id),
+                    "cohort_name": cohort.name
+                    or (cohort.program.name if cohort.program else "Unnamed"),
+                    "program_name": cohort.program.name if cohort.program else None,
+                    "status": cohort.status.value,
+                    "start_date": (
+                        cohort.start_date.isoformat() if cohort.start_date else None
+                    ),
+                    "end_date": (
+                        cohort.end_date.isoformat() if cohort.end_date else None
+                    ),
+                    "earnings": earnings,
+                }
+            )
+
+    return {
+        "summary": {
+            "total_earnings": total_earnings,
+            "active_cohorts": active_cohorts,
+            "completed_cohorts": completed_cohorts,
+            "pending_payout": total_earnings,  # Placeholder - would need payout tracking
+        },
+        "rates": {
+            "academy_cohort_stipend": stipend,
+            "one_to_one_rate_per_hour": one_to_one_rate,
+            "group_session_rate_per_hour": group_rate,
+        },
+        "cohort_earnings": cohort_earnings,
+    }
+
+
+@router.get("/coach/me/resources", response_model=List[CohortResourceResponse])
+async def list_my_coach_resources(
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List all resources across all cohorts where the current user is the assigned coach."""
+    from sqlalchemy.orm import joinedload
+
+    # 1. Resolve Member ID (lookup by auth_id)
+    member_row = await db.execute(
+        text("SELECT id FROM members WHERE auth_id = :auth_id"),
+        {"auth_id": current_user.user_id},
+    )
+    member = member_row.mappings().first()
+
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+
+    # 2. Get all cohorts for this coach
+    cohorts_query = select(Cohort.id).where(Cohort.coach_id == member["id"])
+    cohorts_result = await db.execute(cohorts_query)
+    cohort_ids = [row[0] for row in cohorts_result.fetchall()]
+
+    if not cohort_ids:
+        return []
+
+    # 3. Get all resources from those cohorts
+    query = (
+        select(CohortResource)
+        .where(CohortResource.cohort_id.in_(cohort_ids))
+        .options(joinedload(CohortResource.cohort))
+        .order_by(CohortResource.created_at.desc())
+    )
+    result = await db.execute(query)
+    return result.unique().scalars().all()
+
+
+@router.get(
+    "/cohorts/{cohort_id}/resources", response_model=List[CohortResourceResponse]
+)
+async def list_cohort_resources(
+    cohort_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List resources for a specific cohort. Accessible by coach or admin."""
+    await require_coach_for_cohort(current_user, str(cohort_id), db)
+
+    query = (
+        select(CohortResource)
+        .where(CohortResource.cohort_id == cohort_id)
+        .order_by(
+            CohortResource.week_number.asc().nullsfirst(),
+            CohortResource.created_at.asc(),
+        )
     )
     result = await db.execute(query)
     return result.scalars().all()

@@ -15,11 +15,13 @@ from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from pydantic import BaseModel
 from services.payments_service.models import (
+    CoachPayout,
     Discount,
     DiscountType,
     Payment,
     PaymentPurpose,
     PaymentStatus,
+    PayoutStatus,
 )
 from services.payments_service.schemas import (
     ClubBillingCycle,
@@ -1248,6 +1250,60 @@ async def paystack_webhook(
             }
             db.add(payment)
             await db.commit()
+        return {"received": True}
+
+    # Handle transfer events for coach payouts
+    if event == "transfer.success":
+        # Update payout status to PAID
+
+        transfer_reference = data.get("reference")
+        transfer_code = data.get("transfer_code")
+
+        if transfer_reference:
+            payout_result = await db.execute(
+                select(CoachPayout).where(
+                    CoachPayout.payment_reference == transfer_reference
+                )
+            )
+            payout = payout_result.scalar_one_or_none()
+
+            if payout:
+                payout.status = PayoutStatus.PAID
+                payout.paystack_transfer_status = "success"
+                payout.paid_at = datetime.now(timezone.utc)
+                db.add(payout)
+                await db.commit()
+                logger.info(
+                    f"Payout {payout.id} marked as paid via transfer webhook",
+                    extra={"extra_fields": {"transfer_code": transfer_code}},
+                )
+        return {"received": True}
+
+    if event == "transfer.failed":
+        # Update payout status to FAILED
+        from services.payments_service.models import CoachPayout, PayoutStatus
+
+        transfer_reference = data.get("reference")
+        failure_reason = data.get("reason") or data.get("message") or "Unknown error"
+
+        if transfer_reference:
+            payout_result = await db.execute(
+                select(CoachPayout).where(
+                    CoachPayout.payment_reference == transfer_reference
+                )
+            )
+            payout = payout_result.scalar_one_or_none()
+
+            if payout:
+                payout.status = PayoutStatus.FAILED
+                payout.paystack_transfer_status = "failed"
+                payout.failure_reason = failure_reason
+                db.add(payout)
+                await db.commit()
+                logger.warning(
+                    f"Payout {payout.id} transfer failed: {failure_reason}",
+                    extra={"extra_fields": {"transfer_reference": transfer_reference}},
+                )
         return {"received": True}
 
     return {"received": True}

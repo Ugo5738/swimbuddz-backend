@@ -3,16 +3,16 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from libs.auth.dependencies import require_admin
+from libs.auth.dependencies import get_current_user, require_admin, require_coach
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
-from services.sessions_service.models import Session
+from services.sessions_service.models import Session, SessionCoach
 from services.sessions_service.schemas import (
     SessionCreate,
     SessionResponse,
     SessionUpdate,
 )
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -56,6 +56,78 @@ async def get_session_stats(
     upcoming_sessions_count = result.scalar_one() or 0
 
     return {"upcoming_sessions_count": upcoming_sessions_count}
+
+
+@router.get("/coach/me", response_model=List[SessionResponse])
+async def list_my_coach_sessions(
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    List sessions for the current coach. Includes:
+    - Sessions linked to cohorts where the coach is assigned
+    - Sessions where the coach is listed in session_coaches
+
+    Optional date range filters (ISO format: YYYY-MM-DD).
+    """
+    # 1. Resolve Member ID (lookup by auth_id)
+    member_row = await db.execute(
+        text("SELECT id FROM members WHERE auth_id = :auth_id"),
+        {"auth_id": current_user.user_id},
+    )
+    member = member_row.mappings().first()
+
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+
+    member_id = member["id"]
+
+    # 2. Get cohort IDs where this coach is assigned
+    cohort_query = await db.execute(
+        text("SELECT id FROM cohorts WHERE coach_id = :coach_id"),
+        {"coach_id": member_id},
+    )
+    cohort_ids = [row[0] for row in cohort_query.fetchall()]
+
+    # 3. Get session IDs where coach is directly assigned
+    session_coach_query = select(SessionCoach.session_id).where(
+        SessionCoach.coach_id == member_id
+    )
+    session_coach_result = await db.execute(session_coach_query)
+    direct_session_ids = [row[0] for row in session_coach_result.fetchall()]
+
+    # 4. Build combined query
+    conditions = []
+    if cohort_ids:
+        conditions.append(Session.cohort_id.in_(cohort_ids))
+    if direct_session_ids:
+        conditions.append(Session.id.in_(direct_session_ids))
+
+    if not conditions:
+        return []
+
+    query = select(Session).where(or_(*conditions))
+
+    # 5. Apply date filters
+    if from_date:
+        try:
+            from_dt = datetime.fromisoformat(from_date)
+            query = query.where(Session.starts_at >= from_dt)
+        except ValueError:
+            pass
+
+    if to_date:
+        try:
+            to_dt = datetime.fromisoformat(to_date)
+            query = query.where(Session.starts_at <= to_dt)
+        except ValueError:
+            pass
+
+    query = query.order_by(Session.starts_at.asc())
+    result = await db.execute(query)
+    return result.scalars().all()
 
 
 @router.get("/{session_id}", response_model=SessionResponse)

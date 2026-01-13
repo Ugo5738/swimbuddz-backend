@@ -700,3 +700,59 @@ class CoachProfile(Base):
 
     def __repr__(self):
         return f"<CoachProfile {self.member_id} ({self.display_name})>"
+
+
+class CoachBankAccount(Base):
+    """Coach bank account for payouts.
+
+    Stores verified bank account details and Paystack recipient code
+    for automated transfers.
+    """
+
+    __tablename__ = "coach_bank_accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("members.id"), unique=True, nullable=False
+    )
+
+    # Bank details (Nigerian NUBAN format)
+    bank_code: Mapped[str] = mapped_column(String(10), nullable=False)  # e.g., "058"
+    bank_name: Mapped[str] = mapped_column(
+        String(100), nullable=False
+    )  # e.g., "GTBank"
+    account_number: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # 10-digit NUBAN
+    account_name: Mapped[str] = mapped_column(
+        String(200), nullable=False
+    )  # Verified holder name
+
+    # Paystack integration
+    paystack_recipient_code: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True
+    )  # Created via Transfer Recipient API
+
+    # Verification status
+    is_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    verified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    verified_by: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # Admin who verified or "paystack_api"
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    def __repr__(self):
+        return f"<CoachBankAccount {self.account_number} ({self.bank_name})>"

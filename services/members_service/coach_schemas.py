@@ -243,3 +243,54 @@ class AdminRequestMoreInfo(BaseModel):
 
     message: str = Field(..., min_length=10)
     admin_notes: Optional[str] = None
+
+
+# === Coach Bank Account ===
+
+
+class BankAccountCreate(BaseModel):
+    """Schema for creating/updating coach bank account."""
+
+    bank_code: str = Field(..., min_length=3, max_length=10)
+    bank_name: str = Field(..., min_length=2, max_length=100)
+    account_number: str = Field(..., min_length=10, max_length=20)
+    # account_name is typically auto-verified via Paystack Resolve API
+
+
+class BankAccountResponse(BaseModel):
+    """Response for coach bank account."""
+
+    id: str
+    member_id: str
+    bank_code: str
+    bank_name: str
+    account_number: str
+    account_name: str
+    is_verified: bool
+    verified_at: Optional[datetime] = None
+    paystack_recipient_code: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class BankListResponse(BaseModel):
+    """Nigerian bank for dropdown."""
+
+    name: str
+    code: str
+    slug: str
+
+
+class ResolveAccountRequest(BaseModel):
+    """Request to resolve/verify a bank account."""
+
+    bank_code: str = Field(..., min_length=3, max_length=10)
+    account_number: str = Field(..., min_length=10, max_length=20)
+
+
+class ResolveAccountResponse(BaseModel):
+    """Response from bank account resolution."""
+
+    account_number: str
+    account_name: str
+    bank_code: str

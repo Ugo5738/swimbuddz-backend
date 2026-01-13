@@ -170,3 +170,117 @@ class Discount(Base):
 
     def __repr__(self):
         return f"<Discount {self.code}>"
+
+
+class PayoutStatus(str, enum.Enum):
+    """Status of a coach payout."""
+
+    PENDING = "pending"  # Calculated, awaiting admin action
+    APPROVED = "approved"  # Admin approved, ready for transfer
+    PROCESSING = "processing"  # Transfer initiated (Paystack or manual)
+    PAID = "paid"  # Successfully transferred
+    FAILED = "failed"  # Transfer failed
+
+
+class PayoutMethod(str, enum.Enum):
+    """Method used for coach payout."""
+
+    PAYSTACK_TRANSFER = "paystack_transfer"  # Automated via Paystack
+    BANK_TRANSFER = "bank_transfer"  # Manual bank transfer
+    OTHER = "other"  # Cash, other platforms, etc.
+
+
+class CoachPayout(Base):
+    """Coach payout records.
+
+    Tracks earnings and payout status for coaches. Supports both
+    automated Paystack transfers and manual payment methods.
+    """
+
+    __tablename__ = "coach_payouts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+
+    # Coach reference (cross-service - references members.id)
+    coach_member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), index=True, nullable=False
+    )
+
+    # Period this payout covers
+    period_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    period_end: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    period_label: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # e.g., "January 2026"
+
+    # Earnings breakdown (in smallest currency unit - kobo for NGN)
+    academy_earnings: Mapped[int] = mapped_column(
+        default=0, nullable=False
+    )  # From cohorts
+    session_earnings: Mapped[int] = mapped_column(
+        default=0, nullable=False
+    )  # From 1-on-1
+    other_earnings: Mapped[int] = mapped_column(default=0, nullable=False)  # Bonuses
+    total_amount: Mapped[int] = mapped_column(nullable=False)  # Sum
+    currency: Mapped[str] = mapped_column(String(8), default="NGN", nullable=False)
+
+    # Status
+    status: Mapped[PayoutStatus] = mapped_column(
+        SAEnum(PayoutStatus, name="payout_status_enum"),
+        default=PayoutStatus.PENDING,
+        nullable=False,
+    )
+
+    # Payment method (admin chooses when initiating)
+    payout_method: Mapped[PayoutMethod | None] = mapped_column(
+        SAEnum(PayoutMethod, name="payout_method_enum"),
+        nullable=True,
+    )
+
+    # Admin actions
+    approved_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Payment tracking
+    paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    payment_reference: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )  # Bank ref or Paystack transfer_code
+
+    # Paystack transfer specific
+    paystack_transfer_code: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
+    )
+    paystack_transfer_status: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # pending, success, failed
+
+    # Notes
+    admin_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    @staticmethod
+    def generate_reference() -> str:
+        suffix = "".join(random.choices(string.digits, k=6))
+        return f"PAYOUT-{suffix}"
+
+    def __repr__(self):
+        return f"<CoachPayout {self.id} {self.period_label} {self.status.value}>"
