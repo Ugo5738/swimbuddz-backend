@@ -11,11 +11,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
+from libs.common.logging import get_logger
 from libs.db.session import get_async_db
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from services.store_service.models import (
     AuditEntityType,
     Category,
@@ -63,8 +60,12 @@ from services.store_service.schemas import (
     StoreCreditCreate,
     StoreCreditResponse,
 )
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 router = APIRouter(tags=["admin-store"])
+logger = get_logger(__name__)
 
 
 # ============================================================================
@@ -597,9 +598,9 @@ async def get_low_stock_items(
         LowStockItem(
             variant_id=item.variant_id,
             sku=item.variant.sku,
-            product_name=item.variant.product.name
-            if item.variant.product
-            else "Unknown",
+            product_name=(
+                item.variant.product.name if item.variant.product else "Unknown"
+            ),
             variant_name=item.variant.name,
             quantity_on_hand=item.quantity_on_hand,
             quantity_available=item.quantity_available,
@@ -809,9 +810,7 @@ async def update_order_status(
                 tracking_number=order.delivery_notes,  # tracking stored in delivery_notes
             )
         except Exception as e:
-            import logging
-
-            logging.getLogger(__name__).error(f"Failed to send order status email: {e}")
+            logger.error(f"Failed to send order status email: {e}")
 
     return order
 
@@ -897,11 +896,7 @@ async def mark_order_paid(
         )
     except Exception as e:
         # Log but don't fail the order
-        import logging
-
-        logging.getLogger(__name__).error(
-            f"Failed to send order confirmation email: {e}"
-        )
+        logger.error(f"Failed to send order confirmation email: {e}")
 
     return order
 

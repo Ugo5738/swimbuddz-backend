@@ -9,9 +9,11 @@ import uuid
 from typing import Optional
 
 import httpx
+from libs.common.logging import get_logger
 
 # Media service URL - uses internal Docker network in production
 MEDIA_SERVICE_URL = os.getenv("MEDIA_SERVICE_URL", "http://media-service:8008")
+logger = get_logger(__name__)
 
 
 async def resolve_media_url(media_id: Optional[uuid.UUID]) -> Optional[str]:
@@ -69,9 +71,7 @@ async def resolve_media_urls(
             return url_map
     except Exception as e:
         # Log error but don't break the service
-        import logging
-
-        logging.getLogger(__name__).warning(f"Failed to resolve media URLs: {e}")
+        logger.warning(f"Failed to resolve media URLs: {e}")
         return {}
 
 

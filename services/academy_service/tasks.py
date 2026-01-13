@@ -1,18 +1,20 @@
 """Background tasks for academy service automation."""
 
 import asyncio
-import logging
-# from datetime import datetime, timedelta
-
 
 from libs.common.datetime_utils import utc_now
+from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.academy_service.models import Cohort, CohortStatus
 from sqlalchemy import select
+
+# from datetime import datetime, timedelta
+
+
 # from sqlalchemy.ext.asyncio import AsyncSession
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def transition_cohort_statuses():

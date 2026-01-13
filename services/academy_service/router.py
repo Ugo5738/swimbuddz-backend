@@ -14,6 +14,7 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.email import send_enrollment_confirmation_email
+from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.db.session import get_async_db
 from services.academy_service.models import (
@@ -53,6 +54,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(tags=["academy"])
+logger = get_logger(__name__)
 
 
 # --- Admin Tasks ---
@@ -1291,11 +1293,7 @@ async def admin_mark_enrollment_paid(
                     )
     except Exception as e:
         # Log but don't fail the request if email fails
-        import logging
-
-        logging.getLogger(__name__).warning(
-            f"Failed to send enrollment confirmation email: {e}"
-        )
+        logger.warning(f"Failed to send enrollment confirmation email: {e}")
 
     # Re-fetch with relationships for response
     result = await db.execute(query)

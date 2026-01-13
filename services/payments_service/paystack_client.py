@@ -9,14 +9,14 @@ Provides async methods for:
 - Verifying transfer status
 """
 
-import logging
 from dataclasses import dataclass
 from typing import List
 
 import httpx
 from libs.common.config import get_settings
+from libs.common.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 settings = get_settings()
 
