@@ -624,9 +624,18 @@ async def _mark_paid_and_apply(
     )
     payment = result.scalar_one()
 
-    # Allow re-applying entitlements if the payment is already marked paid
-    # but entitlement_applied_at is still missing.
+    # IDEMPOTENCY CHECK: If payment is already fully processed, skip reprocessing
+    # This prevents double-crediting when webhook and manual verify race
     if payment.status == PaymentStatus.PAID and payment.entitlement_applied_at:
+        logger.info(
+            f"Payment {payment.reference} already processed (status=PAID, entitlement applied at {payment.entitlement_applied_at}), skipping",
+            extra={
+                "extra_fields": {
+                    "payment_id": str(payment.id),
+                    "reference": payment.reference,
+                }
+            },
+        )
         return payment
 
     payment.status = PaymentStatus.PAID
@@ -1172,6 +1181,24 @@ async def paystack_webhook(
     result = await db.execute(query)
     payment = result.scalar_one_or_none()
     if not payment:
+        logger.warning(
+            f"Webhook received for unknown payment reference: {reference}",
+            extra={"extra_fields": {"reference": reference, "event": event}},
+        )
+        return {"received": True}
+
+    # IDEMPOTENCY CHECK: Skip if payment is already fully processed
+    if payment.status == PaymentStatus.PAID and payment.entitlement_applied_at:
+        logger.info(
+            f"Webhook for {reference} skipped - payment already processed",
+            extra={
+                "extra_fields": {
+                    "payment_id": str(payment.id),
+                    "reference": reference,
+                    "event": event,
+                }
+            },
+        )
         return {"received": True}
 
     if event == "charge.success":

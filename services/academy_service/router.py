@@ -46,7 +46,7 @@ from services.academy_service.schemas import (
     StudentProgressResponse,
     StudentProgressUpdate,
 )
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -392,6 +392,54 @@ async def get_cohort(
     return cohort
 
 
+@router.get("/cohorts/{cohort_id}/enrollment-stats")
+async def get_cohort_enrollment_stats(
+    cohort_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get enrollment statistics for a cohort (capacity, enrolled, waitlist)."""
+
+    # Verify cohort exists
+    cohort_query = select(Cohort).where(Cohort.id == cohort_id)
+    cohort_result = await db.execute(cohort_query)
+    cohort = cohort_result.scalar_one_or_none()
+
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    # Count enrolled (includes ENROLLED and PENDING_APPROVAL)
+    enrolled_result = await db.execute(
+        select(func.count(Enrollment.id)).where(
+            Enrollment.cohort_id == cohort_id,
+            Enrollment.status.in_(
+                [EnrollmentStatus.ENROLLED, EnrollmentStatus.PENDING_APPROVAL]
+            ),
+        )
+    )
+    enrolled_count = enrolled_result.scalar() or 0
+
+    # Count waitlist
+    waitlist_result = await db.execute(
+        select(func.count(Enrollment.id)).where(
+            Enrollment.cohort_id == cohort_id,
+            Enrollment.status == EnrollmentStatus.WAITLIST,
+        )
+    )
+    waitlist_count = waitlist_result.scalar() or 0
+
+    spots_remaining = max(0, cohort.capacity - enrolled_count)
+    is_at_capacity = enrolled_count >= cohort.capacity
+
+    return {
+        "cohort_id": str(cohort_id),
+        "capacity": cohort.capacity,
+        "enrolled_count": enrolled_count,
+        "waitlist_count": waitlist_count,
+        "spots_remaining": spots_remaining,
+        "is_at_capacity": is_at_capacity,
+    }
+
+
 @router.get("/cohorts/{cohort_id}/students", response_model=List[EnrollmentResponse])
 async def list_cohort_students(
     cohort_id: uuid.UUID,
@@ -666,15 +714,46 @@ async def self_enroll(
             )
             raise HTTPException(status_code=400, detail=detail)
 
-    # 4. Create Enrollment Request
-    # Status is PENDING_APPROVAL by default for everyone now (as per new workflow)
+    # 4. Check Capacity and Determine Status
+    # If cohort is at capacity, set status to WAITLIST instead of PENDING_APPROVAL
+    enrollment_status = EnrollmentStatus.PENDING_APPROVAL
+    waitlist_position = None
+
+    if cohort_id and cohort:
+        # Count current enrollments (ENROLLED + PENDING_APPROVAL)
+
+        enrolled_count_result = await db.execute(
+            select(func.count(Enrollment.id)).where(
+                Enrollment.cohort_id == cohort_id,
+                Enrollment.status.in_(
+                    [EnrollmentStatus.ENROLLED, EnrollmentStatus.PENDING_APPROVAL]
+                ),
+            )
+        )
+        enrolled_count = enrolled_count_result.scalar() or 0
+
+        if enrolled_count >= cohort.capacity:
+            # Cohort is at capacity - add to waitlist
+            enrollment_status = EnrollmentStatus.WAITLIST
+
+            # Calculate waitlist position
+            waitlist_count_result = await db.execute(
+                select(func.count(Enrollment.id)).where(
+                    Enrollment.cohort_id == cohort_id,
+                    Enrollment.status == EnrollmentStatus.WAITLIST,
+                )
+            )
+            waitlist_position = (waitlist_count_result.scalar() or 0) + 1
+
+    # 5. Create Enrollment Request
+    # Status is PENDING_APPROVAL by default, or WAITLIST if at capacity
     # Payment status handles the financial part separate from Admission.
     enrollment = Enrollment(
         program_id=program_id,
         cohort_id=cohort_id,  # Can be None
         member_id=member["id"],
         member_auth_id=current_user.user_id,  # For decoupled ownership verification
-        status=EnrollmentStatus.PENDING_APPROVAL,
+        status=enrollment_status,
         payment_status=PaymentStatus.PENDING,
         preferences=preferences or {},
     )
@@ -710,6 +789,49 @@ async def get_my_enrollments(
     )
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.get("/my-enrollments/{enrollment_id}/waitlist-position")
+async def get_my_waitlist_position(
+    enrollment_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get waitlist position for a waitlisted enrollment."""
+
+    # Get the enrollment
+    query = select(Enrollment).where(
+        Enrollment.id == enrollment_id,
+        Enrollment.member_auth_id == current_user.user_id,
+    )
+    result = await db.execute(query)
+    enrollment = result.scalar_one_or_none()
+
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    if enrollment.status != EnrollmentStatus.WAITLIST:
+        return {"position": None, "message": "Not on waitlist"}
+
+    if not enrollment.cohort_id:
+        return {"position": None, "message": "No cohort assigned"}
+
+    # Count waitlist entries created before this one (position = count + 1)
+    position_result = await db.execute(
+        select(func.count(Enrollment.id)).where(
+            Enrollment.cohort_id == enrollment.cohort_id,
+            Enrollment.status == EnrollmentStatus.WAITLIST,
+            Enrollment.created_at < enrollment.created_at,
+        )
+    )
+    position = (position_result.scalar() or 0) + 1
+
+    return {
+        "enrollment_id": str(enrollment_id),
+        "cohort_id": str(enrollment.cohort_id),
+        "position": position,
+        "status": enrollment.status.value,
+    }
 
 
 @router.get("/my-enrollments/{enrollment_id}", response_model=EnrollmentResponse)

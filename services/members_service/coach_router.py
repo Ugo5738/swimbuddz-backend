@@ -353,6 +353,52 @@ async def complete_coach_onboarding(
 # === Admin Coach Review Endpoints ===
 
 
+@admin_router.get("/", response_model=list[AdminCoachApplicationListItem])
+async def list_coaches_for_admin(
+    status: Optional[str] = "approved,active",
+    _admin: dict = Depends(require_admin),
+):
+    """
+    List coaches for admin use (e.g., coach picker in cohort forms).
+    Default filters to approved and active coaches only.
+    Use status=all to get all coaches regardless of status.
+    """
+    async with AsyncSessionLocal() as session:
+        query = (
+            select(CoachProfile).join(Member).options(selectinload(CoachProfile.member))
+        )
+
+        # Parse status filter (comma-separated)
+        if status and status.lower() != "all":
+            statuses = [s.strip() for s in status.split(",")]
+            query = query.where(CoachProfile.status.in_(statuses))
+
+        query = query.order_by(Member.first_name, Member.last_name)
+
+        result = await session.execute(query)
+        profiles = result.scalars().all()
+
+        return [
+            AdminCoachApplicationListItem(
+                id=str(p.id),
+                member_id=str(p.member_id),
+                email=p.member.email,
+                first_name=p.member.first_name,
+                last_name=p.member.last_name,
+                display_name=p.display_name,
+                status=p.status,
+                coaching_years=p.coaching_years or 0,
+                coaching_specialties=p.coaching_specialties or [],
+                certifications=p.certifications or [],
+                coaching_document_link=p.coaching_document_link,
+                coaching_document_file_name=p.coaching_document_file_name,
+                application_submitted_at=p.application_submitted_at,
+                created_at=p.created_at,
+            )
+            for p in profiles
+        ]
+
+
 @admin_router.get("/applications", response_model=list[AdminCoachApplicationListItem])
 async def list_coach_applications(
     application_status: Optional[str] = None,
