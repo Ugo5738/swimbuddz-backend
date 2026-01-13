@@ -717,7 +717,6 @@ async def self_enroll(
     # 4. Check Capacity and Determine Status
     # If cohort is at capacity, set status to WAITLIST instead of PENDING_APPROVAL
     enrollment_status = EnrollmentStatus.PENDING_APPROVAL
-    waitlist_position = None
 
     if cohort_id and cohort:
         # Count current enrollments (ENROLLED + PENDING_APPROVAL)
@@ -735,15 +734,6 @@ async def self_enroll(
         if enrolled_count >= cohort.capacity:
             # Cohort is at capacity - add to waitlist
             enrollment_status = EnrollmentStatus.WAITLIST
-
-            # Calculate waitlist position
-            waitlist_count_result = await db.execute(
-                select(func.count(Enrollment.id)).where(
-                    Enrollment.cohort_id == cohort_id,
-                    Enrollment.status == EnrollmentStatus.WAITLIST,
-                )
-            )
-            waitlist_position = (waitlist_count_result.scalar() or 0) + 1
 
     # 5. Create Enrollment Request
     # Status is PENDING_APPROVAL by default, or WAITLIST if at capacity
