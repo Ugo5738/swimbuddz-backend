@@ -21,13 +21,18 @@ from .coach_schemas import (
     AdminCoachApplicationListItem,
     AdminRejectCoach,
     AdminRequestMoreInfo,
+    BankAccountCreate,
+    BankAccountResponse,
+    BankListResponse,
     CoachApplicationCreate,
     CoachApplicationResponse,
     CoachApplicationStatusResponse,
     CoachOnboardingUpdate,
     CoachProfileUpdate,
+    ResolveAccountRequest,
+    ResolveAccountResponse,
 )
-from .models import CoachProfile, Member
+from .models import CoachBankAccount, CoachProfile, Member
 
 logger = get_logger(__name__)
 
@@ -720,9 +725,6 @@ async def get_my_bank_account(
     current_user: AuthUser = Depends(get_current_user),
 ):
     """Get the current coach's bank account."""
-    from .coach_schemas import BankAccountResponse
-    from .models import CoachBankAccount
-
     auth_id = current_user.user_id
     if not auth_id:
         raise HTTPException(status_code=401, detail="Invalid authentication")
@@ -761,7 +763,7 @@ async def get_my_bank_account(
 
 @router.post("/me/bank-account")
 async def create_or_update_bank_account(
-    data: "BankAccountCreate",
+    data: BankAccountCreate,
     current_user: AuthUser = Depends(get_current_user),
 ):
     """
@@ -773,9 +775,6 @@ async def create_or_update_bank_account(
     from datetime import timezone
 
     from services.payments_service.paystack_client import PaystackClient, PaystackError
-
-    from .coach_schemas import BankAccountCreate, BankAccountResponse
-    from .models import CoachBankAccount
 
     auth_id = current_user.user_id
     if not auth_id:
@@ -865,8 +864,6 @@ async def delete_bank_account(
     current_user: AuthUser = Depends(get_current_user),
 ):
     """Delete coach's bank account."""
-    from .models import CoachBankAccount
-
     auth_id = current_user.user_id
     if not auth_id:
         raise HTTPException(status_code=401, detail="Invalid authentication")
@@ -900,8 +897,6 @@ async def list_banks():
     """
     from services.payments_service.paystack_client import PaystackClient, PaystackError
 
-    from .coach_schemas import BankListResponse
-
     paystack = PaystackClient()
     try:
         banks = await paystack.list_banks(country="nigeria")
@@ -918,7 +913,7 @@ async def list_banks():
 
 @router.post("/resolve-account")
 async def resolve_bank_account(
-    data: "ResolveAccountRequest",
+    data: ResolveAccountRequest,
     current_user: AuthUser = Depends(get_current_user),
 ):
     """
@@ -926,8 +921,6 @@ async def resolve_bank_account(
     Free Paystack API, used for validation before saving.
     """
     from services.payments_service.paystack_client import PaystackClient, PaystackError
-
-    from .coach_schemas import ResolveAccountRequest, ResolveAccountResponse
 
     paystack = PaystackClient()
     try:

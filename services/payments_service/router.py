@@ -1281,8 +1281,6 @@ async def paystack_webhook(
 
     if event == "transfer.failed":
         # Update payout status to FAILED
-        from services.payments_service.models import CoachPayout, PayoutStatus
-
         transfer_reference = data.get("reference")
         failure_reason = data.get("reason") or data.get("message") or "Unknown error"
 

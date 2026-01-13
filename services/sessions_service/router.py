@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from libs.auth.dependencies import get_current_user, require_admin, require_coach
+from libs.auth.dependencies import require_admin, require_coach
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.sessions_service.models import Session, SessionCoach
