@@ -348,6 +348,28 @@ async def list_open_cohorts(
     return result.scalars().all()
 
 
+@router.get("/cohorts/by-coach/{coach_member_id}", response_model=List[CohortResponse])
+async def list_cohorts_by_coach(
+    coach_member_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get all cohorts (current and past) taught by a specific coach.
+    Public endpoint - no authentication required.
+    Returns cohorts with program details.
+    """
+    query = (
+        select(Cohort)
+        .join(Program, Cohort.program_id == Program.id)
+        .where(Cohort.coach_id == coach_member_id)
+        .where(Program.is_published.is_(True))  # Only from published programs
+        .options(selectinload(Cohort.program))
+        .order_by(Cohort.start_date.desc())
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
 @router.get("/cohorts/coach/me", response_model=List[CohortResponse])
 async def list_my_coach_cohorts(
     current_user: AuthUser = Depends(get_current_user),
