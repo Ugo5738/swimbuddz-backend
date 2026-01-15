@@ -4,7 +4,10 @@ import asyncio
 from datetime import timedelta
 
 from libs.common.datetime_utils import utc_now
-from libs.common.emails.academy import send_enrollment_reminder_email
+from libs.common.emails.academy import (
+    send_enrollment_reminder_email,
+    send_waitlist_promotion_email,
+)
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.academy_service.models import (
@@ -15,6 +18,7 @@ from services.academy_service.models import (
 )
 from services.members_service.models import Member
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 logger = get_logger(__name__)
 
@@ -32,10 +36,14 @@ async def send_enrollment_reminders():
             today = now.date()
 
             # Find active/open cohorts starting in next 8 days
-            query = select(Cohort).where(
-                Cohort.status.in_([CohortStatus.OPEN, CohortStatus.ACTIVE]),
-                Cohort.start_date > now,
-                Cohort.start_date <= now + timedelta(days=8),
+            query = (
+                select(Cohort)
+                .options(selectinload(Cohort.program))
+                .where(
+                    Cohort.status.in_([CohortStatus.OPEN, CohortStatus.ACTIVE]),
+                    Cohort.start_date > now,
+                    Cohort.start_date <= now + timedelta(days=8),
+                )
             )
             result = await db.execute(query)
             cohorts = result.scalars().all()
@@ -114,24 +122,12 @@ async def process_waitlist():
     """
     async for db in get_async_db():
         try:
-            # Find cohorts with open spots
-            # Note: This is a simplified check. In production, we'd need to count ENROLLED status specifically.
-            # Here we assume if not full, we can promote.
-
-            # Subquery to count enrollments per cohort
-            enrollments_subquery = (
-                select(Enrollment.cohort_id, func.count(Enrollment.id).label("count"))
-                .where(Enrollment.status == EnrollmentStatus.ENROLLED)
-                .group_by(Enrollment.cohort_id)
-                .subquery()
-            )
-
             # Query cohorts that have space (capacity > enrolled_count)
-            # This is complex in pure SQLAlchemy async without manual joins,
-            # so we'll do a simpler approach: iterate active cohorts and check capacity.
-            # Optimization: Filter only OPEN/ACTIVE cohorts first.
-            query = select(Cohort).where(
-                Cohort.status.in_([CohortStatus.OPEN, CohortStatus.ACTIVE])
+            # Filter only OPEN/ACTIVE cohorts first.
+            query = (
+                select(Cohort)
+                .options(selectinload(Cohort.program))
+                .where(Cohort.status.in_([CohortStatus.OPEN, CohortStatus.ACTIVE]))
             )
             result = await db.execute(query)
             cohorts = result.scalars().all()
@@ -171,11 +167,6 @@ async def process_waitlist():
                             )
 
                             # Send email
-                            # Use new re-exported function from academy module
-                            from libs.common.emails.academy import (
-                                send_waitlist_promotion_email,
-                            )
-
                             await send_waitlist_promotion_email(
                                 to_email=member.email,
                                 member_name=member.first_name,

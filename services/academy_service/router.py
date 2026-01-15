@@ -1165,13 +1165,35 @@ async def get_enrollment_onboarding(
         if coach:
             coach_name = f"{coach['first_name']} {coach['last_name']}"
 
-    # Find next session (query sessions service)
-    # For now, we'll use cohort start_date as placeholder
-    next_session = NextSessionInfo(
-        date=cohort.start_date if cohort.start_date > utc_now() else None,
-        location=cohort.location_name,
-        notes="Check your email for session schedule details.",
+    # Find next session (query sessions table directly)
+    now = utc_now()
+    next_session_row = await db.execute(
+        text(
+            """
+            SELECT starts_at, title, location_name
+            FROM sessions
+            WHERE cohort_id = :cohort_id AND starts_at > :now
+            ORDER BY starts_at ASC
+            LIMIT 1
+            """
+        ),
+        {"cohort_id": cohort.id, "now": now},
     )
+    next_session_data = next_session_row.mappings().first()
+
+    if next_session_data:
+        next_session = NextSessionInfo(
+            date=next_session_data["starts_at"],
+            location=next_session_data["location_name"],
+            notes=f"Session: {next_session_data['title']}",
+        )
+    else:
+        # Fallback to cohort start_date if no sessions scheduled yet
+        next_session = NextSessionInfo(
+            date=cohort.start_date if cohort.start_date > now else None,
+            location=cohort.location_name,
+            notes="Check your email for session schedule details.",
+        )
 
     # Count milestones
     milestone_query = select(Milestone).where(Milestone.program_id == program.id)
