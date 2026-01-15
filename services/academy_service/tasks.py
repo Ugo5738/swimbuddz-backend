@@ -1,20 +1,106 @@
 """Background tasks for academy service automation."""
 
 import asyncio
+from datetime import timedelta
 
 from libs.common.datetime_utils import utc_now
+from libs.common.email import send_enrollment_reminder_email
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
-from services.academy_service.models import Cohort, CohortStatus
+from services.academy_service.models import (
+    Cohort,
+    CohortStatus,
+    Enrollment,
+    EnrollmentStatus,
+)
+from services.members_service.models import Member
 from sqlalchemy import select
 
-# from datetime import datetime, timedelta
-
-
-# from sqlalchemy.ext.asyncio import AsyncSession
-
-
 logger = get_logger(__name__)
+
+
+async def send_enrollment_reminders():
+    """
+    Send reminders for upcoming cohorts:
+    - 7 days before (General)
+    - 3 days before (Logistics)
+    - 1 day before (Urgent)
+    """
+    async for db in get_async_db():
+        try:
+            now = utc_now()
+            today = now.date()
+
+            # Find active/open cohorts starting in next 8 days
+            query = select(Cohort).where(
+                Cohort.status.in_([CohortStatus.OPEN, CohortStatus.ACTIVE]),
+                Cohort.start_date > now,
+                Cohort.start_date <= now + timedelta(days=8),
+            )
+            result = await db.execute(query)
+            cohorts = result.scalars().all()
+
+            for cohort in cohorts:
+                days_until = (cohort.start_date.date() - today).days
+
+                # Only target 7, 3, or 1 days out
+                if days_until not in [7, 3, 1]:
+                    continue
+
+                reminder_key = f"{days_until}_days"
+
+                # Get enrolled students
+                enrollment_query = (
+                    select(Enrollment, Member)
+                    .join(Member, Enrollment.member_id == Member.id)
+                    .where(
+                        Enrollment.cohort_id == cohort.id,
+                        Enrollment.status == EnrollmentStatus.ENROLLED,
+                    )
+                )
+                result = await db.execute(enrollment_query)
+                enrollments = result.all()  # List of (Enrollment, Member) tuples
+
+                for enrollment, member in enrollments:
+                    # Check if already sent
+                    reminders_sent = enrollment.reminders_sent or []
+                    if reminder_key in reminders_sent:
+                        continue
+
+                    # Send email
+                    success = await send_enrollment_reminder_email(
+                        to_email=member.email,
+                        member_name=member.first_name,
+                        program_name=(
+                            cohort.program.name if cohort.program else "Swimming Course"
+                        ),
+                        cohort_name=cohort.name,
+                        start_date=cohort.start_date.strftime("%B %d, %Y"),
+                        start_time=cohort.start_date.strftime("%I:%M %p"),
+                        location=cohort.location_name or "TBD",
+                        days_until=days_until,
+                    )
+
+                    if success:
+                        # Update DB
+                        new_reminders = reminders_sent + [reminder_key]
+                        enrollment.reminders_sent = new_reminders
+                        logger.info(
+                            f"Sent {days_until}-day reminder to {member.email} for cohort {cohort.id}"
+                        )
+                    else:
+                        logger.error(
+                            f"Failed to send {days_until}-day reminder to {member.email}"
+                        )
+
+            await db.commit()
+
+        except Exception as e:
+            logger.error(f"Error sending enrollment reminders: {e}")
+            await db.rollback()
+        finally:
+            await db.close()
+            break
 
 
 async def transition_cohort_statuses():
@@ -83,6 +169,7 @@ async def run_periodic_tasks():
     while True:
         try:
             await transition_cohort_statuses()
+            await send_enrollment_reminders()
         except Exception as e:
             logger.error(f"Error in periodic tasks: {e}")
 
@@ -92,4 +179,4 @@ async def run_periodic_tasks():
 
 if __name__ == "__main__":
     # For manual testing or running as standalone process
-    asyncio.run(transition_cohort_statuses())
+    asyncio.run(send_enrollment_reminders())

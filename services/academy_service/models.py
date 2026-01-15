@@ -482,6 +482,9 @@ class Enrollment(Base):
         server_default="WEB",
     )
 
+    # Notification tracking
+    reminders_sent: Mapped[list] = mapped_column(JSON, default=[], server_default="[]")
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
