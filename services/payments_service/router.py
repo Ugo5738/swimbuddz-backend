@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from libs.auth.dependencies import _service_role_jwt, get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
-from libs.common.email import send_session_confirmation_email
+from libs.common.emails.sessions import send_session_confirmation_email
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from pydantic import BaseModel
@@ -1736,7 +1736,7 @@ async def approve_manual_payment(
     # Send email notification to member
     if payment.payer_email:
         try:
-            from libs.common.email import send_payment_approved_email
+            from libs.common.emails.payments import send_payment_approved_email
 
             await send_payment_approved_email(
                 to_email=payment.payer_email,

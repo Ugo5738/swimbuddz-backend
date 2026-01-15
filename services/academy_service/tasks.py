@@ -4,7 +4,7 @@ import asyncio
 from datetime import timedelta
 
 from libs.common.datetime_utils import utc_now
-from libs.common.email import send_enrollment_reminder_email
+from libs.common.emails.academy import send_enrollment_reminder_email
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.academy_service.models import (
@@ -14,7 +14,7 @@ from services.academy_service.models import (
     EnrollmentStatus,
 )
 from services.members_service.models import Member
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 logger = get_logger(__name__)
 
@@ -103,6 +103,100 @@ async def send_enrollment_reminders():
             break
 
 
+async def process_waitlist():
+    """
+    Check for open spots in active cohorts and promote waitlisted students.
+    Logic:
+    1. Find COHORTs where status is OPEN/ACTIVE and enrollment_count < capacity
+    2. For each, find oldest WAITLIST enrollment
+    3. Promote to PENDING_APPROVAL
+    4. Send notification email
+    """
+    async for db in get_async_db():
+        try:
+            # Find cohorts with open spots
+            # Note: This is a simplified check. In production, we'd need to count ENROLLED status specifically.
+            # Here we assume if not full, we can promote.
+
+            # Subquery to count enrollments per cohort
+            enrollments_subquery = (
+                select(Enrollment.cohort_id, func.count(Enrollment.id).label("count"))
+                .where(Enrollment.status == EnrollmentStatus.ENROLLED)
+                .group_by(Enrollment.cohort_id)
+                .subquery()
+            )
+
+            # Query cohorts that have space (capacity > enrolled_count)
+            # This is complex in pure SQLAlchemy async without manual joins,
+            # so we'll do a simpler approach: iterate active cohorts and check capacity.
+            # Optimization: Filter only OPEN/ACTIVE cohorts first.
+            query = select(Cohort).where(
+                Cohort.status.in_([CohortStatus.OPEN, CohortStatus.ACTIVE])
+            )
+            result = await db.execute(query)
+            cohorts = result.scalars().all()
+
+            for cohort in cohorts:
+                # Count current enrollments
+                count_query = select(func.count(Enrollment.id)).where(
+                    Enrollment.cohort_id == cohort.id,
+                    Enrollment.status == EnrollmentStatus.ENROLLED,
+                )
+                result = await db.execute(count_query)
+                enrolled_count = result.scalar() or 0
+
+                if enrolled_count < cohort.capacity:
+                    spots_available = cohort.capacity - enrolled_count
+
+                    if spots_available > 0:
+                        # Find oldest waitlisted students (FIFO)
+                        waitlist_query = (
+                            select(Enrollment, Member)
+                            .join(Member, Enrollment.member_id == Member.id)
+                            .where(
+                                Enrollment.cohort_id == cohort.id,
+                                Enrollment.status == EnrollmentStatus.WAITLIST,
+                            )
+                            .order_by(Enrollment.created_at.asc())
+                            .limit(spots_available)
+                        )
+                        result = await db.execute(waitlist_query)
+                        to_promote = result.all()  # List of (Enrollment, Member)
+
+                        for enrollment, member in to_promote:
+                            # Promote student
+                            enrollment.status = EnrollmentStatus.PENDING_APPROVAL
+                            logger.info(
+                                f"Promoting user {member.email} from waitlist for cohort {cohort.name}"
+                            )
+
+                            # Send email
+                            # Use new re-exported function from academy module
+                            from libs.common.emails.academy import (
+                                send_waitlist_promotion_email,
+                            )
+
+                            await send_waitlist_promotion_email(
+                                to_email=member.email,
+                                member_name=member.first_name,
+                                program_name=(
+                                    cohort.program.name
+                                    if cohort.program
+                                    else "Swimming Course"
+                                ),
+                                cohort_name=cohort.name,
+                            )
+
+            await db.commit()
+
+        except Exception as e:
+            logger.error(f"Error processing waitlist: {e}")
+            await db.rollback()
+        finally:
+            await db.close()
+            break
+
+
 async def transition_cohort_statuses():
     """
     Automatically transition cohort statuses based on dates:
@@ -170,6 +264,7 @@ async def run_periodic_tasks():
         try:
             await transition_cohort_statuses()
             await send_enrollment_reminders()
+            await process_waitlist()
         except Exception as e:
             logger.error(f"Error in periodic tasks: {e}")
 
@@ -179,4 +274,4 @@ async def run_periodic_tasks():
 
 if __name__ == "__main__":
     # For manual testing or running as standalone process
-    asyncio.run(send_enrollment_reminders())
+    asyncio.run(process_waitlist())

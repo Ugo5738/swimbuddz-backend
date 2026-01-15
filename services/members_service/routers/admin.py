@@ -5,15 +5,13 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-from libs.common.email import send_email
+from libs.common.emails.core import send_email
 from libs.db.session import get_async_db
+from pydantic import BaseModel
 from services.members_service.models import Member, MemberMembership
+from services.members_service.routers._helpers import member_eager_load_options
 from services.members_service.schemas import (
     ActivateClubRequest,
     ActivateCommunityRequest,
@@ -22,7 +20,8 @@ from services.members_service.schemas import (
     MemberResponse,
     PendingMemberResponse,
 )
-from services.members_service.routers._helpers import member_eager_load_options
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/admin/members", tags=["admin-members"])
 

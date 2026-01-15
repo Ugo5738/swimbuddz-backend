@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
-from libs.common.email import send_email
+from libs.common.emails.core import send_email
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url
 from libs.common.supabase import get_supabase_admin_client

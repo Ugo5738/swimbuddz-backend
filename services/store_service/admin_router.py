@@ -795,7 +795,7 @@ async def update_order_status(
     # Send notification to customer for ready/shipped status changes
     if status_update.status in [OrderStatus.READY_FOR_PICKUP, OrderStatus.SHIPPED]:
         try:
-            from libs.common.email import send_store_order_ready_email
+            from libs.common.emails.store import send_store_order_ready_email
 
             pickup_location_str = None
             if order.pickup_location:
@@ -859,7 +859,7 @@ async def mark_order_paid(
 
     # Send order confirmation email to customer
     try:
-        from libs.common.email import send_store_order_confirmation_email
+        from libs.common.emails.store import send_store_order_confirmation_email
 
         items = [
             {

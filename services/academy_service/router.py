@@ -13,7 +13,7 @@ from libs.auth.dependencies import (
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
-from libs.common.email import send_enrollment_confirmation_email
+from libs.common.emails.academy import send_enrollment_confirmation_email
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.db.session import get_async_db
