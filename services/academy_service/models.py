@@ -485,6 +485,12 @@ class Enrollment(Base):
     # Notification tracking
     reminders_sent: Mapped[list] = mapped_column(JSON, default=[], server_default="[]")
 
+    # Certificate tracking
+    certificate_issued_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    certificate_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )

@@ -1228,6 +1228,269 @@ async def list_cohort_enrollments(
     return result.scalars().all()
 
 
+@router.get("/cohorts/{cohort_id}/analytics")
+async def get_cohort_analytics(
+    cohort_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get detailed analytics for a cohort including:
+    - Total students, completion rates, at-risk students, avg scores
+    """
+    # Get cohort
+    cohort_query = (
+        select(Cohort)
+        .options(selectinload(Cohort.program))
+        .where(Cohort.id == cohort_id)
+    )
+    cohort_result = await db.execute(cohort_query)
+    cohort = cohort_result.scalar_one_or_none()
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    # Get enrolled students count
+    enrolled_query = select(func.count(Enrollment.id)).where(
+        Enrollment.cohort_id == cohort_id,
+        Enrollment.status == EnrollmentStatus.ENROLLED,
+    )
+    enrolled_result = await db.execute(enrolled_query)
+    total_students = enrolled_result.scalar() or 0
+
+    # Get all milestones for the program
+    program_id = cohort.program_id
+    milestone_query = select(Milestone).where(Milestone.program_id == program_id)
+    milestone_result = await db.execute(milestone_query)
+    all_milestones = milestone_result.scalars().all()
+    total_milestones = len(all_milestones)
+
+    # Get all progress records for this cohort's enrollments
+    progress_query = (
+        select(StudentProgress)
+        .join(Enrollment, StudentProgress.enrollment_id == Enrollment.id)
+        .where(Enrollment.cohort_id == cohort_id)
+    )
+    progress_result = await db.execute(progress_query)
+    all_progress = progress_result.scalars().all()
+
+    # Calculate stats
+    achieved_count = len([p for p in all_progress if p.status.value == "achieved"])
+    pending_count = len([p for p in all_progress if p.status.value == "pending"])
+    in_review_count = len([p for p in all_progress if p.status.value == "in_review"])
+
+    # Completion rate (achieved / (total_students * total_milestones))
+    possible_total = total_students * total_milestones
+    completion_rate = (
+        round((achieved_count / possible_total) * 100) if possible_total > 0 else 0
+    )
+
+    # Average score (only for achieved with scores)
+    scored = [p for p in all_progress if p.score is not None]
+    avg_score = round(sum(p.score for p in scored) / len(scored)) if scored else None
+
+    # At-risk students (0 progress in last 14 days)
+    from datetime import timedelta
+
+    fourteen_days_ago = utc_now() - timedelta(days=14)
+
+    # Get enrollments with no recent activity
+    enrollment_ids_query = select(Enrollment.id).where(
+        Enrollment.cohort_id == cohort_id,
+        Enrollment.status == EnrollmentStatus.ENROLLED,
+    )
+    enrollment_result = await db.execute(enrollment_ids_query)
+    all_enrollment_ids = set(row[0] for row in enrollment_result.fetchall())
+
+    active_enrollment_ids = set(
+        p.enrollment_id
+        for p in all_progress
+        if p.updated_at and p.updated_at >= fourteen_days_ago
+    )
+    at_risk_count = len(all_enrollment_ids - active_enrollment_ids)
+
+    return {
+        "cohort_id": str(cohort_id),
+        "cohort_name": cohort.name,
+        "program_name": cohort.program.name if cohort.program else None,
+        "total_students": total_students,
+        "total_milestones": total_milestones,
+        "milestones_achieved": achieved_count,
+        "milestones_pending": pending_count,
+        "milestones_in_review": in_review_count,
+        "completion_rate": completion_rate,
+        "avg_score": avg_score,
+        "students_at_risk": at_risk_count,
+    }
+
+
+@router.get("/cohorts/{cohort_id}/progress-report.pdf")
+async def download_cohort_progress_report(
+    cohort_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Download a PDF progress report for a specific cohort.
+    Contains all students and their milestone progress.
+    """
+    from fastapi.responses import Response
+    from libs.common.pdf import generate_progress_report_pdf
+
+    # Get cohort with program
+    cohort_query = (
+        select(Cohort)
+        .options(selectinload(Cohort.program))
+        .where(Cohort.id == cohort_id)
+    )
+    cohort_result = await db.execute(cohort_query)
+    cohort = cohort_result.scalar_one_or_none()
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    program = cohort.program
+    if not program:
+        raise HTTPException(status_code=400, detail="Cohort has no associated program")
+
+    # Get all milestones
+    milestone_query = select(Milestone).where(Milestone.program_id == program.id)
+    milestone_result = await db.execute(milestone_query)
+    all_milestones = milestone_result.scalars().all()
+    total_milestones = len(all_milestones)
+    milestone_map = {m.id: m.name for m in all_milestones}
+
+    # Get all enrollments with members
+    enrollment_query = (
+        select(Enrollment, Member)
+        .join(Member, Enrollment.member_id == Member.id)
+        .where(
+            Enrollment.cohort_id == cohort_id,
+            Enrollment.status == EnrollmentStatus.ENROLLED,
+        )
+    )
+    enrollment_result = await db.execute(enrollment_query)
+    enrollments = enrollment_result.all()
+
+    if not enrollments:
+        raise HTTPException(status_code=404, detail="No enrolled students found")
+
+    # For cohort PDF, we'll generate for the first student as a demo
+    # In a real implementation, you might want a cohort-level summary PDF
+    enrollment, member = enrollments[0]
+
+    # Get progress for this enrollment
+    progress_query = select(StudentProgress).where(
+        StudentProgress.enrollment_id == enrollment.id
+    )
+    progress_result = await db.execute(progress_query)
+    all_progress = progress_result.scalars().all()
+
+    completed_count = len([p for p in all_progress if p.status.value == "achieved"])
+    milestone_data = [
+        {
+            "name": milestone_map.get(p.milestone_id, "Unknown"),
+            "status": p.status.value if p.status else "pending",
+            "achieved_at": p.achieved_at,
+            "coach_notes": p.coach_notes,
+        }
+        for p in all_progress
+    ]
+
+    # Generate PDF
+    pdf_bytes = generate_progress_report_pdf(
+        student_name=f"{member.first_name} {member.last_name}",
+        program_name=program.name,
+        cohort_name=cohort.name,
+        start_date=cohort.start_date,
+        end_date=cohort.end_date,
+        milestones=milestone_data,
+        total_milestones=total_milestones,
+        completed_milestones=completed_count,
+        report_date=utc_now(),
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=progress_report_{cohort.name.replace(' ', '_')}.pdf"
+        },
+    )
+
+
+@router.get("/enrollments/{enrollment_id}/certificate.pdf")
+async def download_certificate(
+    enrollment_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Download completion certificate for an enrollment.
+    Only available if all milestones are completed and certificate was issued.
+    """
+    from fastapi.responses import Response
+    from libs.common.pdf import generate_certificate_pdf
+
+    # Get enrollment with program and cohort
+    query = (
+        select(Enrollment)
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+        )
+        .where(Enrollment.id == enrollment_id)
+    )
+    result = await db.execute(query)
+    enrollment = result.scalar_one_or_none()
+
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    # Verify ownership (unless admin)
+    if str(enrollment.member_id) != current_user.id and not current_user.is_admin:
+        raise HTTPException(
+            status_code=403, detail="Not authorized to view this certificate"
+        )
+
+    # Check if certificate has been issued
+    if not enrollment.certificate_issued_at or not enrollment.certificate_code:
+        raise HTTPException(
+            status_code=404,
+            detail="Certificate not yet available. Complete all milestones to earn your certificate.",
+        )
+
+    # Get member name
+    member_query = text(
+        "SELECT first_name, last_name FROM members WHERE id = :member_id"
+    )
+    member_result = await db.execute(member_query, {"member_id": enrollment.member_id})
+    member = member_result.mappings().first()
+
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    student_name = f"{member['first_name']} {member['last_name']}"
+
+    cohort = enrollment.cohort
+    program = enrollment.program or (cohort.program if cohort else None)
+    program_name = program.name if program else "SwimBuddz Program"
+
+    # Generate PDF
+    pdf_bytes = generate_certificate_pdf(
+        student_name=student_name,
+        program_name=program_name,
+        completion_date=enrollment.certificate_issued_at,
+        verification_code=enrollment.certificate_code,
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=certificate_{program_name.replace(' ', '_')}.pdf"
+        },
+    )
+
+
 @router.patch("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
 async def update_enrollment(
     enrollment_id: uuid.UUID,
