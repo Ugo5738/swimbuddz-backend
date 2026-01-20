@@ -101,6 +101,7 @@ class CohortBase(BaseModel):
     capacity: int
     status: CohortStatus = CohortStatus.OPEN
     allow_mid_entry: bool = False
+    mid_entry_cutoff_week: int = 2  # Max week number for mid-entry
     require_approval: bool = (
         False  # If True, enrollment needs admin approval even after payment
     )
@@ -127,6 +128,7 @@ class CohortUpdate(BaseModel):
     status: Optional[CohortStatus] = None
     coach_id: Optional[UUID] = None
     allow_mid_entry: Optional[bool] = None
+    mid_entry_cutoff_week: Optional[int] = None
     require_approval: Optional[bool] = None
     # Location
     timezone: Optional[str] = None

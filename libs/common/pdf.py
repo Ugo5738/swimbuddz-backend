@@ -270,7 +270,7 @@ def generate_certificate_pdf(
     elements.append(Paragraph(f"<b>{student_name}</b>", name_style))
     elements.append(
         Paragraph(
-            f"has successfully completed all requirements for",
+            "has successfully completed all requirements for",
             body_style,
         )
     )

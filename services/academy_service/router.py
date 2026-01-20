@@ -26,10 +26,10 @@ from services.academy_service.models import (
     Milestone,
     PaymentStatus,
     Program,
-    ProgramLevel,
     ProgressStatus,
     StudentProgress,
 )
+from services.members_service.models import Member
 from services.academy_service.schemas import (
     CohortCreate,
     CohortResourceResponse,
@@ -887,30 +887,25 @@ async def self_enroll(
                 detail="This program is not yet available for enrollment.",
             )
 
-        # Validation for mid-entry if cohort is selected
-        if cohort.status != CohortStatus.OPEN:
-            # Fetch program for level check
-            program_query = select(Program).where(Program.id == cohort.program_id)
-            program_result = await db.execute(program_query)
-            program = program_result.scalar_one_or_none()
+        # Validation for mid-entry if cohort is ACTIVE
+        if cohort.status == CohortStatus.ACTIVE:
+            # Check if mid-entry is allowed for this cohort
+            if not cohort.allow_mid_entry:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This cohort does not allow mid-entry. Please join a waitlist or select another cohort.",
+                )
 
-            if program and program.level in [
-                ProgramLevel.BEGINNER_1,
-                ProgramLevel.BEGINNER_2,
-                ProgramLevel.INTERMEDIATE,
-            ]:
-                if cohort.status == CohortStatus.ACTIVE:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="This cohort has already started. Please join a waitlist or next available cohort.",
-                    )
+            # Check if within cutoff window
+            now = utc_now()
+            days_since_start = (now - cohort.start_date).days
+            current_week = (days_since_start // 7) + 1
 
-            if cohort.status != CohortStatus.OPEN:
-                # Allow joining waitlist? For now, block unless OPEN.
-                # Actually, if status is PENDING_APPROVAL, maybe we allow it?
-                # Let's say if it's not OPEN, we warn.
-                # But the requirement says "Strict mid-entry rules". So block.
-                pass
+            if current_week > cohort.mid_entry_cutoff_week:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Mid-entry window has closed (week {current_week} > cutoff week {cohort.mid_entry_cutoff_week}). Please join a waitlist or select another cohort.",
+                )
 
     elif program_id:
         # User is requesting to join a generic Program (Request-based)

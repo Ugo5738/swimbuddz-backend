@@ -1,6 +1,7 @@
 """
 Payment-related email templates.
 """
+
 from libs.common.emails.core import send_email
 
 

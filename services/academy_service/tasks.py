@@ -396,7 +396,6 @@ async def check_and_issue_certificates():
     import secrets
 
     from libs.common.emails.academy import send_certificate_email
-    from libs.common.pdf import generate_certificate_pdf
     from services.academy_service.models import Milestone, StudentProgress
 
     async for db in get_async_db():

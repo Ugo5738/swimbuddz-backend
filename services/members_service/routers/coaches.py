@@ -6,8 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.auth.dependencies import get_current_user
-from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.members_service.models import CoachProfile, Member
 from services.members_service.schemas import MemberResponse
@@ -54,9 +52,8 @@ async def get_coach_by_id(
     )
     result = await db.execute(query)
     coach = result.scalar_one_or_none()
-    
+
     if not coach:
         raise HTTPException(status_code=404, detail="Coach not found or not active")
-    
-    return coach
 
+    return coach

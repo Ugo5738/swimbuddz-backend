@@ -113,7 +113,7 @@ async def send_enrollment_reminder_email(
     subject = f"Reminder: Your swimming course starts in {days_text}! 🏊‍♂️"
 
     if days_until == 1:
-        subject = f"URGENT: Your swimming course starts tomorrow! 🏊‍♂️"
+        subject = "URGENT: Your swimming course starts tomorrow! 🏊‍♂️"
 
     urgency_msg = f"We're excited to see you in {days_text}!"
     if days_until == 1:

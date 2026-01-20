@@ -355,6 +355,9 @@ class Cohort(Base):
     allow_mid_entry: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="false"
     )
+    mid_entry_cutoff_week: Mapped[int] = mapped_column(
+        Integer, default=2, nullable=False, server_default="2"
+    )
     require_approval: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="false"
     )
