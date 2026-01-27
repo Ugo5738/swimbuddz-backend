@@ -13,7 +13,7 @@ from libs.auth.dependencies import (
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
-from libs.common.emails.academy import send_enrollment_confirmation_email
+from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.db.session import get_async_db
@@ -29,7 +29,6 @@ from services.academy_service.models import (
     ProgressStatus,
     StudentProgress,
 )
-from services.members_service.models import Member
 from services.academy_service.schemas import (
     CohortCreate,
     CohortResourceResponse,
@@ -49,12 +48,28 @@ from services.academy_service.schemas import (
     StudentProgressResponse,
     StudentProgressUpdate,
 )
+from services.members_service.models import Member
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(tags=["academy"])
 logger = get_logger(__name__)
+
+
+async def _ensure_active_coach(db: AsyncSession, coach_member_id: uuid.UUID) -> None:
+    result = await db.execute(
+        text("SELECT status FROM coach_profiles WHERE member_id = :member_id"),
+        {"member_id": coach_member_id},
+    )
+    status = result.scalar_one_or_none()
+    if status is None:
+        raise HTTPException(status_code=400, detail="Coach profile not found")
+    if status != "active":
+        raise HTTPException(
+            status_code=400,
+            detail="Coach must complete onboarding before assignment",
+        )
 
 
 # --- Admin Tasks ---
@@ -250,6 +265,9 @@ async def create_cohort(
 ):
     from sqlalchemy.orm import selectinload
 
+    if cohort_in.coach_id:
+        await _ensure_active_coach(db, cohort_in.coach_id)
+
     cohort = Cohort(**cohort_in.model_dump())
     db.add(cohort)
     await db.commit()
@@ -270,20 +288,74 @@ async def update_cohort(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
+    from libs.common.emails.academy import send_coach_assignment_email
     from sqlalchemy.orm import selectinload
 
-    query = select(Cohort).where(Cohort.id == cohort_id)
+    query = (
+        select(Cohort)
+        .where(Cohort.id == cohort_id)
+        .options(selectinload(Cohort.program))
+    )
     result = await db.execute(query)
     cohort = result.scalar_one_or_none()
 
     if not cohort:
         raise HTTPException(status_code=404, detail="Cohort not found")
 
+    # Track if coach is being newly assigned
+    old_coach_id = cohort.coach_id
     update_data = cohort_in.model_dump(exclude_unset=True)
+    new_coach_id = update_data.get("coach_id")
+
+    if new_coach_id is not None:
+        await _ensure_active_coach(db, new_coach_id)
+
     for field, value in update_data.items():
         setattr(cohort, field, value)
 
     await db.commit()
+
+    # Send notification if a new coach is being assigned
+    if new_coach_id and new_coach_id != old_coach_id:
+        try:
+            # Get coach member details
+            coach_row = await db.execute(
+                text(
+                    "SELECT email, first_name, last_name FROM members WHERE id = :coach_id"
+                ),
+                {"coach_id": new_coach_id},
+            )
+            coach = coach_row.mappings().first()
+
+            if coach and coach["email"]:
+                # Count enrolled students
+                enrolled_count_result = await db.execute(
+                    select(func.count(Enrollment.id)).where(
+                        Enrollment.cohort_id == cohort_id,
+                        Enrollment.status == EnrollmentStatus.ENROLLED,
+                    )
+                )
+                student_count = enrolled_count_result.scalar() or 0
+
+                await send_coach_assignment_email(
+                    to_email=coach["email"],
+                    coach_name=f"{coach['first_name']} {coach['last_name']}",
+                    program_name=(
+                        cohort.program.name if cohort.program else "Unknown Program"
+                    ),
+                    cohort_name=cohort.name,
+                    start_date=cohort.start_date.strftime("%b %d, %Y"),
+                    end_date=cohort.end_date.strftime("%b %d, %Y"),
+                    student_count=student_count,
+                    location=cohort.location_name,
+                )
+                logger.info(
+                    f"Sent coach assignment email to {coach['email']} for cohort {cohort.name}"
+                )
+        except Exception as e:
+            logger.error(f"Failed to send coach assignment email: {e}")
+            # Don't fail the update if email fails
+
     query = (
         select(Cohort)
         .where(Cohort.id == cohort.id)
@@ -732,7 +804,7 @@ async def list_program_milestones(
     query = (
         select(Milestone)
         .where(Milestone.program_id == program_id)
-        .order_by(Milestone.name)
+        .order_by(Milestone.order_index)
     )
     result = await db.execute(query)
     return result.scalars().all()
@@ -1586,12 +1658,16 @@ async def admin_mark_enrollment_paid(
                         else "TBD"
                     )
 
-                    await send_enrollment_confirmation_email(
+                    email_client = get_email_client()
+                    await email_client.send_template(
+                        template_type="enrollment_confirmation",
                         to_email=member_email,
-                        member_name=member_name,
-                        program_name=program_name,
-                        cohort_name=cohort_name,
-                        start_date=start_date,
+                        template_data={
+                            "member_name": member_name,
+                            "program_name": program_name,
+                            "cohort_name": cohort_name,
+                            "start_date": start_date,
+                        },
                     )
     except Exception as e:
         # Log but don't fail the request if email fails

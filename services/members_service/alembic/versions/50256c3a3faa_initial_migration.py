@@ -1,15 +1,15 @@
 """initial_migration
 
-Revision ID: f478839c10f7
+Revision ID: 50256c3a3faa
 Revises: 
-Create Date: 2026-01-03 09:29:17.909924
+Create Date: 2026-01-26 02:36:58.337820
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = 'f478839c10f7'
+revision = '50256c3a3faa'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -52,7 +52,7 @@ def upgrade() -> None:
     sa.Column('approval_notes', sa.String(), nullable=True),
     sa.Column('approved_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('approved_by', sa.String(), nullable=True),
-    sa.Column('profile_photo_url', sa.String(), nullable=True),
+    sa.Column('profile_photo_media_id', sa.UUID(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id')
@@ -88,11 +88,28 @@ def upgrade() -> None:
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('coach_bank_accounts',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('member_id', sa.UUID(), nullable=False),
+    sa.Column('bank_code', sa.String(length=10), nullable=False),
+    sa.Column('bank_name', sa.String(length=100), nullable=False),
+    sa.Column('account_number', sa.String(length=20), nullable=False),
+    sa.Column('account_name', sa.String(length=200), nullable=False),
+    sa.Column('paystack_recipient_code', sa.String(length=50), nullable=True),
+    sa.Column('is_verified', sa.Boolean(), server_default='false', nullable=False),
+    sa.Column('verified_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('verified_by', sa.String(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['member_id'], ['members.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('member_id')
+    )
     op.create_table('coach_profiles',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('member_id', sa.UUID(), nullable=False),
     sa.Column('display_name', sa.String(), nullable=True),
-    sa.Column('coach_profile_photo_url', sa.String(), nullable=True),
+    sa.Column('coach_profile_photo_media_id', sa.UUID(), nullable=True),
     sa.Column('short_bio', sa.String(), nullable=True),
     sa.Column('full_bio', sa.Text(), nullable=True),
     sa.Column('certifications', postgresql.ARRAY(sa.String()), nullable=True),
@@ -111,7 +128,7 @@ def upgrade() -> None:
     sa.Column('cpr_expiry_date', sa.DateTime(timezone=True), nullable=True),
     sa.Column('lifeguard_expiry_date', sa.DateTime(timezone=True), nullable=True),
     sa.Column('background_check_status', sa.String(), server_default='not_required', nullable=False),
-    sa.Column('background_check_document_url', sa.String(), nullable=True),
+    sa.Column('background_check_document_media_id', sa.UUID(), nullable=True),
     sa.Column('insurance_status', sa.String(), server_default='none', nullable=False),
     sa.Column('is_verified', sa.Boolean(), server_default='false', nullable=False),
     sa.Column('pools_supported', postgresql.ARRAY(sa.String()), nullable=True),
@@ -261,6 +278,7 @@ def downgrade() -> None:
     op.drop_table('member_emergency_contacts')
     op.drop_table('member_availabilities')
     op.drop_table('coach_profiles')
+    op.drop_table('coach_bank_accounts')
     op.drop_table('volunteer_roles')
     op.drop_table('volunteer_interests')
     op.drop_index(op.f('ix_pending_registrations_email'), table_name='pending_registrations')

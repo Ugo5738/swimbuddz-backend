@@ -4,10 +4,7 @@ import asyncio
 from datetime import timedelta
 
 from libs.common.datetime_utils import utc_now
-from libs.common.emails.academy import (
-    send_enrollment_reminder_email,
-    send_waitlist_promotion_email,
-)
+from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.academy_service.models import (
@@ -75,18 +72,24 @@ async def send_enrollment_reminders():
                     if reminder_key in reminders_sent:
                         continue
 
-                    # Send email
-                    success = await send_enrollment_reminder_email(
+                    # Send email via centralized email service
+                    email_client = get_email_client()
+                    success = await email_client.send_template(
+                        template_type="enrollment_reminder",
                         to_email=member.email,
-                        member_name=member.first_name,
-                        program_name=(
-                            cohort.program.name if cohort.program else "Swimming Course"
-                        ),
-                        cohort_name=cohort.name,
-                        start_date=cohort.start_date.strftime("%B %d, %Y"),
-                        start_time=cohort.start_date.strftime("%I:%M %p"),
-                        location=cohort.location_name or "TBD",
-                        days_until=days_until,
+                        template_data={
+                            "member_name": member.first_name,
+                            "program_name": (
+                                cohort.program.name
+                                if cohort.program
+                                else "Swimming Course"
+                            ),
+                            "cohort_name": cohort.name,
+                            "start_date": cohort.start_date.strftime("%B %d, %Y"),
+                            "start_time": cohort.start_date.strftime("%I:%M %p"),
+                            "location": cohort.location_name or "TBD",
+                            "days_until": days_until,
+                        },
                     )
 
                     if success:
@@ -166,16 +169,20 @@ async def process_waitlist():
                                 f"Promoting user {member.email} from waitlist for cohort {cohort.name}"
                             )
 
-                            # Send email
-                            await send_waitlist_promotion_email(
+                            # Send email via centralized email service
+                            email_client = get_email_client()
+                            await email_client.send_template(
+                                template_type="waitlist_promotion",
                                 to_email=member.email,
-                                member_name=member.first_name,
-                                program_name=(
-                                    cohort.program.name
-                                    if cohort.program
-                                    else "Swimming Course"
-                                ),
-                                cohort_name=cohort.name,
+                                template_data={
+                                    "member_name": member.first_name,
+                                    "program_name": (
+                                        cohort.program.name
+                                        if cohort.program
+                                        else "Swimming Course"
+                                    ),
+                                    "cohort_name": cohort.name,
+                                },
                             )
 
             await db.commit()
@@ -252,7 +259,6 @@ async def send_weekly_progress_reports():
     """
     from datetime import timedelta
 
-    from libs.common.emails.academy import send_progress_report_email
     from libs.common.pdf import generate_progress_report_pdf
     from services.academy_service.models import Milestone, StudentProgress
 
@@ -362,18 +368,22 @@ async def send_weekly_progress_reports():
                         )
                         pdf_bytes = None
 
-                    # Send email
+                    # Send email via centralized email service
                     try:
-                        await send_progress_report_email(
+                        email_client = get_email_client()
+                        await email_client.send_template(
+                            template_type="progress_report",
                             to_email=member.email,
-                            member_name=member.first_name,
-                            program_name=program.name,
-                            cohort_name=cohort.name,
-                            milestones_completed=completed_count,
-                            total_milestones=total_milestones,
-                            recent_achievements=recent,
-                            coach_feedback=feedback,
-                            pdf_attachment=pdf_bytes,
+                            template_data={
+                                "member_name": member.first_name,
+                                "program_name": program.name,
+                                "cohort_name": cohort.name,
+                                "milestones_completed": completed_count,
+                                "total_milestones": total_milestones,
+                                "recent_achievements": recent,
+                                "coach_feedback": feedback,
+                                # Note: PDF attachment not yet supported via API
+                            },
                         )
                         logger.info(f"Sent progress report to {member.email}")
                     except Exception as email_err:
@@ -395,7 +405,6 @@ async def check_and_issue_certificates():
     """
     import secrets
 
-    from libs.common.emails.academy import send_certificate_email
     from services.academy_service.models import Milestone, StudentProgress
 
     async for db in get_async_db():
@@ -461,14 +470,18 @@ async def check_and_issue_certificates():
                             f"Issuing certificate to {member.email} for {program.name}"
                         )
 
-                        # Send email
+                        # Send email via centralized email service
                         try:
-                            await send_certificate_email(
+                            email_client = get_email_client()
+                            await email_client.send_template(
+                                template_type="certificate",
                                 to_email=member.email,
-                                member_name=member.first_name,
-                                program_name=program.name,
-                                completion_date=now.strftime("%B %d, %Y"),
-                                verification_code=verification_code,
+                                template_data={
+                                    "member_name": member.first_name,
+                                    "program_name": program.name,
+                                    "completion_date": now.strftime("%B %d, %Y"),
+                                    "verification_code": verification_code,
+                                },
                             )
                             logger.info(f"Certificate email sent to {member.email}")
                         except Exception as email_err:
@@ -528,10 +541,6 @@ async def check_attendance_and_notify():
     """
     from datetime import timedelta
 
-    from libs.common.emails.academy import (
-        send_attendance_summary_email,
-        send_low_attendance_alert_email,
-    )
     from sqlalchemy import text
 
     async for db in get_async_db():
@@ -654,37 +663,45 @@ async def check_attendance_and_notify():
                             }
                         )
 
-                        # Send individual alert
+                        # Send individual alert via centralized email service
                         try:
-                            await send_low_attendance_alert_email(
+                            email_client = get_email_client()
+                            await email_client.send_template(
+                                template_type="low_attendance_alert",
                                 to_email=coach["email"],
-                                coach_name=coach["first_name"],
-                                student_name=student_name,
-                                cohort_name=cohort.name,
-                                issue=f"Attended only {present}/{total_sessions} sessions this week",
-                                attendance_rate=rate,
-                                suggestions=[
-                                    "Schedule a check-in call with the student/parent",
-                                    "Offer a makeup session if available",
-                                    "Discuss any barriers to attendance",
-                                ],
+                                template_data={
+                                    "coach_name": coach["first_name"],
+                                    "student_name": student_name,
+                                    "cohort_name": cohort.name,
+                                    "issue": f"Attended only {present}/{total_sessions} sessions this week",
+                                    "attendance_rate": rate,
+                                    "suggestions": [
+                                        "Schedule a check-in call with the student/parent",
+                                        "Offer a makeup session if available",
+                                        "Discuss any barriers to attendance",
+                                    ],
+                                },
                             )
                         except Exception as alert_err:
                             logger.error(
                                 f"Failed to send alert for {student_name}: {alert_err}"
                             )
 
-                # Send weekly summary to coach
+                # Send weekly summary to coach via centralized email service
                 try:
-                    await send_attendance_summary_email(
+                    email_client = get_email_client()
+                    await email_client.send_template(
+                        template_type="attendance_summary",
                         to_email=coach["email"],
-                        coach_name=coach["first_name"],
-                        cohort_name=cohort.name,
-                        program_name=program.name if program else "Program",
-                        period=period_str,
-                        total_sessions=total_sessions,
-                        student_stats=student_stats,
-                        at_risk_students=at_risk_students,
+                        template_data={
+                            "coach_name": coach["first_name"],
+                            "cohort_name": cohort.name,
+                            "program_name": program.name if program else "Program",
+                            "period": period_str,
+                            "total_sessions": total_sessions,
+                            "student_stats": student_stats,
+                            "at_risk_students": at_risk_students,
+                        },
                     )
                     logger.info(
                         f"Sent attendance summary to {coach['email']} for {cohort.name}"

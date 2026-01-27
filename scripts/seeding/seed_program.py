@@ -1,43 +1,66 @@
+import argparse
 import asyncio
 import json
-import argparse
-import sys
 import os
+import sys
 from uuid import uuid4
 
 # Add backend root to path so we can import modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from libs.db.config import AsyncSessionLocal
-from sqlalchemy.future import select
 
 # Import Models
 from services.academy_service.models import (
+    BillingType,
+    CurriculumLesson,
+    CurriculumWeek,
+    LessonSkill,
+    Milestone,
+    MilestoneType,
     Program,
     ProgramCurriculum,
-    CurriculumWeek,
-    CurriculumLesson,
-    Skill,
-    LessonSkill,
     ProgramLevel,
-    BillingType,
+    RequiredEvidence,
+    Skill,
 )
+from sqlalchemy.future import select
 
 
-async def get_or_create_skill(session, skill_name):
-    """Finds a skill by name or creates it if it doesn't exist."""
+async def get_or_create_skill(session, skill_name, skills_library=None):
+    """Finds a skill by name or creates it if it doesn't exist.
+
+    If skills_library is provided, uses the detailed definition from there.
+    Otherwise falls back to default category/description.
+    """
     stmt = select(Skill).where(Skill.name == skill_name)
     result = await session.execute(stmt)
     skill = result.scalar_one_or_none()
 
     if not skill:
-        print(f"   + Creating new skill: {skill_name}")
-        skill = Skill(
-            id=uuid4(),
-            name=skill_name,
-            category="general",  # Default category
-            description="Auto-created skill",
-        )
+        # Look up skill details from library if available
+        skill_data = None
+        if skills_library:
+            skill_data = next(
+                (s for s in skills_library if s["name"] == skill_name), None
+            )
+
+        if skill_data:
+            print(f"   + Creating skill from library: {skill_name}")
+            skill = Skill(
+                id=uuid4(),
+                name=skill_name,
+                category=skill_data.get("category", "general"),
+                description=skill_data.get("description", ""),
+            )
+        else:
+            print(f"   + Creating new skill (no library entry): {skill_name}")
+            skill = Skill(
+                id=uuid4(),
+                name=skill_name,
+                category="general",
+                description="Auto-created skill",
+            )
         session.add(skill)
         await session.flush()
     return skill
@@ -54,6 +77,8 @@ async def seed_program(json_file_path):
 
     program_data = data.get("program")
     curriculum_data = data.get("curriculum", [])
+    milestones_data = data.get("milestones", [])
+    skills_library = data.get("skills_library", [])
 
     if not program_data:
         print("❌ Error: JSON must contain 'program' key.")
@@ -66,14 +91,20 @@ async def seed_program(json_file_path):
             program = Program(
                 id=uuid4(),
                 name=program_data["name"],
+                slug=program_data.get("slug"),
                 description=program_data.get("description"),
-                level=ProgramLevel(program_data.get("level", "beginner")),
+                level=ProgramLevel(program_data.get("level", "beginner_1")),
                 duration_weeks=program_data.get("duration_weeks", 12),
                 default_capacity=program_data.get("default_capacity", 10),
                 currency=program_data.get("currency", "NGN"),
                 price_amount=program_data.get("price_amount", 0),
                 billing_type=BillingType(program_data.get("billing_type", "one_time")),
-                is_published=False,
+                prep_materials=program_data.get("prep_materials"),
+                # Populate curriculum_json for Admin UI display (UI expects 'week' key, seed has 'week_number')
+                curriculum_json={
+                    "weeks": [{**w, "week": w["week_number"]} for w in curriculum_data]
+                },
+                is_published=program_data.get("is_published", False),
             )
             session.add(program)
             await session.flush()
@@ -97,6 +128,7 @@ async def seed_program(json_file_path):
                     week_number=week_data["week_number"],
                     theme=week_data["theme"],
                     objectives=week_data.get("objectives"),
+                    order_index=week_data["week_number"],  # Use week_number as order
                 )
                 session.add(week)
                 await session.flush()
@@ -117,11 +149,34 @@ async def seed_program(json_file_path):
                     # Link Skills
                     skill_names = lesson_data.get("skills", [])
                     for s_name in skill_names:
-                        skill = await get_or_create_skill(session, s_name)
+                        skill = await get_or_create_skill(
+                            session, s_name, skills_library
+                        )
                         link = LessonSkill(
                             id=uuid4(), lesson_id=lesson.id, skill_id=skill.id
                         )
                         session.add(link)
+
+            # 4. Create Milestones
+            if milestones_data:
+                print(f"Creating {len(milestones_data)} milestones...")
+                for m_data in milestones_data:
+                    milestone = Milestone(
+                        id=uuid4(),
+                        program_id=program.id,
+                        name=m_data["name"],
+                        criteria=m_data.get("criteria"),
+                        order_index=m_data.get("order_index", 0),
+                        milestone_type=MilestoneType(
+                            m_data.get("milestone_type", "skill")
+                        ),
+                        required_evidence=RequiredEvidence(
+                            m_data.get("required_evidence", "none")
+                        ),
+                        rubric_json=m_data.get("rubric_json"),
+                    )
+                    session.add(milestone)
+                    print(f"   + Milestone: {m_data['name']}")
 
             print(f"✅ Successfully seeded program: {program.name} (ID: {program.id})")
 

@@ -341,6 +341,91 @@ async def update_content_post(
     return ContentPostResponse.model_validate(post_dict)
 
 
+@content_router.post("/{post_id}/publish", response_model=ContentPostResponse)
+async def publish_content_post(
+    post_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Publish a content post (admin only).
+    Sets is_published to True and published_at to current time.
+    """
+    from datetime import datetime, timezone
+
+    query = select(ContentPost).where(ContentPost.id == post_id)
+    result = await db.execute(query)
+    post = result.scalar_one_or_none()
+
+    if not post:
+        raise HTTPException(status_code=404, detail="Content post not found")
+
+    if post.is_published:
+        raise HTTPException(status_code=400, detail="Post is already published")
+
+    post.is_published = True
+    post.published_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(post)
+
+    # Get comment count
+    comment_query = select(func.count(ContentComment.id)).where(
+        ContentComment.post_id == post.id
+    )
+    comment_result = await db.execute(comment_query)
+    comment_count = comment_result.scalar_one()
+
+    # Resolve featured image URL
+    post_dict = post.__dict__.copy()
+    post_dict["comment_count"] = comment_count
+    post_dict["featured_image_url"] = await resolve_media_url(
+        post.featured_image_media_id
+    )
+
+    return ContentPostResponse.model_validate(post_dict)
+
+
+@content_router.post("/{post_id}/unpublish", response_model=ContentPostResponse)
+async def unpublish_content_post(
+    post_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Unpublish a content post (admin only).
+    Sets is_published to False while preserving published_at for history.
+    """
+    query = select(ContentPost).where(ContentPost.id == post_id)
+    result = await db.execute(query)
+    post = result.scalar_one_or_none()
+
+    if not post:
+        raise HTTPException(status_code=404, detail="Content post not found")
+
+    if not post.is_published:
+        raise HTTPException(status_code=400, detail="Post is not published")
+
+    post.is_published = False
+
+    await db.commit()
+    await db.refresh(post)
+
+    # Get comment count
+    comment_query = select(func.count(ContentComment.id)).where(
+        ContentComment.post_id == post.id
+    )
+    comment_result = await db.execute(comment_query)
+    comment_count = comment_result.scalar_one()
+
+    # Resolve featured image URL
+    post_dict = post.__dict__.copy()
+    post_dict["comment_count"] = comment_count
+    post_dict["featured_image_url"] = await resolve_media_url(
+        post.featured_image_media_id
+    )
+
+    return ContentPostResponse.model_validate(post_dict)
+
+
 @content_router.delete("/{post_id}", status_code=204)
 async def delete_content_post(
     post_id: uuid.UUID,

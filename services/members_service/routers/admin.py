@@ -7,7 +7,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-from libs.common.emails.core import send_email
+from libs.common.emails.client import get_email_client
 from libs.db.session import get_async_db
 from pydantic import BaseModel
 from services.members_service.models import Member, MemberMembership
@@ -104,8 +104,9 @@ async def approve_member(
     await db.commit()
     await db.refresh(member)
 
-    # Send approval email notification
-    await send_email(
+    # Send approval email notification via centralized email service
+    email_client = get_email_client()
+    await email_client.send(
         to_email=member.email,
         subject="Welcome to SwimBuddz! Your account is approved",
         body=(
@@ -168,8 +169,9 @@ async def reject_member(
     await db.commit()
     await db.refresh(member)
 
-    # Send rejection email notification
-    await send_email(
+    # Send rejection email notification via centralized email service
+    email_client = get_email_client()
+    await email_client.send(
         to_email=member.email,
         subject="Update on your SwimBuddz application",
         body=(

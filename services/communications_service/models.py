@@ -145,3 +145,81 @@ class AnnouncementComment(Base):
 
     def __repr__(self):
         return f"<AnnouncementComment announcement={self.announcement_id} member={self.member_id}>"
+
+
+class MessageRecipientType(str, enum.Enum):
+    """Type of message recipient."""
+
+    COHORT = "cohort"
+    STUDENT = "student"
+
+
+class MessageLog(Base):
+    """Log of sent messages for audit trail."""
+
+    __tablename__ = "message_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    sender_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )  # member_id of sender (coach/admin)
+    recipient_type: Mapped[MessageRecipientType] = mapped_column(
+        SAEnum(MessageRecipientType, name="message_recipient_type_enum"),
+        nullable=False,
+    )
+    recipient_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )  # cohort_id or enrollment_id
+    recipient_count: Mapped[int] = mapped_column(nullable=False, default=1)
+    subject: Mapped[str] = mapped_column(String, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+
+    def __repr__(self):
+        return f"<MessageLog sender={self.sender_id} to={self.recipient_type}:{self.recipient_id}>"
+
+
+class NotificationPreferences(Base):
+    """Member notification preferences for email and push notifications."""
+
+    __tablename__ = "notification_preferences"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, unique=True, index=True
+    )
+
+    # Email preferences
+    email_announcements: Mapped[bool] = mapped_column(Boolean, default=True)
+    email_session_reminders: Mapped[bool] = mapped_column(Boolean, default=True)
+    email_academy_updates: Mapped[bool] = mapped_column(Boolean, default=True)
+    email_payment_receipts: Mapped[bool] = mapped_column(Boolean, default=True)
+    email_coach_messages: Mapped[bool] = mapped_column(Boolean, default=True)
+    email_marketing: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Push notification preferences (for future mobile app)
+    push_announcements: Mapped[bool] = mapped_column(Boolean, default=True)
+    push_session_reminders: Mapped[bool] = mapped_column(Boolean, default=True)
+    push_academy_updates: Mapped[bool] = mapped_column(Boolean, default=True)
+    push_coach_messages: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Digest preferences
+    weekly_digest: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    def __repr__(self):
+        return f"<NotificationPreferences member={self.member_id}>"

@@ -10,12 +10,11 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from slowapi.errors import RateLimitExceeded
-
 from libs.common.error_handler import add_exception_handlers
 from libs.common.middleware import add_observability_middleware
 from libs.common.rate_limit import limiter, rate_limit_exceeded_handler
 from services.gateway_service.app import clients
+from slowapi.errors import RateLimitExceeded
 
 
 def create_app() -> FastAPI:
@@ -185,6 +184,15 @@ def create_app() -> FastAPI:
             clients.attendance_client, f"/attendance/{path}", request
         )
 
+    @app.api_route("/api/v1/cohorts/{cohort_id}/attendance/summary", methods=["GET"])
+    async def proxy_cohort_attendance_summary(cohort_id: str, request: Request):
+        """Proxy cohort attendance summary to attendance service."""
+        return await proxy_request(
+            clients.attendance_client,
+            f"/attendance/cohorts/{cohort_id}/attendance/summary",
+            request,
+        )
+
     # ==================================================================
     # COMMUNICATIONS SERVICE PROXY
     # ==================================================================
@@ -206,6 +214,27 @@ def create_app() -> FastAPI:
         """Proxy all /api/v1/content/* requests to communications service."""
         return await proxy_request(
             clients.communications_client, f"/content/{path}", request
+        )
+
+    @app.api_route("/api/v1/messages/{path:path}", methods=["GET", "POST"])
+    async def proxy_messages(path: str, request: Request):
+        """Proxy all /api/v1/messages/* requests to communications service."""
+        return await proxy_request(
+            clients.communications_client, f"/messages/{path}", request
+        )
+
+    @app.api_route("/api/v1/email/{path:path}", methods=["POST"])
+    async def proxy_email(path: str, request: Request):
+        """Proxy all /api/v1/email/* requests to communications service (internal)."""
+        return await proxy_request(
+            clients.communications_client, f"/email/{path}", request
+        )
+
+    @app.api_route("/api/v1/preferences/{path:path}", methods=["GET", "POST", "PATCH"])
+    async def proxy_preferences(path: str, request: Request):
+        """Proxy all /api/v1/preferences/* requests to communications service."""
+        return await proxy_request(
+            clients.communications_client, f"/preferences/{path}", request
         )
 
     # ==================================================================

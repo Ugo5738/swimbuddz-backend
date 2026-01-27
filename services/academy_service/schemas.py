@@ -8,9 +8,11 @@ from services.academy_service.models import (
     CohortStatus,
     EnrollmentStatus,
     LocationType,
+    MilestoneType,
     PaymentStatus,
     ProgramLevel,
     ProgressStatus,
+    RequiredEvidence,
 )
 
 # --- Program Schemas ---
@@ -70,6 +72,12 @@ class MilestoneBase(BaseModel):
     name: str
     criteria: Optional[str] = None
     video_media_id: Optional[UUID] = None
+    # Organization & Type
+    order_index: int = 0
+    milestone_type: MilestoneType = MilestoneType.SKILL
+    # Assessment
+    required_evidence: RequiredEvidence = RequiredEvidence.NONE
+    rubric_json: Optional[Dict[str, Any]] = None
 
 
 class MilestoneCreate(MilestoneBase):
@@ -80,6 +88,10 @@ class MilestoneUpdate(BaseModel):
     name: Optional[str] = None
     criteria: Optional[str] = None
     video_media_id: Optional[UUID] = None
+    order_index: Optional[int] = None
+    milestone_type: Optional[MilestoneType] = None
+    required_evidence: Optional[RequiredEvidence] = None
+    rubric_json: Optional[Dict[str, Any]] = None
 
 
 class MilestoneResponse(MilestoneBase):

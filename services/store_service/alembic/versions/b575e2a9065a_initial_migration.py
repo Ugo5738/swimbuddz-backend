@@ -1,6 +1,6 @@
 """Alembic script template for store service."""
 
-revision = "d63a416ef1f6"
+revision = "b575e2a9065a"
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -47,7 +47,7 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=100), nullable=False),
     sa.Column('slug', sa.String(length=100), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('image_url', sa.String(length=512), nullable=True),
+    sa.Column('image_media_id', sa.UUID(), nullable=True),
     sa.Column('parent_id', sa.UUID(), nullable=True),
     sa.Column('sort_order', sa.Integer(), server_default='0', nullable=False),
     sa.Column('is_active', sa.Boolean(), server_default='true', nullable=False),
@@ -62,7 +62,7 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=100), nullable=False),
     sa.Column('slug', sa.String(length=100), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('image_url', sa.String(length=512), nullable=True),
+    sa.Column('image_media_id', sa.UUID(), nullable=True),
     sa.Column('is_active', sa.Boolean(), server_default='true', nullable=False),
     sa.Column('sort_order', sa.Integer(), server_default='0', nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
@@ -135,7 +135,7 @@ def upgrade() -> None:
     sa.Column('sourcing_type', sa.Enum('stocked', 'preorder', name='store_sourcing_type_enum'), server_default='stocked', nullable=False),
     sa.Column('preorder_lead_days', sa.Integer(), nullable=True),
     sa.Column('requires_size_chart_ack', sa.Boolean(), server_default='false', nullable=False),
-    sa.Column('size_chart_url', sa.String(length=512), nullable=True),
+    sa.Column('size_chart_media_id', sa.UUID(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['category_id'], ['store_categories.id'], ondelete='SET NULL'),

@@ -5,8 +5,31 @@ echo "========================================="
 echo "SwimBuddz Full Database Reset Script"
 echo "========================================="
 echo ""
+# Visual Helpers
+print_header() {
+    echo ""
+    echo "=================================================================="
+    echo "  $1"
+    echo "=================================================================="
+}
 
-# Get the directory where this script is located
+print_step() {
+    echo "➜ $1"
+}
+
+print_success() {
+    echo "  ✅ $1"
+}
+
+print_warn() {
+    echo "  ⚠️  $1"
+}
+
+# -------------------------------------------------------------------------------
+# 1. SETUP & ENVIRONMENT
+# -------------------------------------------------------------------------------
+print_header "SETUP & ENVIRONMENT"
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
@@ -32,7 +55,7 @@ ENV_PATH="$PROJECT_ROOT/$ENV_FILE"
 export ENV_FILE
 
 if [ ! -f "$ENV_PATH" ]; then
-    echo "Env file not found at $ENV_PATH"
+    echo "❌ Env file not found at $ENV_PATH"
     exit 1
 fi
 
@@ -85,8 +108,12 @@ else
     fi
 fi
 
-# Step 1: Clean __pycache__ directories
-echo "Step 1/7: Cleaning __pycache__ directories..."
+# -------------------------------------------------------------------------------
+# 2. CLEANUP
+# -------------------------------------------------------------------------------
+print_header "PHASE 1: CLEANUP"
+
+print_step "Cleaning __pycache__..."
 find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 echo "✓ Python cache cleaned"
 echo ""
@@ -109,6 +136,7 @@ SERVICES=(
   "payments_service"
   "sessions_service"
   "transport_service"
+  "store_service"
 )
 
 step=3
@@ -150,6 +178,14 @@ echo "Step ${step}/${total_steps}: Creating admin user..."
 python3 scripts/users/create_admin.py
 echo "✓ Admin user created"
 echo ""
+step=$((step+1))
+
+# Step N+2: Seed Beginner Program (New)
+echo "Step ${step}/${total_steps}: Seeding Beginner Program..."
+DATABASE_URL="$DATABASE_URL" python3 scripts/seeding/seed_program.py --file scripts/seeding/freestyle_beginner.json
+echo "✓ Beginner Program seeded"
+echo ""
+step=$((step+1))
 
 # If we stopped services, start them again
 if [ "$INSIDE_DOCKER" = false ] && command -v docker &> /dev/null; then

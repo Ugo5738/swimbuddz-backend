@@ -7,7 +7,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
-from libs.common.emails.core import send_email
+from libs.common.config import get_settings
+from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url
 from libs.common.supabase import get_supabase_admin_client
@@ -28,6 +29,7 @@ from .coach_schemas import (
     CoachApplicationResponse,
     CoachApplicationStatusResponse,
     CoachOnboardingUpdate,
+    CoachPreferencesUpdate,
     CoachProfileUpdate,
     ResolveAccountRequest,
     ResolveAccountResponse,
@@ -35,6 +37,7 @@ from .coach_schemas import (
 from .models import CoachBankAccount, CoachProfile, Member
 
 logger = get_logger(__name__)
+settings = get_settings()
 
 router = APIRouter(prefix="/coaches", tags=["coaches"])
 admin_router = APIRouter(prefix="/admin/coaches", tags=["admin-coaches"])
@@ -91,6 +94,7 @@ def _build_coach_response(
         application_submitted_at=coach.application_submitted_at,
         application_reviewed_at=coach.application_reviewed_at,
         rejection_reason=coach.rejection_reason,
+        show_in_directory=coach.show_in_directory,
         created_at=coach.created_at,
         updated_at=coach.updated_at,
     )
@@ -274,6 +278,40 @@ async def update_my_coach_profile(
         coach = member.coach_profile
 
         # Update fields that were provided
+        update_data = data.model_dump(exclude_unset=True)
+        for field, value in update_data.items():
+            if hasattr(coach, field):
+                setattr(coach, field, value)
+
+        await session.commit()
+        await session.refresh(coach)
+
+        return _build_coach_response(member, coach)
+
+
+@router.post("/me/preferences", response_model=CoachApplicationResponse)
+async def update_my_coach_preferences(
+    data: CoachPreferencesUpdate,
+    current_user: AuthUser = Depends(get_current_user),
+):
+    """Update the current coach's preferences (post-onboarding)."""
+    auth_id = current_user.user_id
+    if not auth_id:
+        raise HTTPException(status_code=401, detail="Invalid authentication")
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Member)
+            .options(selectinload(Member.coach_profile))
+            .where(Member.auth_id == auth_id)
+        )
+        member = result.scalar_one_or_none()
+
+        if not member or not member.coach_profile:
+            raise HTTPException(status_code=404, detail="No coach profile found")
+
+        coach = member.coach_profile
+
         update_data = data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             if hasattr(coach, field):
@@ -589,16 +627,20 @@ async def approve_coach_application(
                     },
                 )
 
-        # Send approval email to coach
-        await send_email(
+        # Send approval email to coach via centralized email service
+        frontend_base = settings.FRONTEND_URL.rstrip("/")
+        onboarding_link = f"{frontend_base}/coach/onboarding"
+        email_client = get_email_client()
+        await email_client.send(
             to_email=coach.member.email,
             subject="Congratulations! Your SwimBuddz Coach Application is Approved",
             body=(
                 f"Hi {coach.display_name or coach.member.first_name},\n\n"
                 "We are thrilled to welcome you as an approved SwimBuddz coach!\n\n"
-                "You can now access your coach dashboard, complete your onboarding profile, "
-                "and start creating sessions.\n\n"
-                "Log in here: https://swimbuddz.com/dashboard\n\n"
+                "Please complete your coach onboarding to activate your profile and "
+                "start coaching.\n\n"
+                f"Complete onboarding: {onboarding_link}\n\n"
+                "If you haven't logged in yet, you'll be prompted to sign in first.\n\n"
                 "Welcome to the team!\n"
                 "The SwimBuddz Team"
             ),
@@ -644,8 +686,9 @@ async def reject_coach_application(
 
         logger.info(f"Coach application {coach_profile_id} rejected by {admin_email}")
 
-        # Send rejection email to coach
-        await send_email(
+        # Send rejection email to coach via centralized email service
+        email_client = get_email_client()
+        await email_client.send(
             to_email=coach.member.email,
             subject="Update on your SwimBuddz Coach Application",
             body=(
@@ -699,8 +742,9 @@ async def request_more_info(
             f"More info requested for coach application {coach_profile_id} by {admin_email}"
         )
 
-        # Send email to coach requesting more info
-        await send_email(
+        # Send email to coach requesting more info via centralized email service
+        email_client = get_email_client()
+        await email_client.send(
             to_email=coach.member.email,
             subject="Action Required: Additional Information for SwimBuddz Coach Application",
             body=(

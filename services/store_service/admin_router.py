@@ -792,22 +792,26 @@ async def update_order_status(
     await db.commit()
     await db.refresh(order)
 
-    # Send notification to customer for ready/shipped status changes
+    # Send notification to customer for ready/shipped status changes via centralized email
     if status_update.status in [OrderStatus.READY_FOR_PICKUP, OrderStatus.SHIPPED]:
         try:
-            from libs.common.emails.store import send_store_order_ready_email
+            from libs.common.emails.client import get_email_client
 
             pickup_location_str = None
             if order.pickup_location:
                 pickup_location_str = f"{order.pickup_location.name}\n{order.pickup_location.address or ''}"
 
-            await send_store_order_ready_email(
+            email_client = get_email_client()
+            await email_client.send_template(
+                template_type="store_order_ready",
                 to_email=order.customer_email,
-                customer_name=order.customer_name,
-                order_number=order.order_number,
-                fulfillment_type=order.fulfillment_type.value,
-                pickup_location=pickup_location_str,
-                tracking_number=order.delivery_notes,  # tracking stored in delivery_notes
+                template_data={
+                    "customer_name": order.customer_name,
+                    "order_number": order.order_number,
+                    "fulfillment_type": order.fulfillment_type.value,
+                    "pickup_location": pickup_location_str,
+                    "tracking_number": order.delivery_notes,  # tracking stored in delivery_notes
+                },
             )
         except Exception as e:
             logger.error(f"Failed to send order status email: {e}")
@@ -857,9 +861,9 @@ async def mark_order_paid(
     await db.commit()
     await db.refresh(order)
 
-    # Send order confirmation email to customer
+    # Send order confirmation email to customer via centralized email service
     try:
-        from libs.common.emails.store import send_store_order_confirmation_email
+        from libs.common.emails.client import get_email_client
 
         items = [
             {
@@ -881,18 +885,22 @@ async def mark_order_paid(
             addr = order.delivery_address
             delivery_address_str = f"{addr.get('street', '')}, {addr.get('city', '')}, {addr.get('state', '')}"
 
-        await send_store_order_confirmation_email(
+        email_client = get_email_client()
+        await email_client.send_template(
+            template_type="store_order_confirmation",
             to_email=order.customer_email,
-            customer_name=order.customer_name,
-            order_number=order.order_number,
-            items=items,
-            subtotal=float(order.subtotal_ngn),
-            discount=float(order.discount_amount_ngn),
-            delivery_fee=float(order.delivery_fee_ngn),
-            total=float(order.total_ngn),
-            fulfillment_type=order.fulfillment_type.value,
-            pickup_location=pickup_location_str,
-            delivery_address=delivery_address_str,
+            template_data={
+                "customer_name": order.customer_name,
+                "order_number": order.order_number,
+                "items": items,
+                "subtotal": float(order.subtotal_ngn),
+                "discount": float(order.discount_amount_ngn),
+                "delivery_fee": float(order.delivery_fee_ngn),
+                "total": float(order.total_ngn),
+                "fulfillment_type": order.fulfillment_type.value,
+                "pickup_location": pickup_location_str,
+                "delivery_address": delivery_address_str,
+            },
         )
     except Exception as e:
         # Log but don't fail the order

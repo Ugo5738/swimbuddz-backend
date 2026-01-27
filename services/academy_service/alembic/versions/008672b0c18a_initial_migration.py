@@ -1,15 +1,15 @@
 """initial_migration
 
-Revision ID: 2e5bce7e9864
+Revision ID: 008672b0c18a
 Revises: 
-Create Date: 2026-01-03 09:29:46.828482
+Create Date: 2026-01-26 02:37:49.045689
 """
 from alembic import op
 import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '2e5bce7e9864'
+revision = '008672b0c18a'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -22,7 +22,7 @@ def upgrade() -> None:
     sa.Column('name', sa.String(), nullable=False),
     sa.Column('slug', sa.String(), nullable=True),
     sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('cover_image_url', sa.String(), nullable=True),
+    sa.Column('cover_image_media_id', sa.UUID(), nullable=True),
     sa.Column('level', sa.Enum('BEGINNER_1', 'BEGINNER_2', 'INTERMEDIATE', 'ADVANCED', 'SPECIALTY', name='program_level_enum'), nullable=False),
     sa.Column('duration_weeks', sa.Integer(), nullable=False),
     sa.Column('default_capacity', sa.Integer(), server_default='10', nullable=False),
@@ -37,6 +37,14 @@ def upgrade() -> None:
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('slug')
+    )
+    op.create_table('skills',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('name', sa.String(), nullable=False),
+    sa.Column('category', sa.String(), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.PrimaryKeyConstraint('id')
     )
     op.create_table('cohorts',
     sa.Column('id', sa.UUID(), nullable=False),
@@ -53,6 +61,8 @@ def upgrade() -> None:
     sa.Column('price_override', sa.Integer(), nullable=True),
     sa.Column('status', sa.Enum('OPEN', 'ACTIVE', 'COMPLETED', 'CANCELLED', name='cohort_status_enum'), nullable=False),
     sa.Column('allow_mid_entry', sa.Boolean(), server_default='false', nullable=False),
+    sa.Column('mid_entry_cutoff_week', sa.Integer(), server_default='2', nullable=False),
+    sa.Column('require_approval', sa.Boolean(), server_default='false', nullable=False),
     sa.Column('notes_internal', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
@@ -64,7 +74,7 @@ def upgrade() -> None:
     sa.Column('program_id', sa.UUID(), nullable=False),
     sa.Column('name', sa.String(), nullable=False),
     sa.Column('criteria', sa.Text(), nullable=True),
-    sa.Column('video_url', sa.String(), nullable=True),
+    sa.Column('video_media_id', sa.UUID(), nullable=True),
     sa.Column('order_index', sa.Integer(), server_default='0', nullable=False),
     sa.Column('milestone_type', sa.Enum('SKILL', 'ENDURANCE', 'TECHNIQUE', 'ASSESSMENT', name='milestone_type_enum'), server_default='SKILL', nullable=False),
     sa.Column('rubric_json', sa.JSON(), nullable=True),
@@ -74,11 +84,33 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['program_id'], ['programs.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('program_curricula',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('program_id', sa.UUID(), nullable=False),
+    sa.Column('version', sa.Integer(), server_default='1', nullable=False),
+    sa.Column('is_active', sa.Boolean(), server_default='true', nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['program_id'], ['programs.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('curriculum_weeks',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('curriculum_id', sa.UUID(), nullable=False),
+    sa.Column('week_number', sa.Integer(), nullable=False),
+    sa.Column('theme', sa.String(), nullable=False),
+    sa.Column('objectives', sa.Text(), nullable=True),
+    sa.Column('order_index', sa.Integer(), server_default='0', nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['curriculum_id'], ['program_curricula.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('enrollments',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('program_id', sa.UUID(), nullable=True),
     sa.Column('cohort_id', sa.UUID(), nullable=True),
     sa.Column('member_id', sa.UUID(), nullable=False),
+    sa.Column('member_auth_id', sa.String(), nullable=True),
     sa.Column('preferences', sa.JSON(), nullable=True),
     sa.Column('status', sa.Enum('PENDING_APPROVAL', 'ENROLLED', 'WAITLIST', 'DROPPED', 'GRADUATED', name='enrollment_status_enum'), nullable=False),
     sa.Column('payment_status', sa.Enum('PENDING', 'PAID', 'FAILED', 'WAIVED', name='academy_payment_status_enum'), nullable=False),
@@ -88,20 +120,36 @@ def upgrade() -> None:
     sa.Column('paid_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('enrolled_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('source', sa.Enum('WEB', 'ADMIN', 'PARTNER', name='enrollment_source_enum'), server_default='WEB', nullable=False),
+    sa.Column('reminders_sent', sa.JSON(), server_default='[]', nullable=False),
+    sa.Column('certificate_issued_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('certificate_code', sa.String(length=50), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['cohort_id'], ['cohorts.id'], ),
     sa.ForeignKeyConstraint(['program_id'], ['programs.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_index(op.f('ix_enrollments_member_auth_id'), 'enrollments', ['member_auth_id'], unique=False)
     op.create_index(op.f('ix_enrollments_member_id'), 'enrollments', ['member_id'], unique=False)
+    op.create_table('curriculum_lessons',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('week_id', sa.UUID(), nullable=False),
+    sa.Column('title', sa.String(), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('duration_minutes', sa.Integer(), nullable=True),
+    sa.Column('order_index', sa.Integer(), server_default='0', nullable=False),
+    sa.Column('video_media_id', sa.UUID(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['week_id'], ['curriculum_weeks.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('student_progress',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('enrollment_id', sa.UUID(), nullable=False),
     sa.Column('milestone_id', sa.UUID(), nullable=False),
     sa.Column('status', sa.Enum('PENDING', 'ACHIEVED', name='progress_status_enum'), nullable=False),
     sa.Column('achieved_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('evidence_url', sa.String(), nullable=True),
+    sa.Column('evidence_media_id', sa.UUID(), nullable=True),
     sa.Column('score', sa.Integer(), nullable=True),
     sa.Column('reviewed_by_coach_id', sa.UUID(), nullable=True),
     sa.Column('reviewed_at', sa.DateTime(timezone=True), nullable=True),
@@ -113,15 +161,29 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['milestone_id'], ['milestones.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('lesson_skills',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('lesson_id', sa.UUID(), nullable=False),
+    sa.Column('skill_id', sa.UUID(), nullable=False),
+    sa.ForeignKeyConstraint(['lesson_id'], ['curriculum_lessons.id'], ),
+    sa.ForeignKeyConstraint(['skill_id'], ['skills.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_table('lesson_skills')
     op.drop_table('student_progress')
+    op.drop_table('curriculum_lessons')
     op.drop_index(op.f('ix_enrollments_member_id'), table_name='enrollments')
+    op.drop_index(op.f('ix_enrollments_member_auth_id'), table_name='enrollments')
     op.drop_table('enrollments')
+    op.drop_table('curriculum_weeks')
+    op.drop_table('program_curricula')
     op.drop_table('milestones')
     op.drop_table('cohorts')
+    op.drop_table('skills')
     op.drop_table('programs')
     # ### end Alembic commands ###

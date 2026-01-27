@@ -150,6 +150,20 @@ async def require_admin(
     return current_user
 
 
+async def require_service_role(
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> AuthUser:
+    """
+    Ensure the user has the service role.
+    """
+    if current_user.role != "service_role":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Service role required",
+        )
+    return current_user
+
+
 async def require_coach(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> AuthUser:

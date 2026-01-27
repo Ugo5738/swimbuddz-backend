@@ -3,13 +3,12 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from libs.db.session import get_async_db
 from services.members_service.models import CoachProfile, Member
-from services.members_service.schemas import MemberResponse
 from services.members_service.routers._helpers import member_eager_load_options
+from services.members_service.schemas import MemberResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/members", tags=["coaches"])
 
@@ -27,6 +26,7 @@ async def list_coaches(
         select(Member)
         .join(CoachProfile)
         .where(CoachProfile.status == "active")
+        .where(CoachProfile.show_in_directory.is_(True))
         .options(*member_eager_load_options())
         .order_by(Member.created_at.desc())
     )
@@ -48,6 +48,7 @@ async def get_coach_by_id(
         .join(CoachProfile)
         .where(Member.id == member_id)
         .where(CoachProfile.status == "active")
+        .where(CoachProfile.show_in_directory.is_(True))
         .options(*member_eager_load_options())
     )
     result = await db.execute(query)

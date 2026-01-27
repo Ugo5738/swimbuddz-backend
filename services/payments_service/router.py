@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from libs.auth.dependencies import _service_role_jwt, get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
-from libs.common.emails.sessions import send_session_confirmation_email
+from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from pydantic import BaseModel
@@ -435,26 +435,32 @@ async def _apply_entitlement(payment: Payment) -> None:
                                     break
                             break
 
-                # Send the email
+                # Send the email via centralized email service
                 if member_email:
-                    await send_session_confirmation_email(
+                    email_client = get_email_client()
+                    await email_client.send_template(
+                        template_type="session_confirmation",
                         to_email=member_email,
-                        member_name=member_name or "Member",
-                        member_id=member_id,
-                        session_title=session_data.get("title", "Swimming Session"),
-                        session_date=session_date,
-                        session_time=session_time,
-                        session_location=session_data.get("location_name", "")
-                        or session_data.get("location", ""),
-                        session_address=session_data.get("address", ""),
-                        amount_paid=float(payment.amount),
-                        ride_share_area=ride_share_area,
-                        pickup_location=pickup_name,
-                        pickup_description=pickup_description,
-                        departure_time=departure_time,
-                        ride_distance=ride_distance,
-                        ride_duration=ride_duration,
-                        currency=payment.currency,
+                        template_data={
+                            "member_name": member_name or "Member",
+                            "member_id": member_id,
+                            "session_title": session_data.get(
+                                "title", "Swimming Session"
+                            ),
+                            "session_date": session_date,
+                            "session_time": session_time,
+                            "session_location": session_data.get("location_name", "")
+                            or session_data.get("location", ""),
+                            "session_address": session_data.get("address", ""),
+                            "amount_paid": float(payment.amount),
+                            "ride_share_area": ride_share_area,
+                            "pickup_location": pickup_name,
+                            "pickup_description": pickup_description,
+                            "departure_time": departure_time,
+                            "ride_distance": ride_distance,
+                            "ride_duration": ride_duration,
+                            "currency": payment.currency,
+                        },
                     )
                     logger.info(f"Session confirmation email sent to {member_email}")
             except Exception as e:
@@ -1733,17 +1739,19 @@ async def approve_manual_payment(
         await db.commit()
         await db.refresh(payment)
 
-    # Send email notification to member
+    # Send email notification to member via centralized email service
     if payment.payer_email:
         try:
-            from libs.common.emails.payments import send_payment_approved_email
-
-            await send_payment_approved_email(
+            email_client = get_email_client()
+            await email_client.send_template(
+                template_type="payment_approved",
                 to_email=payment.payer_email,
-                payment_reference=payment.reference,
-                purpose=payment.purpose.value,
-                amount=payment.amount,
-                currency=payment.currency,
+                template_data={
+                    "payment_reference": payment.reference,
+                    "purpose": payment.purpose.value,
+                    "amount": payment.amount,
+                    "currency": payment.currency,
+                },
             )
         except Exception as e:
             logger.warning(f"Failed to send approval email for {reference}: {e}")

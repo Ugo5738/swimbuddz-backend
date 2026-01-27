@@ -2,22 +2,21 @@
 Core email sending utilities using Brevo SMTP.
 """
 
-import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
 
+from libs.common.config import get_settings
 from libs.common.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Brevo SMTP settings
-SMTP_HOST = "smtp-relay.brevo.com"
-SMTP_PORT = 587
-SMTP_USERNAME = "9e85f2001@smtp-brevo.com"
-DEFAULT_FROM_EMAIL = "no-reply@swimbuddz.com"
-DEFAULT_FROM_NAME = "SwimBuddz"
+
+def _get_smtp_password() -> str:
+    """Get SMTP password from settings (BREVO_KEY takes priority over SMTP_PASSWORD)."""
+    settings = get_settings()
+    return settings.BREVO_KEY or settings.SMTP_PASSWORD
 
 
 async def send_email(
@@ -42,16 +41,20 @@ async def send_email(
     Returns:
         True if email was sent successfully, False otherwise
     """
-    smtp_password = os.environ.get("BREVO_KEY")
+    settings = get_settings()
+    smtp_password = _get_smtp_password()
 
-    if not smtp_password:
-        logger.warning("BREVO_KEY not found in environment - email not sent")
+    if not smtp_password or not settings.SMTP_USERNAME:
+        if not smtp_password:
+            logger.warning("BREVO_KEY/SMTP_PASSWORD not configured - email not sent")
+        if not settings.SMTP_USERNAME:
+            logger.warning("SMTP_USERNAME not configured - email not sent")
         logger.info(f"Would have sent email to {to_email}: {subject}")
         logger.debug(f"Email body: {body[:200]}...")
         return False
 
-    sender_email = from_email or DEFAULT_FROM_EMAIL
-    sender_name = from_name or DEFAULT_FROM_NAME
+    sender_email = from_email or settings.DEFAULT_FROM_EMAIL
+    sender_name = from_name or settings.DEFAULT_FROM_NAME
 
     try:
         # Create message
@@ -68,9 +71,9 @@ async def send_email(
 
         logger.info(f"Sending email to {to_email}: {subject}")
 
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as server:
             server.starttls()
-            server.login(SMTP_USERNAME, smtp_password)
+            server.login(settings.SMTP_USERNAME, smtp_password)
             server.sendmail(sender_email, to_email, msg.as_string())
 
         logger.info(f"Email sent successfully to {to_email}")

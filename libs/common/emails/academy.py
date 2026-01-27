@@ -626,6 +626,105 @@ Keep up the great work!
     return await send_email(to_email, subject, body, html_body)
 
 
+async def send_coach_assignment_email(
+    to_email: str,
+    coach_name: str,
+    program_name: str,
+    cohort_name: str,
+    start_date: str,
+    end_date: str,
+    student_count: int,
+    location: Optional[str] = None,
+    dashboard_url: str = "https://swimbuddz.com/account/coach",
+) -> bool:
+    """
+    Send email to coach when they are assigned to a cohort.
+    """
+    subject = f"You've Been Assigned to {cohort_name} 🏊‍♂️"
+
+    location_text = f"\nLocation: {location}" if location else ""
+
+    body = f"""Hi Coach {coach_name},
+
+You have been assigned as the coach for a new cohort!
+
+Program: {program_name}
+Cohort: {cohort_name}
+Duration: {start_date} – {end_date}{location_text}
+Students: {student_count} enrolled
+
+What's Next:
+- Review the program curriculum and milestones
+- Check the session schedule for this cohort
+- Reach out to your students to introduce yourself
+
+Access your Coach Dashboard: {dashboard_url}
+
+Let's make this cohort a success!
+
+— The SwimBuddz Team
+"""
+
+    html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; border-radius: 12px 12px 0 0; }}
+        .content {{ background: #f8fafc; padding: 30px; border-radius: 0 0 12px 12px; }}
+        .details {{ background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10b981; }}
+        .details p {{ margin: 8px 0; }}
+        .label {{ color: #64748b; font-size: 14px; }}
+        .value {{ font-weight: 600; color: #1e293b; }}
+        .cta-button {{ display: inline-block; background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 20px; }}
+        .footer {{ text-align: center; color: #64748b; font-size: 14px; margin-top: 20px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="margin: 0;">🏊‍♂️ New Cohort Assignment!</h1>
+            <p style="margin: 10px 0 0 0; opacity: 0.9;">You've been assigned as the coach</p>
+        </div>
+        <div class="content">
+            <p>Hi Coach {coach_name},</p>
+            <p>You have been assigned as the coach for a new cohort!</p>
+
+            <div class="details">
+                <p><span class="label">Program:</span> <span class="value">{program_name}</span></p>
+                <p><span class="label">Cohort:</span> <span class="value">{cohort_name}</span></p>
+                <p><span class="label">Duration:</span> <span class="value">{start_date} – {end_date}</span></p>
+                {f'<p><span class="label">Location:</span> <span class="value">{location}</span></p>' if location else ''}
+                <p><span class="label">Students:</span> <span class="value">{student_count} enrolled</span></p>
+            </div>
+
+            <h3>What's Next:</h3>
+            <ul>
+                <li>Review the program curriculum and milestones</li>
+                <li>Check the session schedule for this cohort</li>
+                <li>Reach out to your students to introduce yourself</li>
+            </ul>
+
+            <div style="text-align: center;">
+                <a href="{dashboard_url}" class="cta-button">Go to Coach Dashboard</a>
+            </div>
+
+            <p style="margin-top: 30px;">Let's make this cohort a success!</p>
+
+            <div class="footer">
+                <p>— The SwimBuddz Team</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+    return await send_email(to_email, subject, body, html_body)
+
+
 async def send_low_attendance_alert_email(
     to_email: str,
     coach_name: str,

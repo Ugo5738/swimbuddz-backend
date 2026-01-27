@@ -76,6 +76,15 @@ class Settings(BaseSettings):
     # Redis (for cross-service validation cache)
     REDIS_URL: str = "redis://localhost:6379"
 
+    # SMTP / Email (Brevo)
+    SMTP_HOST: str = "smtp-relay.brevo.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""  # Can also use BREVO_KEY
+    BREVO_KEY: str = ""  # Alternative to SMTP_PASSWORD
+    DEFAULT_FROM_EMAIL: str = "no-reply@swimbuddz.com"
+    DEFAULT_FROM_NAME: str = "SwimBuddz"
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )

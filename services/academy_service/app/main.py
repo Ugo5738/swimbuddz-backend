@@ -1,9 +1,8 @@
 """FastAPI application for the Academy Service."""
 
 from fastapi import FastAPI
-
-from services.academy_service.router import router as academy_router
 from services.academy_service.curriculum_router import router as curriculum_router
+from services.academy_service.router import router as academy_router
 
 
 def create_app() -> FastAPI:

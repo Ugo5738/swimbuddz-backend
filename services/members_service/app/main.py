@@ -5,6 +5,7 @@ from services.members_service.coach_router import admin_router as coach_admin_ro
 from services.members_service.coach_router import router as coach_router
 from services.members_service.router import (
     admin_router,
+    coaches_router,
     registration_router,
 )
 from services.members_service.router import router as members_router
@@ -25,13 +26,14 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "members"}
 
     # Include routers
+    app.include_router(coaches_router)  # Public coaches listing endpoints
     app.include_router(members_router)
     app.include_router(registration_router)  # Registration flow endpoints
     app.include_router(admin_router)  # Admin approval endpoints
     app.include_router(volunteer_router)
     app.include_router(challenge_router)
 
-    # Coach routers
+    # Coach routers (profile management, not public listing)
     app.include_router(coach_router)
     app.include_router(coach_admin_router)
 

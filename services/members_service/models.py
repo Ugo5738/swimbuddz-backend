@@ -152,7 +152,7 @@ class MemberProfile(Base):
 
     # Directory
     show_in_directory: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default="false"
+        Boolean, default=True, server_default="true"
     )
     interest_tags: Mapped[Optional[list[str]]] = mapped_column(
         ARRAY(String), nullable=True

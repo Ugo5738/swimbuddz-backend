@@ -320,6 +320,37 @@ This document lists the ordered tasks required to implement the backend. **Follo
 Use this section to list scoped ideas that are **not** part of the current TODO sequence (e.g., WhatsApp integrations, advanced analytics, additional MCP tools).
 
 - **Member Scorecard**: A visual representation of a member's progress, skills, and achievements (linked to Academy service).
+- **Teaching Materials Management**: Admin/coach CRUD for cohort resources + UI in the coach portal (add/edit/upload/link materials).
 - **WhatsApp Integration**: For automated announcements and reminders.
 - **Advanced Analytics**: Dashboard for detailed attendance and financial metrics.
 - **Stripe Integration**: Replace manual payment reference with real payment processing.
+
+---
+
+## Phase 7 – Missed Class Management
+
+### Task 7.1 – Absence Reporting & Digital Catch-up
+
+- [ ] Task 7.1 – Absence Reporting & Digital Catch-up
+- **Backend:**
+  - Update `AttendanceService` to allow members to self-report absence (`status="absent_self_reported"`).
+  - Trigger `ContentUnlock` event when absence is reported (unlocks the week's video lesson in `AcademyService`).
+- **Frontend:**
+  - "Report Absence" button on upcoming session card.
+  - "Watch Lesson" button appears on missed sessions.
+
+### Task 7.2 – Credit System & Make-up Slots
+
+- [ ] Task 7.2 – Credit System & Make-up Slots
+- **Backend:**
+  - Implement `CreditService` (or within `Payments`) to issue "Floating Credits" upon absence (limit 1 per term).
+  - Create "Open Practice" session types that _only_ accept credits for booking.
+- **Frontend:**
+  - "Book Make-up" flow consuming floating credits.
+
+### Task 7.3 – Long-term Absence Handling
+
+- [ ] Task 7.3 – Long-term Absence Handling
+- **Backend:**
+  - Automated check: If 3 consecutive absences -> flag member for "Re-intake Required" status.
+  - Prevent booking further sessions until "Safety Check" is cleared by admin/coach.

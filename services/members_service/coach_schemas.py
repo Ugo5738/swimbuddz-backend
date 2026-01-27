@@ -72,6 +72,7 @@ class CoachApplicationResponse(BaseModel):
     application_submitted_at: Optional[datetime] = None
     application_reviewed_at: Optional[datetime] = None
     rejection_reason: Optional[str] = None
+    show_in_directory: Optional[bool] = True
 
     created_at: datetime
     updated_at: datetime
@@ -117,6 +118,21 @@ class CoachOnboardingUpdate(BaseModel):
 
     # Profile
     coach_profile_photo_media_id: Optional[uuid.UUID] = None
+
+
+class CoachPreferencesUpdate(BaseModel):
+    """Schema for updating coach preferences after onboarding."""
+
+    availability_calendar: Optional[dict] = None
+    pools_supported: Optional[list[str]] = None
+    can_travel_between_pools: Optional[bool] = None
+    travel_radius_km: Optional[float] = None
+    accepts_one_on_one: Optional[bool] = None
+    accepts_group_cohorts: Optional[bool] = None
+    max_swimmers_per_session: Optional[int] = None
+    max_cohorts_at_once: Optional[int] = None
+    preferred_cohort_types: Optional[list[str]] = None
+    show_in_directory: Optional[bool] = None
 
 
 # === Coach Profile Update ===

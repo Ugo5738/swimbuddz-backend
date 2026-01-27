@@ -56,7 +56,7 @@ class MemberProfileResponse(BaseModel):
     social_other: Optional[str] = None
 
     # Directory
-    show_in_directory: bool = False
+    show_in_directory: bool = True
     interest_tags: Optional[list[str]] = None
 
     created_at: Optional[datetime] = None
