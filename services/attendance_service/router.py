@@ -16,7 +16,7 @@ from services.attendance_service.schemas import (
 )
 from services.members_service.models import Member
 from services.sessions_service.models import Session
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["attendance"])

@@ -351,7 +351,7 @@ async def send_weekly_progress_reports():
 
                     # Generate PDF
                     try:
-                        pdf_bytes = generate_progress_report_pdf(
+                        generate_progress_report_pdf(
                             student_name=f"{member.first_name} {member.last_name}",
                             program_name=program.name,
                             cohort_name=cohort.name,
@@ -366,7 +366,6 @@ async def send_weekly_progress_reports():
                         logger.error(
                             f"Failed to generate PDF for {member.email}: {pdf_err}"
                         )
-                        pdf_bytes = None
 
                     # Send email via centralized email service
                     try:

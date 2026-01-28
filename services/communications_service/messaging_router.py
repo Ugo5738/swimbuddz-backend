@@ -8,7 +8,7 @@ import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from libs.auth.dependencies import get_current_user, is_admin_or_service, require_coach
+from libs.auth.dependencies import is_admin_or_service, require_coach
 from libs.auth.models import AuthUser
 from libs.common.emails.client import get_email_client
 from libs.db.session import get_async_db

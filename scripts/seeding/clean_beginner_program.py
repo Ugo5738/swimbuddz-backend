@@ -16,7 +16,6 @@ from services.academy_service.models import (
     ProgramCurriculum,
 )
 from sqlalchemy import select
-from sqlalchemy.orm import joinedload
 
 
 async def clean_program():
