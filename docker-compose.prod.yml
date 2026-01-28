@@ -1,0 +1,201 @@
+services:
+  # ==================================================================
+  # INGRESS / TLS
+  # ==================================================================
+  traefik:
+    image: traefik:v3
+    container_name: swimbuddz_traefik
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.le.acme.tlschallenge=true
+      - --certificatesresolvers.le.acme.email=${LE_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --log.level=INFO
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - DOCKER_API_VERSION=${DOCKER_API_VERSION:-1.52}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+    restart: unless-stopped
+
+  # ==================================================================
+  # DOMAIN MICROSERVICES
+  # ==================================================================
+  members-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-members-service:latest
+    container_name: swimbuddz_members
+    env_file:
+      - .env.prod
+    ports:
+      - "8001:8001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  sessions-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-sessions-service:latest
+    container_name: swimbuddz_sessions
+    env_file:
+      - .env.prod
+    ports:
+      - "8002:8002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  attendance-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-attendance-service:latest
+    container_name: swimbuddz_attendance
+    env_file:
+      - .env.prod
+    ports:
+      - "8003:8003"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  communications-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-communications-service:latest
+    container_name: swimbuddz_communications
+    env_file:
+      - .env.prod
+    ports:
+      - "8004:8004"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  payments-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-payments-service:latest
+    container_name: swimbuddz_payments
+    env_file:
+      - .env.prod
+    ports:
+      - "8005:8005"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  academy-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-academy-service:latest
+    container_name: swimbuddz_academy
+    env_file:
+      - .env.prod
+    ports:
+      - "8006:8006"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  media-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-media-service:latest
+    container_name: swimbuddz_media
+    env_file:
+      - .env.prod
+    ports:
+      - "8008:8008"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  events-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-events-service:latest
+    container_name: swimbuddz_events
+    env_file:
+      - .env.prod
+    ports:
+      - "8007:8007"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  transport-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-transport-service:latest
+    container_name: swimbuddz_transport
+    env_file:
+      - .env.prod
+    ports:
+      - "8009:8009"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  store-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-store-service:latest
+    container_name: swimbuddz_store
+    env_file:
+      - .env.prod
+    ports:
+      - "8010:8010"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  # ==================================================================
+  # API GATEWAY
+  # ==================================================================
+  gateway:
+    image: ${DOCKER_USERNAME}/swimbuddz-gateway-service:latest
+    container_name: swimbuddz_gateway
+    env_file:
+      - .env.prod
+    depends_on:
+      members-service:
+        condition: service_started
+      sessions-service:
+        condition: service_started
+      attendance-service:
+        condition: service_started
+      communications-service:
+        condition: service_started
+      payments-service:
+        condition: service_started
+      academy-service:
+        condition: service_started
+      media-service:
+        condition: service_started
+      events-service:
+        condition: service_started
+      transport-service:
+        condition: service_started
+      store-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: >
+      uvicorn services.gateway_service.app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+    volumes:
+      - .:/app
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.api.rule=Host(`api.swimbuddz.com`)
+      - traefik.http.routers.api.entrypoints=websecure
+      - traefik.http.routers.api.tls.certresolver=le
+      - traefik.http.services.api.loadbalancer.server.port=8000
+      - traefik.http.routers.api-http.rule=Host(`api.swimbuddz.com`)
+      - traefik.http.routers.api-http.entrypoints=web
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+      - traefik.http.routers.api-http.middlewares=redirect-to-https
+
+volumes:
+  swimbuddz_db_data:
