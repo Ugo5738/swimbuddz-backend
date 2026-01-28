@@ -1,0 +1,748 @@
+{
+  "program": {
+    "name": "Beginner Freestyle: Zero to 50 Meters",
+    "slug": "beginner-freestyle-50m",
+    "is_published": false,
+    "description": "A 12-week program designed specifically for adults who are new to swimming or overcoming past negative water experiences. Using progressive skill building, the 6-kick breathing drill, and distance-based milestones, you'll transform from water-anxious beginner to confident 50-meter freestyle swimmer. Every skill builds on the last, just steady progress.",
+    "level": "beginner_1",
+    "duration_weeks": 12,
+    "default_capacity": 10,
+    "currency": "NGN",
+    "price_amount": 150000,
+    "billing_type": "one_time",
+    "session_duration_minutes": 90,
+    "prep_materials": {
+      "required_equipment": [
+        "Swim goggles (anti-fog recommended)",
+        "Swimsuit (form-fitting for technique feedback)",
+        "Swim cap (recommended for hygiene and visibility)",
+        "Towel",
+        "Water bottle"
+      ],
+      "optional_equipment": [
+        "Flip-flops for pool deck",
+        "Fins",
+        "Pull buoy (for later weeks)",
+        "Kickboard"
+      ],
+      "pre_program_reading": [
+        {
+          "title": "Why Your Body Floats: The Physics of Buoyancy",
+          "description": "Your lungs hold about 6 liters of air, that's a built-in flotation device. Understanding this reduces fear.",
+          "url": null
+        },
+        {
+          "title": "Breathing Underwater: It's About Breathing OUT",
+          "description": "The secret to comfortable swimming is exhaling through your nose. Air flowing out prevents water coming in.",
+          "url": null
+        }
+      ],
+      "safety_briefing": "Before Week 1, all students complete a 15-minute safety orientation covering: pool rules and pool layout, emergency procedures, the 'thumbs up/thumbs down' communication system, and the promise that you control the pace, we stop whenever you need to stop. Your safety and comfort come first, always."
+    }
+  },
+  "curriculum": [
+    {
+      "week_number": 1,
+      "theme": "Water Confidence and Safety Foundations",
+      "objectives": "Enter the pool confidently, control breathing with face in water, and master recovery to standing, the most critical safety skill. By session end: float face-down for 5 seconds and recover to standing independently.",
+      "equipment_required": ["noodles"],
+      "distance_milestone": null,
+      "pool_depth": "deep",
+      "supplementary_activity": null,
+      "lessons": [
+        {
+          "title": "Conquering Depth First: Your Foundation Day",
+          "description": "We begin in the deep pool (6 feet)-counterintuitive, but powerful. Here's why: if you can handle 6 feet, 4 feet feels like nothing. We start at the wall, always within reach. First, you'll hold the wall and simply feel the water. Then tap the bottom with your toes. This shows you the actual depth versus what your mind imagines. Many adults discover the pool is shallower than they feared. Next, you stand flat-footed on the bottom while still holding the wall. Then release for 3 seconds. Then 5. Each release builds trust: you can always recover. The KEY skill today is face submersion with controlled breathing. Breathe IN above water, breathe OUT slowly through your nose underwater. Physics: air flowing out prevents water from entering. We practice 10 breath cycles until this feels natural, not scary. Finally, you learn recovery to standing—the 'bathtub principle.' When you're face-down in the water, simply tuck your knees to your chest, press down with your hands, and rotate your head up. Legs go down, head comes up. This is your safety anchor. No matter what position you're in, you can always stand up. This skill is non-negotiable before we proceed.",
+          "duration_minutes": 90,
+          "video_url": null,
+          "skills": [
+            "Pool Entry/Exit",
+            "Wall Holds",
+            "Bottom Tapping",
+            "Face Submersion",
+            "Controlled Exhalation",
+            "Recovery to Standing"
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 2,
+      "theme": "Trusting Your Body: Front Float and Gliding",
+      "objectives": "Float face-down for 10+ seconds with relaxed breathing. Glide 5 meters from wall push-off in streamline position. Reinforce recovery to standing from any position.",
+      "equipment_required": ["noodles"],
+      "distance_milestone": "5m glide",
+      "pool_depth": "both",
+      "supplementary_activity": null,
+      "lessons": [
+        {
+          "title": "Your Lungs Are Flotation Devices",
+          "description": "Today you discover something remarkable: your lungs are a built-in life vest. When filled with air, your lungs are like balloons inside your chest, such that your chest becomes buoyant and your upper body naturally rises. This isn't positive thinking-it's physics. We practice front floats, starting at 5 seconds and building to 10 or more. The critical insight: head position controls body position. When you look DOWN at the pool bottom, your hips stay UP. When you look forward (a natural instinct), your hips sink. Next, we introduce the streamline position-the shape that minimizes water resistance. Arms extended overhead, hands stacked (one on top of the other), biceps squeezing your ears, legs together, toes pointed. You become an arrow. Push off the wall in streamline and GLIDE. Feel how far you travel without kicking or pulling. Your goal is 5 meters-roughly 5 big steps. Every glide ends with recovery to standing, reinforcing that safety skill. If anxiety appears, the noodle is available-but most students find they don't need it today.",
+          "duration_minutes": 90,
+          "video_url": null,
+          "skills": [
+            "Front Float",
+            "Head Position Control",
+            "Streamline Position",
+            "Wall Push-Off",
+            "Gliding",
+            "Recovery to Standing"
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 3,
+      "theme": "Flutter Kick Fundamentals with Breathing Integration",
+      "objectives": "Develop hip-driven flutter kick (not knee kick). Begin breathing integration using the 6-kick breathing drill. Goal: kick 10 meters with proper form.",
+      "equipment_required": ["kickboard", "noodles"],
+      "distance_milestone": "Kick 10m",
+      "pool_depth": "shallow",
+      "supplementary_activity": null,
+      "lessons": [
+        {
+          "title": "Kicking From Your Hips, Not Your Knees",
+          "description": "The flutter kick is your engine: alternating up-down leg movements that propel you forward. The most common beginner mistake: kicking from the knees. When you bend your knee and kick, you push water DOWN instead of BACK, wasting energy. Today you learn to kick from your hips. Your entire leg moves as one unit, with relaxed, floppy ankles that act like fins. Stiff ankles create drag; loose ankles create propulsion. We demonstrate on deck first: lie face-down and flutter your legs from the hip, keeping knees mostly straight but not locked. Then into the water. You hold a kickboard at arm's length, face out of water initially, and focus purely on kick mechanics. Small, quick kicks beat big, slow kicks. Once your kick is smooth, we introduce THE key drill of this program: the 6-kick breathing drill. Six kicks with face IN the water (bubbles streaming from your nose), six kicks with face UP (quick inhale). This rhythm-face in, face out, face in, face out-conditions you for the breathing pattern you'll use in real freestyle. It integrates breathing with movement from the start, rather than treating breathing as a separate skill. If your legs sink despite good kick form, we add a noodle under your hips. This isn't failure-it's smart scaffolding while you build strength.",
+          "duration_minutes": 90,
+          "video_url": null,
+          "skills": [
+            "Flutter Kick",
+            "Hip-Driven Movement",
+            "Ankle Relaxation",
+            "Kickboard Technique",
+            "6-Kick Breathing Drill"
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 4,
+      "theme": "Building Kick-Breath Rhythm",
+      "objectives": "Develop consistent kick-breath rhythm. Progress from 6-6 to 8-4 breathing pattern. Build kick distance to 15 meters without stopping.",
+      "equipment_required": ["kickboard", "noodles"],
+      "distance_milestone": "Kick 15m",
+      "pool_depth": "shallow",
+      "supplementary_activity": null,
+      "lessons": [
+        {
+          "title": "Training Your Breathing Window",
+          "description": "In full freestyle swimming, you have only a split second to breathe. Today we start conditioning you for that reality. We continue the 6-kick drill, but now we compress: 8 kicks with face in, 4 kicks with face out. Less time to breathe means you must exhale COMPLETELY underwater-empty lungs fill faster than lungs still holding stale air. The problem for anxious swimmers isn't getting air; it's holding breath underwater, which builds CO2 and creates panic. The insight that changes everything: breathing OUT is more important than breathing IN. If you've fully exhaled, your body instinctively gasps air when your face surfaces. You don't have to think about inhaling; your body does it automatically. What you DO have to think about is fully exhaling. Practice making continuous bubbles the entire time your face is in the water. We also push distance: 15 meters is our goal today. If you're struggling, we diagnose why: Weak kick? Use the noodle under your hips. Holding breath instead of exhaling? Focus on bubbles. Feeling anxious? Slow down and shorten the distance. There's no shame in adjusting-everyone progresses at their own pace, and forcing progress creates trauma.",
+          "duration_minutes": 90,
+          "video_url": null,
+          "skills": [
+            "Progressive Breathing Reduction",
+            "Exhale-Inhale Rhythm",
+            "Distance Building (Kick)",
+            "6-Kick Breathing Drill",
+            "Self-Correction"
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 5,
+      "theme": "Kick Distance: 25 Meters",
+      "objectives": "Kick 25 meters with integrated breathing. Achieve 'breath on demand' capability. Begin transitioning away from noodle support.",
+      "equipment_required": ["kickboard"],
+      "distance_milestone": "Kick 25m",
+      "pool_depth": "both",
+      "supplementary_activity": null,
+      "lessons": [
+        {
+          "title": "Your First 25-meter pool Length",
+          "description": "Today's milestone: kick the 25-meter pool length. This is significant. We progress the breathing drill to 8 kicks in, 2 kicks out-very close to the real breathing rhythm you'll use in freestyle. By now, your breathing should be shifting from 'counting kicks' to 'breath when I need to.' This is the goal: your body tells you when it needs air, and you respond smoothly without panic. This is called 'breath on demand.' We also begin removing the noodle for students who've been using one. The test: can you maintain a horizontal body position without hip support? If yes, you've graduated from the noodle. If your legs still sink, that's okay-some people have lower body fat or less buoyancy, and we keep working. The psychological milestone matters as much as the physical one. You've gone from 'can I put my face in water?' to 'I just kicked across the whole pool.' Take a moment to recognize how far you've come since Week 1. You're becoming a swimmer.",
+          "duration_minutes": 90,
+          "video_url": null,
+          "skills": [
+            "Breath on Demand",
+            "25m Kick Distance",
+            "Equipment Independence",
+            "Horizontal Body Position",
+            "Progressive Breathing Reduction"
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 6,
+      "theme": "Kick Distance: 50 Meters",
+      "objectives": "Kick 50 meters (two lengths) with rest at wall if needed. Solidify kick mechanics before adding arms. Introduction to back floating as supplementary skill.",
+      "equipment_required": ["kickboard"],
+      "distance_milestone": "Kick 50m",
+      "pool_depth": "both",
+      "supplementary_activity": "Back float practice (10 min)",
+      "lessons": [
+        {
+          "title": "Doubling Your Distance",
+          "description": "We double the distance: 50 meters, or two pool lengths. You may need to rest at the wall between lengths-that's completely fine. The goal is completion with good form, not speed. Watch for fatigue signs: when you get tired, you naturally revert to knee-kicking. Fight this. Hip, hip, hip. Your ankles stay loose. Your breathing stays rhythmic. At 50 meters of kicking, you have a STRONG foundation. This matters enormously because your kick doesn't stop when we add arms next week-it continues throughout the entire freestyle stroke. A weak kick means the whole stroke falls apart. A strong kick means you're ready for arms. For the final 10 minutes, we introduce back floating as a supplementary skill. Lie on your back, chest pointed at the ceiling, head back (ears in the water, looking straight up, not at your toes), arms wide for stability. Let your lungs keep you afloat. Some people find back floating harder than front floating-that's normal and okay. This will be continuous practise from now on.",
+          "duration_minutes": 90,
+          "video_url": null,
+          "skills": [
+            "50m Kick Endurance",
+            "Fatigue Management",
+            "Form Maintenance Under Fatigue",
+            "Back Float Introduction"
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 7,
+      "theme": "Arm Pull Introduction: Single-Arm Drills",
+      "objectives": "Learn freestyle arm pull mechanics using single-arm drills. Understand the 'catch'-the moment your hand grabs the water. Goal: 10 meters single-arm drill each side.",
+      "equipment_required": ["kickboard"],
+      "distance_milestone": "10m single-arm drill",
+      "pool_depth": "shallow",
+      "supplementary_activity": "Back float practice (10 min)",
+      "lessons": [
+        {
+          "title": "Your Hands Are Paddles",
+          "description": "Your arm pull provides MOST of your forward propulsion in freestyle-more than your kick. Today we learn the mechanics. Hold the kickboard with one hand extended, keep kicking (your kick never stops), and pull with the other arm. The key concept is the 'catch.' Your hand enters the water thumb-first at about 11 o'clock (for right arm) or 1 o'clock (for left). Extend forward underwater, then bend your elbow-keeping it HIGH, above your hand and pull water toward your hip. Imagine climbing a ladder underwater: your hand grabs a rung, elbow bends, you pull yourself up. The path your hand takes should be close to your body's centerline, not sweeping wide. Pull all the way to your thigh, then recover the arm over the water to start again. We alternate: 10-15 meters with your left hand pulling, 10-15 meters with your right. Your kick CONTINUES THROUGHOUT, don't let it stop when focusing on arms. The feel we're seeking: when your catch is right, you feel resistance against your palm. You're grabbing water, not slipping through it.",
+          "duration_minutes": 90,
+          "video_url": null,
+          "skills": [
+            "Freestyle Catch",
+            "High-Elbow Pull",
+            "Underwater Pull Path",
+            "Single-Arm Drill",
+            "Continuous Kick with Arms"
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 8,
+      "theme": "Catch-Up Drill and Side Breathing",
+      "objectives": "Coordinate both arms using catch-up drill. Learn side breathing through body rotation (not head lift). Goal: 15 meters catch-up drill with breathing.",
+      "equipment_required": ["kickboard"],
+      "distance_milestone": "15m catch-up drill",
+      "pool_depth": "shallow",
+      "supplementary_activity": "Back float practice (10 min)",
+      "lessons": [
+        {
+          "title": "Two Arms, One Timing System",
+          "description": "The catch-up drill teaches arm timing: both arms pull, but your hands 'touch' or 'catch up' in front before the next stroke begins. This prevents the common mistake of windmilling, arms spinning too fast, out of sync with each other. Start by holding the kickboard between your hands, then progress to touching hands without the board. One arm pulls, returns to front, touches the other hand, then that arm pulls. Your kick stays constant throughout, small, quick, from the hips. Now we add side breathing, and here's THE SECRET: don't lift your head to breathe – ROTATE your body. Your head stays in line with your spine, and your whole body rolls to the side like a log. You breathe in the 'trough' created by your head moving through water. The air is right there beside you. If you lift your head forward (the instinctive thing), your hips sink and you lose all momentum. Practice on both sides: breathe left for one length, breathe right for the next. Bilateral breathing, being able to breathe on either side, keeps your stroke balanced and symmetric.",
+          "duration_minutes": 90,
+          "video_url": null,
+          "skills": [
+            "Catch-Up Drill",
+            "Arm Timing",
+            "Side Breathing",
+            "Body Rotation",
+            "Bilateral Breathing Introduction",
+            "Continuous Kick with Arms"
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 9,
+      "theme": "Full Freestyle Coordination",
+      "objectives": "Combine kick, pull, and breathing into continuous freestyle. Goal: 25 meters freestyle with breathing every 3-5 strokes.",
+      "equipment_required": [],
+      "distance_milestone": "Swim 25m freestyle",
+      "pool_depth": "both",
+      "supplementary_activity": "Back float practice (10 min)",
+      "lessons": [
+        {
+          "title": "Putting It All Together",
+          "description": "Everything you've learned combines today: kick (continuous, from hips, with relaxed ankles), pull (high-elbow catch, full extension, pull to hip), and breathing (side rotation, exhale underwater, quick inhale). We warm up with catch-up drill, then transition to continuous freestyle–no pausing between strokes. The goal is 25 meters, one full length, with breathing every 3-5 strokes. Don't rush. Smooth, controlled strokes are infinitely better than fast, chaotic ones. Count your strokes: how many does it take to cross 25 meters? This number matters–fewer strokes per length means more efficiency, and efficiency is what lets you swim farther without exhaustion. If something breaks down, we identify it: Is your kick stopping when you breathe? Is your head lifting instead of rotating? Are you holding your breath instead of exhaling? We fix one thing at a time. By the end of today, you will have SWUM 25 METERS. Not kicked with a board. Not drilled with one arm. SWUM. This is the moment you become a swimmer.",
+          "duration_minutes": 90,
+          "video_url": null,
+          "skills": [
+            "Full Freestyle Coordination",
+            "Stroke Timing",
+            "Breathing Rhythm",
+            "Stroke Count Awareness"
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 10,
+      "theme": "Distance Building: 35 Meters Continuous",
+      "objectives": "Extend swimming distance while maintaining technique. Learn pacing for longer swims. Goal: 35 meters continuous freestyle. Introduce treading water.",
+      "equipment_required": [],
+      "distance_milestone": "Swim 35m continuous",
+      "pool_depth": "both",
+      "supplementary_activity": "Treading water introduction (10 min)",
+      "lessons": [
+        {
+          "title": "Swimming Farther, Not Faster",
+          "description": "Distance swimming is about efficiency, not speed. Today we push to 35 meters. The challenge: maintaining technique as you fatigue. When you get tired, your stroke falls apart in predictable ways: kick weakens, arms windmill, head lifts, hips sink. We build awareness of these failure modes and practice correcting them in real-time while swimming. The key is PACING: start at a sustainable speed, not a sprint. If you can't finish the distance, you started too fast. We also introduce stroke counting as a consistent metric. How many strokes to cover 25 meters? Track this number, it should stay roughly the same each time. Fewer strokes at the same speed = more efficiency = less energy spent = greater distance possible. For supplementary skills, we introduce treading water: staying afloat in one place using an egg-beater or scissor kick. This is a crucial rest technique – when you're tired mid-swim in deep water, you can tread instead of panicking.",
+          "duration_minutes": 90,
+          "video_url": null,
+          "skills": [
+            "Distance Building",
+            "Pacing Strategy",
+            "Stroke Efficiency",
+            "Fatigue Recognition",
+            "Treading Water Introduction"
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 11,
+      "theme": "Video Feedback and Technique Refinement",
+      "objectives": "Review technique via video analysis. Address individual weaknesses identified through visual feedback. Goal: 40 meters continuous with improved form.",
+      "equipment_required": [],
+      "distance_milestone": "Swim 40m continuous",
+      "pool_depth": "both",
+      "supplementary_activity": "Back float and treading (10 min)",
+      "lessons": [
+        {
+          "title": "Seeing Yourself Swim",
+          "description": "Today we use video feedback. You swim 25 meters while being recorded, then immediately watch the playback. Most students are surprised: 'I thought my arms were doing X, but they're actually doing Y.' This gap between what you feel and what you're doing is called the proprioception gap, and it's completely normal in water – the sensory feedback is different than on land. We identify 1-2 specific improvements for each student. Maybe your elbow is dropping during the catch. Maybe your kick stops when you breathe. Maybe your head lifts too high instead of rotating. We drill the correction, then record again to see the change. Today's goal is 40 meters with improved form. We're not pushing distance aggressively – we're prioritizing quality. Your stroke should look smoother, more relaxed, more efficient than Week 9. We continue back float and treading practice: these are your 'rest stations' if you ever need to pause during longer distance swimming.",
+          "duration_minutes": 90,
+          "video_url": null,
+          "skills": [
+            "Video Self-Analysis",
+            "Technique Refinement",
+            "Self-Correction",
+            "Form Under Fatigue"
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 12,
+      "theme": "Final Assessment: 50 Meters Continuous Freestyle",
+      "objectives": "Demonstrate mastery of all learned skills. Complete 50 meters freestyle continuous without stopping, without equipment. Celebrate your transformation.",
+      "equipment_required": [],
+      "distance_milestone": "Swim 50m continuous",
+      "pool_depth": "both",
+      "supplementary_activity": null,
+      "lessons": [
+        {
+          "title": "Graduation Day: You Are a Swimmer",
+          "description": "Today you prove what you've become. The assessment has two parts. First, a skills showcase: front float with recovery to standing, back float for 20 seconds, treading water for 30 seconds. These demonstrate your water confidence and safety mastery. Second, the swim: 50 meters continuous freestyle with proper breathing – no stopping, no touching the wall, no equipment. There's no time limit. This is about confidence and technique, not speed. Breathe when you need to. Maintain your stroke count. Stay smooth. You'll probably feel nervous – that's normal and okay. But remember Week 1: you couldn't put your face in the water without fear. Now you're swimming 50 meters across the pool. If you'd like, we'll compare your Week 1 video to today – the transformation is remarkable. After your swim, you receive your completion certificate. But the certificate is just paper. What matters is this: you are now a SWIMMER. You can enter any pool anywhere in the world and swim. You've conquered fear, built skill, and earned confidence. What comes next? Join the Swimbuddz Club for regular practice, continue to Beginner 2 for stroke refinement and longer distances, or simply enjoy your new ability. The water is now your friend, not your fear.",
+          "duration_minutes": 90,
+          "video_url": null,
+          "skills": [
+            "50m Continuous Swim",
+            "Skills Demonstration",
+            "Assessment Completion",
+            "Water Confidence Mastery"
+          ]
+        }
+      ]
+    }
+  ],
+  "milestones": [
+    {
+      "name": "Safe Pool Entry and Exit",
+      "criteria": "Enters pool using ladder or edge with controlled movements, exits without assistance. Demonstrates calm, confident approach to pool entry.",
+      "order_index": 1,
+      "milestone_type": "skill",
+      "required_evidence": "none",
+      "rubric_json": null
+    },
+    {
+      "name": "Controlled Breathing (10 cycles)",
+      "criteria": "Completes 10 breath cycles with face fully submerged: inhale above water, exhale slowly through nose underwater. No gasping, no panic, steady rhythm.",
+      "order_index": 2,
+      "milestone_type": "skill",
+      "required_evidence": "none",
+      "rubric_json": null
+    },
+    {
+      "name": "Recovery to Standing",
+      "criteria": "From front float position, recovers to standing using tuck-press-rotate technique within 3 seconds. Performs independently without coach physical assistance.",
+      "order_index": 3,
+      "milestone_type": "skill",
+      "required_evidence": "none",
+      "rubric_json": null
+    },
+    {
+      "name": "5m Glide from Wall",
+      "criteria": "Pushes off wall in streamline position and glides minimum 5 meters before recovering to standing. Maintains horizontal body position and head-down posture throughout glide.",
+      "order_index": 4,
+      "milestone_type": "technique",
+      "required_evidence": "video",
+      "rubric_json": null
+    },
+    {
+      "name": "10m Flutter Kick",
+      "criteria": "Kicks 10 meters with kickboard demonstrating hip-driven movement (not knee kick), relaxed ankles, and consistent rhythm. Face may be in or out of water.",
+      "order_index": 5,
+      "milestone_type": "technique",
+      "required_evidence": "none",
+      "rubric_json": null
+    },
+    {
+      "name": "6-Kick Breathing Drill Proficiency",
+      "criteria": "Completes full pool length using 6-kick breathing drill: 6 kicks with face in (bubbles visible), 6 kicks with face up (quick inhale). Maintains consistent kick throughout breathing transitions.",
+      "order_index": 6,
+      "milestone_type": "technique",
+      "required_evidence": "video",
+      "rubric_json": null
+    },
+    {
+      "name": "25m Kick with Breathing",
+      "criteria": "Kicks 25 meters (one pool length) with kickboard, integrating rhythmic breathing. Shows hip-driven kick with relaxed ankles. No stopping mid-length.",
+      "order_index": 7,
+      "milestone_type": "endurance",
+      "required_evidence": "video",
+      "rubric_json": null
+    },
+    {
+      "name": "50m Kick (with or without rest)",
+      "criteria": "Kicks 50 meters (two pool lengths) using flutter kick. May rest briefly at wall between lengths. Maintains proper hip-driven form throughout.",
+      "order_index": 8,
+      "milestone_type": "endurance",
+      "required_evidence": "video",
+      "rubric_json": null
+    },
+    {
+      "name": "Single-Arm Freestyle Drill",
+      "criteria": "Completes 10 meters single-arm freestyle with kickboard, demonstrating high-elbow catch and underwater pull path close to body centerline. Kick continues during arm pull.",
+      "order_index": 9,
+      "milestone_type": "technique",
+      "required_evidence": "video",
+      "rubric_json": null
+    },
+    {
+      "name": "Catch-Up Drill with Side Breathing",
+      "criteria": "Completes 15 meters catch-up drill with side breathing. Arms touch in front between strokes. Breathing uses body rotation, not head lift. Kick continuous.",
+      "order_index": 10,
+      "milestone_type": "technique",
+      "required_evidence": "video",
+      "rubric_json": null
+    },
+    {
+      "name": "25m Freestyle with Breathing",
+      "criteria": "Swims 25 meters continuous freestyle with side breathing every 3-5 strokes. Demonstrates coordinated kick-pull-breathe rhythm. No equipment used.",
+      "order_index": 11,
+      "milestone_type": "technique",
+      "required_evidence": "video",
+      "rubric_json": null
+    },
+    {
+      "name": "Back Float (20 seconds)",
+      "criteria": "Floats on back for minimum 20 seconds with minimal corrective movements. Maintains chest-up, head-back position with ears submerged.",
+      "order_index": 12,
+      "milestone_type": "skill",
+      "required_evidence": "video",
+      "rubric_json": null
+    },
+    {
+      "name": "Treading Water (30 seconds)",
+      "criteria": "Treads water for minimum 30 seconds in deep end using egg-beater or scissor kick. Head remains above water throughout. Demonstrates this as a rest technique.",
+      "order_index": 13,
+      "milestone_type": "skill",
+      "required_evidence": "video",
+      "rubric_json": null
+    },
+    {
+      "name": "Final Assessment: 50m Continuous Freestyle",
+      "criteria": "Completes 50 meters (two lengths) continuous freestyle without stopping, without touching wall mid-swim, without equipment. Demonstrates consistent stroke technique, controlled breathing, and horizontal body position.",
+      "order_index": 14,
+      "milestone_type": "assessment",
+      "required_evidence": "time_trial",
+      "rubric_json": {
+        "categories": [
+          {
+            "name": "Distance Completion",
+            "weight": 30,
+            "criteria": "Completes full 50m without stopping or touching wall mid-swim"
+          },
+          {
+            "name": "Stroke Technique",
+            "weight": 25,
+            "criteria": "High-elbow catch, full arm extension, proper pull path, continuous kick throughout stroke"
+          },
+          {
+            "name": "Breathing Control",
+            "weight": 20,
+            "criteria": "Rhythmic side breathing using body rotation (not head lift), complete exhale underwater, no gasping"
+          },
+          {
+            "name": "Body Position",
+            "weight": 15,
+            "criteria": "Horizontal body alignment, head neutral (looking down), hips near surface, no dragging legs"
+          },
+          {
+            "name": "Confidence and Composure",
+            "weight": 10,
+            "criteria": "Calm demeanor, no signs of panic, self-corrects minor errors during swim"
+          }
+        ],
+        "passing_score": 70,
+        "notes": "Assessment prioritizes safe, confident, continuous swimming over speed. Students who complete 50m with reasonable technique pass even if form isn't perfect. Panic or stopping fails regardless of distance covered."
+      }
+    }
+  ],
+  "skills_library": [
+    {
+      "name": "Pool Entry/Exit",
+      "category": "safety",
+      "description": "Safe techniques for entering and exiting the pool using ladder, steps, or edge. Includes proper hand placement and controlled, calm descent into water."
+    },
+    {
+      "name": "Wall Holds",
+      "category": "water_confidence",
+      "description": "Holding the pool wall in deep water with various grips. Foundation for all deep-water activities and the first step in depth desensitization."
+    },
+    {
+      "name": "Bottom Tapping",
+      "category": "water_confidence",
+      "description": "Touching the pool bottom with toes while holding the wall. Builds understanding of true depth versus perceived depth—often less scary than imagined."
+    },
+    {
+      "name": "Face Submersion",
+      "category": "water_confidence",
+      "description": "Putting face fully underwater while maintaining calm and control. Prerequisite for all swimming skills. Paired with controlled exhalation."
+    },
+    {
+      "name": "Controlled Exhalation",
+      "category": "water_confidence",
+      "description": "Breathing out slowly through nose while face is underwater. Physics: air flowing out prevents water entering. Foundation of all swimming breathing."
+    },
+    {
+      "name": "Recovery to Standing",
+      "category": "safety",
+      "description": "The tuck-press-rotate technique for returning to standing from any horizontal position. Tuck knees, press hands down, head comes up. THE critical safety skill."
+    },
+    {
+      "name": "Front Float",
+      "category": "water_confidence",
+      "description": "Floating face-down in a relaxed position, using lung buoyancy. Demonstrates trust in body's natural flotation. Head position is key: look down, hips stay up."
+    },
+    {
+      "name": "Head Position Control",
+      "category": "technique",
+      "description": "Maintaining neutral head position (looking at pool bottom, not forward) to keep hips elevated and body horizontal. Physics: where head goes, hips follow inversely."
+    },
+    {
+      "name": "Streamline Position",
+      "category": "technique",
+      "description": "Body position that minimizes drag: arms extended overhead, hands stacked, biceps squeezing ears, legs together, toes pointed. The most efficient shape through water."
+    },
+    {
+      "name": "Wall Push-Off",
+      "category": "stroke",
+      "description": "Pushing off the pool wall with feet to generate forward momentum in streamline. Foundation for starts, turns, and the glide that begins every length."
+    },
+    {
+      "name": "Gliding",
+      "category": "stroke",
+      "description": "Moving through water using momentum from push-off without kicking or pulling. Demonstrates streamline effectiveness and teaches feel for water resistance."
+    },
+    {
+      "name": "Flutter Kick",
+      "category": "stroke",
+      "description": "Alternating up-down leg movement originating from hips (not knees) with relaxed, floppy ankles. Primary leg propulsion for freestyle. Small, quick kicks beat big, slow ones."
+    },
+    {
+      "name": "Hip-Driven Movement",
+      "category": "technique",
+      "description": "Initiating kick from hip joint rather than knee. Produces efficient backward propulsion without wasted downward force. The hallmark of a good kick."
+    },
+    {
+      "name": "Ankle Relaxation",
+      "category": "technique",
+      "description": "Keeping ankles loose and flexible during flutter kick like fish fins. Stiff ankles create drag and reduce propulsion. Often requires conscious practice."
+    },
+    {
+      "name": "Kickboard Technique",
+      "category": "technique",
+      "description": "Proper kickboard hold: arms extended, light fingertip grip, board flat on surface. Allows focus on kick mechanics without worrying about arm movement or body position."
+    },
+    {
+      "name": "6-Kick Breathing Drill",
+      "category": "technique",
+      "description": "THE key breathing drill: 6 kicks with face in water (exhaling bubbles), 6 kicks with face up (quick inhale). Conditions rhythmic breathing pattern integrated with leg movement."
+    },
+    {
+      "name": "Progressive Breathing Reduction",
+      "category": "technique",
+      "description": "Drill progression from 6-6 to 8-4 to 8-2 breath ratio, conditioning for the quick breathing window in full freestyle. Trains complete exhale underwater."
+    },
+    {
+      "name": "Exhale-Inhale Rhythm",
+      "category": "technique",
+      "description": "The breathing pattern for swimming: complete exhale underwater, quick inhale at surface. Key insight: exhale is MORE important than inhale—empty lungs fill automatically."
+    },
+    {
+      "name": "Distance Building (Kick)",
+      "category": "endurance",
+      "description": "Progressive distance increases in kick-only swimming: 10m to 15m to 25m to 50m. Builds leg endurance and kick efficiency before adding arms."
+    },
+    {
+      "name": "Self-Correction",
+      "category": "technique",
+      "description": "Ability to recognize and fix technique errors during swimming without coach intervention. Essential for independent practice."
+    },
+    {
+      "name": "Breath on Demand",
+      "category": "technique",
+      "description": "Breathing when body signals need rather than counting kicks. The goal of breathing drills—automatic, responsive breathing without conscious counting."
+    },
+    {
+      "name": "25m Kick Distance",
+      "category": "endurance",
+      "description": "Completing one full pool length (25m) using flutter kick with integrated breathing. A key milestone demonstrating kick competence."
+    },
+    {
+      "name": "Equipment Independence",
+      "category": "water_confidence",
+      "description": "Swimming without support equipment (noodles, extra flotation). Equipment is scaffold, not crutch—independence demonstrates genuine skill mastery."
+    },
+    {
+      "name": "Horizontal Body Position",
+      "category": "technique",
+      "description": "Maintaining flat, streamlined body alignment in water with hips near surface. Reduces drag dramatically. Achieved through head position and kick strength."
+    },
+    {
+      "name": "50m Kick Endurance",
+      "category": "endurance",
+      "description": "Completing 50 meters (two lengths) using flutter kick, with or without brief rest at wall. Demonstrates leg endurance needed for full freestyle."
+    },
+    {
+      "name": "Fatigue Management",
+      "category": "endurance",
+      "description": "Recognizing early fatigue signs (higher breathing rate, sloppier kicks) and adjusting pace/technique to maintain form. Prevents stroke breakdown."
+    },
+    {
+      "name": "Form Maintenance Under Fatigue",
+      "category": "technique",
+      "description": "Keeping proper technique (hip kick, relaxed ankles, breathing rhythm) even when tired. When fatigued, consciously resist reverting to knee kicks."
+    },
+    {
+      "name": "Back Float Introduction",
+      "category": "water_confidence",
+      "description": "Initial back floating practice: chest up, head back (ears in water), arms wide for stability. A rest position for long swims. Some find it harder than front float."
+    },
+    {
+      "name": "Freestyle Catch",
+      "category": "stroke",
+      "description": "The moment hand enters water and 'grabs' it for the pull. Hand enters thumb-first, extends forward, then catches water with high elbow. The feel of resistance means you're doing it right."
+    },
+    {
+      "name": "High-Elbow Pull",
+      "category": "technique",
+      "description": "Keeping elbow higher than hand during underwater pull phase. Like climbing a ladder—you can't climb if your elbow drops. Maximizes propulsion efficiency."
+    },
+    {
+      "name": "Underwater Pull Path",
+      "category": "technique",
+      "description": "The path hand takes during freestyle pull: catch at full extension, pull along body centerline (not wide sweep) to hip, then exit."
+    },
+    {
+      "name": "Single-Arm Drill",
+      "category": "technique",
+      "description": "Freestyle drill using one arm while holding kickboard with other. Isolates arm mechanics for focused learning. Switch arms each length."
+    },
+    {
+      "name": "Continuous Kick with Arms",
+      "category": "technique",
+      "description": "Maintaining flutter kick while performing arm pulls. Common mistake is stopping kick when focusing on arms—the kick must NEVER stop."
+    },
+    {
+      "name": "Catch-Up Drill",
+      "category": "technique",
+      "description": "Freestyle drill where hands touch in front before next stroke begins. Teaches proper arm timing and prevents windmilling. The bridge between single-arm and full freestyle."
+    },
+    {
+      "name": "Arm Timing",
+      "category": "technique",
+      "description": "Coordination of arm pulls so one arm catches as other recovers. Prevents windmilling (both arms moving simultaneously) which wastes energy."
+    },
+    {
+      "name": "Side Breathing",
+      "category": "stroke",
+      "description": "Breathing to the side during freestyle by rotating body (like a log), NOT lifting head forward. Breathe in the trough beside your head. Head lift sinks hips."
+    },
+    {
+      "name": "Body Rotation",
+      "category": "technique",
+      "description": "Rolling body side-to-side during freestyle like a log rolling. Enables side breathing naturally and increases pull power through core engagement."
+    },
+    {
+      "name": "Bilateral Breathing Introduction",
+      "category": "technique",
+      "description": "Practicing breathing to both sides (left and right). Keeps stroke balanced and symmetric. Eventually breathe every 3 strokes alternating sides."
+    },
+    {
+      "name": "Full Freestyle Coordination",
+      "category": "stroke",
+      "description": "Complete freestyle stroke combining continuous flutter kick, alternating arm pulls with proper timing, and rhythmic side breathing. The full package."
+    },
+    {
+      "name": "Stroke Timing",
+      "category": "technique",
+      "description": "Coordinating all elements of freestyle: when to catch, when to breathe (during recovery of breathing-side arm), when each phase of kick syncs with pull."
+    },
+    {
+      "name": "Breathing Rhythm",
+      "category": "technique",
+      "description": "Consistent pattern of breathing during freestyle, typically every 3-5 strokes. Find your sustainable rhythm based on effort level."
+    },
+    {
+      "name": "Stroke Count Awareness",
+      "category": "technique",
+      "description": "Tracking number of strokes per 25m length. Fewer strokes at same speed indicates better efficiency. Your personal benchmark to track progress."
+    },
+    {
+      "name": "Distance Building",
+      "category": "endurance",
+      "description": "Progressive distance increases in full freestyle: 25m to 35m to 40m to 50m. Each increment tests endurance and technique maintenance."
+    },
+    {
+      "name": "Pacing Strategy",
+      "category": "endurance",
+      "description": "Starting at sustainable speed rather than sprinting. Key to completing longer distances. If you can't finish, you started too fast."
+    },
+    {
+      "name": "Stroke Efficiency",
+      "category": "technique",
+      "description": "Maximizing distance per stroke. Measured by stroke count: fewer strokes over 25m means more efficiency. The hallmark of skilled swimming."
+    },
+    {
+      "name": "Fatigue Recognition",
+      "category": "endurance",
+      "description": "Noticing early signs of fatigue (higher breathing rate, sloppy strokes, windmilling tendency) BEFORE complete exhaustion. Allows adjustment."
+    },
+    {
+      "name": "Treading Water Introduction",
+      "category": "water_confidence",
+      "description": "Staying afloat in place using egg-beater or scissor kick. A rest technique for deep water—when tired mid-swim, tread instead of panic."
+    },
+    {
+      "name": "Video Self-Analysis",
+      "category": "technique",
+      "description": "Watching recorded video of own swimming to identify technique errors. Closes the proprioception gap—what you feel vs what you're doing often differ in water."
+    },
+    {
+      "name": "Technique Refinement",
+      "category": "technique",
+      "description": "Making targeted adjustments to improve stroke based on video feedback or coach observation. Focus on 1-2 things at a time, not everything."
+    },
+    {
+      "name": "Form Under Fatigue",
+      "category": "endurance",
+      "description": "Maintaining technique quality when tired. Critical for safe distance swimming—when form breaks down, efficiency drops and panic risk rises."
+    },
+    {
+      "name": "50m Continuous Swim",
+      "category": "endurance",
+      "description": "Swimming 50 meters freestyle without stopping—the graduation benchmark for Beginner 1. Proves you can handle real swimming distances."
+    },
+    {
+      "name": "Skills Demonstration",
+      "category": "water_confidence",
+      "description": "Showing mastery of safety and confidence skills on assessment day: front float with recovery, back float, treading water. Proves water confidence."
+    },
+    {
+      "name": "Assessment Completion",
+      "category": "water_confidence",
+      "description": "Successfully completing the final 50m assessment with passing score on rubric. The formal completion of Beginner 1 program."
+    },
+    {
+      "name": "Water Confidence Mastery",
+      "category": "water_confidence",
+      "description": "Complete transformation from water-anxious or water-unfamiliar to water-confident. The true goal of Beginner 1—swimming is the evidence, confidence is the outcome."
+    }
+  ]
+}
