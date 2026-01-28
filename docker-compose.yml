@@ -1,0 +1,207 @@
+services:
+  # ==================================================================
+  # DOMAIN MICROSERVICES
+  # ==================================================================
+  members-service:
+    build:
+      context: .
+      dockerfile: services/members_service/Dockerfile
+    container_name: swimbuddz_members
+    env_file:
+      - .env.dev
+    ports:
+      - "8001:8001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  sessions-service:
+    build:
+      context: .
+      dockerfile: services/sessions_service/Dockerfile
+    container_name: swimbuddz_sessions
+    env_file:
+      - .env.dev
+    ports:
+      - "8002:8002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  attendance-service:
+    build:
+      context: .
+      dockerfile: services/attendance_service/Dockerfile
+    container_name: swimbuddz_attendance
+    env_file:
+      - .env.dev
+    ports:
+      - "8003:8003"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  communications-service:
+    build:
+      context: .
+      dockerfile: services/communications_service/Dockerfile
+    container_name: swimbuddz_communications
+    env_file:
+      - .env.dev
+    ports:
+      - "8004:8004"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  payments-service:
+    build:
+      context: .
+      dockerfile: services/payments_service/Dockerfile
+    container_name: swimbuddz_payments
+    env_file:
+      - .env.dev
+    ports:
+      - "8005:8005"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  academy-service:
+    build:
+      context: .
+      dockerfile: services/academy_service/Dockerfile
+    container_name: swimbuddz_academy
+    env_file:
+      - .env.dev
+    ports:
+      - "8006:8006"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  media-service:
+    build:
+      context: .
+      dockerfile: services/media_service/Dockerfile
+    container_name: swimbuddz_media
+    env_file:
+      - .env.dev
+    ports:
+      - "8008:8008"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  events-service:
+    build:
+      context: .
+      dockerfile: services/events_service/Dockerfile
+    container_name: swimbuddz_events
+    env_file:
+      - .env.dev
+    ports:
+      - "8007:8007"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  transport-service:
+    build:
+      context: .
+      dockerfile: services/transport_service/Dockerfile
+    container_name: swimbuddz_transport
+    env_file:
+      - .env.dev
+    ports:
+      - "8009:8009"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  store-service:
+    build:
+      context: .
+      dockerfile: services/store_service/Dockerfile
+    container_name: swimbuddz_store
+    env_file:
+      - .env.dev
+    ports:
+      - "8010:8010"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  # ==================================================================
+  # API GATEWAY
+  # ==================================================================
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway_service/Dockerfile
+    container_name: swimbuddz_gateway
+    env_file:
+      - .env.dev
+    depends_on:
+      members-service:
+        condition: service_started
+      sessions-service:
+        condition: service_started
+      attendance-service:
+        condition: service_started
+      communications-service:
+        condition: service_started
+      payments-service:
+        condition: service_started
+      academy-service:
+        condition: service_started
+      media-service:
+        condition: service_started
+      events-service:
+        condition: service_started
+      transport-service:
+        condition: service_started
+      store-service:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: >
+      uvicorn services.gateway_service.app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+    volumes:
+      - .:/app
+
+  # ==================================================================
+  # INFRASTRUCTURE
+  # ==================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: swimbuddz_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  swimbuddz_db_data:
+  redis_data:
