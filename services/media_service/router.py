@@ -397,7 +397,7 @@ async def upload_file(
     file: UploadFile = File(...),
     purpose: str = Form(
         ...
-    ),  # "coach_document" | "payment_proof" | "milestone_evidence" | "general"
+    ),  # "coach_document" | "payment_proof" | "milestone_evidence" | "milestone_video" | "general"
     linked_id: Optional[str] = Form(
         None
     ),  # For storage path organization (e.g., payment_reference, enrollment_id)
@@ -413,6 +413,7 @@ async def upload_file(
     - coach_document: Documents for coach applications (PDF, images)
     - payment_proof: Proof of payment screenshots (PDF, images)
     - milestone_evidence: Video/image evidence for milestone completion
+    - milestone_video: Demo video for a milestone
     - general: General uploads
 
     Returns MediaItem with file_url. The calling service should store the media_id
@@ -428,6 +429,7 @@ async def upload_file(
         "coach_document",
         "payment_proof",
         "milestone_evidence",
+        "milestone_video",
         "general",
         "profile_photo",
         "cover_image",
@@ -446,6 +448,12 @@ async def upload_file(
                 detail="File must be a PDF or image",
             )
     elif purpose == "milestone_evidence":
+        if not (is_image or is_video):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be an image or video",
+            )
+    elif purpose == "milestone_video":
         if not (is_image or is_video):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -472,6 +480,9 @@ async def upload_file(
         ),
         "milestone_evidence": (
             f"milestone-evidence/{linked_id}" if linked_id else "milestone-evidence"
+        ),
+        "milestone_video": (
+            f"milestone-videos/{linked_id}" if linked_id else "milestone-videos"
         ),
         "profile_photo": "profile-photos",
         "cover_image": "cover-images",
@@ -506,6 +517,8 @@ async def upload_file(
             )
         elif purpose == "milestone_evidence":
             auto_description = "Milestone evidence submission"
+        elif purpose == "milestone_video":
+            auto_description = "Milestone demo video"
 
     db_media = MediaItem(
         media_type=media_type,
@@ -556,6 +569,7 @@ async def register_external_url(
         "coach_document",
         "payment_proof",
         "milestone_evidence",
+        "milestone_video",
         "general",
         "profile_photo",
         "cover_image",
