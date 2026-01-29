@@ -1,15 +1,15 @@
 """initial_migration
 
-Revision ID: 50256c3a3faa
+Revision ID: 339074f3da44
 Revises: 
-Create Date: 2026-01-26 02:36:58.337820
+Create Date: 2026-01-28 11:30:56.230822
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '50256c3a3faa'
+revision = '339074f3da44'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -258,7 +258,7 @@ def upgrade() -> None:
     sa.Column('social_instagram', sa.String(), nullable=True),
     sa.Column('social_linkedin', sa.String(), nullable=True),
     sa.Column('social_other', sa.String(), nullable=True),
-    sa.Column('show_in_directory', sa.Boolean(), server_default='false', nullable=False),
+    sa.Column('show_in_directory', sa.Boolean(), server_default='true', nullable=False),
     sa.Column('interest_tags', postgresql.ARRAY(sa.String()), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
