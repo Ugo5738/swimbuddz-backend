@@ -28,7 +28,9 @@ class MemberProfileResponse(BaseModel):
 
     # Contact
     phone: Optional[str] = None
+    address: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None
     country: Optional[str] = None
     time_zone: Optional[str] = None
 
@@ -324,7 +326,9 @@ class MemberProfileInput(BaseModel):
     """Input for creating/updating profile."""
 
     phone: Optional[str] = None
+    address: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None
     country: Optional[str] = None
     time_zone: Optional[str] = None
     gender: Optional[str] = None

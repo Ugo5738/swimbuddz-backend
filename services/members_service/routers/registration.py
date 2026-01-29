@@ -277,13 +277,16 @@ async def complete_pending_registration(
     member_profile = MemberProfile(
         member_id=member.id,
         phone=profile_data.get("phone"),
+        address=profile_data.get("address") or profile_data.get("area_in_lagos"),
         city=profile_data.get("city"),
+        state=profile_data.get("state"),
         country=profile_data.get("country"),
         time_zone=profile_data.get("time_zone"),
         gender=profile_data.get("gender"),
         date_of_birth=profile_data.get("date_of_birth"),
         occupation=profile_data.get("occupation"),
-        area_in_lagos=profile_data.get("area_in_lagos"),
+        area_in_lagos=profile_data.get("area_in_lagos")
+        or profile_data.get("address"),
         swim_level=profile_data.get("swim_level"),
         deep_water_comfort=profile_data.get("deep_water_comfort"),
         strokes=profile_data.get("strokes"),
