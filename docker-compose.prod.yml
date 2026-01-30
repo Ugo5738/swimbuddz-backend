@@ -193,6 +193,7 @@ services:
       - swimbuddz_proxy
     labels:
       - traefik.enable=true
+      - traefik.docker.network=swimbuddz_proxy
       - traefik.http.routers.api.rule=Host(`api.swimbuddz.com`)
       - traefik.http.routers.api.entrypoints=websecure
       - traefik.http.routers.api.tls.certresolver=le
