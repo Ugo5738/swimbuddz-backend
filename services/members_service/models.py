@@ -121,7 +121,9 @@ class MemberProfile(Base):
 
     # Contact
     phone: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    address: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     city: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    state: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     country: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     time_zone: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 

@@ -122,6 +122,10 @@ async def update_current_member(
 
     # Update profile sub-record
     if profile_update and member.profile:
+        if "address" not in profile_update and "area_in_lagos" in profile_update:
+            profile_update["address"] = profile_update.get("area_in_lagos")
+        if "area_in_lagos" not in profile_update and "address" in profile_update:
+            profile_update["area_in_lagos"] = profile_update.get("address")
         for field, value in profile_update.items():
             if value is not None and hasattr(member.profile, field):
                 setattr(member.profile, field, value)
