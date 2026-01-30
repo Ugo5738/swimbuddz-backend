@@ -68,8 +68,10 @@ class Settings(BaseSettings):
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-1"
-    AWS_S3_BUCKET: str = ""
-    CLOUDFRONT_URL: str = ""
+    # S3 bucket names (standardized naming)
+    AWS_S3_BUCKET_PUBLIC: str = ""  # For publicly accessible files (profiles, galleries)
+    AWS_S3_BUCKET_PRIVATE: str = ""  # For private files (documents, payment proofs)
+    CLOUDFRONT_URL: str = ""  # CDN URL for public bucket
 
     # Admin configuration
     ADMIN_EMAILS: list[str] = ["admin@admin.com"]
