@@ -1,0 +1,177 @@
+services:
+  # ==================================================================
+  # DOMAIN MICROSERVICES (STAGING)
+  # ==================================================================
+  members-service-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-members-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_members_staging
+    env_file:
+      - .env.staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  sessions-service-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-sessions-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_sessions_staging
+    env_file:
+      - .env.staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  attendance-service-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-attendance-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_attendance_staging
+    env_file:
+      - .env.staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  communications-service-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-communications-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_communications_staging
+    env_file:
+      - .env.staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  payments-service-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-payments-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_payments_staging
+    env_file:
+      - .env.staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  academy-service-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-academy-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_academy_staging
+    env_file:
+      - .env.staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  media-service-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-media-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_media_staging
+    env_file:
+      - .env.staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  events-service-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-events-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_events_staging
+    env_file:
+      - .env.staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  transport-service-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-transport-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_transport_staging
+    env_file:
+      - .env.staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  store-service-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-store-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_store_staging
+    env_file:
+      - .env.staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  # ==================================================================
+  # API GATEWAY (STAGING)
+  # ==================================================================
+  gateway-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-gateway-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_gateway_staging
+    env_file:
+      - .env.staging
+    depends_on:
+      members-service-staging:
+        condition: service_started
+      sessions-service-staging:
+        condition: service_started
+      attendance-service-staging:
+        condition: service_started
+      communications-service-staging:
+        condition: service_started
+      payments-service-staging:
+        condition: service_started
+      academy-service-staging:
+        condition: service_started
+      media-service-staging:
+        condition: service_started
+      events-service-staging:
+        condition: service_started
+      transport-service-staging:
+        condition: service_started
+      store-service-staging:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: >
+      uvicorn services.gateway_service.app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+    volumes:
+      - .:/app
+    networks:
+      - default
+      - swimbuddz_proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.api-staging.rule=Host(`api-staging.swimbuddz.com`)
+      - traefik.http.routers.api-staging.entrypoints=websecure
+      - traefik.http.routers.api-staging.tls.certresolver=le
+      - traefik.http.services.api-staging.loadbalancer.server.port=8000
+      - traefik.http.routers.api-staging-http.rule=Host(`api-staging.swimbuddz.com`)
+      - traefik.http.routers.api-staging-http.entrypoints=web
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+      - traefik.http.routers.api-staging-http.middlewares=redirect-to-https
+
+  # ==================================================================
+  # INFRASTRUCTURE (STAGING)
+  # ==================================================================
+  redis-staging:
+    image: redis:7-alpine
+    container_name: swimbuddz_redis_staging
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_staging_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  redis_staging_data:
+
+networks:
+  swimbuddz_proxy:
+    external: true

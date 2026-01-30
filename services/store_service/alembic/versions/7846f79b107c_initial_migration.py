@@ -1,6 +1,6 @@
 """Alembic script template for store service."""
 
-revision = "9b6f7f3f8bfb"
+revision = "7846f79b107c"
 down_revision = None
 branch_labels = None
 depends_on = None

@@ -3,6 +3,7 @@
 import uuid
 from io import BytesIO
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 
 from PIL import Image
 
@@ -19,6 +20,7 @@ AWS_ACCESS_KEY = getattr(settings, "AWS_ACCESS_KEY_ID", "")
 AWS_SECRET_KEY = getattr(settings, "AWS_SECRET_ACCESS_KEY", "")
 AWS_BUCKET = getattr(settings, "AWS_S3_BUCKET", "")
 AWS_REGION = getattr(settings, "AWS_REGION", "us-east-1")
+CLOUDFRONT_URL = getattr(settings, "CLOUDFRONT_URL", "").rstrip("/")
 
 
 class StorageService:
@@ -121,9 +123,12 @@ class StorageService:
             Bucket=self.bucket, Key=path, Body=data, ContentType=content_type
         )
 
-        # Generate public URL
-        url = f"https://{self.bucket}.s3.{AWS_REGION}.amazonaws.com/{path}"
-        return url
+        # Prefer CloudFront if configured
+        if CLOUDFRONT_URL:
+            return f"{CLOUDFRONT_URL}/{path}"
+
+        # Fallback to S3 URL (requires public bucket policy)
+        return f"https://{self.bucket}.s3.{AWS_REGION}.amazonaws.com/{path}"
 
     async def delete_media(self, file_url: str, thumbnail_url: Optional[str] = None):
         """Delete media and thumbnail from storage."""
@@ -142,13 +147,15 @@ class StorageService:
 
         elif self.backend == "s3":
             try:
-                # Extract key from URL
-                key = file_url.split(".com/")[-1]
-                self.s3_client.delete_object(Bucket=self.bucket, Key=key)
+                # Extract key from URL path (works for S3 and CloudFront)
+                key = urlparse(file_url).path.lstrip("/")
+                if key:
+                    self.s3_client.delete_object(Bucket=self.bucket, Key=key)
 
                 if thumbnail_url:
-                    thumb_key = thumbnail_url.split(".com/")[-1]
-                    self.s3_client.delete_object(Bucket=self.bucket, Key=thumb_key)
+                    thumb_key = urlparse(thumbnail_url).path.lstrip("/")
+                    if thumb_key:
+                        self.s3_client.delete_object(Bucket=self.bucket, Key=thumb_key)
             except Exception:
                 pass
 

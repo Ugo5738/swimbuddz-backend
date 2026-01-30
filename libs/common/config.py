@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     # Media Service / Storage
     STORAGE_BACKEND: str = "supabase"  # supabase or s3
     SUPABASE_STORAGE_BUCKET: str = "swimbuddz-media"
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "us-east-1"
+    AWS_S3_BUCKET: str = ""
+    CLOUDFRONT_URL: str = ""
 
     # Admin configuration
     ADMIN_EMAILS: list[str] = ["admin@admin.com"]

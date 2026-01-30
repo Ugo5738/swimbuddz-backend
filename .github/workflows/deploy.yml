@@ -179,6 +179,9 @@ jobs:
               # Login to Docker Hub (to ensure we can pull private images if needed)
               echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
+              # Ensure external network exists for Traefik routing
+              docker network inspect swimbuddz_proxy >/dev/null 2>&1 || docker network create swimbuddz_proxy
+
               # Prepare Traefik ACME storage (Let’s Encrypt)
               mkdir -p letsencrypt
               touch letsencrypt/acme.json
@@ -249,6 +252,9 @@ jobs:
 
               # Login to Docker Hub
               echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+              # Ensure external network exists for Traefik routing
+              docker network inspect swimbuddz_proxy >/dev/null 2>&1 || docker network create swimbuddz_proxy
 
               # Prepare Traefik ACME storage (Let’s Encrypt)
               mkdir -p letsencrypt
