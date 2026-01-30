@@ -69,7 +69,9 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-1"
     # S3 bucket names (standardized naming)
-    AWS_S3_BUCKET_PUBLIC: str = ""  # For publicly accessible files (profiles, galleries)
+    AWS_S3_BUCKET_PUBLIC: str = (
+        ""  # For publicly accessible files (profiles, galleries)
+    )
     AWS_S3_BUCKET_PRIVATE: str = ""  # For private files (documents, payment proofs)
     CLOUDFRONT_URL: str = ""  # CDN URL for public bucket
 

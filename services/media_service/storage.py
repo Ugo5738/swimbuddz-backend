@@ -111,7 +111,9 @@ class StorageService:
 
         # Only generate thumbnail for images
         if content_type.startswith("image/"):
-            thumbnail_filename = unique_filename.replace(f".{file_ext}", f"_thumb.{file_ext}")
+            thumbnail_filename = unique_filename.replace(
+                f".{file_ext}", f"_thumb.{file_ext}"
+            )
             thumbnail_data = self._create_thumbnail(file_data)
 
             if self.backend == "supabase":
@@ -238,7 +240,10 @@ class StorageService:
                 pass
 
     async def generate_presigned_url(
-        self, file_key: str, bucket_type: BucketType = BucketType.PRIVATE, expiration: int = 3600
+        self,
+        file_key: str,
+        bucket_type: BucketType = BucketType.PRIVATE,
+        expiration: int = 3600,
     ) -> str:
         """
         Generate a presigned URL for accessing private files.

@@ -27,7 +27,11 @@ from services.media_service.schemas import (
     SiteAssetResponse,
     SiteAssetUpdate,
 )
-from services.media_service.storage import BucketType, get_bucket_for_purpose, storage_service
+from services.media_service.storage import (
+    BucketType,
+    get_bucket_for_purpose,
+    storage_service,
+)
 from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
