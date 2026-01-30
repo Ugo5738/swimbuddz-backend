@@ -27,7 +27,11 @@ from services.media_service.schemas import (
     SiteAssetResponse,
     SiteAssetUpdate,
 )
-from services.media_service.storage import storage_service
+from services.media_service.storage import (
+    BucketType,
+    get_bucket_for_purpose,
+    storage_service,
+)
 from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -328,10 +332,13 @@ async def upload_media(
     # Read file data
     file_data = await file.read()
 
-    # Upload to storage
+    # Upload to storage (gallery uploads go to public bucket)
     # TODO: Handle video thumbnail generation or placeholder
     file_url, thumbnail_url = await storage_service.upload_media(
-        file_data, file.filename or f"upload_{uuid.uuid4()}", file.content_type
+        file_data,
+        f"media/{file.filename or f'upload_{uuid.uuid4()}'}",
+        file.content_type,
+        bucket_type=BucketType.PUBLIC,
     )
 
     # Create media record
@@ -491,10 +498,14 @@ async def upload_file(
     storage_prefix = storage_prefixes.get(purpose, "uploads")
     storage_name = f"{storage_prefix}/{uuid.uuid4()}.{file_ext}"
 
+    # Determine which bucket to use based on purpose
+    bucket_type = get_bucket_for_purpose(purpose)
+
     file_url, thumbnail_url = await storage_service.upload_media(
         file_data,
         storage_name,
         content_type or "application/octet-stream",
+        bucket_type=bucket_type,
     )
 
     # Determine media type
