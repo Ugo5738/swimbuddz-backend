@@ -285,8 +285,7 @@ async def complete_pending_registration(
         gender=profile_data.get("gender"),
         date_of_birth=profile_data.get("date_of_birth"),
         occupation=profile_data.get("occupation"),
-        area_in_lagos=profile_data.get("area_in_lagos")
-        or profile_data.get("address"),
+        area_in_lagos=profile_data.get("area_in_lagos") or profile_data.get("address"),
         swim_level=profile_data.get("swim_level"),
         deep_water_comfort=profile_data.get("deep_water_comfort"),
         strokes=profile_data.get("strokes"),
