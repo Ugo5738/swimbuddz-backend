@@ -1,15 +1,15 @@
 """initial_migration
 
-Revision ID: 008672b0c18a
+Revision ID: 7ff3e342d1ae
 Revises: 
-Create Date: 2026-01-26 02:37:49.045689
+Create Date: 2026-01-29 22:31:16.348601
 """
 from alembic import op
 import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '008672b0c18a'
+revision = '7ff3e342d1ae'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -92,6 +92,23 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['program_id'], ['programs.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('cohort_resources',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('cohort_id', sa.UUID(), nullable=False),
+    sa.Column('title', sa.String(), nullable=False),
+    sa.Column('resource_type', sa.String(), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('source_type', sa.Enum('URL', 'UPLOAD', name='resource_source_type_enum'), server_default='URL', nullable=False),
+    sa.Column('content_media_id', sa.UUID(), nullable=True),
+    sa.Column('storage_path', sa.String(), nullable=True),
+    sa.Column('mime_type', sa.String(), nullable=True),
+    sa.Column('file_size_bytes', sa.Integer(), nullable=True),
+    sa.Column('visibility', sa.Enum('PUBLIC', 'ENROLLED_ONLY', 'COACHES_ONLY', name='resource_visibility_enum'), server_default='ENROLLED_ONLY', nullable=False),
+    sa.Column('week_number', sa.Integer(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['cohort_id'], ['cohorts.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('curriculum_weeks',
@@ -181,6 +198,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_enrollments_member_auth_id'), table_name='enrollments')
     op.drop_table('enrollments')
     op.drop_table('curriculum_weeks')
+    op.drop_table('cohort_resources')
     op.drop_table('program_curricula')
     op.drop_table('milestones')
     op.drop_table('cohorts')
