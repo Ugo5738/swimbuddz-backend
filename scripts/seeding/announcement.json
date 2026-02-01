@@ -1,0 +1,42 @@
+[
+  {
+    "title": "Welcome to SwimBuddz",
+    "summary": "A quick note to welcome you to the SwimBuddz community.",
+    "body": "Welcome to SwimBuddz 👋\n\nSwimBuddz is a community built for adults who want to learn, improve, or simply enjoy swimming in a calm and supportive environment.\n\nWhether you’re a complete beginner or getting back into the water, you’re in the right place.\n\n— SwimBuddz Team",
+    "category": "GENERAL",
+    "is_pinned": true,
+    "published_at": null
+  },
+  {
+    "title": "Saturday Community Swim",
+    "summary": "This weekend’s community swim session details.",
+    "body": "Our community swim session will hold this Saturday as scheduled.\n\nPlease arrive on time and be mindful of pool etiquette so everyone can enjoy the session.\n\nSee you in the water.\n\n— SwimBuddz Team",
+    "category": "EVENT",
+    "is_pinned": false,
+    "published_at": null
+  },
+  {
+    "title": "Rain Update — Session Monitoring",
+    "summary": "Weather update for today’s session.",
+    "body": "Due to ongoing rainfall, today’s session is being closely monitored.\n\nA final decision will be shared at least one hour before the scheduled start time.\n\nPlease keep an eye on announcements for updates.\n\n— SwimBuddz Team",
+    "category": "RAIN_UPDATE",
+    "is_pinned": true,
+    "published_at": null
+  },
+  {
+    "title": "Schedule Change Notice",
+    "summary": "Temporary adjustment to session timing.",
+    "body": "Please note that this week’s session will start 30 minutes later than usual due to pool logistics.\n\nKindly plan accordingly and arrive on time.\n\n— SwimBuddz Team",
+    "category": "SCHEDULE_CHANGE",
+    "is_pinned": false,
+    "published_at": null
+  },
+  {
+    "title": "Academy Updates Coming Soon",
+    "summary": "Information about upcoming SwimBuddz Academy programs.",
+    "body": "We’re currently preparing updates for the SwimBuddz Academy, including structured learning programs and coaching schedules.\n\nMore details will be shared soon.\n\n— SwimBuddz Team",
+    "category": "ACADEMY_UPDATE",
+    "is_pinned": false,
+    "published_at": null
+  }
+]

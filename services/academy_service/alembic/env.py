@@ -27,6 +27,7 @@ from services.academy_service.models import (  # noqa: F401
     Milestone,
     Program,
     ProgramCurriculum,
+    ProgramInterest,
     Skill,
     StudentProgress,
 )
@@ -47,6 +48,7 @@ SERVICE_TABLES = {
     "milestones",
     "student_progress",
     "program_curricula",
+    "program_interests",
     "curriculum_weeks",
     "curriculum_lessons",
     "skills",

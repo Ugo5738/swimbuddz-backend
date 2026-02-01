@@ -19,7 +19,9 @@ from libs.common.config import get_settings
 from libs.db.base import Base
 from services.communications_service.models import (  # noqa: F401
     Announcement,
+    AnnouncementCategoryConfig,
     AnnouncementComment,
+    AnnouncementRead,
     ContentComment,
     ContentPost,
     MessageLog,
@@ -36,6 +38,8 @@ target_metadata = Base.metadata
 # Only migrate tables owned by this service
 SERVICE_TABLES = {
     "announcements",
+    "announcement_reads",
+    "announcement_category_configs",
     "content_posts",
     "content_comments",
     "announcement_comments",

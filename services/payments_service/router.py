@@ -1068,9 +1068,20 @@ async def verify_my_paystack_payment(
             db.add(payment)
             await db.commit()
             await db.refresh(payment)
+
+        # User-friendly error messages based on Paystack status
+        error_messages = {
+            "abandoned": "Payment was cancelled. You can try again when ready.",
+            "failed": "Payment failed. Please try again or use a different payment method.",
+            "pending": "Payment is still processing. Please wait a moment and refresh.",
+            "reversed": "Payment was reversed. Please contact support if you believe this is an error.",
+        }
+        error_message = error_messages.get(
+            tx_status, f"Payment was not completed (status: {tx_status or 'unknown'})"
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Payment not successful (status={tx_status or 'unknown'}).",
+            detail=error_message,
         )
 
     amount_kobo = int(data.get("amount") or 0)
