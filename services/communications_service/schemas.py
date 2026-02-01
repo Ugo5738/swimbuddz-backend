@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 from services.communications_service.models import (
     AnnouncementAudience,
     AnnouncementCategory,
@@ -164,16 +164,11 @@ class ContentPostResponse(ContentPostBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @computed_field
     @property
     def status(self) -> str:
         """Return 'published' or 'draft' based on is_published flag."""
         return "published" if self.is_published else "draft"
-
-    def model_dump(self, **kwargs):
-        """Include status in serialization."""
-        data = super().model_dump(**kwargs)
-        data["status"] = self.status
-        return data
 
 
 # ===== COMMENT SCHEMAS =====
