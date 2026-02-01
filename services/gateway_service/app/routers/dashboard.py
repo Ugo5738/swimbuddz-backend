@@ -117,7 +117,10 @@ async def get_member_dashboard(
 
     # 4. Get Latest Announcements (last 3)
     announcements = await _fetch_json(
-        clients.communications_client, "/announcements/", "Communications"
+        clients.communications_client,
+        "/announcements/",
+        "Communications",
+        member_headers,
     )
     latest_announcements = announcements[:3]
 

@@ -6,7 +6,11 @@ from services.communications_service.messaging_router import router as messaging
 from services.communications_service.preferences_router import (
     router as preferences_router,
 )
-from services.communications_service.router import admin_router, content_router
+from services.communications_service.router import (
+    admin_router,
+    category_router,
+    content_router,
+)
 from services.communications_service.router import router as communications_router
 
 
@@ -26,6 +30,7 @@ def create_app() -> FastAPI:
     # Include communications routers
     app.include_router(communications_router)
     app.include_router(content_router)
+    app.include_router(category_router)
     app.include_router(admin_router)
     app.include_router(messaging_router)
     app.include_router(email_router)

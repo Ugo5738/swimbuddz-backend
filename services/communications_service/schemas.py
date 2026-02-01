@@ -3,7 +3,11 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
-from services.communications_service.models import AnnouncementCategory
+from services.communications_service.models import (
+    AnnouncementAudience,
+    AnnouncementCategory,
+    AnnouncementStatus,
+)
 
 
 class AnnouncementBase(BaseModel):
@@ -11,8 +15,15 @@ class AnnouncementBase(BaseModel):
     summary: Optional[str] = None
     body: str
     category: AnnouncementCategory = AnnouncementCategory.GENERAL
+    custom_category: Optional[str] = None  # For category=CUSTOM
+    status: AnnouncementStatus = AnnouncementStatus.PUBLISHED
+    audience: AnnouncementAudience = AnnouncementAudience.COMMUNITY
+    expires_at: Optional[datetime] = None
+    notify_email: bool = True
+    notify_push: bool = True
     is_pinned: bool = False
-    published_at: datetime
+    scheduled_for: Optional[datetime] = None  # Schedule for future publishing
+    published_at: Optional[datetime] = None
 
 
 class AnnouncementCreate(AnnouncementBase):
@@ -24,7 +35,14 @@ class AnnouncementUpdate(BaseModel):
     summary: Optional[str] = None
     body: Optional[str] = None
     category: Optional[AnnouncementCategory] = None
+    custom_category: Optional[str] = None
+    status: Optional[AnnouncementStatus] = None
+    audience: Optional[AnnouncementAudience] = None
+    expires_at: Optional[datetime] = None
+    notify_email: Optional[bool] = None
+    notify_push: Optional[bool] = None
     is_pinned: Optional[bool] = None
+    scheduled_for: Optional[datetime] = None
     published_at: Optional[datetime] = None
 
 
@@ -32,6 +50,72 @@ class AnnouncementResponse(AnnouncementBase):
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    read_count: Optional[int] = 0  # Number of members who have read this
+    acknowledged_count: Optional[int] = 0  # Number of members who acknowledged
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ===== ANNOUNCEMENT READ TRACKING =====
+class AnnouncementReadCreate(BaseModel):
+    """Schema for marking an announcement as read."""
+
+    acknowledged: bool = False
+
+
+class AnnouncementReadResponse(BaseModel):
+    """Response showing read status for an announcement."""
+
+    announcement_id: uuid.UUID
+    member_id: uuid.UUID
+    read_at: datetime
+    acknowledged: bool
+    acknowledged_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ===== CUSTOM CATEGORY CONFIGURATION =====
+class AnnouncementCategoryConfigCreate(BaseModel):
+    """Schema for creating a custom announcement category."""
+
+    name: str  # Unique identifier (lowercase, no spaces)
+    display_name: str  # Human-readable name
+    description: Optional[str] = None
+    auto_expire_hours: Optional[int] = None  # NULL = never expires
+    default_notify_email: bool = True
+    default_notify_push: bool = False
+    icon: Optional[str] = None
+    color: Optional[str] = None
+
+
+class AnnouncementCategoryConfigUpdate(BaseModel):
+    """Schema for updating a custom announcement category."""
+
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    auto_expire_hours: Optional[int] = None
+    default_notify_email: Optional[bool] = None
+    default_notify_push: Optional[bool] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class AnnouncementCategoryConfigResponse(BaseModel):
+    """Response for announcement category config."""
+
+    id: uuid.UUID
+    name: str
+    display_name: str
+    description: Optional[str] = None
+    auto_expire_hours: Optional[int] = None
+    default_notify_email: bool
+    default_notify_push: bool
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    is_active: bool
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -43,7 +127,7 @@ class ContentPostBase(BaseModel):
     title: str
     summary: Optional[str] = None
     body: str  # Markdown content
-    category: str  # swimming_tips/safety/breathing/technique/news/education
+    category: str  # swimming_tips/safety/breathing/technique/news/education/getting_started/community_culture/health_recovery
     featured_image_media_id: Optional[uuid.UUID] = None
     tier_access: str = "community"  # community/club/academy
 

@@ -321,7 +321,8 @@ Use this section to list scoped ideas that are **not** part of the current TODO 
 
 - **Member Scorecard**: A visual representation of a member's progress, skills, and achievements (linked to Academy service).
 - **Teaching Materials Management**: Admin/coach CRUD for cohort resources + UI in the coach portal (add/edit/upload/link materials).
-- **WhatsApp Integration**: For automated announcements and reminders.
+- **Push Notifications**: Send announcement alerts to mobile/web clients (respect category rules + preferences).
+- **WhatsApp Integration**: Send announcement updates and reminders to WhatsApp groups or opted-in members.
 - **Advanced Analytics**: Dashboard for detailed attendance and financial metrics.
 - **Stripe Integration**: Replace manual payment reference with real payment processing.
 

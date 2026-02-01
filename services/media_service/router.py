@@ -404,7 +404,7 @@ async def upload_file(
     file: UploadFile = File(...),
     purpose: str = Form(
         ...
-    ),  # "coach_document" | "payment_proof" | "milestone_evidence" | "milestone_video" | "general"
+    ),  # "coach_document" | "payment_proof" | "milestone_evidence" | "milestone_video" | "profile_photo" | "cover_image" | "content_image" | "category_image" | "collection_image" | "product_image" | "size_chart" | "general"
     linked_id: Optional[str] = Form(
         None
     ),  # For storage path organization (e.g., payment_reference, enrollment_id)
@@ -440,6 +440,11 @@ async def upload_file(
         "general",
         "profile_photo",
         "cover_image",
+        "content_image",
+        "category_image",
+        "collection_image",
+        "product_image",
+        "size_chart",
     }
     if purpose not in allowed_purposes:
         raise HTTPException(
@@ -466,11 +471,24 @@ async def upload_file(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="File must be an image or video",
             )
-    elif purpose in ("profile_photo", "cover_image"):
+    elif purpose in (
+        "profile_photo",
+        "cover_image",
+        "content_image",
+        "category_image",
+        "collection_image",
+        "product_image",
+    ):
         if not is_image:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="File must be an image",
+            )
+    elif purpose == "size_chart":
+        if not (is_image or is_pdf):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be a PDF or image",
             )
     # "general" allows any file type
 
@@ -493,6 +511,11 @@ async def upload_file(
         ),
         "profile_photo": "profile-photos",
         "cover_image": "cover-images",
+        "content_image": "content-images",
+        "category_image": "category-images",
+        "collection_image": "collection-images",
+        "product_image": "product-images",
+        "size_chart": "size-charts",
         "general": "uploads",
     }
     storage_prefix = storage_prefixes.get(purpose, "uploads")
@@ -584,6 +607,11 @@ async def register_external_url(
         "general",
         "profile_photo",
         "cover_image",
+        "content_image",
+        "category_image",
+        "collection_image",
+        "product_image",
+        "size_chart",
     }
     if purpose not in allowed_purposes:
         raise HTTPException(

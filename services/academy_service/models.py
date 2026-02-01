@@ -560,6 +560,39 @@ class Milestone(Base):
         return f"<Milestone {self.name}>"
 
 
+class ProgramInterest(Base):
+    """Track members interested in being notified about program cohorts."""
+
+    __tablename__ = "program_interests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    program_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("programs.id"), nullable=False, index=True
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    member_auth_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    email: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    # Track if we've notified them about a new cohort
+    notified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+
+    # Relationships
+    program = relationship("Program")
+
+    def __repr__(self):
+        return f"<ProgramInterest Program={self.program_id} Member={self.member_id}>"
+
+
 class StudentProgress(Base):
     __tablename__ = "student_progress"
 
