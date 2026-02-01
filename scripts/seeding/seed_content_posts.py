@@ -130,13 +130,13 @@ async def seed_content_posts():
 
         await session.commit()
 
-        print(f"\nContent posts seeding complete:")
+        print("\nContent posts seeding complete:")
         print(f"  Created: {created_count}")
         print(f"  Skipped: {skipped_count}")
-        print(f"\nNote: Posts are created as drafts. Use the admin panel to:")
-        print(f"  1. Add featured images")
-        print(f"  2. Review and edit content")
-        print(f"  3. Publish when ready")
+        print("\nNote: Posts are created as drafts. Use the admin panel to:")
+        print("  1. Add featured images")
+        print("  2. Review and edit content")
+        print("  3. Publish when ready")
 
 
 if __name__ == "__main__":
