@@ -1,32 +1,237 @@
 import uuid
-from typing import List
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional, Set
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from libs.auth.dependencies import require_admin
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from libs.auth.dependencies import get_optional_user, require_admin
 from libs.auth.models import AuthUser
+from libs.common.config import get_settings
+from libs.common.emails.core import send_email
+from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.db.session import get_async_db
-from services.communications_service.models import Announcement
+from services.communications_service.models import (
+    Announcement,
+    AnnouncementAudience,
+    AnnouncementCategory,
+    AnnouncementStatus,
+    NotificationPreferences,
+)
 from services.communications_service.schemas import (  # , AnnouncementCreate
     AnnouncementCreate,
     AnnouncementResponse,
     AnnouncementUpdate,
 )
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+settings = get_settings()
+logger = get_logger(__name__)
 router = APIRouter(prefix="/announcements", tags=["announcements"])
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+def _is_admin(user: Optional[AuthUser]) -> bool:
+    if not user:
+        return False
+    is_service_role = user.role == "service_role"
+    has_admin_role = user.has_role("admin")
+    is_whitelisted_email = user.email is not None and user.email in (
+        settings.ADMIN_EMAILS or []
+    )
+    return is_service_role or has_admin_role or is_whitelisted_email
+
+
+def _default_expiry(category: AnnouncementCategory) -> Optional[datetime]:
+    now = datetime.now(timezone.utc)
+    if category in (
+        AnnouncementCategory.RAIN_UPDATE,
+        AnnouncementCategory.SCHEDULE_CHANGE,
+    ):
+        return now + timedelta(hours=24)
+    return None
+
+
+def _default_notification_flags(category: AnnouncementCategory) -> tuple[bool, bool]:
+    if category in (
+        AnnouncementCategory.RAIN_UPDATE,
+        AnnouncementCategory.SCHEDULE_CHANGE,
+    ):
+        return True, True  # email + push
+    if category in (AnnouncementCategory.EVENT, AnnouncementCategory.COMPETITION):
+        return True, False  # email by default
+    return True, False
+
+
+async def _get_allowed_audiences(authorization: Optional[str]) -> Set[str]:
+    # Guests only see community announcements.
+    if not authorization:
+        return {"community"}
+
+    url = f"{settings.MEMBERS_SERVICE_URL}/members/me"
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(url, headers={"Authorization": authorization})
+        if response.status_code != 200:
+            return {"community"}
+        data = response.json()
+    except httpx.RequestError:
+        return {"community"}
+
+    membership = data.get("membership") or {}
+    active_tiers = membership.get("active_tiers") or []
+    primary_tier = membership.get("primary_tier")
+    tiers = {str(t).lower() for t in active_tiers if t}
+    if primary_tier:
+        tiers.add(str(primary_tier).lower())
+
+    # Higher tiers inherit lower tier announcements.
+    if "academy" in tiers:
+        tiers.add("club")
+    tiers.add("community")
+    return tiers
+
+
+def _pref_allows_email(
+    category: AnnouncementCategory, pref: Optional[NotificationPreferences]
+) -> bool:
+    if not pref:
+        return True
+    if category == AnnouncementCategory.ACADEMY_UPDATE:
+        return pref.email_academy_updates
+    return pref.email_announcements
+
+
+async def _fetch_members_for_audience(audience: AnnouncementAudience) -> list[dict]:
+    url = f"{settings.MEMBERS_SERVICE_URL}/members/"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(url, params={"skip": 0, "limit": 1000})
+        if response.status_code != 200:
+            logger.warning("Failed to fetch members list for announcement delivery.")
+            return []
+        members = response.json()
+    except httpx.RequestError as exc:
+        logger.warning("Failed to reach members service: %s", exc)
+        return []
+
+    if audience == AnnouncementAudience.COMMUNITY:
+        return members
+
+    filtered = []
+    async with httpx.AsyncClient(timeout=10) as client:
+        for member in members:
+            auth_id = member.get("auth_id")
+            if not auth_id:
+                continue
+            try:
+                detail_resp = await client.get(
+                    f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{auth_id}"
+                )
+                if detail_resp.status_code != 200:
+                    continue
+                detail = detail_resp.json()
+            except httpx.RequestError:
+                continue
+
+            membership = detail.get("membership") or {}
+            active_tiers = membership.get("active_tiers") or []
+            primary_tier = membership.get("primary_tier")
+            tiers = {str(t).lower() for t in active_tiers if t}
+            if primary_tier:
+                tiers.add(str(primary_tier).lower())
+            if "academy" in tiers:
+                tiers.add("club")
+
+            if audience.value in tiers:
+                filtered.append(member)
+
+    return filtered
+
+
+async def _send_announcement_emails(
+    announcement: Announcement,
+    db: AsyncSession,
+) -> None:
+    if (
+        announcement.status != AnnouncementStatus.PUBLISHED
+        or not announcement.notify_email
+    ):
+        return
+
+    members = await _fetch_members_for_audience(announcement.audience)
+    if not members:
+        return
+
+    member_ids = [m.get("id") for m in members if m.get("id")]
+    pref_map: dict[str, NotificationPreferences] = {}
+    if member_ids:
+        prefs_result = await db.execute(
+            select(NotificationPreferences).where(
+                NotificationPreferences.member_id.in_(member_ids)
+            )
+        )
+        pref_map = {str(p.member_id): p for p in prefs_result.scalars().all()}
+
+    subject = f"SwimBuddz Update: {announcement.title}"
+    body = announcement.body
+    if announcement.summary:
+        body = f"{announcement.summary}\n\n{announcement.body}"
+
+    sent_count = 0
+    for member in members:
+        email = member.get("email")
+        member_id = str(member.get("id")) if member.get("id") else None
+        if not email:
+            continue
+        pref = pref_map.get(member_id) if member_id else None
+        if not _pref_allows_email(announcement.category, pref):
+            continue
+        success = await send_email(
+            to_email=email,
+            subject=subject,
+            body=body,
+            html_body=None,
+            from_name="SwimBuddz",
+        )
+        if success:
+            sent_count += 1
+
+    if sent_count:
+        logger.info("Sent announcement email to %s recipients", sent_count)
+
+
 @router.get("/", response_model=List[AnnouncementResponse])
 async def list_announcements(
+    request: Request,
+    include_all: bool = Query(
+        False, description="Include drafts/archived/expired (admin only)"
+    ),
+    current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
     List all announcements, newest first.
     """
-    query = select(Announcement).order_by(
+    if include_all and not _is_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required"
+        )
+
+    query = select(Announcement)
+    if not include_all:
+        now = datetime.now(timezone.utc)
+        allowed_audiences = await _get_allowed_audiences(
+            request.headers.get("authorization")
+        )
+        query = query.where(
+            Announcement.status == AnnouncementStatus.PUBLISHED,
+            or_(Announcement.expires_at.is_(None), Announcement.expires_at > now),
+            Announcement.audience.in_(allowed_audiences),
+        )
+
+    query = query.order_by(
         Announcement.is_pinned.desc(), Announcement.published_at.desc()
     )
     result = await db.execute(query)
@@ -35,13 +240,33 @@ async def list_announcements(
 
 @router.get("/stats")
 async def get_announcement_stats(
+    request: Request,
+    include_all: bool = Query(
+        False, description="Include drafts/archived/expired (admin only)"
+    ),
+    current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get announcement statistics.
     """
     # Just total count for now
+    if include_all and not _is_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required"
+        )
+
     query = select(func.count(Announcement.id))
+    if not include_all:
+        now = datetime.now(timezone.utc)
+        allowed_audiences = await _get_allowed_audiences(
+            request.headers.get("authorization")
+        )
+        query = query.where(
+            Announcement.status == AnnouncementStatus.PUBLISHED,
+            or_(Announcement.expires_at.is_(None), Announcement.expires_at > now),
+            Announcement.audience.in_(allowed_audiences),
+        )
     result = await db.execute(query)
     recent_announcements_count = result.scalar_one() or 0
 
@@ -51,12 +276,32 @@ async def get_announcement_stats(
 @router.get("/{announcement_id}", response_model=AnnouncementResponse)
 async def get_announcement(
     announcement_id: uuid.UUID,
+    request: Request,
+    include_all: bool = Query(
+        False, description="Include drafts/archived/expired (admin only)"
+    ),
+    current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get details of a specific announcement.
     """
+    if include_all and not _is_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required"
+        )
+
     query = select(Announcement).where(Announcement.id == announcement_id)
+    if not include_all:
+        now = datetime.now(timezone.utc)
+        allowed_audiences = await _get_allowed_audiences(
+            request.headers.get("authorization")
+        )
+        query = query.where(
+            Announcement.status == AnnouncementStatus.PUBLISHED,
+            or_(Announcement.expires_at.is_(None), Announcement.expires_at > now),
+            Announcement.audience.in_(allowed_audiences),
+        )
     result = await db.execute(query)
     announcement = result.scalar_one_or_none()
 
@@ -77,10 +322,43 @@ async def create_announcement(
     """
     Create a new announcement (Admin only).
     """
-    announcement = Announcement(**announcement_data.model_dump())
+    payload = announcement_data.model_dump()
+    status_value = payload.get("status", AnnouncementStatus.PUBLISHED)
+
+    published_at = payload.get("published_at")
+    if status_value == AnnouncementStatus.PUBLISHED and not published_at:
+        published_at = datetime.now(timezone.utc)
+    elif status_value == AnnouncementStatus.DRAFT:
+        published_at = None
+
+    expires_at = payload.get("expires_at")
+    if not expires_at and status_value == AnnouncementStatus.PUBLISHED:
+        expires_at = _default_expiry(
+            payload.get("category", AnnouncementCategory.GENERAL)
+        )
+
+    notify_email = payload.get("notify_email")
+    notify_push = payload.get("notify_push")
+    if notify_email is None or notify_push is None:
+        default_email, default_push = _default_notification_flags(
+            payload.get("category", AnnouncementCategory.GENERAL)
+        )
+        if notify_email is None:
+            notify_email = default_email
+        if notify_push is None:
+            notify_push = default_push
+
+    announcement = Announcement(
+        **payload,
+        published_at=published_at,
+        expires_at=expires_at,
+        notify_email=notify_email,
+        notify_push=notify_push,
+    )
     db.add(announcement)
     await db.commit()
     await db.refresh(announcement)
+    await _send_announcement_emails(announcement, db)
     return announcement
 
 
@@ -105,11 +383,32 @@ async def update_announcement(
         )
 
     update_data = announcement_data.model_dump(exclude_unset=True)
+    if "status" in update_data:
+        if (
+            update_data["status"] == AnnouncementStatus.PUBLISHED
+            and not announcement.published_at
+        ):
+            announcement.published_at = datetime.now(timezone.utc)
+        elif update_data["status"] == AnnouncementStatus.DRAFT:
+            announcement.published_at = None
+        if (
+            update_data["status"] == AnnouncementStatus.PUBLISHED
+            and "expires_at" not in update_data
+            and not announcement.expires_at
+        ):
+            category_value = update_data.get("category", announcement.category)
+            announcement.expires_at = _default_expiry(category_value)
+
     for field, value in update_data.items():
         setattr(announcement, field, value)
 
     await db.commit()
     await db.refresh(announcement)
+    if (
+        "status" in update_data
+        and update_data["status"] == AnnouncementStatus.PUBLISHED
+    ):
+        await _send_announcement_emails(announcement, db)
     return announcement
 
 
@@ -132,13 +431,241 @@ async def delete_announcement(
             detail="Announcement not found",
         )
 
-    # Delete comments first
+    # Delete comments and reads first
     await db.execute(
         delete(AnnouncementComment).where(
             AnnouncementComment.announcement_id == announcement_id
         )
     )
+    await db.execute(
+        delete(AnnouncementRead).where(
+            AnnouncementRead.announcement_id == announcement_id
+        )
+    )
     await db.delete(announcement)
+    await db.commit()
+
+
+# ===== ANNOUNCEMENT READ TRACKING =====
+from services.communications_service.models import (
+    AnnouncementCategoryConfig,
+    AnnouncementRead,
+)
+from services.communications_service.schemas import (
+    AnnouncementCategoryConfigCreate,
+    AnnouncementCategoryConfigResponse,
+    AnnouncementCategoryConfigUpdate,
+    AnnouncementReadCreate,
+    AnnouncementReadResponse,
+)
+
+
+@router.post(
+    "/{announcement_id}/read", response_model=AnnouncementReadResponse, status_code=201
+)
+async def mark_announcement_read(
+    announcement_id: uuid.UUID,
+    read_data: AnnouncementReadCreate,
+    member_id: uuid.UUID = Query(..., description="Member ID"),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Mark an announcement as read by a member.
+    If already read, updates acknowledged status if provided.
+    """
+    # Verify announcement exists
+    announcement_query = select(Announcement).where(Announcement.id == announcement_id)
+    result = await db.execute(announcement_query)
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Announcement not found")
+
+    # Check if already read
+    existing_query = select(AnnouncementRead).where(
+        AnnouncementRead.announcement_id == announcement_id,
+        AnnouncementRead.member_id == member_id,
+    )
+    existing_result = await db.execute(existing_query)
+    existing = existing_result.scalar_one_or_none()
+
+    if existing:
+        # Update acknowledged status if provided
+        if read_data.acknowledged and not existing.acknowledged:
+            existing.acknowledged = True
+            existing.acknowledged_at = datetime.now(timezone.utc)
+            await db.commit()
+            await db.refresh(existing)
+        return existing
+
+    # Create new read record
+    read_record = AnnouncementRead(
+        announcement_id=announcement_id,
+        member_id=member_id,
+        acknowledged=read_data.acknowledged,
+        acknowledged_at=datetime.now(timezone.utc) if read_data.acknowledged else None,
+    )
+    db.add(read_record)
+    await db.commit()
+    await db.refresh(read_record)
+    return read_record
+
+
+@router.get("/{announcement_id}/read-status", response_model=AnnouncementReadResponse)
+async def get_announcement_read_status(
+    announcement_id: uuid.UUID,
+    member_id: uuid.UUID = Query(..., description="Member ID"),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get read status of an announcement for a specific member.
+    """
+    query = select(AnnouncementRead).where(
+        AnnouncementRead.announcement_id == announcement_id,
+        AnnouncementRead.member_id == member_id,
+    )
+    result = await db.execute(query)
+    read_record = result.scalar_one_or_none()
+
+    if not read_record:
+        raise HTTPException(status_code=404, detail="Read status not found")
+
+    return read_record
+
+
+@router.get("/{announcement_id}/read-stats")
+async def get_announcement_read_stats(
+    announcement_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get read/acknowledged statistics for an announcement (Admin only).
+    """
+    read_count_query = select(func.count(AnnouncementRead.id)).where(
+        AnnouncementRead.announcement_id == announcement_id
+    )
+    acknowledged_count_query = select(func.count(AnnouncementRead.id)).where(
+        AnnouncementRead.announcement_id == announcement_id,
+        AnnouncementRead.acknowledged.is_(True),
+    )
+
+    read_result = await db.execute(read_count_query)
+    ack_result = await db.execute(acknowledged_count_query)
+
+    return {
+        "announcement_id": announcement_id,
+        "read_count": read_result.scalar_one() or 0,
+        "acknowledged_count": ack_result.scalar_one() or 0,
+    }
+
+
+# ===== CUSTOM CATEGORY CONFIGURATION =====
+category_router = APIRouter(prefix="/categories", tags=["announcement-categories"])
+
+
+@category_router.get("/", response_model=List[AnnouncementCategoryConfigResponse])
+async def list_announcement_categories(
+    include_inactive: bool = Query(False, description="Include inactive categories"),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    List all custom announcement categories.
+    """
+    query = select(AnnouncementCategoryConfig)
+    if not include_inactive:
+        query = query.where(AnnouncementCategoryConfig.is_active.is_(True))
+    query = query.order_by(AnnouncementCategoryConfig.display_name)
+
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@category_router.post(
+    "/", response_model=AnnouncementCategoryConfigResponse, status_code=201
+)
+async def create_announcement_category(
+    category_data: AnnouncementCategoryConfigCreate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Create a custom announcement category (Admin only).
+    """
+    # Check for duplicate name
+    existing_query = select(AnnouncementCategoryConfig).where(
+        AnnouncementCategoryConfig.name == category_data.name.lower().replace(" ", "_")
+    )
+    existing_result = await db.execute(existing_query)
+    if existing_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400, detail="Category with this name already exists"
+        )
+
+    category = AnnouncementCategoryConfig(
+        name=category_data.name.lower().replace(" ", "_"),
+        display_name=category_data.display_name,
+        description=category_data.description,
+        auto_expire_hours=category_data.auto_expire_hours,
+        default_notify_email=category_data.default_notify_email,
+        default_notify_push=category_data.default_notify_push,
+        icon=category_data.icon,
+        color=category_data.color,
+    )
+    db.add(category)
+    await db.commit()
+    await db.refresh(category)
+    return category
+
+
+@category_router.patch(
+    "/{category_id}", response_model=AnnouncementCategoryConfigResponse
+)
+async def update_announcement_category(
+    category_id: uuid.UUID,
+    category_data: AnnouncementCategoryConfigUpdate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Update a custom announcement category (Admin only).
+    """
+    query = select(AnnouncementCategoryConfig).where(
+        AnnouncementCategoryConfig.id == category_id
+    )
+    result = await db.execute(query)
+    category = result.scalar_one_or_none()
+
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    update_data = category_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(category, field, value)
+
+    await db.commit()
+    await db.refresh(category)
+    return category
+
+
+@category_router.delete("/{category_id}", status_code=204)
+async def delete_announcement_category(
+    category_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Delete a custom announcement category (Admin only).
+    Note: This will not delete announcements using this category.
+    """
+    query = select(AnnouncementCategoryConfig).where(
+        AnnouncementCategoryConfig.id == category_id
+    )
+    result = await db.execute(query)
+    category = result.scalar_one_or_none()
+
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    await db.delete(category)
     await db.commit()
 
 
@@ -181,8 +708,6 @@ async def admin_delete_member_comments(
         "deleted_announcement_comments": announcement_result.rowcount or 0,
     }
 
-
-from fastapi import Query
 
 content_router = APIRouter(prefix="/content", tags=["content"])
 

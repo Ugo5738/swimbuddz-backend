@@ -2,24 +2,29 @@
 set -e
 
 # ===============================================================================
-# FULL RESET (Nuclear Option - Regenerates Migrations)
+# RESET DATABASE (Using Existing Migrations)
 # ===============================================================================
 #
-# ⚠️  WARNING: This script DELETES and REGENERATES all migration files!
+# This script resets the database to a clean state using EXISTING migration files.
+# Use this for:
+#   - Daily development resets
+#   - Testing with fresh data
+#   - Switching between dev/prod databases
 #
-# Use this ONLY for:
-#   - Initial project setup
-#   - Major schema refactors where existing migrations are broken
-#   - Starting fresh after significant model changes
+# This script does NOT:
+#   - Delete or regenerate migration files
+#   - Modify any committed code
 #
-# For normal development:
-#   → Reset DB (keep migrations): ./scripts/database/reset_db.sh
-#   → Generate new migration:     ./scripts/database/generate_migration.sh
+# For schema changes (after modifying models):
+#   → Use: ./scripts/database/generate_migration.sh
+#
+# For complete rebuild (rare, destructive):
+#   → Use: ./scripts/database/full_reset.sh
 #
 # ===============================================================================
 
 echo "========================================="
-echo "SwimBuddz FULL Reset (Nuclear Option)"
+echo "SwimBuddz Database Reset"
 echo "========================================="
 echo ""
 
@@ -40,13 +45,7 @@ SERVICES=(
   "store_service"
 )
 
-PRE_MIGRATION_TASKS=(
-  "clean_pycache:Clean Python cache"
-  "nuke_database:Drop database schema"
-  "clean_migrations:Delete old migration files"
-)
-
-POST_MIGRATION_TASKS=(
+POST_RESET_TASKS=(
   "clear_supabase_users:Clear Supabase Auth users"
   "create_admin:Create admin user"
   "seed_all:Seed all data"
@@ -56,21 +55,8 @@ POST_MIGRATION_TASKS=(
 # TASK FUNCTIONS
 # -------------------------------------------------------------------------------
 
-task_clean_pycache() {
-  find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-}
-
 task_nuke_database() {
   python3 scripts/database/nuke_db.py
-}
-
-task_clean_migrations() {
-  for svc in "${SERVICES[@]}"; do
-    VERSIONS_DIR="services/${svc}/alembic/versions"
-    if [ -d "$VERSIONS_DIR" ]; then
-      find "$VERSIONS_DIR" -type f -name "*.py" ! -name ".keep" -delete
-    fi
-  done
 }
 
 task_migrate_service() {
@@ -80,8 +66,6 @@ task_migrate_service() {
     echo "  ✗ Missing $ALEMBIC_INI; skipping"
     return 1
   fi
-  # Autogenerate NEW migration (this is what makes full_reset different)
-  alembic -c "$ALEMBIC_INI" revision --autogenerate -m "initial_migration"
   alembic -c "$ALEMBIC_INI" upgrade head
 }
 
@@ -94,7 +78,7 @@ task_create_admin() {
 }
 
 task_seed_all() {
-  "$SCRIPT_DIR/seeding/seed_all.sh"
+  "$SCRIPT_DIR/../seeding/seed_all.sh"
 }
 
 # -------------------------------------------------------------------------------
@@ -103,14 +87,14 @@ task_seed_all() {
 
 calculate_total_steps() {
   local total=0
-  total=$((total + ${#PRE_MIGRATION_TASKS[@]}))
-  total=$((total + ${#SERVICES[@]}))
-  total=$((total + ${#POST_MIGRATION_TASKS[@]}))
+  total=$((total + 1))  # nuke database
+  total=$((total + ${#SERVICES[@]}))  # migrations
+  total=$((total + ${#POST_RESET_TASKS[@]}))  # post-reset tasks
   echo $total
 }
 
 CURRENT_STEP=0
-TOTAL_STEPS=$(calculate_total_steps)
+TOTAL_STEPS=0  # Calculated after arrays are defined
 
 run_step() {
   local description="$1"
@@ -139,32 +123,32 @@ print_header() {
 print_header "SETUP & ENVIRONMENT"
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-# Allow ENV_FILE override
+# Allow ENV_FILE override via first arg
 if [ -n "${1:-}" ]; then
   case "$1" in
     dev) ENV_FILE=".env.dev" ;;
     prod) ENV_FILE=".env.prod" ;;
     -h|--help)
+      TOTAL_STEPS=$(calculate_total_steps)
       echo "Usage: $0 [dev|prod|path/to/env]"
       echo ""
-      echo "⚠️  FULL RESET - Regenerates all migrations!"
+      echo "Reset database using EXISTING migrations (${TOTAL_STEPS} steps)"
       echo ""
-      echo "This script will run ${TOTAL_STEPS} steps:"
-      echo "  - ${#PRE_MIGRATION_TASKS[@]} pre-migration tasks (incl. DELETE migrations)"
-      echo "  - ${#SERVICES[@]} service migrations (REGENERATED)"
-      echo "  - ${#POST_MIGRATION_TASKS[@]} post-migration tasks"
+      echo "This script:"
+      echo "  ✓ Drops all tables"
+      echo "  ✓ Applies existing migrations"
+      echo "  ✓ Seeds fresh data"
       echo ""
-      echo "For normal development, use instead:"
-      echo "  ./scripts/database/reset_db.sh    - Reset DB, keep migrations"
-      echo "  ./scripts/database/generate_migration.sh - New migration after model changes"
+      echo "This script does NOT regenerate migration files."
+      echo "For schema changes, use: ./scripts/database/generate_migration.sh"
       exit 0
       ;;
     *) ENV_FILE="$1" ;;
   esac
 else
-  ENV_FILE=${ENV_FILE:-.env.prod}
+  ENV_FILE=${ENV_FILE:-.env.dev}
 fi
 
 ENV_PATH="$PROJECT_ROOT/$ENV_FILE"
@@ -181,25 +165,8 @@ set +a
 
 echo "Using environment: $ENV_FILE"
 echo "ENVIRONMENT=$ENVIRONMENT"
-echo "Total steps: ${TOTAL_STEPS}"
 
-# -------------------------------------------------------------------------------
-# CONFIRMATION (for prod)
-# -------------------------------------------------------------------------------
-if [ "$ENV_FILE" = ".env.prod" ] || [ "$ENV_FILE" = "prod" ]; then
-  echo ""
-  echo "⚠️  WARNING: You are about to FULL RESET the PRODUCTION database!"
-  echo "   This will DELETE all migration files and regenerate them."
-  echo ""
-  read -p "Type 'yes-delete-migrations' to confirm: " CONFIRM
-  if [ "$CONFIRM" != "yes-delete-migrations" ]; then
-    echo "Aborted."
-    exit 1
-  fi
-  echo ""
-fi
-
-# Database URL
+# Database URL selection
 if [ -n "$DATABASE_SESSION_URL" ]; then
     export DATABASE_URL="$DATABASE_SESSION_URL"
     echo "Using DATABASE_SESSION_URL (session mode)"
@@ -214,17 +181,16 @@ if [ "$ENV_FILE" = ".env.prod" ] || [ "$ENV_FILE" = "prod" ]; then
 else
     COMPOSE_FILE="docker-compose.yml"
 fi
-echo "Using Docker Compose file: $COMPOSE_FILE"
 
 cd "$PROJECT_ROOT"
+TOTAL_STEPS=$(calculate_total_steps)
+echo "Total steps: ${TOTAL_STEPS}"
 
 # Check Docker
 INSIDE_DOCKER=false
 if [ -f /.dockerenv ]; then
     INSIDE_DOCKER=true
-    echo "Running inside Docker container"
 else
-    echo "Running locally"
     if command -v docker &> /dev/null; then
         echo "Stopping services..."
         docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
@@ -233,30 +199,27 @@ else
 fi
 
 # -------------------------------------------------------------------------------
-# PHASE 1: PRE-MIGRATION
+# PHASE 1: DROP TABLES
 # -------------------------------------------------------------------------------
-print_header "PHASE 1: PRE-MIGRATION (Destructive)"
+print_header "PHASE 1: DROP TABLES"
 
-for task_entry in "${PRE_MIGRATION_TASKS[@]}"; do
-  IFS=':' read -r func_name description <<< "$task_entry"
-  run_step "$description" "$description complete" "task_${func_name}"
-done
+run_step "Dropping all tables" "Tables dropped" task_nuke_database
 
 # -------------------------------------------------------------------------------
-# PHASE 2: REGENERATE MIGRATIONS
+# PHASE 2: APPLY EXISTING MIGRATIONS
 # -------------------------------------------------------------------------------
-print_header "PHASE 2: REGENERATE MIGRATIONS"
+print_header "PHASE 2: APPLY MIGRATIONS"
 
 for svc in "${SERVICES[@]}"; do
-  run_step "Migrating $svc (autogenerate)" "$svc migrated" task_migrate_service "$svc"
+  run_step "Migrating $svc" "$svc migrated" task_migrate_service "$svc"
 done
 
 # -------------------------------------------------------------------------------
-# PHASE 3: POST-MIGRATION
+# PHASE 3: POST-RESET TASKS
 # -------------------------------------------------------------------------------
-print_header "PHASE 3: POST-MIGRATION"
+print_header "PHASE 3: SEED DATA"
 
-for task_entry in "${POST_MIGRATION_TASKS[@]}"; do
+for task_entry in "${POST_RESET_TASKS[@]}"; do
   IFS=':' read -r func_name description <<< "$task_entry"
   run_step "$description" "$description complete" "task_${func_name}"
 done
@@ -267,7 +230,7 @@ done
 if [ "$INSIDE_DOCKER" = false ] && command -v docker &> /dev/null; then
     print_header "RESTARTING SERVICES"
     docker compose -f "$COMPOSE_FILE" up -d 2>/dev/null || true
-    sleep 5
+    sleep 3
     docker compose -f "$COMPOSE_FILE" restart 2>/dev/null || true
     echo "✓ Services restarted"
     echo ""
@@ -277,11 +240,8 @@ fi
 # DONE
 # -------------------------------------------------------------------------------
 echo "========================================="
-echo "✓ Full reset complete! (${TOTAL_STEPS} steps)"
+echo "✓ Database reset complete! (${TOTAL_STEPS} steps)"
 echo "========================================="
-echo ""
-echo "⚠️  Remember: Migration files were REGENERATED."
-echo "   If you commit these, they will differ from previous runs."
 echo ""
 echo "You can now log in with:"
 echo "  Email:    admin@admin.com"

@@ -6,10 +6,9 @@ from io import BytesIO
 from typing import Optional, Tuple
 from urllib.parse import urlparse
 
-from PIL import Image
-
 from libs.common.config import get_settings
 from libs.common.supabase import get_supabase_admin_client
+from PIL import Image
 
 
 class BucketType(str, Enum):
@@ -37,6 +36,11 @@ PURPOSE_BUCKET_MAP = {
     # Public bucket - publicly accessible content
     "profile_photo": BucketType.PUBLIC,
     "cover_image": BucketType.PUBLIC,
+    "content_image": BucketType.PUBLIC,
+    "category_image": BucketType.PUBLIC,
+    "collection_image": BucketType.PUBLIC,
+    "product_image": BucketType.PUBLIC,
+    "size_chart": BucketType.PUBLIC,
     "general": BucketType.PUBLIC,
     "media": BucketType.PUBLIC,  # Gallery/album items
     # Private bucket - restricted access content

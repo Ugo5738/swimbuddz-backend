@@ -1,15 +1,15 @@
 """initial_migration
 
-Revision ID: 60db2ea6cfd3
+Revision ID: a603d6cd223b
 Revises: 
-Create Date: 2026-01-30 15:25:35.229227
+Create Date: 2026-02-01 08:42:05.614059
 """
 from alembic import op
 import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '60db2ea6cfd3'
+revision = 'a603d6cd223b'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -94,6 +94,20 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['program_id'], ['programs.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('program_interests',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('program_id', sa.UUID(), nullable=False),
+    sa.Column('member_id', sa.UUID(), nullable=False),
+    sa.Column('member_auth_id', sa.String(), nullable=False),
+    sa.Column('email', sa.String(), nullable=True),
+    sa.Column('notified_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['program_id'], ['programs.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_program_interests_member_auth_id'), 'program_interests', ['member_auth_id'], unique=False)
+    op.create_index(op.f('ix_program_interests_member_id'), 'program_interests', ['member_id'], unique=False)
+    op.create_index(op.f('ix_program_interests_program_id'), 'program_interests', ['program_id'], unique=False)
     op.create_table('cohort_resources',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('cohort_id', sa.UUID(), nullable=False),
@@ -199,6 +213,10 @@ def downgrade() -> None:
     op.drop_table('enrollments')
     op.drop_table('curriculum_weeks')
     op.drop_table('cohort_resources')
+    op.drop_index(op.f('ix_program_interests_program_id'), table_name='program_interests')
+    op.drop_index(op.f('ix_program_interests_member_id'), table_name='program_interests')
+    op.drop_index(op.f('ix_program_interests_member_auth_id'), table_name='program_interests')
+    op.drop_table('program_interests')
     op.drop_table('program_curricula')
     op.drop_table('milestones')
     op.drop_table('cohorts')

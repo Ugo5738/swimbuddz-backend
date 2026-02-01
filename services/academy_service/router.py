@@ -26,6 +26,7 @@ from services.academy_service.models import (
     Milestone,
     PaymentStatus,
     Program,
+    ProgramInterest,
     ProgressStatus,
     StudentProgress,
 )
@@ -1862,3 +1863,114 @@ async def claim_milestone(
     await db.commit()
     await db.refresh(progress)
     return progress
+
+
+# --- Program Interest (Get Notified) ---
+
+
+@router.post("/programs/{program_id}/interest")
+async def register_program_interest(
+    program_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Register interest in a program to be notified when new cohorts open.
+    """
+    # Verify program exists
+    program_query = select(Program).where(Program.id == program_id)
+    program_result = await db.execute(program_query)
+    program = program_result.scalar_one_or_none()
+
+    if not program:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Program not found",
+        )
+
+    # Get member info
+    member_query = select(Member).where(Member.auth_id == current_user.user_id)
+    member_result = await db.execute(member_query)
+    member = member_result.scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found",
+        )
+
+    # Check if interest already exists
+    existing_query = select(ProgramInterest).where(
+        ProgramInterest.program_id == program_id,
+        ProgramInterest.member_auth_id == current_user.user_id,
+    )
+    existing_result = await db.execute(existing_query)
+    existing = existing_result.scalar_one_or_none()
+
+    if existing:
+        return {
+            "message": "You're already registered to receive notifications for this program",
+            "registered": True,
+        }
+
+    # Create interest record
+    interest = ProgramInterest(
+        program_id=program_id,
+        member_id=member.id,
+        member_auth_id=current_user.user_id,
+        email=member.email,
+    )
+    db.add(interest)
+    await db.commit()
+
+    return {
+        "message": f"Great! You'll be notified when new cohorts for '{program.name}' open.",
+        "registered": True,
+    }
+
+
+@router.delete("/programs/{program_id}/interest")
+async def remove_program_interest(
+    program_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Remove interest in a program (unsubscribe from notifications).
+    """
+    query = select(ProgramInterest).where(
+        ProgramInterest.program_id == program_id,
+        ProgramInterest.member_auth_id == current_user.user_id,
+    )
+    result = await db.execute(query)
+    interest = result.scalar_one_or_none()
+
+    if not interest:
+        return {"message": "Not registered for notifications", "registered": False}
+
+    await db.delete(interest)
+    await db.commit()
+
+    return {
+        "message": "You've been unsubscribed from notifications",
+        "registered": False,
+    }
+
+
+@router.get("/programs/{program_id}/interest")
+async def check_program_interest(
+    program_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Check if the current user is registered for notifications for a program.
+    """
+    query = select(ProgramInterest).where(
+        ProgramInterest.program_id == program_id,
+        ProgramInterest.member_auth_id == current_user.user_id,
+    )
+    result = await db.execute(query)
+    interest = result.scalar_one_or_none()
+
+    return {"registered": interest is not None}
