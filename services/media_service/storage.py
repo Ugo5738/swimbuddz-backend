@@ -145,9 +145,9 @@ class StorageService:
         return file_url, thumbnail_url
 
     def _create_thumbnail(
-        self, image_data: bytes, size: Tuple[int, int] = (300, 300)
+        self, image_data: bytes, size: Tuple[int, int] = (600, 600)
     ) -> bytes:
-        """Create thumbnail from image data."""
+        """Create thumbnail from image data. Default 600x600 for good quality on album covers."""
         try:
             img = Image.open(BytesIO(image_data))
             img.thumbnail(size, Image.Resampling.LANCZOS)
