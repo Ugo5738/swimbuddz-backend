@@ -676,7 +676,7 @@ class CoachProfile(Base):
     )
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     show_in_directory: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default="false"
+        Boolean, default=True, server_default="true"
     )
     is_featured: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
