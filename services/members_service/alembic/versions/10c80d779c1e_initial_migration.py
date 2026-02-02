@@ -1,15 +1,15 @@
 """initial_migration
 
-Revision ID: f96a20b44030
+Revision ID: 10c80d779c1e
 Revises: 
-Create Date: 2026-02-01 08:41:32.056339
+Create Date: 2026-02-02 08:21:22.698512
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = 'f96a20b44030'
+revision = '10c80d779c1e'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -148,7 +148,7 @@ def upgrade() -> None:
     sa.Column('application_reviewed_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('application_reviewed_by', sa.String(), nullable=True),
     sa.Column('rejection_reason', sa.Text(), nullable=True),
-    sa.Column('show_in_directory', sa.Boolean(), server_default='false', nullable=False),
+    sa.Column('show_in_directory', sa.Boolean(), server_default='true', nullable=False),
     sa.Column('is_featured', sa.Boolean(), server_default='false', nullable=False),
     sa.Column('average_rating', sa.Float(), server_default='0.0', nullable=False),
     sa.Column('rating_count', sa.Integer(), server_default='0', nullable=False),
