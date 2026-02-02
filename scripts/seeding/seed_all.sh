@@ -26,13 +26,15 @@ echo ""
 # -------------------------------------------------------------------------------
 # SEED TASK REGISTRY
 # -------------------------------------------------------------------------------
-# Format: "script_path:description"
+# Format: "script_name|args:description"
+# Use | to separate script name from arguments
 # Order matters - tasks run sequentially
 
 SEED_TASKS=(
-  "seed_program.py --file scripts/seeding/freestyle_beginner.json:Seed Beginner Program"
-  "seed_discounts.py:Seed Discount Codes"
-  "seed_content_posts.py:Seed Content Posts"
+  "seed_program.py|--file scripts/seeding/freestyle_beginner.json:Seed Beginner Program"
+  "seed_discounts.py|:Seed Discount Codes"
+  "seed_content_posts.py|:Seed Content Posts"
+  "seed_announcements.py|:Seed Announcements"
 )
 
 # -------------------------------------------------------------------------------
@@ -90,15 +92,22 @@ CURRENT=0
 TOTAL=${#SEED_TASKS[@]}
 
 for task_entry in "${SEED_TASKS[@]}"; do
-  IFS=':' read -r script desc <<< "$task_entry"
+  # Split by : first to get command and description
+  IFS=':' read -r cmd_part desc <<< "$task_entry"
+  # Split command part by | to get script and args
+  IFS='|' read -r script_name script_args <<< "$cmd_part"
   CURRENT=$((CURRENT + 1))
 
   echo ""
   echo "[$CURRENT/$TOTAL] $desc..."
   echo "----------------------------------------"
 
-  # Run the Python script
-  DATABASE_URL="$DATABASE_URL" python3 "$SCRIPT_DIR/$script"
+  # Run the Python script with args (if any)
+  if [ -n "$script_args" ]; then
+    DATABASE_URL="$DATABASE_URL" python3 "$SCRIPT_DIR/$script_name" $script_args
+  else
+    DATABASE_URL="$DATABASE_URL" python3 "$SCRIPT_DIR/$script_name"
+  fi
 
   echo "✓ $desc complete"
 done

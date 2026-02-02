@@ -1,0 +1,42 @@
+[
+  {
+    "title": "Welcome to SwimBuddz!",
+    "summary": "We're excited to have you join our swimming community",
+    "body": "Welcome to SwimBuddz! Whether you're here to learn to swim, improve your technique, or join a community of passionate swimmers, we're glad to have you.\n\nHere's how to get started:\n\n1. **Complete your profile** - Add your swimming experience and goals\n2. **Check the schedule** - View upcoming sessions and events\n3. **Join a session** - Register for your first swim session\n4. **Connect** - Meet other swimmers in our community\n\nIf you have any questions, don't hesitate to reach out to our team. Happy swimming! 🏊",
+    "category": "general",
+    "audience": "community",
+    "is_pinned": true
+  },
+  {
+    "title": "Pool Safety Guidelines",
+    "summary": "Important safety rules for all swimmers",
+    "body": "Safety is our top priority at SwimBuddz. Please review these important guidelines:\n\n**Before entering the pool:**\n- Shower before swimming\n- Check the pool depth markers\n- Inform coaches of any health conditions\n\n**While swimming:**\n- Always follow coach instructions\n- No running on the pool deck\n- No diving in shallow areas\n- Stay within your designated lane\n\n**Emergency procedures:**\n- Listen for whistle signals\n- Know where lifeguards are positioned\n- Report any concerns immediately\n\nThank you for helping us maintain a safe environment for everyone!",
+    "category": "general",
+    "audience": "community",
+    "is_pinned": true
+  },
+  {
+    "title": "Club Membership Benefits",
+    "summary": "Discover the advantages of club membership",
+    "body": "Are you ready to take your swimming to the next level? Club membership offers:\n\n**Training Benefits:**\n- Structured training programs\n- Access to professional coaches\n- Performance tracking and feedback\n- Priority booking for popular sessions\n\n**Community Benefits:**\n- Exclusive club events\n- Competition opportunities\n- Connect with serious swimmers\n- Member-only discounts\n\nInterested? Contact us to learn more about upgrading to club membership!",
+    "category": "general",
+    "audience": "community",
+    "is_pinned": false
+  },
+  {
+    "title": "Academy Programs Now Open",
+    "summary": "Enroll in our structured swimming programs",
+    "body": "We're excited to announce that our Academy programs are now accepting enrollment!\n\n**Available Programs:**\n- Beginner Freestyle (12 weeks)\n- Intermediate Strokes (10 weeks)\n- Advanced Techniques (8 weeks)\n\n**What's included:**\n- Structured curriculum with clear milestones\n- Small group instruction\n- Progress assessments\n- Completion certificate\n\nSpaces are limited - enroll today to secure your spot!",
+    "category": "academy_update",
+    "audience": "community",
+    "is_pinned": false
+  },
+  {
+    "title": "Ride Share Available",
+    "summary": "Need a ride to the pool? Join our ride-share community",
+    "body": "Getting to the pool just got easier! Our ride-share feature helps members coordinate transportation.\n\n**How it works:**\n1. Check if ride-share is enabled for your session\n2. Request a ride or offer seats in your vehicle\n3. Connect with other members going your way\n4. Share the journey and the cost\n\nThis is a community-driven initiative to make swimming more accessible. Check the session details to see ride-share options!",
+    "category": "general",
+    "audience": "community",
+    "is_pinned": false
+  }
+]
