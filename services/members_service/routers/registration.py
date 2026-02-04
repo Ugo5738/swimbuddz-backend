@@ -1,6 +1,7 @@
 """Pending registration router - handles user registration flow."""
 
 import json
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import get_current_user, require_admin
@@ -101,6 +102,17 @@ async def create_pending_registration(
                 detail="Password is required for signup.",
             )
 
+        requested_tiers = (
+            registration_in.requested_membership_tiers
+            if hasattr(registration_in, "requested_membership_tiers")
+            else None
+        )
+        requested_tiers = requested_tiers or registration_in.model_dump().get(
+            "requested_membership_tiers"
+        )
+        if requested_tiers is not None and not isinstance(requested_tiers, list):
+            requested_tiers = None
+
         credentials = {
             "email": registration_in.email,
             "password": registration_in.password,
@@ -108,6 +120,8 @@ async def create_pending_registration(
                 "data": {
                     "first_name": registration_in.first_name,
                     "last_name": registration_in.last_name,
+                    # Preserve tier intent in auth metadata for recovery flows.
+                    "requested_membership_tiers": requested_tiers,
                 },
                 "email_redirect_to": redirect_url,
             },
@@ -245,13 +259,88 @@ async def complete_pending_registration(
                 await db.refresh(existing_member)
             return existing_member
 
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Pending registration not found",
-        )
+        def _fallback_profile_from_auth(user: AuthUser) -> dict:
+            meta = user.user_metadata or {}
+            first_name = (
+                meta.get("first_name")
+                or meta.get("firstName")
+                or meta.get("given_name")
+            )
+            last_name = (
+                meta.get("last_name") or meta.get("lastName") or meta.get("family_name")
+            )
 
-    # Create member from pending data
-    profile_data = json.loads(pending.profile_data_json)
+            email = user.email or ""
+            if (not first_name or not last_name) and email:
+                local_part = email.split("@")[0]
+                tokens = [t for t in re.split(r"[._-]+", local_part) if t]
+                if not first_name and tokens:
+                    first_name = tokens[0].capitalize()
+                if not last_name:
+                    last_name = tokens[1].capitalize() if len(tokens) > 1 else "Member"
+
+            if not first_name:
+                first_name = "Member"
+            if not last_name:
+                last_name = "User"
+
+            raw_roles = []
+            meta_roles = meta.get("roles")
+            if isinstance(meta_roles, list):
+                raw_roles.extend(meta_roles)
+            elif isinstance(meta_roles, str):
+                raw_roles.append(meta_roles)
+            raw_roles.extend(user.roles or [])
+
+            allowed = {"member", "coach", "admin"}
+            normalized_roles = []
+            for role in raw_roles:
+                if not isinstance(role, str):
+                    continue
+                role_value = role.strip().lower()
+                if role_value in allowed and role_value not in normalized_roles:
+                    normalized_roles.append(role_value)
+
+            if not normalized_roles:
+                normalized_roles = ["member"]
+
+            raw_requested = meta.get("requested_membership_tiers")
+            if isinstance(raw_requested, list):
+                requested_tiers = [str(t).lower() for t in raw_requested if t]
+            elif isinstance(raw_requested, str):
+                requested_tiers = [raw_requested.lower()]
+            else:
+                requested_tiers = []
+
+            valid_tiers = {"community", "club", "academy"}
+            requested_tiers = [t for t in requested_tiers if t in valid_tiers]
+
+            return {
+                "first_name": first_name,
+                "last_name": last_name,
+                "roles": normalized_roles,
+                "membership_tier": "community",
+                "membership_tiers": ["community"],
+                "requested_membership_tiers": requested_tiers,
+                "community_rules_accepted": True,
+            }
+
+        profile_data = _fallback_profile_from_auth(current_user)
+        pending_email = current_user.email
+        if not pending_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email missing from auth token; cannot complete registration.",
+            )
+
+        logger.warning(
+            "Pending registration not found; creating member from auth metadata",
+            extra={"extra_fields": {"email": pending_email}},
+        )
+    else:
+        pending_email = pending.email
+        # Create member from pending data
+        profile_data = json.loads(pending.profile_data_json)
 
     roles = profile_data.get("roles") or ["member"]
     if isinstance(roles, list):
@@ -262,7 +351,7 @@ async def complete_pending_registration(
     # Create core Member record
     member = Member(
         auth_id=current_user.user_id,
-        email=pending.email,
+        email=pending_email,
         first_name=profile_data.get("first_name"),
         last_name=profile_data.get("last_name"),
         registration_complete=True,
@@ -402,7 +491,8 @@ async def complete_pending_registration(
     )
     db.add(member_preferences)
 
-    await db.delete(pending)  # Cleanup pending
+    if pending:
+        await db.delete(pending)  # Cleanup pending
 
     try:
         await db.commit()
