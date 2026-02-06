@@ -92,6 +92,9 @@ jobs:
           - context: .
             dockerfile: ./services/transport_service/Dockerfile
             image: swimbuddz-transport-service
+          - context: .
+            dockerfile: ./services/ai_service/Dockerfile
+            image: swimbuddz-ai-service
 
     steps:
       - uses: actions/checkout@v4
@@ -190,6 +193,10 @@ jobs:
               # Pull latest images
               echo "==> pulling images"
               COMPOSE_HTTP_TIMEOUT=600 docker compose -f docker-compose.prod.yml pull --no-parallel
+
+              # Apply migrations (production-safe)
+              echo "==> running migrations"
+              COMPOSE_HTTP_TIMEOUT=600 docker compose -f docker-compose.prod.yml run --rm --no-deps gateway ./scripts/db/migrate-prod.sh --all .env.prod
 
               # Restart services
               echo "==> bringing up services"

@@ -30,6 +30,12 @@ dependencies = [
     "redis>=5.0,<6.0",
     # Rate limiting
     "slowapi>=0.1.9,<0.2.0",
+    # Task scheduling
+    "arq>=0.25,<1.0",
+    # AI provider abstraction
+    "litellm>=1.30,<2.0",
+    # AI observability
+    "langfuse>=2.0,<3.0",
 ]
 
 [project.optional-dependencies]

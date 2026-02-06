@@ -18,7 +18,9 @@ from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.db.session import get_async_db
 from services.academy_service.models import (
+    CoachGrade,
     Cohort,
+    CohortComplexityScore,
     CohortResource,
     CohortStatus,
     Enrollment,
@@ -26,28 +28,43 @@ from services.academy_service.models import (
     Milestone,
     PaymentStatus,
     Program,
+    ProgramCategory,
     ProgramInterest,
     ProgressStatus,
     StudentProgress,
 )
 from services.academy_service.schemas import (
+    CoachCohortDetail,
+    CoachDashboardSummary,
+    CohortComplexityScoreCreate,
+    CohortComplexityScoreResponse,
+    CohortComplexityScoreUpdate,
     CohortCreate,
     CohortResourceResponse,
     CohortResponse,
     CohortUpdate,
+    ComplexityScoreCalculation,
+    EligibleCoachResponse,
     EnrollmentCreate,
     EnrollmentResponse,
     EnrollmentUpdate,
     MemberMilestoneClaimRequest,
     MilestoneCreate,
     MilestoneResponse,
+    MilestoneReviewAction,
     NextSessionInfo,
     OnboardingResponse,
+    PendingMilestoneReview,
     ProgramCreate,
     ProgramResponse,
     ProgramUpdate,
     StudentProgressResponse,
     StudentProgressUpdate,
+    UpcomingSessionSummary,
+)
+from services.academy_service.scoring import (
+    calculate_complexity_score,
+    get_dimension_labels,
 )
 from services.members_service.models import Member
 from sqlalchemy import delete, func, select, text
@@ -269,8 +286,53 @@ async def create_cohort(
     if cohort_in.coach_id:
         await _ensure_active_coach(db, cohort_in.coach_id)
 
-    cohort = Cohort(**cohort_in.model_dump())
+    # Extract coach_assignments before creating cohort (not a DB field)
+    coach_assignments_input = cohort_in.coach_assignments
+    cohort_data = cohort_in.model_dump(exclude={"coach_assignments"})
+    cohort = Cohort(**cohort_data)
     db.add(cohort)
+    await db.flush()  # Get cohort.id before creating assignments
+
+    # Get admin member ID for assigned_by_id
+    from sqlalchemy import text as sa_text
+
+    admin_row = await db.execute(
+        sa_text("SELECT id FROM members WHERE auth_id = :auth_id"),
+        {"auth_id": current_user.user_id},
+    )
+    admin_member = admin_row.mappings().first()
+    admin_id = admin_member["id"] if admin_member else None
+
+    # Create CoachAssignment records
+    if coach_assignments_input:
+        from services.academy_service.models import CoachAssignment
+
+        for ca_input in coach_assignments_input:
+            assignment = CoachAssignment(
+                cohort_id=cohort.id,
+                coach_id=ca_input.coach_id,
+                role=ca_input.role,
+                assigned_by_id=admin_id,
+                status="active",
+            )
+            db.add(assignment)
+
+            # Set cohort.coach_id for backward compat when lead is assigned
+            if ca_input.role == "lead":
+                cohort.coach_id = ca_input.coach_id
+    elif cohort_in.coach_id:
+        # Legacy: if coach_id provided without coach_assignments, create lead assignment
+        from services.academy_service.models import CoachAssignment
+
+        assignment = CoachAssignment(
+            cohort_id=cohort.id,
+            coach_id=cohort_in.coach_id,
+            role="lead",
+            assigned_by_id=admin_id,
+            status="active",
+        )
+        db.add(assignment)
+
     await db.commit()
 
     query = (
@@ -289,7 +351,6 @@ async def update_cohort(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    from libs.common.emails.academy import send_coach_assignment_email
     from sqlalchemy.orm import selectinload
 
     query = (
@@ -329,26 +390,18 @@ async def update_cohort(
             coach = coach_row.mappings().first()
 
             if coach and coach["email"]:
-                # Count enrolled students
-                enrolled_count_result = await db.execute(
-                    select(func.count(Enrollment.id)).where(
-                        Enrollment.cohort_id == cohort_id,
-                        Enrollment.status == EnrollmentStatus.ENROLLED,
-                    )
-                )
-                student_count = enrolled_count_result.scalar() or 0
-
-                await send_coach_assignment_email(
+                email_client = get_email_client()
+                await email_client.send_template(
+                    template_type="coach_assignment",
                     to_email=coach["email"],
-                    coach_name=f"{coach['first_name']} {coach['last_name']}",
-                    program_name=(
-                        cohort.program.name if cohort.program else "Unknown Program"
-                    ),
-                    cohort_name=cohort.name,
-                    start_date=cohort.start_date.strftime("%b %d, %Y"),
-                    end_date=cohort.end_date.strftime("%b %d, %Y"),
-                    student_count=student_count,
-                    location=cohort.location_name,
+                    template_data={
+                        "coach_name": f"{coach['first_name']} {coach['last_name']}",
+                        "program_name": (
+                            cohort.program.name if cohort.program else "Unknown Program"
+                        ),
+                        "cohort_name": cohort.name,
+                        "start_date": cohort.start_date.strftime("%b %d, %Y"),
+                    },
                 )
                 logger.info(
                     f"Sent coach assignment email to {coach['email']} for cohort {cohort.name}"
@@ -681,6 +734,457 @@ async def list_cohort_resources(
     )
     result = await db.execute(query)
     return result.scalars().all()
+
+
+# ============================================================================
+# COACH DASHBOARD ENDPOINTS
+# ============================================================================
+
+
+@router.get("/coach/me/dashboard", response_model=CoachDashboardSummary)
+async def get_coach_dashboard(
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get dashboard summary for the current coach.
+
+    Includes:
+    - Cohort counts (active, upcoming, completed)
+    - Student counts and pending approvals
+    - Pending milestone reviews
+    - Next upcoming session
+            - Earnings summary
+    """
+    # 1. Resolve Member ID
+    member_row = await db.execute(
+        text("SELECT id FROM members WHERE auth_id = :auth_id"),
+        {"auth_id": current_user.user_id},
+    )
+    member = member_row.mappings().first()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+
+    member_id = member["id"]
+
+    # 2. Get coach profile for rate info
+    coach_profile_row = await db.execute(
+        text(
+            "SELECT academy_cohort_stipend FROM coach_profiles WHERE member_id = :member_id"
+        ),
+        {"member_id": member_id},
+    )
+    coach_profile = coach_profile_row.mappings().first()
+    stipend = coach_profile["academy_cohort_stipend"] if coach_profile else 0
+
+    # 3. Get all cohorts for this coach with program info
+    cohorts_query = (
+        select(Cohort)
+        .where(Cohort.coach_id == member_id)
+        .options(selectinload(Cohort.program))
+    )
+    cohorts_result = await db.execute(cohorts_query)
+    cohorts = cohorts_result.scalars().all()
+
+    # 4. Count cohorts by status
+    active_cohorts = 0
+    upcoming_cohorts = 0
+    completed_cohorts = 0
+    current_period_earnings = 0
+    cohort_ids = []
+
+    now = utc_now()
+    for cohort in cohorts:
+        cohort_ids.append(cohort.id)
+        if cohort.status == CohortStatus.ACTIVE:
+            active_cohorts += 1
+            current_period_earnings += stipend or 0
+        elif cohort.status == CohortStatus.OPEN and cohort.start_date > now:
+            upcoming_cohorts += 1
+        elif cohort.status == CohortStatus.COMPLETED:
+            completed_cohorts += 1
+
+    # 5. Get student counts
+    total_students = 0
+    students_pending = 0
+    if cohort_ids:
+        students_query = select(
+            func.count(Enrollment.id)
+            .filter(Enrollment.status == EnrollmentStatus.ENROLLED)
+            .label("enrolled"),
+            func.count(Enrollment.id)
+            .filter(Enrollment.status == EnrollmentStatus.PENDING_APPROVAL)
+            .label("pending"),
+        ).where(Enrollment.cohort_id.in_(cohort_ids))
+        students_result = await db.execute(students_query)
+        counts = students_result.mappings().first()
+        if counts:
+            total_students = counts["enrolled"] or 0
+            students_pending = counts["pending"] or 0
+
+    # 6. Count pending milestone reviews
+    pending_reviews = 0
+    if cohort_ids:
+        # Get enrollment IDs for these cohorts
+        enrollment_ids_query = select(Enrollment.id).where(
+            Enrollment.cohort_id.in_(cohort_ids),
+            Enrollment.status == EnrollmentStatus.ENROLLED,
+        )
+        enrollment_ids_result = await db.execute(enrollment_ids_query)
+        enrollment_ids = [row[0] for row in enrollment_ids_result.fetchall()]
+
+        if enrollment_ids:
+            pending_query = select(func.count(StudentProgress.id)).where(
+                StudentProgress.enrollment_id.in_(enrollment_ids),
+                StudentProgress.status == ProgressStatus.PENDING,
+                StudentProgress.evidence_media_id.isnot(None),  # Has submitted evidence
+            )
+            pending_result = await db.execute(pending_query)
+            pending_reviews = pending_result.scalar() or 0
+
+    # 7. Find next upcoming session (simplified - based on active cohorts)
+    next_session = None
+    if active_cohorts > 0:
+        # Get the first active cohort as a proxy for next session
+        for cohort in cohorts:
+            if cohort.status == CohortStatus.ACTIVE:
+                # Get enrolled count for this cohort
+                enrolled_query = select(func.count(Enrollment.id)).where(
+                    Enrollment.cohort_id == cohort.id,
+                    Enrollment.status == EnrollmentStatus.ENROLLED,
+                )
+                enrolled_result = await db.execute(enrolled_query)
+                enrolled_count = enrolled_result.scalar() or 0
+
+                next_session = UpcomingSessionSummary(
+                    cohort_id=cohort.id,
+                    cohort_name=cohort.name,
+                    program_name=cohort.program.name if cohort.program else None,
+                    session_date=cohort.start_date,  # Placeholder - would need session model
+                    location_name=cohort.location_name,
+                    enrolled_count=enrolled_count,
+                )
+                break
+
+    return CoachDashboardSummary(
+        active_cohorts=active_cohorts,
+        upcoming_cohorts=upcoming_cohorts,
+        completed_cohorts=completed_cohorts,
+        total_students=total_students,
+        students_pending_approval=students_pending,
+        pending_milestone_reviews=pending_reviews,
+        upcoming_sessions_count=active_cohorts,  # Simplified
+        next_session=next_session,
+        current_period_earnings=current_period_earnings,
+        pending_payout=current_period_earnings,  # Placeholder
+    )
+
+
+@router.get("/coach/me/pending-reviews", response_model=List[PendingMilestoneReview])
+async def list_pending_milestone_reviews(
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    List all milestone claims waiting for coach review.
+
+    Returns claims that have evidence submitted but haven't been reviewed yet.
+    """
+    from sqlalchemy.orm import joinedload
+
+    # 1. Resolve Member ID
+    member_row = await db.execute(
+        text("SELECT id FROM members WHERE auth_id = :auth_id"),
+        {"auth_id": current_user.user_id},
+    )
+    member = member_row.mappings().first()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+
+    member_id = member["id"]
+
+    # 2. Get cohort IDs for this coach
+    cohorts_query = select(Cohort.id).where(Cohort.coach_id == member_id)
+    cohorts_result = await db.execute(cohorts_query)
+    cohort_ids = [row[0] for row in cohorts_result.fetchall()]
+
+    if not cohort_ids:
+        return []
+
+    # 3. Get enrollment IDs
+    enrollment_ids_query = select(
+        Enrollment.id, Enrollment.member_id, Enrollment.cohort_id
+    ).where(
+        Enrollment.cohort_id.in_(cohort_ids),
+        Enrollment.status == EnrollmentStatus.ENROLLED,
+    )
+    enrollment_ids_result = await db.execute(enrollment_ids_query)
+    enrollments = {
+        row[0]: {"member_id": row[1], "cohort_id": row[2]}
+        for row in enrollment_ids_result.fetchall()
+    }
+
+    if not enrollments:
+        return []
+
+    # 4. Get pending progress records with evidence
+    query = (
+        select(StudentProgress)
+        .where(
+            StudentProgress.enrollment_id.in_(enrollments.keys()),
+            StudentProgress.status == ProgressStatus.PENDING,
+            StudentProgress.evidence_media_id.isnot(None),
+        )
+        .options(joinedload(StudentProgress.milestone))
+        .order_by(StudentProgress.created_at.asc())
+    )
+    result = await db.execute(query)
+    progress_records = result.unique().scalars().all()
+
+    # 5. Get member and cohort info for display
+    member_ids = list(
+        set(enrollments[p.enrollment_id]["member_id"] for p in progress_records)
+    )
+    if member_ids:
+        members_query = await db.execute(
+            text(
+                "SELECT id, first_name, last_name, email FROM members WHERE id = ANY(:ids)"
+            ),
+            {"ids": member_ids},
+        )
+        members_map = {row["id"]: row for row in members_query.mappings().all()}
+    else:
+        members_map = {}
+
+    cohort_ids_for_display = list(
+        set(enrollments[p.enrollment_id]["cohort_id"] for p in progress_records)
+    )
+    if cohort_ids_for_display:
+        cohorts_query = select(Cohort.id, Cohort.name).where(
+            Cohort.id.in_(cohort_ids_for_display)
+        )
+        cohorts_result = await db.execute(cohorts_query)
+        cohorts_map = {row[0]: row[1] for row in cohorts_result.fetchall()}
+    else:
+        cohorts_map = {}
+
+    # 6. Build response
+    reviews = []
+    for progress in progress_records:
+        enrollment_info = enrollments[progress.enrollment_id]
+        member_info = members_map.get(enrollment_info["member_id"], {})
+        cohort_name = cohorts_map.get(enrollment_info["cohort_id"], "Unknown")
+
+        reviews.append(
+            PendingMilestoneReview(
+                progress_id=progress.id,
+                enrollment_id=progress.enrollment_id,
+                milestone_id=progress.milestone_id,
+                milestone_name=(
+                    progress.milestone.name if progress.milestone else "Unknown"
+                ),
+                milestone_type=(
+                    progress.milestone.milestone_type.value
+                    if progress.milestone
+                    else "skill"
+                ),
+                student_member_id=enrollment_info["member_id"],
+                student_name=f"{member_info.get('first_name', '')} {member_info.get('last_name', '')}".strip()
+                or "Unknown",
+                student_email=member_info.get("email"),
+                cohort_id=enrollment_info["cohort_id"],
+                cohort_name=cohort_name,
+                evidence_media_id=progress.evidence_media_id,
+                student_notes=progress.student_notes,
+                claimed_at=progress.created_at,
+            )
+        )
+
+    return reviews
+
+
+@router.post("/coach/me/milestone-reviews/{progress_id}")
+async def review_milestone_claim(
+    progress_id: uuid.UUID,
+    action: MilestoneReviewAction,
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Review (approve/reject) a milestone claim.
+
+    Only the coach assigned to the student's cohort can review.
+    """
+    # 1. Resolve Member ID
+    member_row = await db.execute(
+        text("SELECT id FROM members WHERE auth_id = :auth_id"),
+        {"auth_id": current_user.user_id},
+    )
+    member = member_row.mappings().first()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+
+    member_id = member["id"]
+
+    # 2. Get the progress record
+    progress_query = (
+        select(StudentProgress)
+        .options(selectinload(StudentProgress.enrollment))
+        .where(StudentProgress.id == progress_id)
+    )
+    progress_result = await db.execute(progress_query)
+    progress = progress_result.scalar_one_or_none()
+
+    if not progress:
+        raise HTTPException(status_code=404, detail="Progress record not found")
+
+    # 3. Verify coach is assigned to this cohort
+    cohort_query = select(Cohort.coach_id).where(
+        Cohort.id == progress.enrollment.cohort_id
+    )
+    cohort_result = await db.execute(cohort_query)
+    coach_id = cohort_result.scalar_one_or_none()
+
+    if coach_id != member_id:
+        raise HTTPException(
+            status_code=403, detail="Not authorized to review this milestone"
+        )
+
+    # 4. Perform the review action
+    if action.action == "approve":
+        progress.status = ProgressStatus.ACHIEVED
+        progress.achieved_at = utc_now()
+    elif action.action == "reject":
+        progress.status = ProgressStatus.PENDING
+        progress.evidence_media_id = None  # Clear evidence so student can resubmit
+    else:
+        raise HTTPException(
+            status_code=400, detail="Invalid action. Use 'approve' or 'reject'"
+        )
+
+    progress.reviewed_by_coach_id = member_id
+    progress.reviewed_at = utc_now()
+    progress.score = action.score
+    progress.coach_notes = action.coach_notes
+
+    await db.commit()
+
+    return {
+        "message": f"Milestone {action.action}d successfully",
+        "progress_id": str(progress_id),
+        "status": progress.status.value,
+    }
+
+
+@router.get("/coach/me/cohorts/{cohort_id}", response_model=CoachCohortDetail)
+async def get_coach_cohort_detail(
+    cohort_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get detailed view of a specific cohort for the coach dashboard.
+
+    Includes enrollment stats, progress tracking, and complexity score info.
+    """
+    # Verify coach owns this cohort
+    await require_coach_for_cohort(current_user, str(cohort_id), db)
+
+    # Get cohort with program
+    cohort_query = (
+        select(Cohort)
+        .where(Cohort.id == cohort_id)
+        .options(
+            selectinload(Cohort.program),
+            selectinload(Cohort.complexity_score),
+        )
+    )
+    cohort_result = await db.execute(cohort_query)
+    cohort = cohort_result.scalar_one_or_none()
+
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    # Get enrollment counts
+    enrolled_query = select(func.count(Enrollment.id)).where(
+        Enrollment.cohort_id == cohort_id,
+        Enrollment.status == EnrollmentStatus.ENROLLED,
+    )
+    waitlist_query = select(func.count(Enrollment.id)).where(
+        Enrollment.cohort_id == cohort_id,
+        Enrollment.status == EnrollmentStatus.WAITLIST,
+    )
+
+    enrolled_count = (await db.execute(enrolled_query)).scalar() or 0
+    waitlist_count = (await db.execute(waitlist_query)).scalar() or 0
+
+    # Get milestone progress
+    milestones_count = 0
+    milestones_achieved = 0
+
+    if cohort.program:
+        milestones_query = select(func.count(Milestone.id)).where(
+            Milestone.program_id == cohort.program_id
+        )
+        milestones_count = (await db.execute(milestones_query)).scalar() or 0
+
+        if milestones_count > 0 and enrolled_count > 0:
+            # Get enrollment IDs
+            enrollment_ids_query = select(Enrollment.id).where(
+                Enrollment.cohort_id == cohort_id,
+                Enrollment.status == EnrollmentStatus.ENROLLED,
+            )
+            enrollment_ids = [
+                row[0] for row in (await db.execute(enrollment_ids_query)).fetchall()
+            ]
+
+            if enrollment_ids:
+                achieved_query = select(func.count(StudentProgress.id)).where(
+                    StudentProgress.enrollment_id.in_(enrollment_ids),
+                    StudentProgress.status == ProgressStatus.ACHIEVED,
+                )
+                milestones_achieved = (await db.execute(achieved_query)).scalar() or 0
+
+    # Calculate weeks completed
+    now = utc_now()
+    total_weeks = cohort.program.duration_weeks if cohort.program else 0
+    weeks_completed = 0
+    if cohort.start_date and total_weeks > 0:
+        days_elapsed = (now - cohort.start_date).days
+        weeks_completed = min(max(0, days_elapsed // 7), total_weeks)
+
+    # Get complexity score info
+    pay_band_min = None
+    pay_band_max = None
+    required_grade = cohort.required_coach_grade
+
+    if cohort.complexity_score:
+        pay_band_min = cohort.complexity_score.pay_band_min
+        pay_band_max = cohort.complexity_score.pay_band_max
+        required_grade = cohort.complexity_score.required_coach_grade
+
+    return CoachCohortDetail(
+        id=cohort.id,
+        name=cohort.name,
+        program_id=cohort.program_id,
+        program_name=cohort.program.name if cohort.program else "Unknown",
+        program_level=cohort.program.level.value if cohort.program else None,
+        status=cohort.status,
+        start_date=cohort.start_date,
+        end_date=cohort.end_date,
+        capacity=cohort.capacity,
+        enrolled_count=enrolled_count,
+        waitlist_count=waitlist_count,
+        location_name=cohort.location_name,
+        location_address=cohort.location_address,
+        required_grade=required_grade,
+        pay_band_min=pay_band_min,
+        pay_band_max=pay_band_max,
+        weeks_completed=weeks_completed,
+        total_weeks=total_weeks,
+        milestones_count=milestones_count,
+        milestones_achieved_count=milestones_achieved,
+    )
 
 
 @router.get("/cohorts/{cohort_id}", response_model=CohortResponse)
@@ -1974,3 +2478,430 @@ async def check_program_interest(
     interest = result.scalar_one_or_none()
 
     return {"registered": interest is not None}
+
+
+# ============================================================================
+# COHORT COMPLEXITY SCORING
+# ============================================================================
+
+
+@router.post("/scoring/calculate", response_model=ComplexityScoreCalculation)
+async def preview_complexity_score(
+    category: ProgramCategory,
+    dimension_scores: List[int],
+    _: AuthUser = Depends(require_admin),
+):
+    """
+    Preview complexity score calculation without saving.
+    Useful for testing scores before committing to a cohort.
+    """
+    if len(dimension_scores) != 7:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Exactly 7 dimension scores required",
+        )
+
+    for i, score in enumerate(dimension_scores):
+        if score < 1 or score > 5:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Dimension {i + 1} score must be between 1 and 5",
+            )
+
+    try:
+        result = calculate_complexity_score(category, dimension_scores)
+        return ComplexityScoreCalculation(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/scoring/dimensions/{category}")
+async def get_scoring_dimensions(
+    category: ProgramCategory,
+    _: AuthUser = Depends(require_admin),
+):
+    """
+    Get the dimension labels for a specific program category.
+    Useful for building the scoring UI.
+    """
+    try:
+        labels = get_dimension_labels(category)
+        return {
+            "category": category,
+            "dimensions": [
+                {"number": i + 1, "label": label} for i, label in enumerate(labels)
+            ],
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post(
+    "/cohorts/{cohort_id}/complexity-score",
+    response_model=CohortComplexityScoreResponse,
+)
+async def create_cohort_complexity_score(
+    cohort_id: uuid.UUID,
+    score_data: CohortComplexityScoreCreate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Create a complexity score for a cohort.
+    This determines the required coach grade and pay band.
+    """
+    # Check cohort exists
+    result = await db.execute(select(Cohort).where(Cohort.id == cohort_id))
+    cohort = result.scalar_one_or_none()
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    # Check if score already exists
+    result = await db.execute(
+        select(CohortComplexityScore).where(
+            CohortComplexityScore.cohort_id == cohort_id
+        )
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Complexity score already exists for this cohort. Use PUT to update.",
+        )
+
+    # Get member_id from auth user
+    member_result = await db.execute(
+        select(Member.id).where(Member.auth_id == current_user.user_id)
+    )
+    member_id = member_result.scalar_one_or_none()
+    if not member_id:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    # Extract dimension scores
+    dimension_scores = [
+        score_data.dimension_1.score,
+        score_data.dimension_2.score,
+        score_data.dimension_3.score,
+        score_data.dimension_4.score,
+        score_data.dimension_5.score,
+        score_data.dimension_6.score,
+        score_data.dimension_7.score,
+    ]
+
+    # Calculate score
+    try:
+        calc_result = calculate_complexity_score(score_data.category, dimension_scores)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    # Create the score record
+    complexity_score = CohortComplexityScore(
+        cohort_id=cohort_id,
+        category=score_data.category,
+        dimension_1_score=score_data.dimension_1.score,
+        dimension_1_rationale=score_data.dimension_1.rationale,
+        dimension_2_score=score_data.dimension_2.score,
+        dimension_2_rationale=score_data.dimension_2.rationale,
+        dimension_3_score=score_data.dimension_3.score,
+        dimension_3_rationale=score_data.dimension_3.rationale,
+        dimension_4_score=score_data.dimension_4.score,
+        dimension_4_rationale=score_data.dimension_4.rationale,
+        dimension_5_score=score_data.dimension_5.score,
+        dimension_5_rationale=score_data.dimension_5.rationale,
+        dimension_6_score=score_data.dimension_6.score,
+        dimension_6_rationale=score_data.dimension_6.rationale,
+        dimension_7_score=score_data.dimension_7.score,
+        dimension_7_rationale=score_data.dimension_7.rationale,
+        total_score=calc_result["total_score"],
+        required_coach_grade=calc_result["required_coach_grade"],
+        pay_band_min=calc_result["pay_band_min"],
+        pay_band_max=calc_result["pay_band_max"],
+        scored_by_id=member_id,
+        scored_at=utc_now(),
+    )
+
+    db.add(complexity_score)
+
+    # Update cohort with required grade
+    cohort.required_coach_grade = calc_result["required_coach_grade"]
+
+    await db.commit()
+    await db.refresh(complexity_score)
+
+    return complexity_score
+
+
+@router.get(
+    "/cohorts/{cohort_id}/complexity-score",
+    response_model=CohortComplexityScoreResponse,
+)
+async def get_cohort_complexity_score(
+    cohort_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get the complexity score for a cohort.
+    """
+    result = await db.execute(
+        select(CohortComplexityScore).where(
+            CohortComplexityScore.cohort_id == cohort_id
+        )
+    )
+    score = result.scalar_one_or_none()
+    if not score:
+        raise HTTPException(status_code=404, detail="Complexity score not found")
+
+    return score
+
+
+@router.put(
+    "/cohorts/{cohort_id}/complexity-score",
+    response_model=CohortComplexityScoreResponse,
+)
+async def update_cohort_complexity_score(
+    cohort_id: uuid.UUID,
+    score_data: CohortComplexityScoreUpdate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Update the complexity score for a cohort.
+    """
+    result = await db.execute(
+        select(CohortComplexityScore).where(
+            CohortComplexityScore.cohort_id == cohort_id
+        )
+    )
+    score = result.scalar_one_or_none()
+    if not score:
+        raise HTTPException(status_code=404, detail="Complexity score not found")
+
+    # Get member_id from auth user for reviewer tracking
+    member_result = await db.execute(
+        select(Member.id).where(Member.auth_id == current_user.user_id)
+    )
+    member_id = member_result.scalar_one_or_none()
+
+    # Update category if provided
+    if score_data.category is not None:
+        score.category = score_data.category
+
+    # Update dimensions if provided
+    if score_data.dimension_1 is not None:
+        score.dimension_1_score = score_data.dimension_1.score
+        score.dimension_1_rationale = score_data.dimension_1.rationale
+    if score_data.dimension_2 is not None:
+        score.dimension_2_score = score_data.dimension_2.score
+        score.dimension_2_rationale = score_data.dimension_2.rationale
+    if score_data.dimension_3 is not None:
+        score.dimension_3_score = score_data.dimension_3.score
+        score.dimension_3_rationale = score_data.dimension_3.rationale
+    if score_data.dimension_4 is not None:
+        score.dimension_4_score = score_data.dimension_4.score
+        score.dimension_4_rationale = score_data.dimension_4.rationale
+    if score_data.dimension_5 is not None:
+        score.dimension_5_score = score_data.dimension_5.score
+        score.dimension_5_rationale = score_data.dimension_5.rationale
+    if score_data.dimension_6 is not None:
+        score.dimension_6_score = score_data.dimension_6.score
+        score.dimension_6_rationale = score_data.dimension_6.rationale
+    if score_data.dimension_7 is not None:
+        score.dimension_7_score = score_data.dimension_7.score
+        score.dimension_7_rationale = score_data.dimension_7.rationale
+
+    # Recalculate totals
+    dimension_scores = [
+        score.dimension_1_score,
+        score.dimension_2_score,
+        score.dimension_3_score,
+        score.dimension_4_score,
+        score.dimension_5_score,
+        score.dimension_6_score,
+        score.dimension_7_score,
+    ]
+
+    try:
+        calc_result = calculate_complexity_score(score.category, dimension_scores)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    score.total_score = calc_result["total_score"]
+    score.required_coach_grade = calc_result["required_coach_grade"]
+    score.pay_band_min = calc_result["pay_band_min"]
+    score.pay_band_max = calc_result["pay_band_max"]
+    score.reviewed_by_id = member_id
+    score.reviewed_at = utc_now()
+
+    # Update cohort with required grade
+    result = await db.execute(select(Cohort).where(Cohort.id == cohort_id))
+    cohort = result.scalar_one_or_none()
+    if cohort:
+        cohort.required_coach_grade = calc_result["required_coach_grade"]
+
+    await db.commit()
+    await db.refresh(score)
+
+    return score
+
+
+@router.delete("/cohorts/{cohort_id}/complexity-score")
+async def delete_cohort_complexity_score(
+    cohort_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Delete the complexity score for a cohort.
+    """
+    result = await db.execute(
+        select(CohortComplexityScore).where(
+            CohortComplexityScore.cohort_id == cohort_id
+        )
+    )
+    score = result.scalar_one_or_none()
+    if not score:
+        raise HTTPException(status_code=404, detail="Complexity score not found")
+
+    await db.delete(score)
+
+    # Clear required grade from cohort
+    result = await db.execute(select(Cohort).where(Cohort.id == cohort_id))
+    cohort = result.scalar_one_or_none()
+    if cohort:
+        cohort.required_coach_grade = None
+
+    await db.commit()
+
+    return {"message": "Complexity score deleted"}
+
+
+@router.post("/cohorts/{cohort_id}/complexity-score/review")
+async def mark_complexity_score_reviewed(
+    cohort_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Mark a complexity score as reviewed (for audit purposes).
+    """
+    result = await db.execute(
+        select(CohortComplexityScore).where(
+            CohortComplexityScore.cohort_id == cohort_id
+        )
+    )
+    score = result.scalar_one_or_none()
+    if not score:
+        raise HTTPException(status_code=404, detail="Complexity score not found")
+
+    # Get member_id from auth user
+    member_result = await db.execute(
+        select(Member.id).where(Member.auth_id == current_user.user_id)
+    )
+    member_id = member_result.scalar_one_or_none()
+
+    score.reviewed_by_id = member_id
+    score.reviewed_at = utc_now()
+
+    await db.commit()
+
+    return {"message": "Complexity score marked as reviewed"}
+
+
+@router.get(
+    "/cohorts/{cohort_id}/eligible-coaches", response_model=List[EligibleCoachResponse]
+)
+async def get_eligible_coaches_for_cohort(
+    cohort_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get coaches eligible for a cohort based on grade requirements.
+    Returns coaches who meet or exceed the required grade.
+    """
+    # Get cohort with complexity score
+    result = await db.execute(
+        select(Cohort)
+        .options(selectinload(Cohort.complexity_score))
+        .where(Cohort.id == cohort_id)
+    )
+    cohort = result.scalar_one_or_none()
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    if not cohort.required_coach_grade:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cohort has no complexity score. Score the cohort first.",
+        )
+
+    required_grade = cohort.required_coach_grade
+
+    # Query coaches with grades that meet or exceed requirement
+    # Note: This queries the coach_profiles table which stores grades
+    # The grade columns are: learn_to_swim_grade, special_populations_grade, etc.
+    # For now, we'll query based on a general coach grade
+    # In production, this should match the category-specific grade
+
+    # Get the category from complexity score
+    category = None
+    if cohort.complexity_score:
+        category = cohort.complexity_score.category
+
+    # Map category to grade column name
+    grade_column_map = {
+        ProgramCategory.LEARN_TO_SWIM: "learn_to_swim_grade",
+        ProgramCategory.SPECIAL_POPULATIONS: "special_populations_grade",
+        ProgramCategory.INSTITUTIONAL: "institutional_grade",
+        ProgramCategory.COMPETITIVE_ELITE: "competitive_elite_grade",
+        ProgramCategory.CERTIFICATIONS: "certifications_grade",
+        ProgramCategory.SPECIALIZED_DISCIPLINES: "specialized_disciplines_grade",
+        ProgramCategory.ADJACENT_SERVICES: "adjacent_services_grade",
+    }
+
+    grade_column = grade_column_map.get(category, "learn_to_swim_grade")
+
+    # Build the eligible grades list
+    grade_order = [CoachGrade.GRADE_1, CoachGrade.GRADE_2, CoachGrade.GRADE_3]
+    required_level = grade_order.index(required_grade)
+    eligible_grades = [g.value for g in grade_order[required_level:]]
+
+    # Query eligible coaches
+    query = text(
+        f"""
+        SELECT
+            cp.member_id,
+            m.first_name || ' ' || m.last_name as name,
+            m.email,
+            cp.{grade_column} as grade,
+            cp.total_coaching_hours,
+            cp.average_feedback_rating
+        FROM coach_profiles cp
+        JOIN members m ON cp.member_id = m.id
+        WHERE cp.status = 'active'
+        AND cp.{grade_column} IN :eligible_grades
+        ORDER BY
+            CASE cp.{grade_column}
+                WHEN 'grade_3' THEN 1
+                WHEN 'grade_2' THEN 2
+                WHEN 'grade_1' THEN 3
+            END,
+            cp.average_feedback_rating DESC NULLS LAST
+    """
+    )
+
+    result = await db.execute(query, {"eligible_grades": tuple(eligible_grades)})
+    rows = result.fetchall()
+
+    return [
+        EligibleCoachResponse(
+            member_id=row.member_id,
+            name=row.name or "Unknown",
+            email=row.email,
+            grade=CoachGrade(row.grade) if row.grade else CoachGrade.GRADE_1,
+            total_coaching_hours=row.total_coaching_hours,
+            average_feedback_rating=row.average_feedback_rating,
+        )
+        for row in rows
+    ]

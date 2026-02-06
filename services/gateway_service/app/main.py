@@ -332,6 +332,14 @@ def create_app() -> FastAPI:
         )
 
     # ==================================================================
+    # AI SERVICE
+    # ==================================================================
+    @app.api_route("/api/v1/ai/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    async def proxy_ai(path: str, request: Request):
+        """Proxy all /api/v1/ai/* requests to AI service."""
+        return await proxy_request(clients.ai_client, f"/ai/{path}", request)
+
+    # ==================================================================
     # DASHBOARD (Gateway-specific aggregation)
     # ==================================================================
     from services.gateway_service.app.routers.cleanup import router as cleanup_router

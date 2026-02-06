@@ -1,6 +1,7 @@
 """FastAPI application for the Academy Service."""
 
 from fastapi import FastAPI
+from services.academy_service.coach_assignment_router import router as assignment_router
 from services.academy_service.curriculum_router import router as curriculum_router
 from services.academy_service.router import router as academy_router
 
@@ -23,6 +24,9 @@ def create_app() -> FastAPI:
 
     # Include curriculum router (skills, weeks, lessons)
     app.include_router(curriculum_router, prefix="/academy")
+
+    # Include coach assignment router
+    app.include_router(assignment_router, prefix="/academy")
 
     return app
 

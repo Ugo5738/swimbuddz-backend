@@ -18,7 +18,9 @@ sys.path.append(str(PROJECT_ROOT))
 from libs.common.config import get_settings
 from libs.db.base import Base
 from services.academy_service.models import (  # noqa: F401
+    CoachAssignment,
     Cohort,
+    CohortComplexityScore,
     CohortResource,
     CurriculumLesson,
     CurriculumWeek,
@@ -28,6 +30,7 @@ from services.academy_service.models import (  # noqa: F401
     Program,
     ProgramCurriculum,
     ProgramInterest,
+    ShadowEvaluation,
     Skill,
     StudentProgress,
 )
@@ -44,6 +47,9 @@ SERVICE_TABLES = {
     "programs",
     "cohorts",
     "cohort_resources",
+    "cohort_complexity_scores",
+    "coach_assignments",
+    "shadow_evaluations",
     "enrollments",
     "milestones",
     "student_progress",

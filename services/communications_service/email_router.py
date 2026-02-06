@@ -172,7 +172,12 @@ async def send_templated_email(
     - progress_report: Student progress report
     - certificate: Course completion certificate
     - attendance_summary: Weekly attendance summary for coach
+    - coach_assignment: Coach assigned to a cohort
     - low_attendance_alert: Alert about student low attendance
+    - coach_agreement_signed: Coach agreement signing confirmation
+    - coach_grade_change: Coach grade promotion/update notification
+    - shadow_assignment: Shadow coach assignment notification
+    - coach_readiness: Coach readiness assessment result
     - payment_approved: Payment was approved
     - session_confirmation: Session booking confirmed
     - store_order_confirmation: Store order confirmed
@@ -180,9 +185,16 @@ async def send_templated_email(
 
     Requires service role authentication (internal service-to-service calls).
     """
-    from libs.common.emails import academy, payments, sessions, store
+    from services.communications_service.templates import (
+        academy,
+        coaching,
+        payments,
+        sessions,
+        store,
+    )
 
     template_handlers = {
+        # --- Academy templates ---
         "enrollment_confirmation": lambda d: academy.send_enrollment_confirmation_email(
             to_email=request.to_email,
             member_name=d.get("member_name", ""),
@@ -233,6 +245,13 @@ async def send_templated_email(
             student_stats=d.get("student_stats", []),
             at_risk_students=d.get("at_risk_students", []),
         ),
+        "coach_assignment": lambda d: academy.send_coach_assignment_email(
+            to_email=request.to_email,
+            coach_name=d.get("coach_name", ""),
+            program_name=d.get("program_name", ""),
+            cohort_name=d.get("cohort_name", ""),
+            start_date=d.get("start_date", ""),
+        ),
         "low_attendance_alert": lambda d: academy.send_low_attendance_alert_email(
             to_email=request.to_email,
             coach_name=d.get("coach_name", ""),
@@ -242,6 +261,39 @@ async def send_templated_email(
             attendance_rate=d.get("attendance_rate", 0),
             suggestions=d.get("suggestions", []),
         ),
+        # --- Coaching templates ---
+        "coach_agreement_signed": lambda d: coaching.send_coach_agreement_signed_email(
+            to_email=request.to_email,
+            coach_name=d.get("coach_name", ""),
+            version=d.get("version", ""),
+            signed_at=d.get("signed_at", ""),
+        ),
+        "coach_grade_change": lambda d: coaching.send_coach_grade_change_email(
+            to_email=request.to_email,
+            coach_name=d.get("coach_name", ""),
+            category=d.get("category", ""),
+            old_grade=d.get("old_grade", ""),
+            new_grade=d.get("new_grade", ""),
+            effective_date=d.get("effective_date", ""),
+        ),
+        "shadow_assignment": lambda d: coaching.send_shadow_assignment_email(
+            to_email=request.to_email,
+            coach_name=d.get("coach_name", ""),
+            lead_coach_name=d.get("lead_coach_name", ""),
+            cohort_name=d.get("cohort_name", ""),
+            program_name=d.get("program_name", ""),
+            start_date=d.get("start_date", ""),
+            end_date=d.get("end_date", ""),
+        ),
+        "coach_readiness": lambda d: coaching.send_coach_readiness_email(
+            to_email=request.to_email,
+            coach_name=d.get("coach_name", ""),
+            target_grade=d.get("target_grade", ""),
+            is_ready=d.get("is_ready", False),
+            passed_checks=d.get("passed_checks", []),
+            pending_checks=d.get("pending_checks", []),
+        ),
+        # --- Payment templates ---
         "payment_approved": lambda d: payments.send_payment_approved_email(
             to_email=request.to_email,
             payment_reference=d.get("payment_reference", ""),
@@ -249,6 +301,7 @@ async def send_templated_email(
             amount=d.get("amount", 0),
             currency=d.get("currency", "NGN"),
         ),
+        # --- Session templates ---
         "session_confirmation": lambda d: sessions.send_session_confirmation_email(
             to_email=request.to_email,
             member_name=d.get("member_name", ""),
@@ -267,6 +320,7 @@ async def send_templated_email(
             ride_duration=d.get("ride_duration"),
             currency=d.get("currency", "NGN"),
         ),
+        # --- Store templates ---
         "store_order_confirmation": lambda d: store.send_store_order_confirmation_email(
             to_email=request.to_email,
             customer_name=d.get("customer_name", ""),
