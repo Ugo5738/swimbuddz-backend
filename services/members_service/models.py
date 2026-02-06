@@ -10,15 +10,34 @@ The Member model is split into focused tables for better organization:
 - CoachProfile: Coach-specific data (linked to Member)
 """
 
+import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+# ============================================================================
+# ENUMS
+# ============================================================================
+
+
+class CoachGrade(str, enum.Enum):
+    """Coach grade levels based on credentials and experience.
+
+    This mirrors the CoachGrade in academy_service to avoid cross-service imports.
+    Both services store grades as strings, so they are compatible.
+    """
+
+    GRADE_1 = "grade_1"  # Foundational
+    GRADE_2 = "grade_2"  # Technical
+    GRADE_3 = "grade_3"  # Advanced/Specialist
 
 
 class Member(Base):
@@ -606,6 +625,50 @@ class CoachProfile(Base):
         String, nullable=True
     )
 
+    # -------------------------------------------------------------------------
+    # Coach Grades by Category (for cohort assignment eligibility)
+    # Each category has its own grade - coach can have different proficiency levels
+    # Grades are assigned by admin based on credentials, experience, and assessments
+    # -------------------------------------------------------------------------
+    # Grade values: "grade_1", "grade_2", "grade_3" (stored as strings for compatibility)
+    learn_to_swim_grade: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    special_populations_grade: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
+    institutional_grade: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    competitive_elite_grade: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
+    certifications_grade: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    specialized_disciplines_grade: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
+    adjacent_services_grade: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
+
+    # -------------------------------------------------------------------------
+    # Progression Tracking
+    # -------------------------------------------------------------------------
+    total_coaching_hours: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
+    cohorts_completed: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
+    average_feedback_rating: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )
+    swimbuddz_level: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )  # Internal certification level (1, 2, 3)
+    last_active_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+    # -------------------------------------------------------------------------
+    # Additional Credential Tracking (expiry dates beyond CPR)
+    # -------------------------------------------------------------------------
+    first_aid_cert_expiry: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
     # Safety & Compliance
     has_cpr_training: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
@@ -702,6 +765,177 @@ class CoachProfile(Base):
 
     def __repr__(self):
         return f"<CoachProfile {self.member_id} ({self.display_name})>"
+
+
+class CoachAgreement(Base):
+    """Coach agreement signature and versioning.
+
+    Tracks signed agreements between coaches and SwimBuddz.
+    Each time the agreement text is updated, new signatures are required.
+    Previous agreements are superseded but preserved for audit.
+    """
+
+    __tablename__ = "coach_agreements"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    coach_profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("coach_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Agreement version and content
+    agreement_version: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # e.g., "1.0", "1.1", "2.0"
+    agreement_content_hash: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )  # SHA-256 hash of agreement text at signing time
+
+    # Signature details
+    signature_type: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # "typed_name", "drawn", "checkbox", "uploaded_image"
+    signature_data: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )  # Typed name string, base64 drawing, "CHECKBOX_AGREE:<timestamp>", or media reference
+    signature_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # For uploaded signature images via media service
+    signed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+    # Handbook acknowledgment (must be True before signing)
+    handbook_acknowledged: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    handbook_version: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True
+    )  # Which handbook version was acknowledged
+
+    # Client metadata for audit trail
+    ip_address: Mapped[Optional[str]] = mapped_column(
+        String(45), nullable=True
+    )  # IPv6 max length
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Status and supersession
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
+    superseded_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("coach_agreements.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    superseded_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    # Relationships
+    coach_profile: Mapped["CoachProfile"] = relationship(
+        "CoachProfile", foreign_keys=[coach_profile_id]
+    )
+    superseded_by: Mapped[Optional["CoachAgreement"]] = relationship(
+        "CoachAgreement", remote_side=[id], foreign_keys=[superseded_by_id]
+    )
+
+    def __repr__(self):
+        return f"<CoachAgreement {self.id} v{self.agreement_version} active={self.is_active}>"
+
+
+class AgreementVersion(Base):
+    """Stores agreement text versions for coach agreements.
+
+    Only one version can be current at a time (is_current=True).
+    When a new version is created, the previous one is deactivated.
+    Coaches must sign the current version to maintain dashboard access.
+    """
+
+    __tablename__ = "agreement_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    version: Mapped[str] = mapped_column(
+        String(20), unique=True, nullable=False
+    )  # e.g., "1.0", "2.0"
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)  # Markdown content
+    content_hash: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )  # SHA-256 hash, computed on save
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    is_current: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # Admin who created this version
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    def __repr__(self):
+        return f"<AgreementVersion v{self.version} current={self.is_current}>"
+
+
+class HandbookVersion(Base):
+    """Stores handbook text versions for the coach handbook.
+
+    Only one version can be current at a time (is_current=True).
+    Coaches must acknowledge the current handbook version before
+    signing the coach agreement.
+    """
+
+    __tablename__ = "handbook_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    version: Mapped[str] = mapped_column(
+        String(20), unique=True, nullable=False
+    )  # e.g., "1.0", "2.0"
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)  # Markdown content
+    content_hash: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )  # SHA-256 hash, computed on save
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    is_current: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # Admin who created this version
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    def __repr__(self):
+        return f"<HandbookVersion v{self.version} current={self.is_current}>"
 
 
 class CoachBankAccount(Base):

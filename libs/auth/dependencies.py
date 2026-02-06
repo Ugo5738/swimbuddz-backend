@@ -244,7 +244,7 @@ async def require_coach_for_cohort(
             status_code=status.HTTP_403_FORBIDDEN, detail="Member profile not found"
         )
 
-    # Check if coach is assigned to this cohort
+    # Check if coach is assigned to this cohort via Cohort.coach_id (legacy)
     cohort_row = await db.execute(
         text("SELECT coach_id FROM cohorts WHERE id = :cohort_id"),
         {"cohort_id": cohort_id},
@@ -256,11 +256,29 @@ async def require_coach_for_cohort(
             status_code=status.HTTP_404_NOT_FOUND, detail="Cohort not found"
         )
 
-    if str(cohort["coach_id"]) != str(member["id"]):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not the assigned coach for this cohort",
-        )
+    member_id = str(member["id"])
+
+    # Legacy check: Cohort.coach_id
+    if str(cohort["coach_id"]) == member_id:
+        return
+
+    # New check: coach_assignments table (lead or assistant with active status)
+    assignment_row = await db.execute(
+        text(
+            "SELECT id FROM coach_assignments "
+            "WHERE cohort_id = :cohort_id AND coach_id = :coach_id "
+            "AND role IN ('lead', 'assistant') AND status = 'active' "
+            "LIMIT 1"
+        ),
+        {"cohort_id": cohort_id, "coach_id": member_id},
+    )
+    if assignment_row.first() is not None:
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You are not the assigned coach for this cohort",
+    )
 
 
 # Optional bearer security - allows missing token

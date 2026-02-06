@@ -150,6 +150,18 @@ services:
     volumes:
       - .:/app
 
+  ai-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-ai-service:latest
+    container_name: swimbuddz_ai
+    env_file:
+      - .env.prod
+    ports:
+      - "8011:8011"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
   # ==================================================================
   # API GATEWAY
   # ==================================================================
@@ -179,6 +191,8 @@ services:
         condition: service_started
       store-service:
         condition: service_started
+      ai-service:
+        condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: >
@@ -202,6 +216,25 @@ services:
       - traefik.http.routers.api-http.entrypoints=web
       - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
       - traefik.http.routers.api-http.middlewares=redirect-to-https
+
+  # ==================================================================
+  # BACKGROUND WORKERS
+  # ==================================================================
+  academy-worker:
+    image: ${DOCKER_USERNAME}/swimbuddz-academy-service:latest
+    container_name: swimbuddz_academy_worker
+    env_file:
+      - .env.prod
+    depends_on:
+      redis:
+        condition: service_healthy
+      academy-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.academy_service.worker.WorkerSettings
+    volumes:
+      - .:/app
 
   # ==================================================================
   # INFRASTRUCTURE

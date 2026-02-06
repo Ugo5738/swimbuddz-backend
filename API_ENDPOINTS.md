@@ -296,22 +296,26 @@ Announcements power the public noticeboard and admin share helpers.
 ### Programs
 
 #### `GET /api/v1/academy/programs`
+
 - **Auth:** Public
 - **Description:** List all academy programs
 - **Response 200:** `ProgramRead[]`
 
 #### `GET /api/v1/academy/programs/{program_id}`
+
 - **Auth:** Public
 - **Description:** Get program details including curriculum
 - **Response 200:** `ProgramRead`
 
 #### `POST /api/v1/academy/programs`
+
 - **Auth:** Admin
 - **Description:** Create new academy program
 - **Body:** `ProgramCreate` (name, description, level, duration, prerequisites, etc.)
 - **Response 201:** `ProgramRead`
 
 #### `PATCH /api/v1/academy/programs/{program_id}`
+
 - **Auth:** Admin
 - **Description:** Update program details
 - **Response 200:** `ProgramRead`
@@ -319,28 +323,33 @@ Announcements power the public noticeboard and admin share helpers.
 ### Cohorts
 
 #### `GET /api/v1/academy/cohorts`
+
 - **Auth:** Public/Admin
 - **Description:** List all cohorts (filter by status)
 - **Query Params:** `status` (open, active, completed), `program_id`
 - **Response 200:** `CohortRead[]`
 
 #### `GET /api/v1/academy/cohorts/open`
+
 - **Auth:** Public
 - **Description:** List cohorts open for enrollment
 - **Response 200:** `CohortRead[]`
 
 #### `GET /api/v1/academy/cohorts/{cohort_id}`
+
 - **Auth:** Public
 - **Description:** Get cohort details
 - **Response 200:** `CohortRead`
 
 #### `POST /api/v1/academy/cohorts`
+
 - **Auth:** Admin
 - **Description:** Create new cohort
 - **Body:** `CohortCreate` (program_id, start_date, end_date, capacity, etc.)
 - **Response 201:** `CohortRead`
 
 #### `PATCH /api/v1/academy/cohorts/{cohort_id}`
+
 - **Auth:** Admin
 - **Description:** Update cohort details
 - **Response 200:** `CohortRead`
@@ -348,6 +357,7 @@ Announcements power the public noticeboard and admin share helpers.
 ### Enrollments
 
 #### `POST /api/v1/academy/enrollments/me`
+
 - **Auth:** Required
 - **Description:** Self-enroll in a cohort
 - **Body:** `{ "cohort_id": "uuid" }`
@@ -355,22 +365,26 @@ Announcements power the public noticeboard and admin share helpers.
 - **Note:** Creates payment intent for program fee
 
 #### `GET /api/v1/academy/my-enrollments`
+
 - **Auth:** Required
 - **Description:** List current member's enrollments
 - **Response 200:** `EnrollmentRead[]`
 
 #### `GET /api/v1/academy/enrollments/{enrollment_id}`
+
 - **Auth:** Required (owner) or Admin
 - **Description:** Get enrollment details
 - **Response 200:** `EnrollmentRead`
 
 #### `GET /api/v1/academy/enrollments`
+
 - **Auth:** Admin
 - **Description:** List all enrollments (filter by cohort, status)
 - **Query Params:** `cohort_id`, `status`, `member_id`
 - **Response 200:** `EnrollmentRead[]`
 
 #### `PATCH /api/v1/academy/enrollments/{enrollment_id}`
+
 - **Auth:** Admin
 - **Description:** Update enrollment status
 - **Body:** `{ "status": "enrolled" | "waitlist" | "dropped" | "graduated" }`
@@ -379,11 +393,13 @@ Announcements power the public noticeboard and admin share helpers.
 ### Progress Tracking
 
 #### `GET /api/v1/academy/enrollments/{enrollment_id}/progress`
+
 - **Auth:** Required (owner) or Admin
 - **Description:** Get student progress and milestone completion
 - **Response 200:** `ProgressRead` with milestone statuses
 
 #### `POST /api/v1/academy/enrollments/{enrollment_id}/progress`
+
 - **Auth:** Coach or Admin
 - **Description:** Update student milestone progress
 - **Body:** `{ "milestone_id": "uuid", "status": "completed", "notes": "..." }`
@@ -392,11 +408,13 @@ Announcements power the public noticeboard and admin share helpers.
 ### Curriculum Management
 
 #### `GET /api/v1/academy/programs/{program_id}/curriculum`
+
 - **Auth:** Public
 - **Description:** Get program curriculum structure
 - **Response 200:** Curriculum with weeks, lessons, skills
 
 #### `POST /api/v1/academy/programs/{program_id}/curriculum`
+
 - **Auth:** Admin
 - **Description:** Create/update curriculum
 - **Body:** Complete curriculum structure
@@ -409,9 +427,11 @@ Announcements power the public noticeboard and admin share helpers.
 ### Payment Intents
 
 #### `POST /api/v1/payments/intents`
+
 - **Auth:** Required
 - **Description:** Create Paystack payment intent
 - **Body:**
+
 ```json
 {
   "amount": 5000,
@@ -421,9 +441,11 @@ Announcements power the public noticeboard and admin share helpers.
   "callback_url": "https://app.swimbuddz.com/checkout/success"
 }
 ```
+
 - **Response 201:** `PaymentIntentRead` with `authorization_url` for Paystack
 
 #### `GET /api/v1/payments/intents/{intent_id}`
+
 - **Auth:** Required (owner) or Admin
 - **Description:** Get payment intent status
 - **Response 200:** `PaymentIntentRead`
@@ -431,17 +453,20 @@ Announcements power the public noticeboard and admin share helpers.
 ### Payment Records
 
 #### `GET /api/v1/payments`
+
 - **Auth:** Admin
 - **Description:** List all payment records
 - **Query Params:** `member_id`, `status`, `payment_type`
 - **Response 200:** `PaymentRecordRead[]`
 
 #### `GET /api/v1/payments/{payment_id}`
+
 - **Auth:** Required (owner) or Admin
 - **Description:** Get payment record details
 - **Response 200:** `PaymentRecordRead`
 
 #### `PATCH /api/v1/payments/{payment_id}/verify`
+
 - **Auth:** Admin
 - **Description:** Manually verify payment
 - **Body:** `{ "verified": true, "notes": "Bank transfer confirmed" }`
@@ -450,6 +475,7 @@ Announcements power the public noticeboard and admin share helpers.
 ### Webhooks
 
 #### `POST /api/v1/payments/webhook`
+
 - **Auth:** Paystack signature validation
 - **Description:** Receive Paystack payment notifications
 - **Body:** Paystack webhook payload
@@ -462,11 +488,13 @@ Announcements power the public noticeboard and admin share helpers.
 ### Ride Areas
 
 #### `GET /api/v1/transport/areas`
+
 - **Auth:** Public
 - **Description:** List all ride areas
 - **Response 200:** `RideAreaRead[]`
 
 #### `POST /api/v1/transport/areas`
+
 - **Auth:** Admin
 - **Description:** Create ride area
 - **Body:** `{ "name": "Lekki", "slug": "lekki" }`
@@ -475,11 +503,13 @@ Announcements power the public noticeboard and admin share helpers.
 ### Pickup Locations
 
 #### `GET /api/v1/transport/areas/{area_id}/pickups`
+
 - **Auth:** Public
 - **Description:** List pickup locations in area
 - **Response 200:** `PickupLocationRead[]`
 
 #### `POST /api/v1/transport/areas/{area_id}/pickups`
+
 - **Auth:** Admin
 - **Description:** Create pickup location
 - **Body:** `PickupLocationCreate` (name, address, GPS coords)
@@ -488,12 +518,14 @@ Announcements power the public noticeboard and admin share helpers.
 ### Routes
 
 #### `GET /api/v1/transport/routes`
+
 - **Auth:** Public
 - **Description:** Get route information
 - **Query Params:** `pickup_location_id`, `destination`
 - **Response 200:** `RouteInfoRead[]`
 
 #### `POST /api/v1/transport/routes`
+
 - **Auth:** Admin
 - **Description:** Create route with distance/duration/cost
 - **Response 201:** `RouteInfoRead`
@@ -501,11 +533,13 @@ Announcements power the public noticeboard and admin share helpers.
 ### Session Ride Configuration
 
 #### `GET /api/v1/transport/sessions/{session_id}/config`
+
 - **Auth:** Public
 - **Description:** Get ride-sharing config for session
 - **Response 200:** `SessionRideConfigRead`
 
 #### `POST /api/v1/transport/sessions/{session_id}/config`
+
 - **Auth:** Admin
 - **Description:** Configure ride-sharing for session
 - **Body:** `{ "ride_share_enabled": true, "pickup_locations": ["uuid1", "uuid2"] }`
@@ -514,17 +548,20 @@ Announcements power the public noticeboard and admin share helpers.
 ### Ride Bookings
 
 #### `GET /api/v1/transport/sessions/{session_id}/bookings/me`
+
 - **Auth:** Required
 - **Description:** Get member's ride booking for session
 - **Response 200:** `RideBookingRead`
 
 #### `POST /api/v1/transport/sessions/{session_id}/bookings`
+
 - **Auth:** Required
 - **Description:** Create/update ride booking
 - **Body:** `{ "ride_share_option": "lead" | "join", "pickup_location_id": "uuid", "seats_offered": 3 }`
 - **Response 201:** `RideBookingRead`
 
 #### `GET /api/v1/transport/sessions/{session_id}/bookings`
+
 - **Auth:** Admin
 - **Description:** List all ride bookings for session
 - **Response 200:** `RideBookingRead[]`
@@ -534,17 +571,20 @@ Announcements power the public noticeboard and admin share helpers.
 ## 10. Events (Minimal Implementation)
 
 #### `GET /api/v1/events`
+
 - **Auth:** Public
 - **Description:** List community events
 - **Response 200:** `EventRead[]`
 
 #### `POST /api/v1/events`
+
 - **Auth:** Admin
 - **Description:** Create community event
 - **Body:** `EventCreate`
 - **Response 201:** `EventRead`
 
 #### `POST /api/v1/events/{event_id}/rsvp`
+
 - **Auth:** Required
 - **Description:** RSVP to event
 - **Response 201:** `EventRSVPRead`
@@ -554,21 +594,25 @@ Announcements power the public noticeboard and admin share helpers.
 ## 11. Media (Minimal Implementation)
 
 #### `GET /api/v1/media/galleries`
+
 - **Auth:** Public
 - **Description:** List photo galleries
 - **Response 200:** `GalleryRead[]`
 
 #### `GET /api/v1/media/galleries/{gallery_id}`
+
 - **Auth:** Public
 - **Description:** Get gallery with media items
 - **Response 200:** `GalleryRead` with `MediaItemRead[]`
 
 #### `POST /api/v1/media/galleries`
+
 - **Auth:** Admin
 - **Description:** Create gallery
 - **Response 201:** `GalleryRead`
 
 #### `POST /api/v1/media/galleries/{gallery_id}/upload`
+
 - **Auth:** Admin
 - **Description:** Upload media to gallery
 - **Body:** Multipart form with file
@@ -579,42 +623,101 @@ Announcements power the public noticeboard and admin share helpers.
 ## 12. Store (Minimal Implementation)
 
 #### `GET /api/v1/store/products`
+
 - **Auth:** Public
 - **Description:** List products
 - **Query Params:** `category`, `in_stock`
 - **Response 200:** `ProductRead[]`
 
 #### `GET /api/v1/store/products/{product_id}`
+
 - **Auth:** Public
 - **Description:** Get product details with variants
 - **Response 200:** `ProductRead`
 
 #### `POST /api/v1/store/cart`
+
 - **Auth:** Required
 - **Description:** Add item to cart
 - **Body:** `{ "product_variant_id": "uuid", "quantity": 2 }`
 - **Response 201:** `CartRead`
 
 #### `GET /api/v1/store/cart`
+
 - **Auth:** Required
 - **Description:** Get member's cart
 - **Response 200:** `CartRead` with items
 
 #### `POST /api/v1/store/orders`
+
 - **Auth:** Required
 - **Description:** Create order from cart
 - **Response 201:** `OrderRead` with payment intent
 
 #### `GET /api/v1/store/orders`
+
 - **Auth:** Required (owner) or Admin
 - **Description:** List orders
 - **Response 200:** `OrderRead[]`
 
 ---
 
+## 13. Coach Management (Members Service)
+
+### Coach Agreement (Coach-facing)
+
+#### `GET /api/v1/coaches/agreement/current`
+
+- **Auth:** Required (coach)
+- **Description:** Get the current agreement content for signing (from database)
+- **Response 200:** `AgreementContentResponse` with version, title, content (markdown), content_hash, effective_date
+
+#### `GET /api/v1/coaches/agreement/status`
+
+- **Auth:** Required (coach)
+- **Description:** Check if the coach has signed the current agreement version
+- **Response 200:** `CoachAgreementStatusResponse` with has_signed_current_version, requires_new_signature
+
+#### `POST /api/v1/coaches/agreement/sign`
+
+- **Auth:** Required (coach)
+- **Description:** Sign the coach agreement
+- **Body:** `{ "signature_type": "typed_name|drawn", "signature_data": "...", "agreement_version": "1.0", "agreement_content_hash": "sha256..." }`
+- **Response 200:** `CoachAgreementResponse`
+
+#### `GET /api/v1/coaches/agreement/history`
+
+- **Auth:** Required (coach)
+- **Description:** Get the coach's agreement signing history
+- **Response 200:** `CoachAgreementHistoryItem[]`
+
+### Admin Agreement Version Management
+
+#### `GET /api/v1/admin/coaches/agreements`
+
+- **Auth:** Admin
+- **Description:** List all agreement versions with signature counts
+- **Response 200:** `AgreementVersionListItem[]`
+
+#### `POST /api/v1/admin/coaches/agreements`
+
+- **Auth:** Admin
+- **Description:** Create a new agreement version (auto-sets as current, notifies active coaches via email)
+- **Body:** `{ "version": "2.0", "title": "...", "content": "markdown...", "effective_date": "2026-03-01" }`
+- **Response 200:** `AgreementVersionDetail`
+
+#### `GET /api/v1/admin/coaches/agreements/{version_id}`
+
+- **Auth:** Admin
+- **Description:** Get a specific agreement version with signature statistics
+- **Response 200:** `AgreementVersionDetail` with signature_count and active_signature_count
+
+---
+
 ## Summary
 
 **Fully Documented Services:**
+
 - Identity (placeholder)
 - Members
 - Sessions
@@ -627,5 +730,6 @@ Announcements power the public noticeboard and admin share helpers.
 - Events (basic)
 - Media (basic)
 - Store (basic)
+- Coach Management (agreements, admin)
 
 **Service Details:** For complete service information including models, database schema, and use cases, see [SERVICE_REGISTRY.md](../../docs/reference/SERVICE_REGISTRY.md)
