@@ -20,8 +20,8 @@ from libs.db.config import AsyncSessionLocal
 from services.members_service.models import HandbookVersion
 from sqlalchemy.future import select
 
-# Project root (swimbuddz/)
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+# Project root (swimbuddz-backend/)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _load_handbook() -> str:
