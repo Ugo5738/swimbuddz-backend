@@ -2,14 +2,16 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from services.academy_service.models import (
     BillingType,
+    CoachGrade,
     CohortStatus,
     EnrollmentStatus,
     LocationType,
     MilestoneType,
     PaymentStatus,
+    ProgramCategory,
     ProgramLevel,
     ProgressStatus,
     RequiredEvidence,
@@ -127,9 +129,17 @@ class CohortBase(BaseModel):
     notes_internal: Optional[str] = None
 
 
+class CoachAssignmentInput(BaseModel):
+    """Input for creating coach assignments during cohort creation."""
+
+    coach_id: UUID
+    role: str = "lead"  # "lead", "assistant"
+
+
 class CohortCreate(CohortBase):
     program_id: UUID
-    coach_id: Optional[UUID] = None
+    coach_id: Optional[UUID] = None  # Legacy field, still supported
+    coach_assignments: Optional[list[CoachAssignmentInput]] = None
 
 
 class CohortUpdate(BaseModel):
@@ -300,3 +310,222 @@ class OnboardingResponse(BaseModel):
     sessions_link: str
     coach_name: Optional[str] = None
     total_milestones: int
+
+
+# --- Cohort Complexity Scoring Schemas ---
+
+
+class DimensionScore(BaseModel):
+    """Individual dimension score with optional rationale."""
+
+    score: int
+    rationale: Optional[str] = None
+
+    @field_validator("score")
+    @classmethod
+    def validate_score(cls, v: int) -> int:
+        if v < 1 or v > 5:
+            raise ValueError("Score must be between 1 and 5")
+        return v
+
+
+class CohortComplexityScoreCreate(BaseModel):
+    """Create a complexity score for a cohort."""
+
+    category: ProgramCategory
+    dimension_1: DimensionScore
+    dimension_2: DimensionScore
+    dimension_3: DimensionScore
+    dimension_4: DimensionScore
+    dimension_5: DimensionScore
+    dimension_6: DimensionScore
+    dimension_7: DimensionScore
+
+
+class CohortComplexityScoreUpdate(BaseModel):
+    """Update a complexity score for a cohort."""
+
+    category: Optional[ProgramCategory] = None
+    dimension_1: Optional[DimensionScore] = None
+    dimension_2: Optional[DimensionScore] = None
+    dimension_3: Optional[DimensionScore] = None
+    dimension_4: Optional[DimensionScore] = None
+    dimension_5: Optional[DimensionScore] = None
+    dimension_6: Optional[DimensionScore] = None
+    dimension_7: Optional[DimensionScore] = None
+
+
+class CohortComplexityScoreResponse(BaseModel):
+    """Response schema for cohort complexity score."""
+
+    id: UUID
+    cohort_id: UUID
+    category: ProgramCategory
+
+    # Dimension scores
+    dimension_1_score: int
+    dimension_1_rationale: Optional[str] = None
+    dimension_2_score: int
+    dimension_2_rationale: Optional[str] = None
+    dimension_3_score: int
+    dimension_3_rationale: Optional[str] = None
+    dimension_4_score: int
+    dimension_4_rationale: Optional[str] = None
+    dimension_5_score: int
+    dimension_5_rationale: Optional[str] = None
+    dimension_6_score: int
+    dimension_6_rationale: Optional[str] = None
+    dimension_7_score: int
+    dimension_7_rationale: Optional[str] = None
+
+    # Calculated fields
+    total_score: int
+    required_coach_grade: CoachGrade
+    pay_band_min: int  # Percentage as integer (e.g., 45 = 45%)
+    pay_band_max: int
+
+    # Audit
+    scored_by_id: UUID
+    scored_at: datetime
+    reviewed_by_id: Optional[UUID] = None
+    reviewed_at: Optional[datetime] = None
+
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ComplexityScoreCalculation(BaseModel):
+    """Preview of complexity score calculation without saving."""
+
+    total_score: int
+    required_coach_grade: CoachGrade
+    pay_band_min: int
+    pay_band_max: int
+
+
+class EligibleCoachResponse(BaseModel):
+    """Coach eligible for a cohort based on grade requirements."""
+
+    member_id: UUID
+    name: str
+    email: Optional[str] = None
+    grade: CoachGrade
+    total_coaching_hours: Optional[int] = None
+    average_feedback_rating: Optional[float] = None
+
+
+# --- Cohort Schema Updates ---
+
+
+class CohortWithScoreResponse(CohortResponse):
+    """Cohort response including complexity score if available."""
+
+    required_coach_grade: Optional[CoachGrade] = None
+    complexity_score: Optional[CohortComplexityScoreResponse] = None
+
+
+# ============================================================================
+# COACH DASHBOARD SCHEMAS
+# ============================================================================
+
+
+class CoachDashboardSummary(BaseModel):
+    """Summary data for coach dashboard home page."""
+
+    # Cohort counts
+    active_cohorts: int = 0
+    upcoming_cohorts: int = 0
+    completed_cohorts: int = 0
+
+    # Student counts
+    total_students: int = 0
+    students_pending_approval: int = 0
+
+    # Milestone review queue
+    pending_milestone_reviews: int = 0
+
+    # Upcoming sessions (next 7 days)
+    upcoming_sessions_count: int = 0
+    next_session: Optional["UpcomingSessionSummary"] = None
+
+    # Earnings summary
+    current_period_earnings: int = 0
+    pending_payout: int = 0
+
+
+class UpcomingSessionSummary(BaseModel):
+    """Summary of an upcoming session for dashboard."""
+
+    cohort_id: UUID
+    cohort_name: str
+    program_name: Optional[str] = None
+    session_date: datetime
+    location_name: Optional[str] = None
+    enrolled_count: int = 0
+
+
+class CoachCohortDetail(BaseModel):
+    """Detailed cohort view for coach dashboard."""
+
+    id: UUID
+    name: str
+    program_id: UUID
+    program_name: str
+    program_level: Optional[str] = None
+
+    status: CohortStatus
+    start_date: datetime
+    end_date: datetime
+
+    capacity: int
+    enrolled_count: int
+    waitlist_count: int
+
+    location_name: Optional[str] = None
+    location_address: Optional[str] = None
+
+    # Coach-specific info
+    required_grade: Optional[CoachGrade] = None
+    pay_band_min: Optional[int] = None
+    pay_band_max: Optional[int] = None
+
+    # Progress tracking
+    weeks_completed: int = 0
+    total_weeks: int = 0
+    milestones_count: int = 0
+    milestones_achieved_count: int = 0
+
+
+class PendingMilestoneReview(BaseModel):
+    """Milestone claim waiting for coach review."""
+
+    progress_id: UUID
+    enrollment_id: UUID
+    milestone_id: UUID
+    milestone_name: str
+    milestone_type: str
+
+    student_member_id: UUID
+    student_name: str
+    student_email: Optional[str] = None
+
+    cohort_id: UUID
+    cohort_name: str
+
+    evidence_media_id: Optional[UUID] = None
+    student_notes: Optional[str] = None
+    claimed_at: datetime
+
+
+class MilestoneReviewAction(BaseModel):
+    """Coach action on a milestone review."""
+
+    action: str  # "approve" or "reject"
+    score: Optional[int] = Field(None, ge=0, le=100)
+    coach_notes: Optional[str] = None
+
+
+# Update forward reference
+CoachDashboardSummary.model_rebuild()

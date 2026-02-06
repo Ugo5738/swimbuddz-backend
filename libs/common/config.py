@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     EVENTS_SERVICE_URL: str = "http://events-service:8007"
     TRANSPORT_SERVICE_URL: str = "http://transport-service:8009"
     STORE_SERVICE_URL: str = "http://store-service:8010"
+    AI_SERVICE_URL: str = "http://ai-service:8011"
+
+    # AI Service
+    AI_DEFAULT_MODEL: str = "gpt-4o-mini"
+    OPENAI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
+
+    # Langfuse observability
+    LANGFUSE_HOST: str = ""
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
 
     # Payments / Pricing
     COMMUNITY_ANNUAL_FEE_NGN: int = 20000

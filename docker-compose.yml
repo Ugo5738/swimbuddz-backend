@@ -142,6 +142,20 @@ services:
     volumes:
       - .:/app
 
+  ai-service:
+    build:
+      context: .
+      dockerfile: services/ai_service/Dockerfile
+    container_name: swimbuddz_ai
+    env_file:
+      - .env.dev
+    ports:
+      - "8011:8011"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
   # ==================================================================
   # API GATEWAY
   # ==================================================================
@@ -173,6 +187,8 @@ services:
         condition: service_started
       store-service:
         condition: service_started
+      ai-service:
+        condition: service_started
     ports:
       - "8000:8000"
     extra_hosts:
@@ -182,6 +198,27 @@ services:
       --host 0.0.0.0
       --port 8000
       --reload
+    volumes:
+      - .:/app
+
+  # ==================================================================
+  # BACKGROUND WORKERS
+  # ==================================================================
+  academy-worker:
+    build:
+      context: .
+      dockerfile: services/academy_service/Dockerfile
+    container_name: swimbuddz_academy_worker
+    env_file:
+      - .env.dev
+    depends_on:
+      redis:
+        condition: service_healthy
+      academy-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.academy_service.worker.WorkerSettings
     volumes:
       - .:/app
 

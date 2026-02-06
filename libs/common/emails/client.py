@@ -4,10 +4,16 @@ Centralized Email Client for service-to-service email communication.
 This module provides a simple HTTP client that other services can use
 to send emails through the Communications Service's centralized email API.
 
-Usage:
-    from libs.common.emails.client import EmailClient
+The Communications Service is the single source of truth for all email
+templates and sending. This client handles:
+- Service-role JWT authentication for inter-service calls
+- Fallback to direct SMTP when the Communications Service is unavailable
+- Singleton pattern for reuse across a service's lifetime
 
-    email_client = EmailClient()
+Usage:
+    from libs.common.emails.client import get_email_client
+
+    email_client = get_email_client()
 
     # Send simple email
     await email_client.send(
@@ -24,7 +30,6 @@ Usage:
         template_data={
             "member_name": "John",
             "program_name": "Learn to Swim",
-            ...
         }
     )
 
@@ -50,17 +55,34 @@ class EmailClient:
     """
     HTTP client for sending emails through the Communications Service.
 
-    This replaces direct imports from libs.common.emails.* modules,
-    routing all email sending through the centralized API.
+    All email sending is routed through the centralized Communications Service
+    API at port 8004. This client authenticates using a short-lived service-role
+    JWT so that the email endpoints (which require service_role auth) accept
+    the requests.
+
+    Falls back to direct SMTP sending if the Communications Service is
+    unreachable (connection error only — auth errors are not retried).
     """
 
     def __init__(self):
         settings = get_settings()
-        # Communications service runs on port 8004
         self.base_url = getattr(
             settings, "COMMUNICATIONS_SERVICE_URL", "http://communications_service:8004"
         )
         self.timeout = 30.0
+
+    def _get_auth_headers(self) -> dict[str, str]:
+        """
+        Generate service-role auth headers for inter-service calls.
+
+        Uses a short-lived (60s) JWT signed with the Supabase JWT secret,
+        matching the pattern expected by `require_service_role` in the
+        Communications Service.
+        """
+        from libs.auth.dependencies import _service_role_jwt
+
+        token = _service_role_jwt("email_client")
+        return {"Authorization": f"Bearer {token}"}
 
     async def send(
         self,
@@ -85,7 +107,7 @@ class EmailClient:
         Returns:
             True if email was sent successfully, False otherwise
         """
-        payload = {
+        payload: dict[str, Any] = {
             "to_email": to_email,
             "subject": subject,
             "body": body,
@@ -98,10 +120,12 @@ class EmailClient:
             payload["from_name"] = from_name
 
         try:
+            headers = self._get_auth_headers()
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
-                    f"{self.base_url}/api/v1/email/send",
+                    f"{self.base_url}/email/send",
                     json=payload,
+                    headers=headers,
                 )
                 if response.status_code == 200:
                     result = response.json()
@@ -146,7 +170,7 @@ class EmailClient:
         Returns:
             Dict with success, sent_count, and failed_count
         """
-        payload = {
+        payload: dict[str, Any] = {
             "to_emails": to_emails,
             "subject": subject,
             "body": body,
@@ -161,10 +185,12 @@ class EmailClient:
             payload["sender_id"] = str(sender_id)
 
         try:
+            headers = self._get_auth_headers()
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
-                    f"{self.base_url}/api/v1/email/send-bulk",
+                    f"{self.base_url}/email/send-bulk",
                     json=payload,
+                    headers=headers,
                 )
                 if response.status_code == 200:
                     return response.json()
@@ -200,6 +226,9 @@ class EmailClient:
         """
         Send a templated email through the Communications Service.
 
+        All template rendering is handled by the Communications Service.
+        This client just forwards the template type and data.
+
         Available template types:
         - enrollment_confirmation: Academy enrollment confirmed
         - enrollment_reminder: Reminder before cohort starts
@@ -212,6 +241,10 @@ class EmailClient:
         - session_confirmation: Session booking confirmed
         - store_order_confirmation: Store order confirmed
         - store_order_ready: Store order ready for pickup/shipped
+        - coach_assignment: Coach assigned to cohort
+        - coach_agreement_signed: Agreement signing confirmation
+        - coach_grade_change: Grade promotion notification
+        - shadow_assignment: Shadow assignment notification
 
         Args:
             template_type: The template identifier
@@ -228,10 +261,12 @@ class EmailClient:
         }
 
         try:
+            headers = self._get_auth_headers()
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
-                    f"{self.base_url}/api/v1/email/template",
+                    f"{self.base_url}/email/template",
                     json=payload,
+                    headers=headers,
                 )
                 if response.status_code == 200:
                     result = response.json()
@@ -243,15 +278,20 @@ class EmailClient:
                     return False
         except httpx.RequestError as e:
             logger.error(f"Failed to connect to Communications Service: {e}")
-            # Fall back to direct template send
-            return await self._fallback_send_template(
-                template_type, to_email, template_data
+            logger.warning(
+                f"Template email '{template_type}' could not be sent — "
+                "Communications Service unreachable. No fallback available "
+                "for templated emails (templates live in Communications Service)."
             )
+            return False
         except Exception as e:
             logger.error(f"Error sending template email via API: {e}")
             return False
 
     # === Fallback methods when Communications Service is unavailable ===
+    # NOTE: Only plain-text send/send_bulk have fallbacks (direct SMTP).
+    # Templated emails have NO fallback because templates live exclusively
+    # in the Communications Service.
 
     async def _fallback_send(
         self,
@@ -263,7 +303,7 @@ class EmailClient:
         from_name: Optional[str] = None,
     ) -> bool:
         """Fallback to direct SMTP send if Communications Service unavailable."""
-        logger.warning("Falling back to direct email send")
+        logger.warning("Falling back to direct SMTP email send")
         from libs.common.emails.core import send_email
 
         return await send_email(
@@ -285,7 +325,7 @@ class EmailClient:
         from_name: Optional[str] = None,
     ) -> dict:
         """Fallback to direct SMTP send for bulk emails."""
-        logger.warning("Falling back to direct bulk email send")
+        logger.warning("Falling back to direct SMTP bulk email send")
         from libs.common.emails.core import send_email
 
         sent_count = 0
@@ -310,155 +350,6 @@ class EmailClient:
             "sent_count": sent_count,
             "failed_count": failed_count,
         }
-
-    async def _fallback_send_template(
-        self,
-        template_type: str,
-        to_email: str,
-        template_data: dict[str, Any],
-    ) -> bool:
-        """Fallback to direct template send if Communications Service unavailable."""
-        logger.warning(f"Falling back to direct template send: {template_type}")
-
-        # Import the appropriate template function
-        if template_type in [
-            "enrollment_confirmation",
-            "enrollment_reminder",
-            "waitlist_promotion",
-            "progress_report",
-            "certificate",
-            "attendance_summary",
-            "low_attendance_alert",
-        ]:
-            from libs.common.emails import academy
-
-            handlers = {
-                "enrollment_confirmation": lambda: academy.send_enrollment_confirmation_email(
-                    to_email=to_email,
-                    member_name=template_data.get("member_name", ""),
-                    program_name=template_data.get("program_name", ""),
-                    cohort_name=template_data.get("cohort_name", ""),
-                    start_date=template_data.get("start_date", ""),
-                ),
-                "enrollment_reminder": lambda: academy.send_enrollment_reminder_email(
-                    to_email=to_email,
-                    member_name=template_data.get("member_name", ""),
-                    program_name=template_data.get("program_name", ""),
-                    cohort_name=template_data.get("cohort_name", ""),
-                    start_date=template_data.get("start_date", ""),
-                    start_time=template_data.get("start_time", ""),
-                    location=template_data.get("location", ""),
-                    days_until=template_data.get("days_until", 7),
-                ),
-                "waitlist_promotion": lambda: academy.send_waitlist_promotion_email(
-                    to_email=to_email,
-                    member_name=template_data.get("member_name", ""),
-                    program_name=template_data.get("program_name", ""),
-                    cohort_name=template_data.get("cohort_name", ""),
-                ),
-                "progress_report": lambda: academy.send_progress_report_email(
-                    to_email=to_email,
-                    member_name=template_data.get("member_name", ""),
-                    program_name=template_data.get("program_name", ""),
-                    cohort_name=template_data.get("cohort_name", ""),
-                    milestones_completed=template_data.get("milestones_completed", 0),
-                    total_milestones=template_data.get("total_milestones", 0),
-                    recent_achievements=template_data.get("recent_achievements", []),
-                    coach_feedback=template_data.get("coach_feedback", []),
-                ),
-                "certificate": lambda: academy.send_certificate_email(
-                    to_email=to_email,
-                    member_name=template_data.get("member_name", ""),
-                    program_name=template_data.get("program_name", ""),
-                    completion_date=template_data.get("completion_date", ""),
-                    verification_code=template_data.get("verification_code", ""),
-                ),
-                "attendance_summary": lambda: academy.send_attendance_summary_email(
-                    to_email=to_email,
-                    coach_name=template_data.get("coach_name", ""),
-                    cohort_name=template_data.get("cohort_name", ""),
-                    program_name=template_data.get("program_name", ""),
-                    period=template_data.get("period", ""),
-                    total_sessions=template_data.get("total_sessions", 0),
-                    student_stats=template_data.get("student_stats", []),
-                    at_risk_students=template_data.get("at_risk_students", []),
-                ),
-                "low_attendance_alert": lambda: academy.send_low_attendance_alert_email(
-                    to_email=to_email,
-                    coach_name=template_data.get("coach_name", ""),
-                    student_name=template_data.get("student_name", ""),
-                    cohort_name=template_data.get("cohort_name", ""),
-                    issue=template_data.get("issue", ""),
-                    attendance_rate=template_data.get("attendance_rate", 0),
-                    suggestions=template_data.get("suggestions", []),
-                ),
-            }
-            return await handlers[template_type]()
-
-        elif template_type == "payment_approved":
-            from libs.common.emails import payments
-
-            return await payments.send_payment_approved_email(
-                to_email=to_email,
-                payment_reference=template_data.get("payment_reference", ""),
-                purpose=template_data.get("purpose", ""),
-                amount=template_data.get("amount", 0),
-                currency=template_data.get("currency", "NGN"),
-            )
-
-        elif template_type == "session_confirmation":
-            from libs.common.emails import sessions
-
-            return await sessions.send_session_confirmation_email(
-                to_email=to_email,
-                member_name=template_data.get("member_name", ""),
-                member_id=template_data.get("member_id", ""),
-                session_title=template_data.get("session_title", ""),
-                session_date=template_data.get("session_date", ""),
-                session_time=template_data.get("session_time", ""),
-                session_location=template_data.get("session_location", ""),
-                session_address=template_data.get("session_address", ""),
-                amount_paid=template_data.get("amount_paid", 0),
-                ride_share_area=template_data.get("ride_share_area"),
-                pickup_location=template_data.get("pickup_location"),
-                pickup_description=template_data.get("pickup_description"),
-                departure_time=template_data.get("departure_time"),
-                ride_distance=template_data.get("ride_distance"),
-                ride_duration=template_data.get("ride_duration"),
-                currency=template_data.get("currency", "NGN"),
-            )
-
-        elif template_type == "store_order_confirmation":
-            from libs.common.emails import store
-
-            return await store.send_store_order_confirmation_email(
-                to_email=to_email,
-                customer_name=template_data.get("customer_name", ""),
-                order_number=template_data.get("order_number", ""),
-                items=template_data.get("items", []),
-                subtotal=template_data.get("subtotal", 0),
-                discount=template_data.get("discount", 0),
-                delivery_fee=template_data.get("delivery_fee", 0),
-                total=template_data.get("total", 0),
-                fulfillment_type=template_data.get("fulfillment_type", "pickup"),
-                pickup_location=template_data.get("pickup_location"),
-                delivery_address=template_data.get("delivery_address"),
-            )
-
-        elif template_type == "store_order_ready":
-            from libs.common.emails import store
-
-            return await store.send_store_order_ready_email(
-                to_email=to_email,
-                customer_name=template_data.get("customer_name", ""),
-                order_number=template_data.get("order_number", ""),
-                fulfillment_type=template_data.get("fulfillment_type", "pickup"),
-                pickup_location=template_data.get("pickup_location"),
-                tracking_number=template_data.get("tracking_number"),
-            )
-
-        logger.error(f"Unknown template type for fallback: {template_type}")
-        return False
 
 
 # Singleton instance for convenience
