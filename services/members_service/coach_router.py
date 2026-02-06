@@ -522,7 +522,6 @@ async def get_coach_application(
 ):
     """Get a single coach application for review (admin only)."""
 
-    member_auth_id: Optional[str] = None
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(CoachProfile)
@@ -1439,7 +1438,7 @@ def _render_agreement_for_coach(
         address_parts.append(profile.state)
     address_str = ", ".join(address_parts) if address_parts else "Not provided"
 
-    phone_str = (profile.phone if profile and profile.phone else "Not provided")
+    phone_str = profile.phone if profile and profile.phone else "Not provided"
     full_name = f"{member.first_name} {member.last_name}"
 
     # Determine highest grade from category grades
@@ -1516,7 +1515,7 @@ async def _get_current_agreement_version(session) -> AgreementVersion:
     Raises HTTPException(404) if no current version exists.
     """
     result = await session.execute(
-        select(AgreementVersion).where(AgreementVersion.is_current == True)
+        select(AgreementVersion).where(AgreementVersion.is_current.is_(True))
     )
     current = result.scalar_one_or_none()
     if not current:
@@ -1606,7 +1605,7 @@ async def get_agreement_status(
             select(CoachAgreement)
             .where(
                 CoachAgreement.coach_profile_id == coach.id,
-                CoachAgreement.is_active == True,
+                CoachAgreement.is_active.is_(True),
             )
             .order_by(CoachAgreement.signed_at.desc())
             .limit(1)
@@ -1623,9 +1622,7 @@ async def get_agreement_status(
             )
 
         # Check if signed version matches current
-        has_signed_current = (
-            active_agreement.agreement_version == current_version_str
-        )
+        has_signed_current = active_agreement.agreement_version == current_version_str
 
         return CoachAgreementStatusResponse(
             has_signed_current_version=has_signed_current,
@@ -1650,7 +1647,7 @@ async def sign_agreement(
         # Verify agreement version exists and is current
         result = await session.execute(
             select(AgreementVersion).where(
-                AgreementVersion.is_current == True,
+                AgreementVersion.is_current.is_(True),
                 AgreementVersion.version == data.agreement_version,
             )
         )
@@ -1685,7 +1682,7 @@ async def sign_agreement(
         result = await session.execute(
             select(CoachAgreement).where(
                 CoachAgreement.coach_profile_id == coach.id,
-                CoachAgreement.is_active == True,
+                CoachAgreement.is_active.is_(True),
             )
         )
         existing_agreements = result.scalars().all()
@@ -1698,7 +1695,10 @@ async def sign_agreement(
             )
 
         # Validate signature type specific requirements
-        if data.signature_type == SignatureTypeEnum.UPLOADED_IMAGE and not data.signature_media_id:
+        if (
+            data.signature_type == SignatureTypeEnum.UPLOADED_IMAGE
+            and not data.signature_media_id
+        ):
             raise HTTPException(
                 status_code=400,
                 detail="signature_media_id is required when signature_type is uploaded_image.",
@@ -1718,7 +1718,9 @@ async def sign_agreement(
             agreement_content_hash=data.agreement_content_hash,
             signature_type=data.signature_type.value,
             signature_data=sig_data,
-            signature_media_id=uuid.UUID(data.signature_media_id) if data.signature_media_id else None,
+            signature_media_id=uuid.UUID(data.signature_media_id)
+            if data.signature_media_id
+            else None,
             signed_at=datetime.now(timezone.utc),
             handbook_acknowledged=True,
             handbook_version=data.handbook_version,
@@ -1860,9 +1862,7 @@ async def create_agreement_version(
     async with AsyncSessionLocal() as session:
         # Check version doesn't already exist
         existing = await session.execute(
-            select(AgreementVersion).where(
-                AgreementVersion.version == data.version
-            )
+            select(AgreementVersion).where(AgreementVersion.version == data.version)
         )
         if existing.scalar_one_or_none():
             raise HTTPException(
@@ -1872,7 +1872,7 @@ async def create_agreement_version(
 
         # Deactivate all current versions
         result = await session.execute(
-            select(AgreementVersion).where(AgreementVersion.is_current == True)
+            select(AgreementVersion).where(AgreementVersion.is_current.is_(True))
         )
         for old_version in result.scalars().all():
             old_version.is_current = False
@@ -1927,9 +1927,7 @@ async def create_agreement_version(
                     )
                     logger.info(
                         f"Sent agreement update notification to {len(coach_emails)} coaches",
-                        extra={
-                            "extra_fields": {"version": data.version}
-                        },
+                        extra={"extra_fields": {"version": data.version}},
                     )
         except Exception as e:
             # Email failure should not block agreement creation
@@ -1946,7 +1944,9 @@ async def create_agreement_version(
             content_hash=new_version.content_hash,
             effective_date=new_version.effective_date,
             is_current=new_version.is_current,
-            created_by_id=str(new_version.created_by_id) if new_version.created_by_id else None,
+            created_by_id=str(new_version.created_by_id)
+            if new_version.created_by_id
+            else None,
             signature_count=0,
             active_signature_count=0,
             created_at=new_version.created_at,
@@ -1966,9 +1966,7 @@ async def get_agreement_version_detail(
         )
         version = result.scalar_one_or_none()
         if not version:
-            raise HTTPException(
-                status_code=404, detail="Agreement version not found"
-            )
+            raise HTTPException(status_code=404, detail="Agreement version not found")
 
         # Count total signatures for this version
         sig_result = await session.execute(
@@ -1982,7 +1980,7 @@ async def get_agreement_version_detail(
         active_sig_result = await session.execute(
             select(func.count(CoachAgreement.id)).where(
                 CoachAgreement.agreement_version == version.version,
-                CoachAgreement.is_active == True,
+                CoachAgreement.is_active.is_(True),
             )
         )
         active_sigs = active_sig_result.scalar() or 0
@@ -2015,7 +2013,7 @@ async def get_current_handbook(
     """Get the current handbook content for display to coaches."""
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(HandbookVersion).where(HandbookVersion.is_current == True)
+            select(HandbookVersion).where(HandbookVersion.is_current.is_(True))
         )
         handbook = result.scalar_one_or_none()
 
@@ -2108,7 +2106,7 @@ async def create_handbook_version(
 
         # Deactivate current version
         result = await session.execute(
-            select(HandbookVersion).where(HandbookVersion.is_current == True)
+            select(HandbookVersion).where(HandbookVersion.is_current.is_(True))
         )
         current = result.scalar_one_or_none()
         if current:
@@ -2149,7 +2147,9 @@ async def create_handbook_version(
             content_hash=handbook.content_hash,
             effective_date=handbook.effective_date,
             is_current=handbook.is_current,
-            created_by_id=str(handbook.created_by_id) if handbook.created_by_id else None,
+            created_by_id=str(handbook.created_by_id)
+            if handbook.created_by_id
+            else None,
             created_at=handbook.created_at,
             updated_at=handbook.updated_at,
         )

@@ -17,7 +17,6 @@ from services.communications_service.templates.base import (
     cta_button,
     detail_box,
     info_box,
-    sign_off,
     wrap_html,
 )
 
@@ -104,7 +103,9 @@ async def send_coach_grade_change_email(
     is_promotion = new_grade > old_grade
     action = "promoted" if is_promotion else "updated"
 
-    subject = f"Coach Grade {'Promotion' if is_promotion else 'Update'}: {category_display}"
+    subject = (
+        f"Coach Grade {'Promotion' if is_promotion else 'Update'}: {category_display}"
+    )
 
     body = f"""Hi Coach {coach_name},
 
@@ -254,13 +255,23 @@ async def send_coach_readiness_email(
 
     if is_ready:
         subject = f"You're Ready for {grade_display}! 🎉"
-        status_msg = f"Congratulations! You have met all the requirements for {grade_display}."
+        status_msg = (
+            f"Congratulations! You have met all the requirements for {grade_display}."
+        )
     else:
         subject = f"Readiness Assessment: {grade_display}"
         status_msg = f"Here's your current readiness assessment for {grade_display}."
 
-    passed_text = "\n".join([f"  ✓ {c}" for c in passed_checks]) if passed_checks else "  None yet"
-    pending_text = "\n".join([f"  ○ {c}" for c in pending_checks]) if pending_checks else "  All complete!"
+    passed_text = (
+        "\n".join([f"  ✓ {c}" for c in passed_checks])
+        if passed_checks
+        else "  None yet"
+    )
+    pending_text = (
+        "\n".join([f"  ○ {c}" for c in pending_checks])
+        if pending_checks
+        else "  All complete!"
+    )
 
     body = f"""Hi Coach {coach_name},
 
@@ -281,8 +292,12 @@ View your progress: {dashboard_url}
 
     header_gradient = GRADIENT_GREEN if is_ready else GRADIENT_AMBER
 
-    passed_html = "".join([f"<li style='color: #059669;'>✓ {c}</li>" for c in passed_checks])
-    pending_html = "".join([f"<li style='color: #d97706;'>○ {c}</li>" for c in pending_checks])
+    passed_html = "".join(
+        [f"<li style='color: #059669;'>✓ {c}</li>" for c in passed_checks]
+    )
+    pending_html = "".join(
+        [f"<li style='color: #d97706;'>○ {c}</li>" for c in pending_checks]
+    )
 
     checks_html = (
         '<div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">'

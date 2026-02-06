@@ -7,7 +7,7 @@ from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from sqlalchemy import JSON, Boolean, Date, DateTime
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import Float, ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

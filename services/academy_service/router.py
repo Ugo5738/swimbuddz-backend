@@ -43,7 +43,6 @@ from services.academy_service.schemas import (
     CohortResourceResponse,
     CohortResponse,
     CohortUpdate,
-    CohortWithScoreResponse,
     ComplexityScoreCalculation,
     EligibleCoachResponse,
     EnrollmentCreate,
@@ -66,7 +65,6 @@ from services.academy_service.schemas import (
 from services.academy_service.scoring import (
     calculate_complexity_score,
     get_dimension_labels,
-    is_coach_eligible_for_grade,
 )
 from services.members_service.models import Member
 from sqlalchemy import delete, func, select, text
@@ -392,15 +390,6 @@ async def update_cohort(
             coach = coach_row.mappings().first()
 
             if coach and coach["email"]:
-                # Count enrolled students
-                enrolled_count_result = await db.execute(
-                    select(func.count(Enrollment.id)).where(
-                        Enrollment.cohort_id == cohort_id,
-                        Enrollment.status == EnrollmentStatus.ENROLLED,
-                    )
-                )
-                student_count = enrolled_count_result.scalar() or 0
-
                 email_client = get_email_client()
                 await email_client.send_template(
                     template_type="coach_assignment",
@@ -765,12 +754,8 @@ async def get_coach_dashboard(
     - Student counts and pending approvals
     - Pending milestone reviews
     - Next upcoming session
-    - Earnings summary
+            - Earnings summary
     """
-    from datetime import timedelta
-
-    from sqlalchemy.orm import joinedload
-
     # 1. Resolve Member ID
     member_row = await db.execute(
         text("SELECT id FROM members WHERE auth_id = :auth_id"),

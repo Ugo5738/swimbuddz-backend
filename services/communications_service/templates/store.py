@@ -98,8 +98,12 @@ Thank you for shopping with SwimBuddz!
     )
 
     fulfillment_icon = "📍" if fulfillment_type == "pickup" else "🚚"
-    fulfillment_label = "Pickup Location" if fulfillment_type == "pickup" else "Delivery Address"
-    fulfillment_value = pickup_location if fulfillment_type == "pickup" else delivery_address
+    fulfillment_label = (
+        "Pickup Location" if fulfillment_type == "pickup" else "Delivery Address"
+    )
+    fulfillment_value = (
+        pickup_location if fulfillment_type == "pickup" else delivery_address
+    )
 
     body_html = (
         f"<p>Hi {customer_name},</p>"

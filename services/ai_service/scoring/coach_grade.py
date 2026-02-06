@@ -4,8 +4,6 @@ Evaluates a coach's readiness for grade promotion based on
 their experience, certifications, feedback, and shadow evaluations.
 """
 
-import json
-
 from libs.common.logging import get_logger
 from services.ai_service.providers.base import AIProviderResponse, call_llm
 from services.ai_service.schemas import (

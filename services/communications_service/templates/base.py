@@ -272,6 +272,7 @@ def wrap_html(
 
 # ─── Helper functions ─────────────────────────────────────────────────
 
+
 def detail_box(
     items: dict[str, str],
     accent_color: str = "#0891b2",

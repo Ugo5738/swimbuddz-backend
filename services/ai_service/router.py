@@ -1,10 +1,9 @@
 """AI Service API routes."""
 
-import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from libs.auth.dependencies import get_current_user, require_admin, require_service_role
+from libs.auth.dependencies import require_admin, require_service_role
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
@@ -260,7 +259,7 @@ async def create_model_config(
     # If setting as default, unset other defaults
     if data.is_default:
         result = await db.execute(
-            select(AIModelConfig).where(AIModelConfig.is_default == True)
+            select(AIModelConfig).where(AIModelConfig.is_default.is_(True))
         )
         for existing in result.scalars().all():
             existing.is_default = False
@@ -334,7 +333,7 @@ async def create_prompt_template(
     result = await db.execute(
         select(AIPromptTemplate).where(
             AIPromptTemplate.name == data.name,
-            AIPromptTemplate.is_active == True,
+            AIPromptTemplate.is_active.is_(True),
         )
     )
     for old in result.scalars().all():

@@ -134,7 +134,7 @@ See you in the water! 🏊‍♂️
         '<p style="margin: 8px 0 16px; opacity: 0.9; font-size: 14px; color: white;">'
         "Show this to pool staff for verification</p>"
         f'<a href="{verify_url}" style="display: inline-block; background: white; '
-        'color: #0891b2; padding: 12px 24px; border-radius: 8px; text-decoration: none; '
+        "color: #0891b2; padding: 12px 24px; border-radius: 8px; text-decoration: none; "
         'font-weight: 600;">View E-Card &rarr;</a></div>'
     )
 

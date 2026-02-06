@@ -1,6 +1,5 @@
 """Pydantic schemas for the AI Service API."""
 
-import uuid
 from datetime import datetime
 from typing import Optional
 

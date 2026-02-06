@@ -4,8 +4,6 @@ Generates complexity dimension scores for a cohort based on its
 characteristics (age group, skill level, special needs, etc.).
 """
 
-import json
-
 from libs.common.logging import get_logger
 from services.ai_service.providers.base import AIProviderResponse, call_llm
 from services.ai_service.schemas import (

@@ -46,7 +46,7 @@ class AIProviderResponse:
         if text.startswith("```"):
             lines = text.split("\n")
             # Remove first and last lines (``` markers)
-            lines = [l for l in lines if not l.strip().startswith("```")]
+            lines = [line for line in lines if not line.strip().startswith("```")]
             text = "\n".join(lines).strip()
         return json.loads(text)
 
