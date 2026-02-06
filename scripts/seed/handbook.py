@@ -7,6 +7,7 @@ stores it as the current handbook version.
 import asyncio
 import hashlib
 import os
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -34,6 +35,17 @@ def _load_handbook() -> str:
     return handbook_path.read_text(encoding="utf-8")
 
 
+def _strip_internal_appendix(content: str) -> str:
+    """
+    Remove internal-only appendix sections (e.g. Appendix B: system integration spec)
+    so coaches never see it and prod DB does not store it.
+    """
+    m = re.search(r"^##\\s+Appendix\\s+B\\b.*$", content, flags=re.MULTILINE)
+    if not m:
+        return content
+    return content[: m.start()].rstrip() + "\n"
+
+
 async def seed_handbook():
     """Seed the initial v1.0 handbook version."""
     async with AsyncSessionLocal() as session:
@@ -46,7 +58,7 @@ async def seed_handbook():
             print("  Handbook version 1.0 already exists, skipping")
             return
 
-        content = _load_handbook()
+        content = _strip_internal_appendix(_load_handbook())
         content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
         handbook = HandbookVersion(
