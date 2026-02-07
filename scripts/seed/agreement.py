@@ -1,7 +1,7 @@
 """Seed agreement versions into the database.
 
 Seeds:
-- v1.0: Full COACH_AGREEMENT.md content (current version)
+- v1.0: Full coach_agreement_v1.0.md content (current version)
 """
 
 import asyncio
@@ -19,17 +19,19 @@ from libs.db.config import AsyncSessionLocal
 from services.members_service.models import AgreementVersion
 from sqlalchemy.future import select
 
-# Project root (swimbuddz/)
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+# Project root (swimbuddz-backend/)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _load_full_agreement() -> str:
-    """Load the full agreement content from docs/academy/COACH_AGREEMENT.md."""
-    agreement_path = PROJECT_ROOT / "docs" / "academy" / "COACH_AGREEMENT.md"
+    """Load the full agreement content from scripts/seed-data/academy/coach_agreement_v1.0.md."""
+    agreement_path = (
+        PROJECT_ROOT / "scripts" / "seed-data" / "academy" / "coach_agreement_v1.0.md"
+    )
     if not agreement_path.exists():
         raise FileNotFoundError(
             f"Full agreement file not found: {agreement_path}. "
-            "Ensure docs/academy/COACH_AGREEMENT.md exists."
+            "Ensure scripts/seed-data/academy/coach_agreement_v1.0.md exists."
         )
     return agreement_path.read_text(encoding="utf-8")
 

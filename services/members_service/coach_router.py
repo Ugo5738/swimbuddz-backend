@@ -1,6 +1,7 @@
 """Coach-specific API routes for application, onboarding, and profile management."""
 
 import asyncio
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -63,6 +64,19 @@ from .models import (
 )
 
 logger = get_logger(__name__)
+
+
+def _strip_internal_handbook_sections(content: str) -> str:
+    """
+    Coaches should not see internal-only appendices (e.g. Appendix B: system integration spec).
+    Filter at the API boundary (defense in depth, even if the frontend also hides it).
+    """
+    m = re.search(r"^##\s+Appendix\s+B\b.*$", content, flags=re.MULTILINE)
+    if not m:
+        return content
+    return content[: m.start()].rstrip() + "\n"
+
+
 settings = get_settings()
 
 router = APIRouter(prefix="/coaches", tags=["coaches"])
@@ -2026,7 +2040,7 @@ async def get_current_handbook(
         return HandbookContentResponse(
             version=handbook.version,
             title=handbook.title,
-            content=handbook.content,
+            content=_strip_internal_handbook_sections(handbook.content),
             content_hash=handbook.content_hash,
             effective_date=handbook.effective_date,
         )
@@ -2053,7 +2067,7 @@ async def get_handbook_version(
         return HandbookContentResponse(
             version=handbook.version,
             title=handbook.title,
-            content=handbook.content,
+            content=_strip_internal_handbook_sections(handbook.content),
             content_hash=handbook.content_hash,
             effective_date=handbook.effective_date,
         )

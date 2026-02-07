@@ -1,12 +1,13 @@
 """Seed the initial handbook version (v1.0) into the database.
 
-Reads the full handbook from docs/academy/COACH_HANDBOOK.md and
-stores it as the current handbook version.
+Reads the full handbook from scripts/seed-data/academy/coach_handbook_v1.0.md
+and stores it as the current handbook version.
 """
 
 import asyncio
 import hashlib
 import os
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -19,19 +20,32 @@ from libs.db.config import AsyncSessionLocal
 from services.members_service.models import HandbookVersion
 from sqlalchemy.future import select
 
-# Project root (swimbuddz/)
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+# Project root (swimbuddz-backend/)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _load_handbook() -> str:
-    """Load the handbook content from docs/academy/COACH_HANDBOOK.md."""
-    handbook_path = PROJECT_ROOT / "docs" / "academy" / "COACH_HANDBOOK.md"
+    """Load the handbook content from scripts/seed-data/academy/coach_handbook_v1.0.md."""
+    handbook_path = (
+        PROJECT_ROOT / "scripts" / "seed-data" / "academy" / "coach_handbook_v1.0.md"
+    )
     if not handbook_path.exists():
         raise FileNotFoundError(
             f"Handbook file not found: {handbook_path}. "
-            "Ensure docs/academy/COACH_HANDBOOK.md exists."
+            "Ensure scripts/seed-data/academy/coach_handbook_v1.0.md exists."
         )
     return handbook_path.read_text(encoding="utf-8")
+
+
+def _strip_internal_appendix(content: str) -> str:
+    """
+    Remove internal-only appendix sections (e.g. Appendix B: system integration spec)
+    so coaches never see it and prod DB does not store it.
+    """
+    m = re.search(r"^##\\s+Appendix\\s+B\\b.*$", content, flags=re.MULTILINE)
+    if not m:
+        return content
+    return content[: m.start()].rstrip() + "\n"
 
 
 async def seed_handbook():
@@ -46,7 +60,7 @@ async def seed_handbook():
             print("  Handbook version 1.0 already exists, skipping")
             return
 
-        content = _load_handbook()
+        content = _strip_internal_appendix(_load_handbook())
         content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
         handbook = HandbookVersion(
