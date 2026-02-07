@@ -27,11 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def _load_handbook() -> str:
     """Load the handbook content from scripts/seed-data/academy/coach_handbook_v1.0.md."""
     handbook_path = (
-        PROJECT_ROOT
-        / "scripts"
-        / "seed-data"
-        / "academy"
-        / "coach_handbook_v1.0.md"
+        PROJECT_ROOT / "scripts" / "seed-data" / "academy" / "coach_handbook_v1.0.md"
     )
     if not handbook_path.exists():
         raise FileNotFoundError(

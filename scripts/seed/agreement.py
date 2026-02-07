@@ -26,11 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def _load_full_agreement() -> str:
     """Load the full agreement content from scripts/seed-data/academy/coach_agreement_v1.0.md."""
     agreement_path = (
-        PROJECT_ROOT
-        / "scripts"
-        / "seed-data"
-        / "academy"
-        / "coach_agreement_v1.0.md"
+        PROJECT_ROOT / "scripts" / "seed-data" / "academy" / "coach_agreement_v1.0.md"
     )
     if not agreement_path.exists():
         raise FileNotFoundError(
