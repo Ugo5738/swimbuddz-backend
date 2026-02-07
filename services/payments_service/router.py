@@ -931,8 +931,36 @@ async def create_payment_intent(
     await db.refresh(payment)
 
     checkout_url = None
+
+    # Paystack (and most payment providers) cannot initialize a transaction for 0 NGN.
+    # If a discount brings the payable amount to 0, complete the payment internally and
+    # apply the entitlement immediately.
+    if payment.amount <= 0:
+        if not payload.discount_code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Amount must be greater than zero",
+            )
+        discount_ref = (discount_code_used or payload.discount_code).upper().strip()
+        payment = await _mark_paid_and_apply(
+            db=db,
+            payment=payment,
+            provider="discount",
+            provider_reference=f"discount:{discount_ref}",
+            paid_at=datetime.now(timezone.utc),
+            provider_payload={
+                "discount_code": discount_code_used or payload.discount_code,
+                "discount_applied": discount_applied,
+                "original_amount": original_amount,
+            },
+        )
+
     # Only initialize Paystack for online payments
-    if payload.payment_method == "paystack" and _paystack_enabled():
+    if (
+        payment.status == PaymentStatus.PENDING
+        and payload.payment_method == "paystack"
+        and _paystack_enabled()
+    ):
         if not current_user.email:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -961,7 +989,8 @@ async def create_payment_intent(
         await db.refresh(payment)
 
     # Save pending payment reference to member for cross-device resumption
-    await _update_pending_payment_reference(current_user.user_id, payment.reference)
+    if payment.status == PaymentStatus.PENDING:
+        await _update_pending_payment_reference(current_user.user_id, payment.reference)
 
     # Build extension info for response (only for CLUB payments)
     response_extension_info = {}
