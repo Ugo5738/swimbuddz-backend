@@ -302,7 +302,7 @@ async def run_migration(dry_run: bool = False, env: str = "dev"):
         print(f"{'=' * 60}")
         print(f"  Roles:    {roles_created} created, {roles_skipped} skipped")
         print(f"  Profiles: {profiles_created} created, {profiles_skipped} skipped")
-        print(f"  Legacy tables: UNTOUCHED (safe to inspect)")
+        print("  Legacy tables: UNTOUCHED (safe to inspect)")
         print()
 
     await engine.dispose()

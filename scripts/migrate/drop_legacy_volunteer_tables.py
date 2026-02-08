@@ -34,6 +34,7 @@ async def drop_legacy_tables(env: str = "dev", confirm: bool = False):
     env_path = PROJECT_ROOT / env_file
     if env_path.exists():
         import dotenv
+
         dotenv.load_dotenv(env_path)
 
     from libs.common.config import get_settings
@@ -62,7 +63,9 @@ async def drop_legacy_tables(env: str = "dev", confirm: bool = False):
             print("Add --confirm to actually drop the tables.")
             print()
             print("BEFORE running with --confirm:")
-            print("  1. Verify: python scripts/migrate/volunteer_data.py --verify --env prod")
+            print(
+                "  1. Verify: python scripts/migrate/volunteer_data.py --verify --env prod"
+            )
             print("  2. Backup your database")
             return
 

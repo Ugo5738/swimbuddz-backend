@@ -12,7 +12,7 @@ from services.volunteer_service.models import (
     VolunteerSlot,
     VolunteerTier,
 )
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 

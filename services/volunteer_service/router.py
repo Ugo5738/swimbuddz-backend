@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
@@ -20,7 +20,6 @@ from services.volunteer_service.models import (
     VolunteerTier,
 )
 from services.volunteer_service.schemas import (
-    CancelSlotRequest,
     HoursSummaryResponse,
     LeaderboardEntry,
     VolunteerHoursLogResponse,
@@ -35,7 +34,6 @@ from services.volunteer_service.schemas import (
 from services.volunteer_service.services import (
     is_late_cancellation,
     next_recognition_hours_needed,
-    update_profile_aggregates,
 )
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession

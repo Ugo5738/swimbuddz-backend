@@ -211,7 +211,6 @@ async def seed_volunteer_roles():
         )
         existing = {row[0]: row[1] for row in result.fetchall()}
         existing_titles = set(existing.keys())
-        existing_categories = set(existing.values())
 
         created_count = 0
         skipped_count = 0
