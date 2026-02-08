@@ -152,17 +152,31 @@ def create_app() -> FastAPI:
         )
 
     # ==================================================================
-    # VOLUNTEER & CHALLENGE PROXY (Members Service)
+    # VOLUNTEER SERVICE PROXY
     # ==================================================================
     @app.api_route(
-        "/api/v1/volunteers/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/volunteers/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
     async def proxy_volunteers(path: str, request: Request):
-        """Proxy all /api/v1/volunteers/* requests to members service."""
+        """Proxy all /api/v1/volunteers/* requests to volunteer service."""
         return await proxy_request(
-            clients.members_client, f"/volunteers/{path}", request
+            clients.volunteer_client, f"/volunteers/{path}", request
         )
 
+    @app.api_route(
+        "/api/v1/admin/volunteers/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_admin_volunteers(path: str, request: Request):
+        """Proxy all /api/v1/admin/volunteers/* requests to volunteer service."""
+        return await proxy_request(
+            clients.volunteer_client, f"/admin/volunteers/{path}", request
+        )
+
+    # ==================================================================
+    # CHALLENGE PROXY (Members Service)
+    # ==================================================================
     @app.api_route(
         "/api/v1/challenges/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
     )

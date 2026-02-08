@@ -95,6 +95,9 @@ jobs:
           - context: .
             dockerfile: ./services/ai_service/Dockerfile
             image: swimbuddz-ai-service
+          - context: .
+            dockerfile: ./services/volunteer_service/Dockerfile
+            image: swimbuddz-volunteer-service
 
     steps:
       - uses: actions/checkout@v4

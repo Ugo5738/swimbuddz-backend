@@ -6,7 +6,7 @@ All endpoints assume Bearer authentication with a Supabase access token unless m
 
 ## Service Coverage
 
-✅ **Fully Documented:** Identity, Members, Sessions, Attendance, Announcements, Admin Dashboard, Academy, Payments, Transport, Events, Media, Store
+✅ **Fully Documented:** Identity, Members, Sessions, Attendance, Announcements, Admin Dashboard, Academy, Payments, Transport, Events, Media, Store, Volunteers
 
 **Note:** All major services are now documented. For complete service information including models, database schema, and implementation details, see [SERVICE_REGISTRY.md](../../docs/reference/SERVICE_REGISTRY.md).
 
@@ -733,3 +733,105 @@ Announcements power the public noticeboard and admin share helpers.
 - Coach Management (agreements, admin)
 
 **Service Details:** For complete service information including models, database schema, and use cases, see [SERVICE_REGISTRY.md](../../docs/reference/SERVICE_REGISTRY.md)
+
+---
+
+## 13. Volunteers
+
+The Volunteer Service manages volunteer roles, opportunities, scheduling, hours tracking, tier/recognition, and rewards.
+
+### Member Endpoints (Auth Required)
+
+#### Roles
+
+| Method | Endpoint                        | Description                          |
+| ------ | ------------------------------- | ------------------------------------ |
+| `GET`  | `/api/v1/volunteers/roles`      | List active volunteer roles (Public) |
+| `GET`  | `/api/v1/volunteers/roles/{id}` | Get role details                     |
+
+#### Profile
+
+| Method  | Endpoint                        | Description                      |
+| ------- | ------------------------------- | -------------------------------- |
+| `GET`   | `/api/v1/volunteers/profile/me` | Get my volunteer profile         |
+| `POST`  | `/api/v1/volunteers/profile/me` | Register as volunteer            |
+| `PATCH` | `/api/v1/volunteers/profile/me` | Update preferences (roles, days) |
+
+#### Opportunities
+
+| Method   | Endpoint                                      | Description                                                |
+| -------- | --------------------------------------------- | ---------------------------------------------------------- |
+| `GET`    | `/api/v1/volunteers/opportunities`            | List open opportunities (filterable by status, role, date) |
+| `GET`    | `/api/v1/volunteers/opportunities/upcoming`   | Upcoming 14 days                                           |
+| `GET`    | `/api/v1/volunteers/opportunities/{id}`       | Opportunity detail                                         |
+| `POST`   | `/api/v1/volunteers/opportunities/{id}/claim` | Claim a slot (auto-approves for open_claim)                |
+| `DELETE` | `/api/v1/volunteers/opportunities/{id}/claim` | Cancel my claim (tracks late cancellations)                |
+
+#### Hours & Leaderboard
+
+| Method | Endpoint                               | Description                                       |
+| ------ | -------------------------------------- | ------------------------------------------------- |
+| `GET`  | `/api/v1/volunteers/hours/me`          | My hours history                                  |
+| `GET`  | `/api/v1/volunteers/hours/me/summary`  | Summary with tier, recognition, by-role breakdown |
+| `GET`  | `/api/v1/volunteers/hours/leaderboard` | Top volunteers (all_time or this_month)           |
+
+#### Rewards
+
+| Method | Endpoint                                 | Description     |
+| ------ | ---------------------------------------- | --------------- |
+| `GET`  | `/api/v1/volunteers/rewards/me`          | My rewards      |
+| `POST` | `/api/v1/volunteers/rewards/{id}/redeem` | Redeem a reward |
+
+### Admin Endpoints (Admin Auth Required)
+
+#### Roles CRUD
+
+| Method   | Endpoint                              | Description     |
+| -------- | ------------------------------------- | --------------- |
+| `POST`   | `/api/v1/admin/volunteers/roles`      | Create role     |
+| `PATCH`  | `/api/v1/admin/volunteers/roles/{id}` | Update role     |
+| `DELETE` | `/api/v1/admin/volunteers/roles/{id}` | Deactivate role |
+
+#### Profile Management
+
+| Method  | Endpoint                                        | Description                                |
+| ------- | ----------------------------------------------- | ------------------------------------------ |
+| `GET`   | `/api/v1/admin/volunteers/profiles`             | List all profiles (filter by tier, active) |
+| `GET`   | `/api/v1/admin/volunteers/profiles/{member_id}` | Get profile                                |
+| `PATCH` | `/api/v1/admin/volunteers/profiles/{member_id}` | Update tier, admin notes, etc.             |
+
+#### Opportunity Management
+
+| Method   | Endpoint                                              | Description                                   |
+| -------- | ----------------------------------------------------- | --------------------------------------------- |
+| `POST`   | `/api/v1/admin/volunteers/opportunities`              | Create opportunity (as draft)                 |
+| `POST`   | `/api/v1/admin/volunteers/opportunities/bulk`         | Bulk create opportunities                     |
+| `PATCH`  | `/api/v1/admin/volunteers/opportunities/{id}`         | Update opportunity                            |
+| `DELETE` | `/api/v1/admin/volunteers/opportunities/{id}`         | Cancel opportunity (cancels all active slots) |
+| `POST`   | `/api/v1/admin/volunteers/opportunities/{id}/publish` | Publish draft → open                          |
+
+#### Slot Management
+
+| Method  | Endpoint                                            | Description                        |
+| ------- | --------------------------------------------------- | ---------------------------------- |
+| `GET`   | `/api/v1/admin/volunteers/opportunities/{id}/slots` | List slots for opportunity         |
+| `PATCH` | `/api/v1/admin/volunteers/slots/{id}`               | Approve/reject slot                |
+| `POST`  | `/api/v1/admin/volunteers/slots/{id}/checkin`       | Check-in volunteer                 |
+| `POST`  | `/api/v1/admin/volunteers/slots/{id}/checkout`      | Check-out (auto-logs hours)        |
+| `POST`  | `/api/v1/admin/volunteers/slots/{id}/no-show`       | Mark no-show (updates reliability) |
+| `POST`  | `/api/v1/admin/volunteers/slots/bulk-complete`      | Bulk complete active slots         |
+
+#### Hours & Rewards
+
+| Method | Endpoint                                | Description            |
+| ------ | --------------------------------------- | ---------------------- |
+| `POST` | `/api/v1/admin/volunteers/hours/manual` | Add manual hours entry |
+| `POST` | `/api/v1/admin/volunteers/rewards`      | Grant a reward         |
+| `GET`  | `/api/v1/admin/volunteers/rewards/all`  | List all rewards       |
+
+#### Dashboard & Reports
+
+| Method | Endpoint                                      | Description                                                      |
+| ------ | --------------------------------------------- | ---------------------------------------------------------------- |
+| `GET`  | `/api/v1/admin/volunteers/dashboard`          | Dashboard summary (active, hours, unfilled, no-show rate, top 5) |
+| `GET`  | `/api/v1/admin/volunteers/reliability-report` | Reliability report (sorted worst-first)                          |
