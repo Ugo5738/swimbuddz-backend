@@ -17,8 +17,7 @@ from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
-from sqlalchemy import Boolean, Date, DateTime
-from sqlalchemy import Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -463,9 +462,14 @@ class PendingRegistration(Base):
 
 
 class VolunteerRole(Base):
-    """Volunteer roles available for members to express interest in."""
+    """LEGACY: Volunteer roles — migrated to volunteer_service.
 
-    __tablename__ = "volunteer_roles"
+    Table renamed to legacy_volunteer_roles. Kept here temporarily so
+    the data migration script can read from it. Will be removed after
+    prod migration is confirmed.
+    """
+
+    __tablename__ = "legacy_volunteer_roles"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -490,9 +494,14 @@ class VolunteerRole(Base):
 
 
 class VolunteerInterest(Base):
-    """Tracks member interest in volunteer roles."""
+    """LEGACY: Volunteer interests — migrated to volunteer_service.
 
-    __tablename__ = "volunteer_interests"
+    Table renamed to legacy_volunteer_interests. Kept here temporarily so
+    the data migration script can read from it. Will be removed after
+    prod migration is confirmed.
+    """
+
+    __tablename__ = "legacy_volunteer_interests"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

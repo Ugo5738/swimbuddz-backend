@@ -156,6 +156,20 @@ services:
     volumes:
       - .:/app
 
+  volunteer-service:
+    build:
+      context: .
+      dockerfile: services/volunteer_service/Dockerfile
+    container_name: swimbuddz_volunteer
+    env_file:
+      - .env.dev
+    ports:
+      - "8012:8012"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
   # ==================================================================
   # API GATEWAY
   # ==================================================================
@@ -188,6 +202,8 @@ services:
       store-service:
         condition: service_started
       ai-service:
+        condition: service_started
+      volunteer-service:
         condition: service_started
     ports:
       - "8000:8000"

@@ -38,6 +38,7 @@ SEED_TASKS=(
   "agreement.py|:Seed Agreement Version"
   "handbook.py|:Seed Handbook Version"
   "ai_config.py|:Seed AI Model Configs"
+  "volunteers.py|:Seed Volunteer Roles"
 )
 
 # -------------------------------------------------------------------------------

@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     TRANSPORT_SERVICE_URL: str = "http://transport-service:8009"
     STORE_SERVICE_URL: str = "http://store-service:8010"
     AI_SERVICE_URL: str = "http://ai-service:8011"
+    VOLUNTEER_SERVICE_URL: str = "http://volunteer-service:8012"
 
     # AI Service
     AI_DEFAULT_MODEL: str = "gpt-4o-mini"
