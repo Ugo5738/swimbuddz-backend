@@ -131,6 +131,13 @@ class VolunteerRole(Base):
     icon: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Rich role details (editable by admin)
+    time_commitment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    responsibilities: Mapped[Optional[list]] = mapped_column(
+        ARRAY(String), nullable=True
+    )
+    skills_needed: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    best_for: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
