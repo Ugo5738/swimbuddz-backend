@@ -18,6 +18,7 @@ from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.db.session import get_async_db
 from services.academy_service.models import (
+    CoachAssignment,
     CoachGrade,
     Cohort,
     CohortComplexityScore,
@@ -431,6 +432,40 @@ async def delete_cohort(
 
     if not cohort:
         raise HTTPException(status_code=404, detail="Cohort not found")
+
+    # Explicitly delete dependent records first. Several FK constraints in the
+    # academy schema do not specify ON DELETE CASCADE, so a straight cohort
+    # delete can fail with a 500 and block recreating cohorts from the UI.
+    #
+    # Also clean up cross-service session records (sessions/session_coaches)
+    # so deleting a cohort leaves no orphaned cohort sessions.
+    await db.execute(
+        text(
+            "DELETE FROM session_coaches WHERE session_id IN (SELECT id FROM sessions WHERE cohort_id = :cohort_id)"
+        ),
+        {"cohort_id": cohort_id},
+    )
+    await db.execute(
+        text("DELETE FROM sessions WHERE cohort_id = :cohort_id"),
+        {"cohort_id": cohort_id},
+    )
+
+    enrollment_ids = select(Enrollment.id).where(Enrollment.cohort_id == cohort_id)
+    await db.execute(
+        delete(StudentProgress).where(StudentProgress.enrollment_id.in_(enrollment_ids))
+    )
+    await db.execute(delete(Enrollment).where(Enrollment.cohort_id == cohort_id))
+    await db.execute(
+        delete(CohortResource).where(CohortResource.cohort_id == cohort_id)
+    )
+    await db.execute(
+        delete(CohortComplexityScore).where(
+            CohortComplexityScore.cohort_id == cohort_id
+        )
+    )
+    await db.execute(
+        delete(CoachAssignment).where(CoachAssignment.cohort_id == cohort_id)
+    )
 
     await db.delete(cohort)
     await db.commit()

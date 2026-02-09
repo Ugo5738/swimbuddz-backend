@@ -313,8 +313,18 @@ class NotificationPreferences(Base):
     push_academy_updates: Mapped[bool] = mapped_column(Boolean, default=True)
     push_coach_messages: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Session type subscriptions (for new session announcements)
+    subscribe_community_sessions: Mapped[bool] = mapped_column(Boolean, default=True)
+    subscribe_club_sessions: Mapped[bool] = mapped_column(Boolean, default=True)
+    subscribe_event_sessions: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Reminder timing preferences
+    reminder_24h_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    reminder_3h_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
     # Digest preferences
     weekly_digest: Mapped[bool] = mapped_column(Boolean, default=True)
+    weekly_session_digest: Mapped[bool] = mapped_column(Boolean, default=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
@@ -325,3 +335,111 @@ class NotificationPreferences(Base):
 
     def __repr__(self):
         return f"<NotificationPreferences member={self.member_id}>"
+
+
+# ============================================================================
+# SESSION NOTIFICATION MODELS
+# ============================================================================
+
+
+class SessionNotificationType(str, enum.Enum):
+    """Types of session notifications."""
+
+    SESSION_PUBLISHED = "session_published"  # Immediate announcement on publish
+    REMINDER_24H = "reminder_24h"  # 24 hours before session
+    REMINDER_3H = "reminder_3h"  # 3 hours before session
+    REMINDER_1H = "reminder_1h"  # 1 hour before (coaches only)
+    SESSION_CANCELLED = "session_cancelled"  # Immediate on cancellation
+    SESSION_UPDATED = "session_updated"  # Time/location changed
+    SPOTS_AVAILABLE = "spots_available"  # Waitlist notification
+
+
+class ScheduledNotificationStatus(str, enum.Enum):
+    """Status of a scheduled notification."""
+
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class ScheduledNotification(Base):
+    """
+    Tracks scheduled notifications for sessions.
+    Processed by background ARQ worker job.
+    """
+
+    __tablename__ = "scheduled_notifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    notification_type: Mapped[SessionNotificationType] = mapped_column(
+        SAEnum(SessionNotificationType, name="session_notification_type_enum"),
+        nullable=False,
+    )
+    scheduled_for: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )  # When to send the notification
+    status: Mapped[ScheduledNotificationStatus] = mapped_column(
+        SAEnum(ScheduledNotificationStatus, name="scheduled_notification_status_enum"),
+        default=ScheduledNotificationStatus.PENDING,
+        nullable=False,
+    )
+
+    # Metadata
+    is_short_notice: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )  # True if session was created < 6 hours before start
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    def __repr__(self):
+        return f"<ScheduledNotification {self.notification_type.value} for session {self.session_id} at {self.scheduled_for}>"
+
+
+class SessionNotificationLog(Base):
+    """
+    Log of all session notifications sent to members.
+    For audit trail and preventing duplicate sends.
+    """
+
+    __tablename__ = "session_notification_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    notification_type: Mapped[SessionNotificationType] = mapped_column(
+        SAEnum(
+            SessionNotificationType,
+            name="session_notification_type_enum",
+            create_type=False,
+        ),
+        nullable=False,
+    )
+    channel: Mapped[str] = mapped_column(
+        String, nullable=False
+    )  # "email", "push", "sms"
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    delivery_status: Mapped[str] = mapped_column(
+        String, default="sent"
+    )  # "sent", "delivered", "failed"
+
+    def __repr__(self):
+        return f"<SessionNotificationLog {self.notification_type.value} to {self.member_id} via {self.channel}>"

@@ -245,6 +245,11 @@ class EmailClient:
         - coach_agreement_signed: Agreement signing confirmation
         - coach_grade_change: Grade promotion notification
         - shadow_assignment: Shadow assignment notification
+        - coach_application_approved: Coach application approved
+        - coach_application_rejected: Coach application rejected
+        - coach_application_more_info: More info requested from applicant
+        - member_approved: Member application approved
+        - member_rejected: Member application rejected
 
         Args:
             template_type: The template identifier

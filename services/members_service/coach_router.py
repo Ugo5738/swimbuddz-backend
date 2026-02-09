@@ -671,19 +671,13 @@ async def approve_coach_application(
         frontend_base = settings.FRONTEND_URL.rstrip("/")
         onboarding_link = f"{frontend_base}/coach/onboarding"
         email_client = get_email_client()
-        await email_client.send(
+        await email_client.send_template(
+            template_type="coach_application_approved",
             to_email=coach.member.email,
-            subject="Congratulations! Your SwimBuddz Coach Application is Approved",
-            body=(
-                f"Hi {coach.display_name or coach.member.first_name},\n\n"
-                "We are thrilled to welcome you as an approved SwimBuddz coach!\n\n"
-                "Please complete your coach onboarding to activate your profile and "
-                "start coaching.\n\n"
-                f"Complete onboarding: {onboarding_link}\n\n"
-                "If you haven't logged in yet, you'll be prompted to sign in first.\n\n"
-                "Welcome to the team!\n"
-                "The SwimBuddz Team"
-            ),
+            template_data={
+                "coach_name": coach.display_name or coach.member.first_name,
+                "onboarding_url": onboarding_link,
+            },
         )
 
         return {"message": "Coach application approved", "status": "approved"}
@@ -728,18 +722,13 @@ async def reject_coach_application(
 
         # Send rejection email to coach via centralized email service
         email_client = get_email_client()
-        await email_client.send(
+        await email_client.send_template(
+            template_type="coach_application_rejected",
             to_email=coach.member.email,
-            subject="Update on your SwimBuddz Coach Application",
-            body=(
-                f"Hi {coach.display_name or coach.member.first_name},\n\n"
-                "Thank you for your interest in becoming a SwimBuddz coach.\n\n"
-                "After careful review, we are unable to approve your application at this time.\n\n"
-                f"Reason: {data.rejection_reason}\n\n"
-                "You may re-apply in the future if your qualifications change.\n\n"
-                "Best regards,\n"
-                "The SwimBuddz Team"
-            ),
+            template_data={
+                "coach_name": coach.display_name or coach.member.first_name,
+                "rejection_reason": data.rejection_reason,
+            },
         )
 
         return {"message": "Coach application rejected", "status": "rejected"}
@@ -784,18 +773,13 @@ async def request_more_info(
 
         # Send email to coach requesting more info via centralized email service
         email_client = get_email_client()
-        await email_client.send(
+        await email_client.send_template(
+            template_type="coach_application_more_info",
             to_email=coach.member.email,
-            subject="Action Required: Additional Information for SwimBuddz Coach Application",
-            body=(
-                f"Hi {coach.display_name or coach.member.first_name},\n\n"
-                "We are reviewing your coach application and need some additional information "
-                "before we can proceed.\n\n"
-                f"Request: {data.message}\n\n"
-                "Please log in to your dashboard to update your application or reply to this email.\n\n"
-                "Best regards,\n"
-                "The SwimBuddz Team"
-            ),
+            template_data={
+                "coach_name": coach.display_name or coach.member.first_name,
+                "message": data.message,
+            },
         )
 
         return {"message": "More info requested", "status": "more_info_needed"}
@@ -1732,9 +1716,9 @@ async def sign_agreement(
             agreement_content_hash=data.agreement_content_hash,
             signature_type=data.signature_type.value,
             signature_data=sig_data,
-            signature_media_id=uuid.UUID(data.signature_media_id)
-            if data.signature_media_id
-            else None,
+            signature_media_id=(
+                uuid.UUID(data.signature_media_id) if data.signature_media_id else None
+            ),
             signed_at=datetime.now(timezone.utc),
             handbook_acknowledged=True,
             handbook_version=data.handbook_version,
@@ -1958,9 +1942,9 @@ async def create_agreement_version(
             content_hash=new_version.content_hash,
             effective_date=new_version.effective_date,
             is_current=new_version.is_current,
-            created_by_id=str(new_version.created_by_id)
-            if new_version.created_by_id
-            else None,
+            created_by_id=(
+                str(new_version.created_by_id) if new_version.created_by_id else None
+            ),
             signature_count=0,
             active_signature_count=0,
             created_at=new_version.created_at,
@@ -2161,9 +2145,9 @@ async def create_handbook_version(
             content_hash=handbook.content_hash,
             effective_date=handbook.effective_date,
             is_current=handbook.is_current,
-            created_by_id=str(handbook.created_by_id)
-            if handbook.created_by_id
-            else None,
+            created_by_id=(
+                str(handbook.created_by_id) if handbook.created_by_id else None
+            ),
             created_at=handbook.created_at,
             updated_at=handbook.updated_at,
         )

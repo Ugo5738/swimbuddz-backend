@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from libs.auth.dependencies import get_optional_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
-from libs.common.emails.core import send_email
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.db.session import get_async_db
@@ -23,6 +22,7 @@ from services.communications_service.schemas import (  # , AnnouncementCreate
     AnnouncementResponse,
     AnnouncementUpdate,
 )
+from services.communications_service.templates.messaging import send_message_email
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -188,12 +188,10 @@ async def _send_announcement_emails(
         pref = pref_map.get(member_id) if member_id else None
         if not _pref_allows_email(announcement.category, pref):
             continue
-        success = await send_email(
+        success = await send_message_email(
             to_email=email,
             subject=subject,
             body=body,
-            html_body=None,
-            from_name="SwimBuddz",
         )
         if success:
             sent_count += 1

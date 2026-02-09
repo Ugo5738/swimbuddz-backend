@@ -10,7 +10,6 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import is_admin_or_service, require_coach
 from libs.auth.models import AuthUser
-from libs.common.emails.client import get_email_client
 from libs.db.session import get_async_db
 from services.communications_service.models import MessageLog, MessageRecipientType
 from services.communications_service.schemas import (
@@ -19,6 +18,7 @@ from services.communications_service.schemas import (
     MessageResponse,
     StudentMessageCreate,
 )
+from services.communications_service.templates.messaging import send_message_email
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -147,15 +147,13 @@ async def send_cohort_message(
             message="No enrolled students found in this cohort",
         )
 
-    # Send emails to all students via centralized email service
-    email_client = get_email_client()
+    # Send branded emails to all students
     success_count = 0
     for student in students:
-        email_sent = await email_client.send(
+        email_sent = await send_message_email(
             to_email=student["email"],
             subject=message.subject,
             body=message.body,
-            html_body=f"<div>{message.body.replace(chr(10), '<br>')}</div>",
         )
         if email_sent:
             success_count += 1
@@ -203,13 +201,11 @@ async def send_student_message(
     if not is_admin_or_service(current_user):
         await validate_coach_owns_cohort(sender_member_id, student["cohort_id"], db)
 
-    # Send email via centralized email service
-    email_client = get_email_client()
-    email_sent = await email_client.send(
+    # Send branded email
+    email_sent = await send_message_email(
         to_email=student["email"],
         subject=message.subject,
         body=message.body,
-        html_body=f"<div>{message.body.replace(chr(10), '<br>')}</div>",
     )
 
     # Log the message

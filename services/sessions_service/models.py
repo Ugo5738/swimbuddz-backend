@@ -40,7 +40,8 @@ class SessionType(str, enum.Enum):
 class SessionStatus(str, enum.Enum):
     """Session lifecycle status."""
 
-    SCHEDULED = "scheduled"
+    DRAFT = "draft"  # Not visible to members, no notifications sent
+    SCHEDULED = "scheduled"  # Published and visible, notifications active
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
@@ -133,6 +134,9 @@ class Session(Base):
     )
 
     # === Timestamps ===
+    published_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # When session was published (DRAFT → SCHEDULED)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )

@@ -155,6 +155,41 @@ services:
       - traefik.http.routers.api-staging-http.middlewares=redirect-to-https
 
   # ==================================================================
+  # BACKGROUND WORKERS (STAGING)
+  # ==================================================================
+  academy-worker-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-academy-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_academy_worker_staging
+    env_file:
+      - .env.staging
+    depends_on:
+      redis-staging:
+        condition: service_healthy
+      academy-service-staging:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.academy_service.worker.WorkerSettings
+    volumes:
+      - .:/app
+
+  communications-worker-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-communications-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_communications_worker_staging
+    env_file:
+      - .env.staging
+    depends_on:
+      redis-staging:
+        condition: service_healthy
+      communications-service-staging:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.communications_service.worker.WorkerSettings
+    volumes:
+      - .:/app
+
+  # ==================================================================
   # INFRASTRUCTURE (STAGING)
   # ==================================================================
   redis-staging:

@@ -178,6 +178,11 @@ async def send_templated_email(
     - coach_grade_change: Coach grade promotion/update notification
     - shadow_assignment: Shadow coach assignment notification
     - coach_readiness: Coach readiness assessment result
+    - coach_application_approved: Coach application approved
+    - coach_application_rejected: Coach application rejected
+    - coach_application_more_info: More info requested from coach applicant
+    - member_approved: Member application approved
+    - member_rejected: Member application rejected
     - payment_approved: Payment was approved
     - session_confirmation: Session booking confirmed
     - store_order_confirmation: Store order confirmed
@@ -188,6 +193,7 @@ async def send_templated_email(
     from services.communications_service.templates import (
         academy,
         coaching,
+        members,
         payments,
         sessions,
         store,
@@ -292,6 +298,35 @@ async def send_templated_email(
             is_ready=d.get("is_ready", False),
             passed_checks=d.get("passed_checks", []),
             pending_checks=d.get("pending_checks", []),
+        ),
+        "coach_application_approved": lambda d: coaching.send_coach_application_approved_email(
+            to_email=request.to_email,
+            coach_name=d.get("coach_name", ""),
+            onboarding_url=d.get(
+                "onboarding_url", "https://swimbuddz.com/coach/onboarding"
+            ),
+        ),
+        "coach_application_rejected": lambda d: coaching.send_coach_application_rejected_email(
+            to_email=request.to_email,
+            coach_name=d.get("coach_name", ""),
+            rejection_reason=d.get("rejection_reason", ""),
+        ),
+        "coach_application_more_info": lambda d: coaching.send_coach_application_more_info_email(
+            to_email=request.to_email,
+            coach_name=d.get("coach_name", ""),
+            message=d.get("message", ""),
+        ),
+        # --- Member templates ---
+        "member_approved": lambda d: members.send_member_approved_email(
+            to_email=request.to_email,
+            member_name=d.get("member_name", ""),
+        ),
+        "member_rejected": lambda d: members.send_member_rejected_email(
+            to_email=request.to_email,
+            member_name=d.get("member_name", ""),
+            rejection_reason=d.get(
+                "rejection_reason", "Does not meet current criteria"
+            ),
         ),
         # --- Payment templates ---
         "payment_approved": lambda d: payments.send_payment_approved_email(

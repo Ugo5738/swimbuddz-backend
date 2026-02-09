@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
-from services.sessions_service.models import SessionLocation, SessionType, SessionStatus
+from services.sessions_service.models import SessionLocation, SessionStatus, SessionType
 
 
 class SessionBase(BaseModel):
@@ -12,7 +12,7 @@ class SessionBase(BaseModel):
     notes: Optional[str] = None
 
     session_type: SessionType = SessionType.CLUB
-    status: SessionStatus = SessionStatus.SCHEDULED
+    status: Optional[SessionStatus] = None  # Defaults to DRAFT at creation
 
     # Location (enum or custom string)
     location: Optional[SessionLocation] = None
@@ -73,6 +73,8 @@ class SessionUpdate(BaseModel):
 
 class SessionResponse(SessionBase):
     id: uuid.UUID
+    status: SessionStatus  # Override to make required in response
+    published_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     template_id: Optional[uuid.UUID] = None
