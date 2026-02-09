@@ -317,6 +317,19 @@ class MemberPublicResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MemberBasicResponse(BaseModel):
+    """Basic member info for service-to-service lookups."""
+
+    id: uuid.UUID
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    profile_photo_media_id: Optional[uuid.UUID] = None
+    profile_photo_url: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ============================================================================
 # INPUT SCHEMAS
 # ============================================================================

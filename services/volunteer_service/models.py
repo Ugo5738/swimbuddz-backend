@@ -185,6 +185,15 @@ class VolunteerProfile(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     admin_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Spotlight fields
+    spotlight_quote: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    featured_from: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    featured_until: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
