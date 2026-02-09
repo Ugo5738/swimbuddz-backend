@@ -2,6 +2,7 @@
 Coach-specific email templates.
 
 These templates handle notifications for coach lifecycle events:
+- Application approval/rejection/request-more-info
 - Agreement signing confirmation
 - Grade changes/promotions
 - Shadow assignments
@@ -334,6 +335,137 @@ View your progress: {dashboard_url}
         body_html=body_html,
         header_gradient=header_gradient,
         preheader=f"{'Ready for ' + grade_display + '!' if is_ready else 'Readiness assessment for ' + grade_display}",
+    )
+
+    return await send_email(to_email, subject, body, html_body)
+
+
+async def send_coach_application_approved_email(
+    to_email: str,
+    coach_name: str,
+    onboarding_url: str = "https://swimbuddz.com/coach/onboarding",
+) -> bool:
+    """
+    Send branded email when a coach application is approved.
+    """
+    subject = "Congratulations! Your SwimBuddz Coach Application is Approved"
+
+    body = (
+        f"Hi Coach {coach_name},\n\n"
+        "We are thrilled to welcome you as an approved SwimBuddz coach!\n\n"
+        "Please complete your coach onboarding to activate your profile and "
+        "start coaching.\n\n"
+        f"Complete onboarding: {onboarding_url}\n\n"
+        "If you haven't logged in yet, you'll be prompted to sign in first.\n\n"
+        "Welcome to the team!\n"
+        "The SwimBuddz Team"
+    )
+
+    body_html = (
+        f"<p>Hi Coach {coach_name},</p>"
+        "<p>We are thrilled to welcome you as an approved SwimBuddz coach!</p>"
+        "<p>Please complete your coach onboarding to activate your profile "
+        "and start coaching.</p>"
+        + cta_button("Complete Onboarding", onboarding_url, color="#10b981")
+        + "<p style='font-size: 13px; color: #64748b;'>If you haven't logged in yet, "
+        "you'll be prompted to sign in first.</p>"
+        + "<p>Welcome to the team!</p>"
+    )
+
+    html_body = wrap_html(
+        title="Application Approved!",
+        subtitle="Welcome to the SwimBuddz coaching team",
+        body_html=body_html,
+        header_gradient=GRADIENT_GREEN,
+        preheader="Your SwimBuddz coach application has been approved",
+    )
+
+    return await send_email(to_email, subject, body, html_body)
+
+
+async def send_coach_application_rejected_email(
+    to_email: str,
+    coach_name: str,
+    rejection_reason: str,
+) -> bool:
+    """
+    Send branded email when a coach application is rejected.
+    """
+    subject = "Update on your SwimBuddz Coach Application"
+
+    body = (
+        f"Hi {coach_name},\n\n"
+        "Thank you for your interest in becoming a SwimBuddz coach.\n\n"
+        "After careful review, we are unable to approve your application "
+        "at this time.\n\n"
+        f"Reason: {rejection_reason}\n\n"
+        "You may re-apply in the future if your qualifications change.\n\n"
+        "Best regards,\n"
+        "The SwimBuddz Team"
+    )
+
+    body_html = (
+        f"<p>Hi {coach_name},</p>"
+        "<p>Thank you for your interest in becoming a SwimBuddz coach.</p>"
+        "<p>After careful review, we are unable to approve your application "
+        "at this time.</p>"
+        + detail_box({"Reason": rejection_reason}, accent_color="#d97706")
+        + "<p>You may re-apply in the future if your qualifications change.</p>"
+    )
+
+    html_body = wrap_html(
+        title="Application Update",
+        subtitle="Thank you for your interest in coaching",
+        body_html=body_html,
+        header_gradient=GRADIENT_AMBER,
+        preheader="Update on your SwimBuddz coach application",
+    )
+
+    return await send_email(to_email, subject, body, html_body)
+
+
+async def send_coach_application_more_info_email(
+    to_email: str,
+    coach_name: str,
+    message: str,
+    dashboard_url: str = "https://swimbuddz.com/account/coach",
+) -> bool:
+    """
+    Send branded email requesting more info from a coach applicant.
+    """
+    subject = "Action Required: Additional Information for SwimBuddz Coach Application"
+
+    body = (
+        f"Hi {coach_name},\n\n"
+        "We are reviewing your coach application and need some additional "
+        "information before we can proceed.\n\n"
+        f"Request: {message}\n\n"
+        "Please log in to your dashboard to update your application.\n\n"
+        f"Update your application: {dashboard_url}\n\n"
+        "Best regards,\n"
+        "The SwimBuddz Team"
+    )
+
+    body_html = (
+        f"<p>Hi {coach_name},</p>"
+        "<p>We are reviewing your coach application and need some additional "
+        "information before we can proceed.</p>"
+        + info_box(
+            f"<p style='margin: 0;'>{message}</p>",
+            bg_color="#fefce8",
+            border_color="#f59e0b",
+            title="Information Requested",
+        )
+        + "<p>Please log in to your dashboard to update your application.</p>"
+        + cta_button("Update Application", dashboard_url, color="#f59e0b")
+    )
+
+    html_body = wrap_html(
+        title="Action Required",
+        subtitle="Additional information needed for your application",
+        body_html=body_html,
+        header_gradient=GRADIENT_AMBER,
+        preheader="We need additional information for your coach application",
     )
 
     return await send_email(to_email, subject, body, html_body)

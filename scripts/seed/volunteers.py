@@ -15,6 +15,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import alembic.util.langhelpers
+
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -45,18 +47,19 @@ SEED_ROLES = [
         "min_tier": VolunteerTier.TIER_2,
         "icon": "📣",
         "sort_order": 1,
-        "time_commitment": "90–120 min (full session + 15 min before/after)",
+        "time_commitment": "Full session duration + 15 min before and after (~90–120 min total)",
         "responsibilities": [
-            "Arrive 15 minutes before session starts",
-            "Brief other volunteers on the day's plan",
-            "Signal the start and end of each phase: warm-up, main swim, cool-down",
-            "Make announcements to the group",
-            "Handle any on-the-ground issues",
-            "Ensure all swimmers have exited before leaving",
+            "Arrive 15 minutes before the session starts.",
+            "Brief other volunteers on the day's plan (swimmers expected, first-timers, special announcements).",
+            "Signal the start and end of each phase: warm-up, main swim, cool-down.",
+            "Make announcements to the group (upcoming events, reminders, shout-outs).",
+            "Handle any on-the-ground issues (late arrivals, lane changes, schedule adjustments).",
+            "Ensure all swimmers have exited the pool area before you leave.",
+            "Be the last volunteer to leave.",
         ],
         "skills_needed": (
             "Comfortable speaking to groups. Calm under mild pressure. "
-            "No swimming expertise required."
+            "No swimming expertise required, you're coordinating, not coaching"
         ),
         "best_for": (
             "People who like organising, keeping things on track, "
@@ -74,18 +77,18 @@ SEED_ROLES = [
         "min_tier": VolunteerTier.TIER_1,
         "icon": "🏋️",
         "sort_order": 2,
-        "time_commitment": "~45 min (10 min setup + 30 min warm-up + 5 min wrap-up)",
+        "time_commitment": "~45 min (arrive 10 min early to set up, 25 min warm-up, 5 min wrap-up)",
         "responsibilities": [
-            "Prepare a 15–30 minute warm-up routine",
-            "Lead stretches, mobility drills, and light cardio",
-            "Demonstrate each exercise clearly",
-            "Adapt for different fitness levels",
-            "Focus on injury prevention: shoulders, neck, ankles, core",
+            "Prepare a 15–30 minute warm-up routine (templates provided or freestyle).",
+            "Lead the group through stretches, mobility drills, and light cardio before entering the pool.",
+            "Demonstrate each exercise clearly facing the group, count reps out loud.",
+            "Adapt on the fly for different fitness levels (offer easier/harder variations).",
+            "Focus on injury prevention: shoulders, neck, ankles, and core.",
+            "Keep energy high through music, light banter, encouragement.",
         ],
-        "skills_needed": "Basic fitness knowledge. Enthusiasm. No certification needed.",
+        "skills_needed": "Basic fitness knowledge. Enthusiasm. You do NOT need a personal training certification, just be comfortable leading a group through simple exercises.",
         "best_for": (
-            "Fitness enthusiasts, gym-goers, anyone who enjoys leading "
-            "group exercise."
+            "Fitness enthusiasts, gym-goers, anyone who enjoys leading group exercise. Great entry-level volunteer role."
         ),
     },
     {
@@ -99,17 +102,17 @@ SEED_ROLES = [
         "min_tier": VolunteerTier.TIER_1,
         "icon": "🚩",
         "sort_order": 3,
-        "time_commitment": "~40–50 min (main swim portion)",
+        "time_commitment": "Main swim portion only (~40–50 min)",
         "responsibilities": [
-            "Assign swimmers to lanes based on speed and ability",
-            "Help first-timers understand circle swimming",
-            "Rebalance lanes if one gets overcrowded",
-            "Gently enforce lane etiquette",
-            "Watch for swimmers in the wrong lane and help them move",
+            "Assign swimmers to lanes based on speed and ability (fast, medium, slow, beginner).",
+            "Help first-timers understand circle swimming (swim down one side, return on the other).",
+            "Rebalance lanes if one gets overcrowded mid-session.",
+            "Gently enforce lane etiquette: no stopping at the wall for long chats, yielding to faster swimmers, etc.",
+            "Watch for swimmers in the wrong lane and help them move without embarrassment.",
         ],
-        "skills_needed": "Basic swimming knowledge. Tactful communication.",
+        "skills_needed": "Basic swimming knowledge (you need to understand lane speed groupings). Tactful communication — you'll be redirecting people politely.",
         "best_for": (
-            "Experienced swimmers who understand pool flow and can guide others."
+            "Experienced swimmers who understand pool flow and can guide others without being bossy."
         ),
     },
     {
@@ -123,18 +126,21 @@ SEED_ROLES = [
         "min_tier": VolunteerTier.TIER_1,
         "icon": "📋",
         "sort_order": 4,
-        "time_commitment": "~30 min (15 min before + first 15 min of session)",
+        "time_commitment": "~30 min (15 min before session + first 15 min of session)",
         "responsibilities": [
-            "Set up at the session entrance before start time",
-            "Greet arriving members and mark attendance on the app",
-            "Confirm walk-ins vs. pre-registered members",
-            "Note first-timers and direct them to the Welcome Volunteer",
-            "Track late arrivals and hand off count to Session Lead",
+            "Set up at the session entrance 15 minutes before start time.",
+            "Greet arriving members and mark them as 'present' on the SwimBuddz app.",
+            "Confirm walk-ins vs. pre-registered members.",
+            "Note any guests or first-timers and direct them to the Welcome Volunteer.",
+            "Track late arrivals.",
+            "Hand off the final attendance count to the Session Lead.",
         ],
         "skills_needed": (
-            "Comfortable using a phone/tablet. Friendly and approachable."
+            "Comfortable using a phone/tablet. Friendly and approachable. Detail-oriented."
         ),
-        "best_for": ("Organised people who like greeting others. Low physical effort."),
+        "best_for": (
+            "Organised people who like greeting others. Low physical effort, you're at a table, not in the pool."
+        ),
     },
     {
         "title": "Safety Rep",
@@ -148,20 +154,21 @@ SEED_ROLES = [
         "min_tier": VolunteerTier.TIER_2,
         "icon": "🛡️",
         "sort_order": 5,
-        "time_commitment": "~50–60 min (full swim duration, focused attention)",
+        "time_commitment": "Full swim duration (~50–60 min of focused attention)",
         "responsibilities": [
-            "Position yourself poolside with clear view of all lanes",
-            "Watch for signs of exhaustion, distress, or unsafe behaviour",
-            "Know the location of first-aid kit, AED, and emergency exits",
-            "Alert nearest coach or lifeguard if someone is struggling",
-            "Flag hazards to the Session Lead",
+            "Position yourself poolside with a clear view of all lanes during the swim.",
+            "Watch for signs of exhaustion, distress, or unsafe behaviour (diving in shallow areas, horseplay).",
+            "Know the location of the first-aid kit, AED (if available), and emergency exits.",
+            "Know the venue's emergency phone number and nearest hospital.",
+            "If someone is struggling, alert the nearest coach or lifeguard immediately.",
+            "Flag any hazards (slippery deck, broken equipment, overcrowding) to the Session Lead.",
+            "Ensure no one is left in the pool unattended.",
         ],
         "skills_needed": (
-            "Basic first-aid knowledge preferred. Must be attentive and calm. "
-            "CPR training is a plus."
+            "Basic first-aid knowledge is strongly preferred but not mandatory. Must be attentive and calm. CPR training is a plus, we'll help you get certified if you're interested."
         ),
         "best_for": (
-            "Responsible, observant individuals. Healthcare workers, parents."
+            "Responsible, observant individuals. Healthcare workers, parents, anyone who naturally watches out for others."
         ),
     },
     # ── Community Roles ────────────────────────────────────────────────
@@ -176,18 +183,18 @@ SEED_ROLES = [
         "min_tier": VolunteerTier.TIER_1,
         "icon": "👋",
         "sort_order": 6,
-        "time_commitment": "~30 min spread across the session",
+        "time_commitment": "~30 min spread across the session (before, during breaks, after)",
         "responsibilities": [
-            "Introduce yourself to anyone attending their first session",
-            "Give a quick orientation: changing rooms, belongings, session flow",
-            "Introduce newcomers to 2–3 friendly regulars",
-            "Answer basic questions",
-            "Check in with them at the end — encourage them to come back",
+            "Introduce yourself to anyone attending their first session.",
+            "Give them a quick orientation: where to change, where to store belongings, how the session flows.",
+            "Introduce them to 2–3 friendly regulars so they don't feel alone.",
+            'Answer basic questions ("Do I need goggles?", "Which lane should I be in?", "Is there food after?").',
+            "Check in with them at the end of the session, ask how it went, encourage them to come back.",
+            "If they seem nervous about the water, connect them with a Mentor/Buddy.",
         ],
         "skills_needed": ("Warmth. Friendliness. Memory for names is a huge plus."),
         "best_for": (
-            "Extroverts, natural connectors, people who remember what it "
-            "felt like to be new."
+            "Extroverts, natural connectors, people who remember what it felt like to be new."
         ),
     },
     {
@@ -201,18 +208,19 @@ SEED_ROLES = [
         "min_tier": VolunteerTier.TIER_1,
         "icon": "🚗",
         "sort_order": 7,
-        "time_commitment": "30–60 min each way (Lagos traffic considered)",
+        "time_commitment": "Variable, depends on distance. Typically 30–60 min each way (Lagos traffic considered).",
         "responsibilities": [
-            "Make your car available for a designated pickup zone",
-            "Communicate departure time and pickup location",
-            "Wait a reasonable time for passengers (5 min grace period)",
-            "Drive safely to the pool venue",
-            "After session, drive passengers back to pickup zone",
+            "Make your car available for a designated pickup zone (Yaba, VI, Ikoyi, Lekki, etc.).",
+            "Communicate your departure time and exact pickup location to your ride group via WhatsApp or the app.",
+            "Wait a reasonable time for your passengers (5 min grace period from announced departure).",
+            "Drive safely to the pool venue.",
+            "After the session, drive your passengers back to the pickup zone (or an agreed drop-off).",
+            "Report any issues (no-shows from passengers, traffic delays) via the app.",
         ],
         "skills_needed": (
-            "Valid driver's license. Reliable vehicle. Patience in Lagos traffic."
+            "Valid driver's license. Reliable vehicle. Patience in Lagos traffic. Good communication, you need to coordinate timing with 2–4 people."
         ),
-        "best_for": "Car owners already driving to sessions with spare seats.",
+        "best_for": "Car owners who are already driving to the session and have spare seats.",
     },
     {
         "title": "Mentor / Buddy",
@@ -226,19 +234,47 @@ SEED_ROLES = [
         "icon": "🤝",
         "sort_order": 8,
         "time_commitment": (
-            "No extra time beyond attending sessions + 5–10 min " "WhatsApp check-ins"
+            "No extra time beyond attending sessions you'd already attend. Plus 5–10 min of WhatsApp check-ins between sessions."
         ),
         "responsibilities": [
-            "Be paired with a newer member for 4–8 sessions",
-            "Check in before each session — are they coming? Any concerns?",
-            "Swim near them so they have a familiar face",
-            "Help them understand community norms",
-            "Celebrate their milestones and reach out if they go quiet",
+            "Be paired with a newer member (or someone returning after a long break) for 4–8 sessions.",
+            "Check in with them before each session, are they coming? Do they need a ride? Any concerns?",
+            "Swim near them during sessions so they have a familiar face.",
+            "Help them understand the community norms (when sessions happen, how to sign up, WhatsApp group etiquette).",
+            "Celebrate their milestones: first full session, first 10 sessions, learning a new stroke.",
+            "If they miss 2+ sessions in a row, reach out, a simple 'Hey, we missed you!' goes far.",
+            "Help transition them to independence after 4–8 sessions, introduce them to others, help them find their own rhythm.",
         ],
         "skills_needed": (
-            "Empathy. Consistency. Patience with people who may be " "scared of water."
+            "Empathy. Consistency (you need to show up to the sessions your mentee is attending). Patience with people who may be scared of water."
         ),
-        "best_for": ("Regulars who remember how intimidating it was to start."),
+        "best_for": (
+            "Regulars who remember how intimidating it was to start. People who naturally check on others."
+        ),
+    },
+    {
+        "title": "Group Admin",
+        "description": (
+            "Keeps the WhatsApp groups active, organized, informed and motivated."
+        ),
+        "category": VolunteerRoleCategory.ADMIN,
+        "min_tier": VolunteerTier.TIER_2,
+        "icon": "🤝",
+        "sort_order": 9,
+        "time_commitment": ("~1–2 hours per week (spread out in 5-minute increments)."),
+        "responsibilities": [
+            "Post the weekly session registration links and reminders (templates provided).",
+            "Answer basic questions in the chat ('Is the session holding?', 'Where do I park?', 'What time do we start?').",
+            "Keep the vibe positive and inclusive; ensure conversations stay respectful.",
+            "Post the 'post-swim' group photo to the chat after sessions to keep engagement high.",
+            "Nudge the group if sign-ups are low for an upcoming session: 'We have 3 spots left for Saturday!'",
+        ],
+        "skills_needed": (
+            "Responsive on WhatsApp. Friendly tone. Patience. Good with gifs/memes (optional but helpful)."
+        ),
+        "best_for": (
+            "People who are always on their phone, remote workers, or those who want to help."
+        ),
     },
     # ── Content & Media Roles ──────────────────────────────────────────
     {
@@ -251,19 +287,20 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.MEDIA,
         "min_tier": VolunteerTier.TIER_1,
         "icon": "📸",
-        "sort_order": 9,
-        "time_commitment": "Throughout the session (can still swim)",
+        "sort_order": 10,
+        "time_commitment": "Throughout the session. You can still swim, just keep your phone nearby for key moments.",
         "responsibilities": [
-            "Capture a mix of action shots, warm-up photos, candid moments, "
-            "group shots",
-            "Record 15–30 second video clips for social content",
-            "Get the group photo at the end of every session",
-            "Respect photo consent — skip opted-out members",
-            "Share raw media with Gallery Support or upload to shared album",
+            "Bring your phone (or camera if you have one) to the session.",
+            "Capture a mix of: action shots in the pool, warm-up photos, candid moments, group shots after the swim.",
+            "Record 15–30 second video clips for Instagram/TikTok content.",
+            "Get the 'money shot' — the group photo at the end of every session.",
+            "Respect photo consent — if someone has opted out, don't include them in shots.",
+            "Share raw media with the Gallery Support volunteer or upload directly to the shared album.",
+            "Optionally: shoot short testimonial videos with willing members.",
         ],
-        "skills_needed": "A decent phone camera. Basic sense of composition.",
+        "skills_needed": "A decent phone camera. Basic sense of composition (we're not looking for professional photography, just good, authentic content). Awareness of lighting and angles.",
         "best_for": (
-            "Anyone already snapping pics at sessions. Instagram-savvy members."
+            "Anyone who's already snapping pics at sessions. Instagram-savvy members. Aspiring content creators."
         ),
     },
     {
@@ -276,21 +313,22 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.GALLERY_SUPPORT,
         "min_tier": VolunteerTier.TIER_1,
         "icon": "🖼️",
-        "sort_order": 10,
+        "sort_order": 11,
         "time_commitment": "30–60 min after each session (can be done from home)",
         "responsibilities": [
-            "Collect raw photos/videos from Media Volunteers",
-            "Upload them to the SwimBuddz gallery",
-            "Tag members who appear in photos",
-            "Select 5–10 best-of shots per session for highlights",
-            "Delete duplicates and ensure photo consent is respected",
+            "Collect raw photos/videos from Media Volunteers after each session.",
+            "Upload them to the SwimBuddz gallery (via the admin panel or shared album).",
+            "Tag members who appear in photos (helps members find their own pictures).",
+            "Organise media by date, session, and event.",
+            "Select 5–10 'best of' shots per session for social media highlights.",
+            "Delete duplicates, blurry shots, and unflattering images.",
+            "Ensure photo consent is respected, remove images of members who've opted out.",
         ],
         "skills_needed": (
-            "Organised. Eye for selecting good photos. Can be done remotely."
+            "Organised. Familiar with the SwimBuddz admin panel (we'll train you). Eye for selecting good photos. Can be done from anywhere, you don't need to attend the session."
         ),
         "best_for": (
-            "Detail-oriented people. Photographers. Great if you can't "
-            "always attend sessions."
+            "Detail-oriented people. Photographers. Anyone who likes curating content. Great role if you can't always make it to sessions physically."
         ),
     },
     # ── Events & Logistics Roles ───────────────────────────────────────
@@ -304,19 +342,19 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.EVENTS_LOGISTICS,
         "min_tier": VolunteerTier.TIER_1,
         "icon": "📦",
-        "sort_order": 11,
-        "time_commitment": "2–4 hours per event (variable)",
+        "sort_order": 12,
+        "time_commitment": "Variable, depends on the event. Could be 2–4 hours for a small social or a full day for a community meet.",
         "responsibilities": [
-            "Help set up and tear down for special events",
-            "Manage equipment: cones, lane ropes, timing equipment, speakers",
-            "Coordinate timing between activities during multi-part events",
-            "Handle on-the-ground logistics: venue access, parking, vendors",
-            "Be the fixer — adapt when things go wrong",
+            "Help set up and tear down for special events (beach days, social gatherings, watch parties, community meets).",
+            "Manage equipment: cones, lane ropes, timing equipment, speakers, banners.",
+            "Coordinate timing and transitions between activities during multi-part events.",
+            "Handle on-the-ground logistics: venue access, parking coordination, vendor liaison.",
+            "Be the 'fixer' - if something goes wrong (missing equipment, late vendor, weather change), you adapt.",
         ],
         "skills_needed": (
-            "Flexible. Problem-solver. Comfortable with physical setup work."
+            "Flexible. Problem-solver. Comfortable with physical setup work (carrying equipment, arranging spaces). Good under pressure."
         ),
-        "best_for": "People who like making things happen behind the scenes.",
+        "best_for": "People who like making things happen behind the scenes. Operations-minded individuals. Anyone who's organised a party, wedding, or community event before.",
     },
     {
         "title": "Trip Planner",
@@ -328,19 +366,25 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.TRIP_PLANNER,
         "min_tier": VolunteerTier.TIER_2,
         "icon": "🗺️",
-        "sort_order": 12,
-        "time_commitment": ("5–10 hours planning per trip (over 2–4 weeks) + trip day"),
+        "sort_order": 13,
+        "time_commitment": (
+            "5–10 hours of planning per trip (spread over 2–4 weeks). Plus the trip day itself."
+        ),
         "responsibilities": [
-            "Research and propose trip destinations",
-            "Plan logistics: transport, accommodation, costs, group size",
-            "Create and share trip itineraries",
-            "Manage RSVPs and collect payments",
-            "Handle on-the-day logistics and safety briefings",
+            "Research and propose trip destinations (beach locations, open water venues, pools in other cities).",
+            "Plan logistics: transport options, accommodation (for overnight trips), costs, group size limits.",
+            "Create and share trip itineraries with the community.",
+            "Manage RSVPs and collect payments (via the platform or coordination with admin).",
+            "Coordinate with local contacts at destination venues.",
+            "Handle on-the-day logistics: meeting points, headcounts, safety briefing for open water.",
+            "Post-trip: collect feedback, share photos, document lessons for future trips.",
         ],
         "skills_needed": (
-            "Research skills. Organisational ability. Budget management."
+            "Research skills. Organisational ability. Budget management. Good communication. Experience travelling within Nigeria is a major plus."
         ),
-        "best_for": ("Natural planners. Travel enthusiasts who know great swim spots."),
+        "best_for": (
+            "Natural planners. Travel enthusiasts. People who already know great swim spots around Lagos and Nigeria."
+        ),
     },
     # ── Academy Support Roles ──────────────────────────────────────────
     {
@@ -354,21 +398,24 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.ACADEMY_ASSISTANT,
         "min_tier": VolunteerTier.TIER_2,
         "icon": "🎓",
-        "sort_order": 13,
-        "time_commitment": ("60–90 min (full academy session) + 10 min coach debrief"),
+        "sort_order": 14,
+        "time_commitment": (
+            "Full academy session duration (~60–90 min) + 10 min debrief with coach."
+        ),
         "responsibilities": [
-            "Assist the lead coach during cohort sessions",
-            "Help demonstrate drills and techniques",
-            "Work one-on-one with students needing extra attention",
-            "Assist with skill assessment sessions",
-            "Help manage session resources: kickboards, pull buoys, fins",
+            "Assist the lead coach during cohort sessions (Beginner, Intermediate, Advanced programs).",
+            "Help demonstrate drills and techniques alongside the coach.",
+            "Work one-on-one with students who need extra attention during group sessions.",
+            "Assist with skill assessment sessions: help position students, operate timing equipment, record results.",
+            "Shadow experienced coaches to learn teaching methods (this is a pathway to becoming a coach).",
+            "Help manage session resources: kickboards, pull buoys, fins, and other training aids.",
+            "Provide feedback to the coach after sessions on student progress you observed.",
         ],
         "skills_needed": (
-            "Competent swimmer (Intermediate+). Patient with learners. "
-            "Interest in coaching."
+            "Competent swimmer (Intermediate level minimum). Patient with learners. Comfortable in the water giving hands-on guidance. Interest in coaching/teaching is strongly preferred."
         ),
         "best_for": (
-            "Strong swimmers interested in coaching. Education professionals."
+            "Strong swimmers interested in coaching. Education professionals. Parents experienced with teaching children to swim. Anyone on the path to becoming a certified swim coach."
         ),
     },
 ]

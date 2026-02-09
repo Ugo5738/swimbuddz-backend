@@ -238,6 +238,24 @@ services:
     volumes:
       - .:/app
 
+  communications-worker:
+    build:
+      context: .
+      dockerfile: services/communications_service/Dockerfile
+    container_name: swimbuddz_communications_worker
+    env_file:
+      - .env.dev
+    depends_on:
+      redis:
+        condition: service_healthy
+      communications-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.communications_service.worker.WorkerSettings
+    volumes:
+      - .:/app
+
   # ==================================================================
   # INFRASTRUCTURE
   # ==================================================================

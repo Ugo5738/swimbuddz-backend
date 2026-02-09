@@ -106,17 +106,12 @@ async def approve_member(
 
     # Send approval email notification via centralized email service
     email_client = get_email_client()
-    await email_client.send(
+    await email_client.send_template(
+        template_type="member_approved",
         to_email=member.email,
-        subject="Welcome to SwimBuddz! Your account is approved",
-        body=(
-            f"Hi {member.first_name},\n\n"
-            "Congratulations! Your SwimBuddz membership application has been "
-            "approved.\n\n"
-            "You can now log in and access all member features.\n\n"
-            "Welcome to the community!\n"
-            "The SwimBuddz Team"
-        ),
+        template_data={
+            "member_name": member.first_name,
+        },
     )
 
     query = (
@@ -171,19 +166,13 @@ async def reject_member(
 
     # Send rejection email notification via centralized email service
     email_client = get_email_client()
-    await email_client.send(
+    await email_client.send_template(
+        template_type="member_rejected",
         to_email=member.email,
-        subject="Update on your SwimBuddz application",
-        body=(
-            f"Hi {member.first_name},\n\n"
-            "Thank you for your interest in SwimBuddz.\n\n"
-            "After reviewing your application, we are unable to approve your "
-            "membership at this time.\n\n"
-            f"Reason: {action.notes or 'Does not meet current criteria'}\n\n"
-            "You are welcome to reapply in the future.\n\n"
-            "Best regards,\n"
-            "The SwimBuddz Team"
-        ),
+        template_data={
+            "member_name": member.first_name,
+            "rejection_reason": action.notes or "Does not meet current criteria",
+        },
     )
 
     query = (
