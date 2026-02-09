@@ -368,8 +368,7 @@ async def send_coach_application_approved_email(
         "and start coaching.</p>"
         + cta_button("Complete Onboarding", onboarding_url, color="#10b981")
         + "<p style='font-size: 13px; color: #64748b;'>If you haven't logged in yet, "
-        "you'll be prompted to sign in first.</p>"
-        + "<p>Welcome to the team!</p>"
+        "you'll be prompted to sign in first.</p>" + "<p>Welcome to the team!</p>"
     )
 
     html_body = wrap_html(
