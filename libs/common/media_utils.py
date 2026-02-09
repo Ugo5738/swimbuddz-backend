@@ -4,15 +4,14 @@ Uses HTTP calls to the media service instead of direct DB queries to maintain
 proper service boundaries in the microservices architecture.
 """
 
-import os
 import uuid
 from typing import Optional
 
 import httpx
+from libs.common.config import get_settings
 from libs.common.logging import get_logger
 
-# Media service URL - uses internal Docker network in production
-MEDIA_SERVICE_URL = os.getenv("MEDIA_SERVICE_URL", "http://media-service:8008")
+settings = get_settings()
 logger = get_logger(__name__)
 
 
@@ -53,7 +52,7 @@ async def resolve_media_urls(
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.post(
-                f"{MEDIA_SERVICE_URL}/api/v1/media/urls",
+                f"{settings.MEDIA_SERVICE_URL}/api/v1/media/urls",
                 json=[str(mid) for mid in valid_ids],
             )
             response.raise_for_status()

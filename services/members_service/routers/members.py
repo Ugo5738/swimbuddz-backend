@@ -3,14 +3,10 @@
 import uuid
 from typing import List
 
-from libs.common.logging import get_logger
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
+from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.common.supabase import get_supabase_admin_client
 from libs.db.session import get_async_db
@@ -25,18 +21,21 @@ from services.members_service.models import (
     MemberProfile,
     VolunteerInterest,
 )
+from services.members_service.routers._helpers import (
+    member_eager_load_options,
+    normalize_member_tiers,
+    resolve_member_media_urls,
+)
 from services.members_service.schemas import (
+    MemberBasicResponse,
     MemberCreate,
     MemberListResponse,
     MemberPublicResponse,
     MemberResponse,
     MemberUpdate,
 )
-from services.members_service.routers._helpers import (
-    member_eager_load_options,
-    normalize_member_tiers,
-    resolve_member_media_urls,
-)
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/members", tags=["members"])
@@ -235,6 +234,51 @@ async def list_public_members(
     return result.scalars().all()
 
 
+@router.post("/bulk-basic", response_model=dict[str, MemberBasicResponse])
+async def get_members_bulk_basic(
+    member_ids: list[uuid.UUID],
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Bulk lookup of basic member info by IDs.
+
+    Internal endpoint for service-to-service calls. Returns a dict mapping
+    member_id (string) -> basic info (name, email, profile photo).
+    Max 50 IDs per request.
+    """
+    if len(member_ids) > 50:
+        raise HTTPException(
+            status_code=400, detail="Maximum 50 member IDs per request."
+        )
+    if not member_ids:
+        return {}
+
+    query = select(Member).where(Member.id.in_(member_ids))
+    result = await db.execute(query)
+    members = result.scalars().all()
+
+    # Resolve profile photo URLs via media service
+    photo_ids = [m.profile_photo_media_id for m in members if m.profile_photo_media_id]
+    url_map = await resolve_media_urls(photo_ids) if photo_ids else {}
+
+    response = {}
+    for m in members:
+        photo_url = (
+            url_map.get(str(m.profile_photo_media_id))
+            if m.profile_photo_media_id
+            else None
+        )
+        response[str(m.id)] = MemberBasicResponse(
+            id=m.id,
+            first_name=m.first_name,
+            last_name=m.last_name,
+            email=m.email,
+            profile_photo_media_id=m.profile_photo_media_id,
+            profile_photo_url=photo_url,
+        )
+    return response
+
+
 @router.get("/public/{member_id}")
 async def get_member_for_verification(
     member_id: uuid.UUID,
@@ -271,20 +315,28 @@ async def get_member_for_verification(
         "email": member.email,  # For staff to verify identity
         "profile_photo_url": profile_photo_url,
         "created_at": member.created_at.isoformat() if member.created_at else None,
-        "membership": {
-            "active_tiers": membership.active_tiers if membership else [],
-            "community_paid_until": membership.community_paid_until.isoformat()
-            if membership and membership.community_paid_until
-            else None,
-            "club_paid_until": membership.club_paid_until.isoformat()
-            if membership and membership.club_paid_until
-            else None,
-            "academy_paid_until": membership.academy_paid_until.isoformat()
-            if membership and membership.academy_paid_until
-            else None,
-        }
-        if membership
-        else None,
+        "membership": (
+            {
+                "active_tiers": membership.active_tiers if membership else [],
+                "community_paid_until": (
+                    membership.community_paid_until.isoformat()
+                    if membership and membership.community_paid_until
+                    else None
+                ),
+                "club_paid_until": (
+                    membership.club_paid_until.isoformat()
+                    if membership and membership.club_paid_until
+                    else None
+                ),
+                "academy_paid_until": (
+                    membership.academy_paid_until.isoformat()
+                    if membership and membership.academy_paid_until
+                    else None
+                ),
+            }
+            if membership
+            else None
+        ),
     }
 
 

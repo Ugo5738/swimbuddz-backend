@@ -78,6 +78,10 @@ class VolunteerProfileAdminUpdate(BaseModel):
     is_active: Optional[bool] = None
     admin_notes: Optional[str] = None
     reliability_score: Optional[int] = None
+    spotlight_quote: Optional[str] = None
+    is_featured: Optional[bool] = None
+    featured_from: Optional[datetime] = None
+    featured_until: Optional[datetime] = None
 
 
 class VolunteerProfileResponse(BaseModel):
@@ -98,6 +102,10 @@ class VolunteerProfileResponse(BaseModel):
     notes: Optional[str] = None
     is_active: bool
     admin_notes: Optional[str] = None
+    spotlight_quote: Optional[str] = None
+    is_featured: bool = False
+    featured_from: Optional[datetime] = None
+    featured_until: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     # Enrichment fields (populated at query time)
@@ -318,3 +326,36 @@ class VolunteerDashboardSummary(BaseModel):
     unfilled_slots: int
     no_show_rate: float
     top_volunteers: list[LeaderboardEntry]
+
+
+# ============================================================================
+# SPOTLIGHT SCHEMAS
+# ============================================================================
+
+
+class SpotlightFeaturedVolunteer(BaseModel):
+    member_id: uuid.UUID
+    member_name: str
+    profile_photo_url: Optional[str] = None
+    spotlight_quote: Optional[str] = None
+    recognition_tier: Optional[RecognitionTier] = None
+    total_hours: float
+    preferred_roles: Optional[list[str]] = None
+
+
+class SpotlightMilestone(BaseModel):
+    description: str
+    count: int
+
+
+class SpotlightResponse(BaseModel):
+    featured_volunteer: Optional[SpotlightFeaturedVolunteer] = None
+    total_active_volunteers: int
+    total_hours_all_time: float
+    milestones_this_month: list[SpotlightMilestone] = []
+    top_volunteers: list[LeaderboardEntry] = []
+
+
+class FeatureVolunteerRequest(BaseModel):
+    spotlight_quote: Optional[str] = None
+    featured_until: Optional[datetime] = None

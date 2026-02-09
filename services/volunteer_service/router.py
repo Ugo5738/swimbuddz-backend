@@ -7,9 +7,11 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
+from libs.common.member_utils import resolve_members_basic
 from libs.db.session import get_async_db
 from services.volunteer_service.models import (
     OpportunityStatus,
+    RecognitionTier,
     SlotStatus,
     VolunteerHoursLog,
     VolunteerOpportunity,
@@ -22,6 +24,9 @@ from services.volunteer_service.models import (
 from services.volunteer_service.schemas import (
     HoursSummaryResponse,
     LeaderboardEntry,
+    SpotlightFeaturedVolunteer,
+    SpotlightMilestone,
+    SpotlightResponse,
     VolunteerHoursLogResponse,
     VolunteerOpportunityResponse,
     VolunteerProfileCreate,
@@ -106,6 +111,121 @@ async def get_role(role_id: uuid.UUID, db: AsyncSession = Depends(get_async_db))
     data = {c.key: getattr(role, c.key) for c in role.__table__.columns}
     data["active_volunteers_count"] = 0
     return data
+
+
+# ── Spotlight (public) ──────────────────────────────────────────────
+
+
+@router.get("/spotlight", response_model=SpotlightResponse)
+async def get_spotlight(db: AsyncSession = Depends(get_async_db)):
+    """Public volunteer spotlight: featured volunteer, stats, milestones."""
+    now = datetime.now(timezone.utc)
+
+    # 1. Featured volunteer
+    featured_query = (
+        select(VolunteerProfile)
+        .where(
+            VolunteerProfile.is_featured.is_(True),
+            VolunteerProfile.is_active.is_(True),
+        )
+        .order_by(VolunteerProfile.featured_from.desc())
+        .limit(1)
+    )
+    featured_profile = (await db.execute(featured_query)).scalar_one_or_none()
+
+    featured = None
+    if featured_profile:
+        if (
+            featured_profile.featured_until is None
+            or featured_profile.featured_until > now
+        ):
+            member_info = await resolve_members_basic([featured_profile.member_id])
+            info = member_info.get(str(featured_profile.member_id))
+            if info:
+                featured = SpotlightFeaturedVolunteer(
+                    member_id=featured_profile.member_id,
+                    member_name=info.full_name or "Volunteer",
+                    profile_photo_url=info.profile_photo_url,
+                    spotlight_quote=featured_profile.spotlight_quote,
+                    recognition_tier=featured_profile.recognition_tier,
+                    total_hours=featured_profile.total_hours,
+                    preferred_roles=featured_profile.preferred_roles,
+                )
+
+    # 2. Aggregate stats
+    total_active = (
+        await db.execute(
+            select(func.count(VolunteerProfile.id)).where(
+                VolunteerProfile.is_active.is_(True)
+            )
+        )
+    ).scalar() or 0
+
+    total_hours = (
+        await db.execute(select(func.coalesce(func.sum(VolunteerHoursLog.hours), 0.0)))
+    ).scalar() or 0.0
+
+    # 3. Milestones this month (recognition tier achievements)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    milestones: list[SpotlightMilestone] = []
+    for tier in [RecognitionTier.BRONZE, RecognitionTier.SILVER, RecognitionTier.GOLD]:
+        count = (
+            await db.execute(
+                select(func.count(VolunteerReward.id)).where(
+                    VolunteerReward.trigger_type == "recognition_tier",
+                    VolunteerReward.trigger_value == tier.value,
+                    VolunteerReward.created_at >= month_start,
+                )
+            )
+        ).scalar() or 0
+        if count > 0:
+            tier_label = tier.value.capitalize()
+            milestones.append(
+                SpotlightMilestone(
+                    description=f"{count} volunteer{'s' if count > 1 else ''} reached {tier_label} tier",
+                    count=count,
+                )
+            )
+
+    # 4. Top 5 leaderboard
+    top_rows = (
+        (
+            await db.execute(
+                select(VolunteerProfile)
+                .where(VolunteerProfile.is_active.is_(True))
+                .order_by(VolunteerProfile.total_hours.desc())
+                .limit(5)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Resolve all member names via HTTP
+    top_member_ids = [p.member_id for p in top_rows]
+    member_map = await resolve_members_basic(top_member_ids) if top_member_ids else {}
+
+    top_volunteers = []
+    for rank, p in enumerate(top_rows, 1):
+        info = member_map.get(str(p.member_id))
+        top_volunteers.append(
+            LeaderboardEntry(
+                rank=rank,
+                member_id=p.member_id,
+                member_name=info.full_name if info else None,
+                total_hours=p.total_hours,
+                total_sessions=p.total_sessions_volunteered,
+                recognition_tier=p.recognition_tier,
+            )
+        )
+
+    return SpotlightResponse(
+        featured_volunteer=featured,
+        total_active_volunteers=total_active,
+        total_hours_all_time=float(total_hours),
+        milestones_this_month=milestones,
+        top_volunteers=top_volunteers,
+    )
 
 
 # ── Profile ─────────────────────────────────────────────────────────
