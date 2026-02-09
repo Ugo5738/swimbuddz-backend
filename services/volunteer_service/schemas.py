@@ -29,6 +29,10 @@ class VolunteerRoleBase(BaseModel):
     icon: Optional[str] = None
     sort_order: int = 0
     is_active: bool = True
+    time_commitment: Optional[str] = None
+    responsibilities: Optional[list[str]] = None
+    skills_needed: Optional[str] = None
+    best_for: Optional[str] = None
 
 
 class VolunteerRoleCreate(VolunteerRoleBase):
@@ -44,6 +48,10 @@ class VolunteerRoleUpdate(BaseModel):
     icon: Optional[str] = None
     sort_order: Optional[int] = None
     is_active: Optional[bool] = None
+    time_commitment: Optional[str] = None
+    responsibilities: Optional[list[str]] = None
+    skills_needed: Optional[str] = None
+    best_for: Optional[str] = None
 
 
 class VolunteerRoleResponse(VolunteerRoleBase):
