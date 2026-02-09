@@ -15,6 +15,7 @@ from services.communications_service.templates.base import (
 
 settings = get_settings()
 
+
 async def send_session_confirmation_email(
     to_email: str,
     member_name: str,
