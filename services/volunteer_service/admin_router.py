@@ -7,6 +7,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
+from libs.common.member_utils import resolve_members_basic
 from libs.db.session import get_async_db
 from services.volunteer_service.models import (
     OpportunityStatus,
@@ -22,6 +23,7 @@ from services.volunteer_service.models import (
 from services.volunteer_service.schemas import (
     BulkCompleteRequest,
     CheckoutSlotRequest,
+    FeatureVolunteerRequest,
     LeaderboardEntry,
     ManualHoursCreate,
     VolunteerDashboardSummary,
@@ -214,6 +216,74 @@ async def admin_update_profile(
     await db.commit()
     await db.refresh(profile)
     return profile
+
+
+@router.post(
+    "/profiles/{member_id}/feature",
+    response_model=VolunteerProfileResponse,
+)
+async def feature_volunteer(
+    member_id: uuid.UUID,
+    data: FeatureVolunteerRequest,
+    admin: Annotated[AuthUser, Depends(require_admin)],
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Feature a volunteer for the public spotlight. Un-features any currently featured volunteer."""
+    # Un-feature all currently featured
+    current_featured = (
+        (
+            await db.execute(
+                select(VolunteerProfile).where(VolunteerProfile.is_featured.is_(True))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for p in current_featured:
+        p.is_featured = False
+
+    # Feature the target
+    profile = (
+        await db.execute(
+            select(VolunteerProfile).where(VolunteerProfile.member_id == member_id)
+        )
+    ).scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    profile.is_featured = True
+    profile.featured_from = datetime.now(timezone.utc)
+    profile.featured_until = data.featured_until
+    if data.spotlight_quote is not None:
+        profile.spotlight_quote = data.spotlight_quote
+
+    await db.commit()
+    await db.refresh(profile)
+
+    result = {c.key: getattr(profile, c.key) for c in profile.__table__.columns}
+    member_info = await resolve_members_basic([member_id])
+    info = member_info.get(str(member_id))
+    result["member_name"] = info.full_name if info else None
+    result["member_email"] = info.email if info else None
+    return result
+
+
+@router.delete("/profiles/{member_id}/feature", status_code=204)
+async def unfeature_volunteer(
+    member_id: uuid.UUID,
+    admin: Annotated[AuthUser, Depends(require_admin)],
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Remove a volunteer from the spotlight."""
+    profile = (
+        await db.execute(
+            select(VolunteerProfile).where(VolunteerProfile.member_id == member_id)
+        )
+    ).scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    profile.is_featured = False
+    await db.commit()
 
 
 # ── Opportunities ───────────────────────────────────────────────────
