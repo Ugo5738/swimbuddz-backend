@@ -265,8 +265,18 @@ class NotificationPreferencesBase(BaseModel):
     push_academy_updates: bool = True
     push_coach_messages: bool = True
 
+    # Session type subscriptions (for new session announcements)
+    subscribe_community_sessions: bool = True
+    subscribe_club_sessions: bool = True
+    subscribe_event_sessions: bool = True
+
+    # Reminder timing preferences
+    reminder_24h_enabled: bool = True
+    reminder_3h_enabled: bool = True
+
     # Digest preferences
     weekly_digest: bool = True
+    weekly_session_digest: bool = False
 
 
 class NotificationPreferencesUpdate(BaseModel):
@@ -282,7 +292,19 @@ class NotificationPreferencesUpdate(BaseModel):
     push_session_reminders: Optional[bool] = None
     push_academy_updates: Optional[bool] = None
     push_coach_messages: Optional[bool] = None
+
+    # Session type subscriptions
+    subscribe_community_sessions: Optional[bool] = None
+    subscribe_club_sessions: Optional[bool] = None
+    subscribe_event_sessions: Optional[bool] = None
+
+    # Reminder timing preferences
+    reminder_24h_enabled: Optional[bool] = None
+    reminder_3h_enabled: Optional[bool] = None
+
+    # Digest preferences
     weekly_digest: Optional[bool] = None
+    weekly_session_digest: Optional[bool] = None
 
 
 class NotificationPreferencesResponse(NotificationPreferencesBase):
