@@ -2,8 +2,7 @@
 Session-related email templates.
 """
 
-import os
-
+from libs.common.config import get_settings
 from libs.common.emails.core import send_email
 from services.communications_service.templates.base import (
     GRADIENT_CYAN,
@@ -14,6 +13,7 @@ from services.communications_service.templates.base import (
     wrap_html,
 )
 
+settings = get_settings()
 
 async def send_session_confirmation_email(
     to_email: str,
@@ -85,7 +85,7 @@ Please be at the pickup location at least 5 minutes before departure.
         )
 
     # Member verification URL
-    frontend_url = os.getenv("FRONTEND_URL", "https://swimbuddz.com")
+    frontend_url = settings.FRONTEND_URL
     verify_url = f"{frontend_url}/verify/{member_id}"
 
     subject = f"Session Confirmed: {session_title} on {session_date}"
