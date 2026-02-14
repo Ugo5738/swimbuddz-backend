@@ -1,10 +1,8 @@
 import uuid
 from typing import List, Optional
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import (
-    _service_role_jwt,
     get_current_user,
     require_admin,
     require_coach,
@@ -16,6 +14,15 @@ from libs.common.datetime_utils import utc_now
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
+from libs.common.service_client import (
+    get_coach_profile,
+    get_eligible_coaches,
+    get_member_by_auth_id,
+    get_member_by_id,
+    get_members_bulk,
+    get_next_session_for_cohort,
+    internal_post,
+)
 from libs.db.session import get_async_db
 from services.academy_service.models import (
     CoachAssignment,
@@ -35,6 +42,11 @@ from services.academy_service.models import (
     StudentProgress,
 )
 from services.academy_service.schemas import (
+    AICoachSuggestion,
+    AICoachSuggestionResponse,
+    AIDimensionSuggestion,
+    AIScoringRequest,
+    AIScoringResponse,
     CoachCohortDetail,
     CoachDashboardSummary,
     CohortComplexityScoreCreate,
@@ -44,7 +56,9 @@ from services.academy_service.schemas import (
     CohortResourceResponse,
     CohortResponse,
     CohortUpdate,
+    ComplexityScoreCalculateRequest,
     ComplexityScoreCalculation,
+    DimensionLabelsResponse,
     EligibleCoachResponse,
     EnrollmentCreate,
     EnrollmentResponse,
@@ -67,8 +81,7 @@ from services.academy_service.scoring import (
     calculate_complexity_score,
     get_dimension_labels,
 )
-from services.members_service.models import Member
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -76,15 +89,11 @@ router = APIRouter(tags=["academy"])
 logger = get_logger(__name__)
 
 
-async def _ensure_active_coach(db: AsyncSession, coach_member_id: uuid.UUID) -> None:
-    result = await db.execute(
-        text("SELECT status FROM coach_profiles WHERE member_id = :member_id"),
-        {"member_id": coach_member_id},
-    )
-    status = result.scalar_one_or_none()
-    if status is None:
+async def _ensure_active_coach(coach_member_id: uuid.UUID) -> None:
+    profile = await get_coach_profile(str(coach_member_id), calling_service="academy")
+    if profile is None:
         raise HTTPException(status_code=400, detail="Coach profile not found")
-    if status != "active":
+    if profile["status"] != "active":
         raise HTTPException(
             status_code=400,
             detail="Coach must complete onboarding before assignment",
@@ -285,7 +294,7 @@ async def create_cohort(
     from sqlalchemy.orm import selectinload
 
     if cohort_in.coach_id:
-        await _ensure_active_coach(db, cohort_in.coach_id)
+        await _ensure_active_coach(cohort_in.coach_id)
 
     # Extract coach_assignments before creating cohort (not a DB field)
     coach_assignments_input = cohort_in.coach_assignments
@@ -295,13 +304,9 @@ async def create_cohort(
     await db.flush()  # Get cohort.id before creating assignments
 
     # Get admin member ID for assigned_by_id
-    from sqlalchemy import text as sa_text
-
-    admin_row = await db.execute(
-        sa_text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": current_user.user_id},
+    admin_member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
     )
-    admin_member = admin_row.mappings().first()
     admin_id = admin_member["id"] if admin_member else None
 
     # Create CoachAssignment records
@@ -371,7 +376,7 @@ async def update_cohort(
     new_coach_id = update_data.get("coach_id")
 
     if new_coach_id is not None:
-        await _ensure_active_coach(db, new_coach_id)
+        await _ensure_active_coach(new_coach_id)
 
     for field, value in update_data.items():
         setattr(cohort, field, value)
@@ -381,16 +386,10 @@ async def update_cohort(
     # Send notification if a new coach is being assigned
     if new_coach_id and new_coach_id != old_coach_id:
         try:
-            # Get coach member details
-            coach_row = await db.execute(
-                text(
-                    "SELECT email, first_name, last_name FROM members WHERE id = :coach_id"
-                ),
-                {"coach_id": new_coach_id},
-            )
-            coach = coach_row.mappings().first()
+            # Get coach member details via members-service
+            coach = await get_member_by_id(str(new_coach_id), calling_service="academy")
 
-            if coach and coach["email"]:
+            if coach and coach.get("email"):
                 email_client = get_email_client()
                 await email_client.send_template(
                     template_type="coach_assignment",
@@ -433,43 +432,57 @@ async def delete_cohort(
     if not cohort:
         raise HTTPException(status_code=404, detail="Cohort not found")
 
-    # Explicitly delete dependent records first. Several FK constraints in the
-    # academy schema do not specify ON DELETE CASCADE, so a straight cohort
-    # delete can fail with a 500 and block recreating cohorts from the UI.
-    #
-    # Also clean up cross-service session records (sessions/session_coaches)
-    # so deleting a cohort leaves no orphaned cohort sessions.
-    await db.execute(
-        text(
-            "DELETE FROM session_coaches WHERE session_id IN (SELECT id FROM sessions WHERE cohort_id = :cohort_id)"
-        ),
-        {"cohort_id": cohort_id},
-    )
-    await db.execute(
-        text("DELETE FROM sessions WHERE cohort_id = :cohort_id"),
-        {"cohort_id": cohort_id},
-    )
+    # Clean up sessions via sessions-service (cross-service, no FK cascade).
+    from libs.common.service_client import internal_delete
 
-    enrollment_ids = select(Enrollment.id).where(Enrollment.cohort_id == cohort_id)
-    await db.execute(
-        delete(StudentProgress).where(StudentProgress.enrollment_id.in_(enrollment_ids))
+    settings = get_settings()
+    resp = await internal_delete(
+        service_url=settings.SESSIONS_SERVICE_URL,
+        path=f"/sessions/by-cohort/{cohort_id}",
+        calling_service="academy",
+        timeout=15,
     )
-    await db.execute(delete(Enrollment).where(Enrollment.cohort_id == cohort_id))
-    await db.execute(
-        delete(CohortResource).where(CohortResource.cohort_id == cohort_id)
-    )
-    await db.execute(
-        delete(CohortComplexityScore).where(
-            CohortComplexityScore.cohort_id == cohort_id
+    if not resp.is_success:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to delete cohort sessions",
         )
-    )
-    await db.execute(
-        delete(CoachAssignment).where(CoachAssignment.cohort_id == cohort_id)
-    )
 
+    # DB cascades handle: enrollments → student_progress, cohort_resources,
+    # cohort_complexity_scores, coach_assignments (all have ondelete="CASCADE").
     await db.delete(cohort)
     await db.commit()
     return None
+
+
+@router.get(
+    "/internal/coaches/{coach_member_id}/cohort-ids",
+    response_model=List[uuid.UUID],
+)
+async def list_cohort_ids_for_coach(
+    coach_member_id: uuid.UUID,
+    _: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Internal helper endpoint used by sessions-service.
+
+    Returns cohort IDs where the given coach is assigned (legacy cohort.coach_id
+    or active lead/assistant coach assignments).
+    """
+    cohort_id_rows = await db.execute(
+        select(Cohort.id).where(Cohort.coach_id == coach_member_id)
+    )
+    legacy_ids = {row[0] for row in cohort_id_rows.fetchall()}
+
+    assignment_rows = await db.execute(
+        select(CoachAssignment.cohort_id)
+        .where(CoachAssignment.coach_id == coach_member_id)
+        .where(CoachAssignment.status == "active")
+        .where(CoachAssignment.role.in_(["lead", "assistant"]))
+    )
+    assigned_ids = {row[0] for row in assignment_rows.fetchall()}
+
+    return sorted(legacy_ids | assigned_ids)
 
 
 @router.get("/cohorts", response_model=List[CohortResponse])
@@ -539,20 +552,17 @@ async def list_my_coach_cohorts(
     """List cohorts where the current user is the assigned coach."""
     from sqlalchemy.orm import selectinload
 
-    # 1. Resolve Member ID (lookup by auth_id)
-    member_row = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": current_user.user_id},
+    # 1. Resolve Member ID via members-service
+    member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
     )
-    member = member_row.mappings().first()
-
     if not member:
         raise HTTPException(status_code=404, detail="Member profile not found")
 
     # 2. Query Cohorts
     query = (
         select(Cohort)
-        .where(Cohort.coach_id == member["id"])
+        .where(Cohort.coach_id == uuid.UUID(member["id"]))
         .options(selectinload(Cohort.program))
         .order_by(Cohort.start_date.desc())
     )
@@ -571,13 +581,10 @@ async def list_my_coach_students(
     """
     from sqlalchemy.orm import joinedload, selectinload
 
-    # 1. Resolve Member ID (lookup by auth_id)
-    member_row = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": current_user.user_id},
+    # 1. Resolve Member ID via members-service
+    member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
     )
-    member = member_row.mappings().first()
-
     if not member:
         raise HTTPException(status_code=404, detail="Member profile not found")
 
@@ -622,27 +629,17 @@ async def get_my_coach_earnings(
     """
     from sqlalchemy.orm import selectinload
 
-    # 1. Resolve Member ID (lookup by auth_id)
-    member_row = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": current_user.user_id},
+    # 1. Resolve Member ID via members-service
+    member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
     )
-    member = member_row.mappings().first()
-
     if not member:
         raise HTTPException(status_code=404, detail="Member profile not found")
 
     member_id = member["id"]
 
     # 2. Get coach profile for rate information
-    coach_profile_row = await db.execute(
-        text(
-            "SELECT academy_cohort_stipend, one_to_one_rate_per_hour, group_session_rate_per_hour "
-            "FROM coach_profiles WHERE member_id = :member_id"
-        ),
-        {"member_id": member_id},
-    )
-    coach_profile = coach_profile_row.mappings().first()
+    coach_profile = await get_coach_profile(str(member_id), calling_service="academy")
 
     stipend = coach_profile["academy_cohort_stipend"] if coach_profile else 0
     one_to_one_rate = coach_profile["one_to_one_rate_per_hour"] if coach_profile else 0
@@ -719,13 +716,10 @@ async def list_my_coach_resources(
     """List all resources across all cohorts where the current user is the assigned coach."""
     from sqlalchemy.orm import joinedload
 
-    # 1. Resolve Member ID (lookup by auth_id)
-    member_row = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": current_user.user_id},
+    # 1. Resolve Member ID via members-service
+    member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
     )
-    member = member_row.mappings().first()
-
     if not member:
         raise HTTPException(status_code=404, detail="Member profile not found")
 
@@ -791,25 +785,17 @@ async def get_coach_dashboard(
     - Next upcoming session
             - Earnings summary
     """
-    # 1. Resolve Member ID
-    member_row = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": current_user.user_id},
+    # 1. Resolve Member ID via members-service
+    member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
     )
-    member = member_row.mappings().first()
     if not member:
         raise HTTPException(status_code=404, detail="Member profile not found")
 
     member_id = member["id"]
 
     # 2. Get coach profile for rate info
-    coach_profile_row = await db.execute(
-        text(
-            "SELECT academy_cohort_stipend FROM coach_profiles WHERE member_id = :member_id"
-        ),
-        {"member_id": member_id},
-    )
-    coach_profile = coach_profile_row.mappings().first()
+    coach_profile = await get_coach_profile(str(member_id), calling_service="academy")
     stipend = coach_profile["academy_cohort_stipend"] if coach_profile else 0
 
     # 3. Get all cohorts for this coach with program info
@@ -927,12 +913,10 @@ async def list_pending_milestone_reviews(
     """
     from sqlalchemy.orm import joinedload
 
-    # 1. Resolve Member ID
-    member_row = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": current_user.user_id},
+    # 1. Resolve Member ID via members-service
+    member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
     )
-    member = member_row.mappings().first()
     if not member:
         raise HTTPException(status_code=404, detail="Member profile not found")
 
@@ -981,13 +965,10 @@ async def list_pending_milestone_reviews(
         set(enrollments[p.enrollment_id]["member_id"] for p in progress_records)
     )
     if member_ids:
-        members_query = await db.execute(
-            text(
-                "SELECT id, first_name, last_name, email FROM members WHERE id = ANY(:ids)"
-            ),
-            {"ids": member_ids},
+        members_list = await get_members_bulk(
+            [str(mid) for mid in member_ids], calling_service="academy"
         )
-        members_map = {row["id"]: row for row in members_query.mappings().all()}
+        members_map = {m["id"]: m for m in members_list}
     else:
         members_map = {}
 
@@ -1007,7 +988,7 @@ async def list_pending_milestone_reviews(
     reviews = []
     for progress in progress_records:
         enrollment_info = enrollments[progress.enrollment_id]
-        member_info = members_map.get(enrollment_info["member_id"], {})
+        member_info = members_map.get(str(enrollment_info["member_id"]), {})
         cohort_name = cohorts_map.get(enrollment_info["cohort_id"], "Unknown")
 
         reviews.append(
@@ -1050,12 +1031,10 @@ async def review_milestone_claim(
 
     Only the coach assigned to the student's cohort can review.
     """
-    # 1. Resolve Member ID
-    member_row = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": current_user.user_id},
+    # 1. Resolve Member ID via members-service
+    member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
     )
-    member = member_row.mappings().first()
     if not member:
         raise HTTPException(status_code=404, detail="Member profile not found")
 
@@ -1456,15 +1435,10 @@ async def self_enroll(
     program_id = uuid.UUID(program_id_str) if program_id_str else None
     cohort_id = uuid.UUID(cohort_id_str) if cohort_id_str else None
 
-    # 1. Get Member ID
-    member_row = await db.execute(
-        text(
-            "SELECT id, first_name, last_name, email FROM members WHERE auth_id = :auth_id"
-        ),
-        {"auth_id": current_user.user_id},
+    # 1. Get Member ID via members-service
+    member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
     )
-    member = member_row.mappings().first()
-
     if not member:
         raise HTTPException(
             status_code=404,
@@ -1723,6 +1697,59 @@ async def get_enrollment_internal(
     return enrollment
 
 
+@router.get("/internal/cohorts/{cohort_id}")
+async def get_cohort_internal(
+    cohort_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get basic cohort info (internal service-to-service call).
+    Used by communications-service to validate coach ownership.
+    """
+    query = select(Cohort).where(Cohort.id == cohort_id)
+    result = await db.execute(query)
+    cohort = result.scalar_one_or_none()
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+    return {
+        "id": str(cohort.id),
+        "name": cohort.name,
+        "coach_id": str(cohort.coach_id) if cohort.coach_id else None,
+        "program_id": str(cohort.program_id) if cohort.program_id else None,
+        "status": cohort.status.value if cohort.status else None,
+    }
+
+
+@router.get("/internal/cohorts/{cohort_id}/enrolled-students")
+async def get_cohort_enrolled_students_internal(
+    cohort_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Get enrolled students for a cohort (internal service-to-service call).
+    Used by communications-service for messaging.
+    Returns enrollment info with member_id (caller fetches member details separately).
+    """
+    query = select(Enrollment).where(
+        Enrollment.cohort_id == cohort_id,
+        Enrollment.status.in_(
+            [
+                EnrollmentStatus.ENROLLED,
+            ]
+        ),
+    )
+    result = await db.execute(query)
+    enrollments = result.scalars().all()
+    return [
+        {
+            "enrollment_id": str(e.id),
+            "member_id": str(e.member_id),
+            "status": e.status.value if e.status else None,
+        }
+        for e in enrollments
+    ]
+
+
 @router.get(
     "/my-enrollments/{enrollment_id}/onboarding", response_model=OnboardingResponse
 )
@@ -1764,29 +1791,15 @@ async def get_enrollment_onboarding(
     # Get coach name if coach_id is set
     coach_name = None
     if cohort.coach_id:
-        coach_row = await db.execute(
-            text("SELECT first_name, last_name FROM members WHERE id = :coach_id"),
-            {"coach_id": cohort.coach_id},
-        )
-        coach = coach_row.mappings().first()
+        coach = await get_member_by_id(str(cohort.coach_id), calling_service="academy")
         if coach:
             coach_name = f"{coach['first_name']} {coach['last_name']}"
 
-    # Find next session (query sessions table directly)
+    # Find next session via sessions-service
     now = utc_now()
-    next_session_row = await db.execute(
-        text(
-            """
-            SELECT starts_at, title, location_name
-            FROM sessions
-            WHERE cohort_id = :cohort_id AND starts_at > :now
-            ORDER BY starts_at ASC
-            LIMIT 1
-            """
-        ),
-        {"cohort_id": cohort.id, "now": now},
+    next_session_data = await get_next_session_for_cohort(
+        str(cohort.id), calling_service="academy"
     )
-    next_session_data = next_session_row.mappings().first()
 
     if next_session_data:
         next_session = NextSessionInfo(
@@ -2065,13 +2078,10 @@ async def download_certificate(
             detail="Certificate not yet available. Complete all milestones to earn your certificate.",
         )
 
-    # Get member name
-    member_query = text(
-        "SELECT first_name, last_name FROM members WHERE id = :member_id"
+    # Get member name via members-service
+    member = await get_member_by_id(
+        str(enrollment.member_id), calling_service="academy"
     )
-    member_result = await db.execute(member_query, {"member_id": enrollment.member_id})
-    member = member_result.mappings().first()
-
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
 
@@ -2173,42 +2183,35 @@ async def admin_mark_enrollment_paid(
     # Send enrollment confirmation email
     try:
         # Get member email from members service
-        settings = get_settings()
-        headers = {"Authorization": f"Bearer {_service_role_jwt('academy')}"}
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{settings.MEMBERS_SERVICE_URL}/members/{enrollment.member_id}",
-                headers=headers,
-            )
-            if resp.status_code == 200:
-                member_data = resp.json()
-                member_email = member_data.get("email")
-                member_name = member_data.get("first_name", "Member")
+        member_data = await get_member_by_id(
+            str(enrollment.member_id), calling_service="academy"
+        )
+        if member_data:
+            member_email = member_data.get("email")
+            member_name = member_data.get("first_name", "Member")
 
-                if member_email and enrollment.cohort:
-                    program_name = (
-                        enrollment.program.name
-                        if enrollment.program
-                        else "Academy Program"
-                    )
-                    cohort_name = enrollment.cohort.name
-                    start_date = (
-                        enrollment.cohort.start_date.strftime("%B %d, %Y")
-                        if enrollment.cohort.start_date
-                        else "TBD"
-                    )
+            if member_email and enrollment.cohort:
+                program_name = (
+                    enrollment.program.name if enrollment.program else "Academy Program"
+                )
+                cohort_name = enrollment.cohort.name
+                start_date = (
+                    enrollment.cohort.start_date.strftime("%B %d, %Y")
+                    if enrollment.cohort.start_date
+                    else "TBD"
+                )
 
-                    email_client = get_email_client()
-                    await email_client.send_template(
-                        template_type="enrollment_confirmation",
-                        to_email=member_email,
-                        template_data={
-                            "member_name": member_name,
-                            "program_name": program_name,
-                            "cohort_name": cohort_name,
-                            "start_date": start_date,
-                        },
-                    )
+                email_client = get_email_client()
+                await email_client.send_template(
+                    template_type="enrollment_confirmation",
+                    to_email=member_email,
+                    template_data={
+                        "member_name": member_name,
+                        "program_name": program_name,
+                        "cohort_name": cohort_name,
+                        "start_date": start_date,
+                    },
+                )
     except Exception as e:
         # Log but don't fail the request if email fails
         logger.warning(f"Failed to send enrollment confirmation email: {e}")
@@ -2522,21 +2525,14 @@ async def check_program_interest(
 
 @router.post("/scoring/calculate", response_model=ComplexityScoreCalculation)
 async def preview_complexity_score(
-    category: ProgramCategory,
-    dimension_scores: List[int],
+    body: ComplexityScoreCalculateRequest,
     _: AuthUser = Depends(require_admin),
 ):
     """
     Preview complexity score calculation without saving.
     Useful for testing scores before committing to a cohort.
     """
-    if len(dimension_scores) != 7:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Exactly 7 dimension scores required",
-        )
-
-    for i, score in enumerate(dimension_scores):
+    for i, score in enumerate(body.dimension_scores):
         if score < 1 or score > 5:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -2544,13 +2540,13 @@ async def preview_complexity_score(
             )
 
     try:
-        result = calculate_complexity_score(category, dimension_scores)
+        result = calculate_complexity_score(body.category, body.dimension_scores)
         return ComplexityScoreCalculation(**result)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.get("/scoring/dimensions/{category}")
+@router.get("/scoring/dimensions/{category}", response_model=DimensionLabelsResponse)
 async def get_scoring_dimensions(
     category: ProgramCategory,
     _: AuthUser = Depends(require_admin),
@@ -2561,12 +2557,7 @@ async def get_scoring_dimensions(
     """
     try:
         labels = get_dimension_labels(category)
-        return {
-            "category": category,
-            "dimensions": [
-                {"number": i + 1, "label": label} for i, label in enumerate(labels)
-            ],
-        }
+        return DimensionLabelsResponse(category=category, labels=labels)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -2902,41 +2893,300 @@ async def get_eligible_coaches_for_cohort(
     required_level = grade_order.index(required_grade)
     eligible_grades = [g.value for g in grade_order[required_level:]]
 
-    # Query eligible coaches
-    query = text(
-        f"""
-        SELECT
-            cp.member_id,
-            m.first_name || ' ' || m.last_name as name,
-            m.email,
-            cp.{grade_column} as grade,
-            cp.total_coaching_hours,
-            cp.average_feedback_rating
-        FROM coach_profiles cp
-        JOIN members m ON cp.member_id = m.id
-        WHERE cp.status = 'active'
-        AND cp.{grade_column} IN :eligible_grades
-        ORDER BY
-            CASE cp.{grade_column}
-                WHEN 'grade_3' THEN 1
-                WHEN 'grade_2' THEN 2
-                WHEN 'grade_1' THEN 3
-            END,
-            cp.average_feedback_rating DESC NULLS LAST
-    """
+    # Query eligible coaches via members-service
+    rows = await get_eligible_coaches(
+        grade_column, eligible_grades, calling_service="academy"
     )
-
-    result = await db.execute(query, {"eligible_grades": tuple(eligible_grades)})
-    rows = result.fetchall()
 
     return [
         EligibleCoachResponse(
-            member_id=row.member_id,
-            name=row.name or "Unknown",
-            email=row.email,
-            grade=CoachGrade(row.grade) if row.grade else CoachGrade.GRADE_1,
-            total_coaching_hours=row.total_coaching_hours,
-            average_feedback_rating=row.average_feedback_rating,
+            member_id=row["member_id"],
+            name=row["name"] or "Unknown",
+            email=row["email"],
+            grade=CoachGrade(row["grade"]) if row.get("grade") else CoachGrade.GRADE_1,
+            total_coaching_hours=row.get("total_coaching_hours", 0),
+            average_feedback_rating=row.get("average_feedback_rating"),
         )
         for row in rows
     ]
+
+
+# ============================================================================
+# AI-ASSISTED SCORING
+# ============================================================================
+
+
+@router.post(
+    "/cohorts/{cohort_id}/ai-score",
+    response_model=AIScoringResponse,
+)
+async def ai_score_cohort(
+    cohort_id: uuid.UUID,
+    body: AIScoringRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get AI-suggested dimension scores for a cohort.
+
+    The AI analyses the cohort/program metadata and returns suggested
+    scores across the 7 category-specific dimensions.  The admin can
+    then review, adjust and save manually.
+    """
+    # Load cohort + program
+    result = await db.execute(
+        select(Cohort)
+        .options(selectinload(Cohort.program))
+        .where(Cohort.id == cohort_id)
+    )
+    cohort = result.scalar_one_or_none()
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    program = cohort.program
+
+    # Determine the category (explicit request > existing score > fallback)
+    category = body.category
+    if category is None:
+        # Try to use the existing complexity score category
+        score_result = await db.execute(
+            select(CohortComplexityScore).where(
+                CohortComplexityScore.cohort_id == cohort_id
+            )
+        )
+        existing = score_result.scalar_one_or_none()
+        if existing:
+            category = existing.category
+    if category is None:
+        category = ProgramCategory.LEARN_TO_SWIM  # safe default
+
+    # Build the AI request payload
+    ai_payload = {
+        "program_category": (
+            category.value if hasattr(category, "value") else str(category)
+        ),
+        "age_group": body.age_group or "mixed",
+        "skill_level": body.skill_level
+        or (program.level if program and hasattr(program, "level") else "beginner_1"),
+        "special_needs": body.special_needs,
+        "location_type": body.location_type
+        or (
+            cohort.location_type.value
+            if cohort.location_type and hasattr(cohort.location_type, "value")
+            else "indoor_pool"
+        ),
+        "duration_weeks": body.duration_weeks
+        or (program.duration_weeks if program else 12),
+        "class_size": body.class_size or cohort.capacity or 8,
+    }
+
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.AI_SERVICE_URL,
+        path="/ai/score/cohort-complexity",
+        calling_service="academy",
+        json=ai_payload,
+        timeout=30.0,  # AI calls may take longer
+    )
+
+    if resp.status_code != 200:
+        detail = resp.text
+        logger.error(f"AI scoring failed: {resp.status_code} – {detail}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"AI scoring service returned {resp.status_code}",
+        )
+
+    ai_result = resp.json()
+
+    # Get the category-specific dimension labels
+    dim_labels = get_dimension_labels(category)
+
+    # Map AI generic dimension names to category-specific labels
+    ai_dimensions = ai_result.get("dimensions", [])
+    suggestions: list[AIDimensionSuggestion] = []
+    for i in range(7):
+        dim = ai_dimensions[i] if i < len(ai_dimensions) else {}
+        suggestions.append(
+            AIDimensionSuggestion(
+                dimension=dim.get("dimension", f"dimension_{i + 1}"),
+                label=dim_labels[i] if i < len(dim_labels) else f"Dimension {i + 1}",
+                score=max(1, min(5, dim.get("score", 3))),
+                rationale=dim.get("rationale", ""),
+                confidence=dim.get("confidence", 0.8),
+            )
+        )
+
+    # Calculate totals from the AI-suggested scores
+    scores = [s.score for s in suggestions]
+    calc = calculate_complexity_score(category, scores)
+
+    return AIScoringResponse(
+        dimensions=suggestions,
+        total_score=calc["total_score"],
+        required_coach_grade=calc["required_coach_grade"],
+        pay_band_min=calc["pay_band_min"],
+        pay_band_max=calc["pay_band_max"],
+        overall_rationale=ai_result.get("overall_rationale", ""),
+        confidence=ai_result.get("confidence", 0.8),
+        model_used=ai_result.get("model_used", "unknown"),
+        ai_request_id=ai_result.get("ai_request_id"),
+    )
+
+
+# ============================================================================
+# AI-ASSISTED COACH SUGGESTION
+# ============================================================================
+
+_GRADE_COLUMN_MAP = {
+    ProgramCategory.LEARN_TO_SWIM: "learn_to_swim_grade",
+    ProgramCategory.SPECIAL_POPULATIONS: "special_populations_grade",
+    ProgramCategory.INSTITUTIONAL: "institutional_grade",
+    ProgramCategory.COMPETITIVE_ELITE: "competitive_elite_grade",
+    ProgramCategory.CERTIFICATIONS: "certifications_grade",
+    ProgramCategory.SPECIALIZED_DISCIPLINES: "specialized_disciplines_grade",
+    ProgramCategory.ADJACENT_SERVICES: "adjacent_services_grade",
+}
+
+
+@router.post(
+    "/cohorts/{cohort_id}/ai-suggest-coach",
+    response_model=AICoachSuggestionResponse,
+)
+async def ai_suggest_coach(
+    cohort_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get AI-ranked coach suggestions for a scored cohort.
+
+    The endpoint fetches eligible coaches, then uses AI to rank them
+    by suitability based on the cohort's complexity profile and the
+    coach's experience/specialisation.
+    """
+    # Load cohort with complexity score
+    result = await db.execute(
+        select(Cohort)
+        .options(
+            selectinload(Cohort.complexity_score),
+            selectinload(Cohort.program),
+        )
+        .where(Cohort.id == cohort_id)
+    )
+    cohort = result.scalar_one_or_none()
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    if not cohort.required_coach_grade or not cohort.complexity_score:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cohort must be scored before requesting coach suggestions.",
+        )
+
+    score = cohort.complexity_score
+    category = (
+        ProgramCategory(score.category)
+        if isinstance(score.category, str)
+        else score.category
+    )
+    required_grade = (
+        CoachGrade(cohort.required_coach_grade)
+        if isinstance(cohort.required_coach_grade, str)
+        else cohort.required_coach_grade
+    )
+
+    # Get eligible coaches
+    grade_column = _GRADE_COLUMN_MAP.get(category, "learn_to_swim_grade")
+    grade_order = [CoachGrade.GRADE_1, CoachGrade.GRADE_2, CoachGrade.GRADE_3]
+    required_level = grade_order.index(required_grade)
+    eligible_grades = [g.value for g in grade_order[required_level:]]
+
+    coach_rows = await get_eligible_coaches(
+        grade_column, eligible_grades, calling_service="academy"
+    )
+
+    if not coach_rows:
+        return AICoachSuggestionResponse(
+            suggestions=[],
+            required_coach_grade=required_grade,
+            category=category,
+            model_used="none",
+        )
+
+    # Get dimension labels for context
+    dim_labels = get_dimension_labels(category)
+
+    # Build dimension summary string
+    dim_summary = "; ".join(
+        f"{dim_labels[i]}: {getattr(score, f'dimension_{i + 1}_score', '?')}/5"
+        for i in range(7)
+    )
+
+    # Build the AI prompt payload
+    coaches_info = [
+        {
+            "member_id": str(c["member_id"]),
+            "name": c.get("name", "Unknown"),
+            "grade": c.get("grade", "grade_1"),
+            "total_coaching_hours": c.get("total_coaching_hours", 0),
+            "average_feedback_rating": c.get("average_feedback_rating"),
+        }
+        for c in coach_rows
+    ]
+
+    ai_payload = {
+        "program_category": category.value,
+        "cohort_name": cohort.name,
+        "program_name": cohort.program.name if cohort.program else "",
+        "total_score": score.total_score,
+        "required_coach_grade": required_grade.value,
+        "dimension_summary": dim_summary,
+        "location": cohort.location_name or "",
+        "capacity": cohort.capacity,
+        "coaches": coaches_info,
+    }
+
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.AI_SERVICE_URL,
+        path="/ai/score/suggest-coach",
+        calling_service="academy",
+        json=ai_payload,
+        timeout=30.0,
+    )
+
+    if resp.status_code != 200:
+        logger.error(f"AI coach suggestion failed: {resp.status_code} – {resp.text}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"AI service returned {resp.status_code}",
+        )
+
+    ai_result = resp.json()
+
+    # Build response — merge AI rankings with coach data
+    coach_map = {str(c["member_id"]): c for c in coach_rows}
+    suggestions: list[AICoachSuggestion] = []
+
+    for ranked in ai_result.get("rankings", []):
+        mid = ranked.get("member_id", "")
+        coach = coach_map.get(mid, {})
+        suggestions.append(
+            AICoachSuggestion(
+                member_id=mid,
+                name=coach.get("name", ranked.get("name", "Unknown")),
+                email=coach.get("email"),
+                grade=CoachGrade(coach.get("grade", "grade_1")),
+                total_coaching_hours=coach.get("total_coaching_hours", 0),
+                average_feedback_rating=coach.get("average_feedback_rating"),
+                match_score=ranked.get("match_score", 0.5),
+                rationale=ranked.get("rationale", ""),
+            )
+        )
+
+    return AICoachSuggestionResponse(
+        suggestions=suggestions,
+        required_coach_grade=required_grade,
+        category=category,
+        model_used=ai_result.get("model_used", "unknown"),
+        ai_request_id=ai_result.get("ai_request_id"),
+    )

@@ -20,6 +20,8 @@ from .schemas import (
     AIRequestResponse,
     CoachGradeScoringRequest,
     CoachGradeScoringResponse,
+    CoachSuggestionRequest,
+    CoachSuggestionResponse,
     CohortComplexityScoringRequest,
     CohortComplexityScoringResponse,
 )
@@ -152,6 +154,69 @@ async def score_coach_grade_endpoint(
         raise HTTPException(
             status_code=500,
             detail=f"AI scoring failed: {str(e)}",
+        )
+
+
+@router.post("/score/suggest-coach", response_model=CoachSuggestionResponse)
+async def suggest_coach_endpoint(
+    request: CoachSuggestionRequest,
+    model: Optional[str] = Query(None, description="Override the default model"),
+    current_user: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Rank eligible coaches for a cohort using AI.
+
+    Requires service role authentication (internal service-to-service calls).
+    Returns coaches ranked by suitability with rationale.
+    """
+    from .scoring.coach_suggestion import suggest_coaches
+
+    try:
+        parsed, ai_response = await suggest_coaches(request.model_dump(), model=model)
+
+        # Log the AI request
+        ai_req = AIRequest(
+            request_type="coach_suggestion",
+            model_provider=ai_response.provider,
+            model_name=ai_response.model,
+            input_data=request.model_dump(),
+            output_data=parsed,
+            status="success",
+            latency_ms=ai_response.latency_ms,
+            input_tokens=ai_response.input_tokens,
+            output_tokens=ai_response.output_tokens,
+            cost_usd=ai_response.cost_usd,
+            requesting_service="academy_service",
+            langfuse_trace_id=ai_response.trace_id,
+        )
+        db.add(ai_req)
+        await db.commit()
+        await db.refresh(ai_req)
+
+        return CoachSuggestionResponse(
+            rankings=parsed.get("rankings", []),
+            ai_request_id=str(ai_req.id),
+            model_used=ai_response.model,
+        )
+
+    except Exception as e:
+        ai_req = AIRequest(
+            request_type="coach_suggestion",
+            model_provider="unknown",
+            model_name=model or "default",
+            input_data=request.model_dump(),
+            status="error",
+            error_message=str(e),
+            requesting_service="academy_service",
+        )
+        db.add(ai_req)
+        await db.commit()
+
+        logger.error(f"Coach suggestion failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI suggestion failed: {str(e)}",
         )
 
 

@@ -9,6 +9,7 @@ from services.members_service.router import (
     registration_router,
 )
 from services.members_service.router import router as members_router
+from services.members_service.routers.internal import router as internal_router
 from services.members_service.volunteer_router import challenge_router
 
 
@@ -36,6 +37,9 @@ def create_app() -> FastAPI:
     # Coach routers (profile management, not public listing)
     app.include_router(coach_router)
     app.include_router(coach_admin_router)
+
+    # Internal service-to-service endpoints (not exposed via gateway)
+    app.include_router(internal_router)
 
     return app
 

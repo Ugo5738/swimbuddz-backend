@@ -2,14 +2,17 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.auth.dependencies import (
+    _service_role_jwt,
     get_optional_user,
     is_admin_or_service,
     require_admin,
     require_coach,
 )
 from libs.auth.models import AuthUser
+from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
@@ -23,8 +26,10 @@ from services.sessions_service.schemas import (
     SessionResponse,
     SessionUpdate,
 )
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+settings = get_settings()
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -99,24 +104,40 @@ async def list_my_coach_sessions(
 
     Optional date range filters (ISO format: YYYY-MM-DD).
     """
-    # 1. Resolve Member ID (lookup by auth_id)
-    member_row = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": current_user.user_id},
-    )
-    member = member_row.mappings().first()
+    # 1. Resolve Member ID via members-service (avoid cross-service DB reads)
+    headers = {"Authorization": f"Bearer {_service_role_jwt('sessions')}"}
+    async with httpx.AsyncClient(timeout=10) as client:
+        member_resp = await client.get(
+            f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{current_user.user_id}",
+            headers=headers,
+        )
 
-    if not member:
-        raise HTTPException(status_code=404, detail="Member profile not found")
+        if member_resp.status_code == 404:
+            raise HTTPException(status_code=404, detail="Member profile not found")
+        if not member_resp.is_success:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to resolve member profile",
+            )
 
-    member_id = member["id"]
+        member_id = member_resp.json().get("id")
+        if not member_id:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Members service returned invalid member payload",
+            )
 
-    # 2. Get cohort IDs where this coach is assigned
-    cohort_query = await db.execute(
-        text("SELECT id FROM cohorts WHERE coach_id = :coach_id"),
-        {"coach_id": member_id},
-    )
-    cohort_ids = [row[0] for row in cohort_query.fetchall()]
+        # 2. Resolve cohort IDs via academy-service (avoid cross-service DB reads)
+        cohorts_resp = await client.get(
+            f"{settings.ACADEMY_SERVICE_URL}/academy/internal/coaches/{member_id}/cohort-ids",
+            headers=headers,
+        )
+        if not cohorts_resp.is_success:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to resolve coach cohort assignments",
+            )
+        cohort_ids = cohorts_resp.json() or []
 
     # 3. Get session IDs where coach is directly assigned
     session_coach_query = select(SessionCoach.session_id).where(
@@ -189,17 +210,24 @@ async def create_session(
     Sessions are created in DRAFT status by default. Use the publish endpoint
     to make them visible to members and trigger notifications.
     """
-    # Validate cohort_id exists (stub query to academy_service's cohorts table)
+    # Validate cohort_id exists via academy-service (avoid cross-service DB reads)
     if session_in.cohort_id:
-        cohort_check = await db.execute(
-            text("SELECT id FROM cohorts WHERE id = :cohort_id"),
-            {"cohort_id": session_in.cohort_id},
-        )
-        if not cohort_check.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid cohort_id: cohort does not exist",
+        headers = {"Authorization": f"Bearer {_service_role_jwt('sessions')}"}
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{settings.ACADEMY_SERVICE_URL}/academy/cohorts/{session_in.cohort_id}",
+                headers=headers,
             )
+            if resp.status_code == 404:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid cohort_id: cohort does not exist",
+                )
+            if not resp.is_success:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to validate cohort_id",
+                )
 
     session_data = session_in.model_dump()
     # Remove ride_share_areas if present in input, though schema should handle it
@@ -400,6 +428,22 @@ async def update_session(
     await db.commit()
     await db.refresh(session)
     return session
+
+
+@router.delete("/by-cohort/{cohort_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_sessions_for_cohort(
+    cohort_id: uuid.UUID,
+    _: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Delete all sessions (and related rows) for a cohort."""
+    session_ids = select(Session.id).where(Session.cohort_id == cohort_id)
+    await db.execute(
+        delete(SessionCoach).where(SessionCoach.session_id.in_(session_ids))
+    )
+    await db.execute(delete(Session).where(Session.cohort_id == cohort_id))
+    await db.commit()
+    return None
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

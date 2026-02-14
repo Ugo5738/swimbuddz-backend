@@ -22,17 +22,14 @@ Do not ignore or override these documents.
 ## 2. Task Execution Rules
 
 - **Follow `TODO.md` in order.**
-
   - Implement tasks **sequentially**, unless explicitly instructed otherwise.
   - Do not skip tasks or invent new phases.
 
 - **One task at a time.**
-
   - When implementing a task, focus only on the scope described in that task.
   - Do not introduce unrelated features or refactors.
 
 - **Satisfy acceptance criteria.**
-
   - Each task has acceptance criteria.
   - Only consider a task complete when all criteria are met.
 
@@ -48,13 +45,11 @@ Do not ignore or override these documents.
 
 - **Do not change the top-level directory layout** unless `TODO.md` explicitly tells you to.
 - Use these paths consistently:
-
   - Shared libs: `libs/common`, `libs/db`, `libs/auth`.
   - Services: `services/<service_name>/app/`.
   - MCP: `mcp/swimbuddz_core_mcp/`.
 
 - **Do not create new top-level directories** such as:
-
   - `backend/`, `src/`, `server/`, or similar.
   - All backend code belongs under the structure already defined.
 

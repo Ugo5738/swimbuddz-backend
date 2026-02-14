@@ -105,16 +105,19 @@ swimbuddz-backend/
 ### 2.2 Shared Libraries
 
 **`libs/common`**
+
 - `config.py`: global settings powered by `pydantic.BaseSettings`.
 - `logging.py`: centralized logging configuration.
 - `exceptions.py`: optional shared exception types.
 
 **`libs/db`**
+
 - `config.py`: SQLAlchemy engine and session maker sourced from `DATABASE_URL`.
 - `base.py`: declares the global `Base = declarative_base()` for ORM models.
 - `session.py`: `get_db()` dependency for FastAPI routes.
 
 **`libs/auth`**
+
 - `dependencies.py`: shared auth helpers, including:
   - `AuthUser` model (user_id, email, role).
   - `get_current_user()` to decode Supabase JWTs.
@@ -142,20 +145,20 @@ services/<service_name>/
 
 ### Service Overview
 
-| Service | Port | Status | Key Models | Frontend Integration |
-|---------|------|--------|------------|---------------------|
-| gateway_service | 8000 | Production | - | All routes |
-| members_service | 8001 | Production | Member, PendingRegistration | `/account/profile`, `/admin/members` |
-| sessions_service | 8002 | Production | Session | `/sessions`, `/admin/sessions` |
-| attendance_service | 8003 | Production | SessionAttendance | `/sessions/[id]/sign-in`, `/account/attendance` |
-| communications_service | 8004 | Production | Announcement | `/announcements` |
-| payments_service | 8005 | Production | PaymentRecord, PaymentIntent | `/checkout`, `/account/billing` |
-| academy_service | 8006 | Production | Program, Cohort, Enrollment, Progress | `/academy/*`, `/account/academy/*`, `/admin/academy/*` |
-| events_service | 8007 | Minimal | Event, EventRSVP | `/community/events/*` |
-| media_service | 8008 | Minimal | MediaItem, Album, Gallery | `/gallery/*` |
-| transport_service | 8009 | Production | RideArea, PickupLocation, RideBooking | `/admin/transport/*` |
-| store_service | 8010 | Minimal | Product, Order, Cart, Inventory | `/store/*`, `/admin/store/*` |
-| identity_service | N/A | **Not Implemented** | - | N/A |
+| Service                | Port | Status              | Key Models                            | Frontend Integration                                   |
+| ---------------------- | ---- | ------------------- | ------------------------------------- | ------------------------------------------------------ |
+| gateway_service        | 8000 | Production          | -                                     | All routes                                             |
+| members_service        | 8001 | Production          | Member, PendingRegistration           | `/account/profile`, `/admin/members`                   |
+| sessions_service       | 8002 | Production          | Session                               | `/sessions`, `/admin/sessions`                         |
+| attendance_service     | 8003 | Production          | SessionAttendance                     | `/sessions/[id]/sign-in`, `/account/attendance`        |
+| communications_service | 8004 | Production          | Announcement                          | `/announcements`                                       |
+| payments_service       | 8005 | Production          | PaymentRecord, PaymentIntent          | `/checkout`, `/account/billing`                        |
+| academy_service        | 8006 | Production          | Program, Cohort, Enrollment, Progress | `/academy/*`, `/account/academy/*`, `/admin/academy/*` |
+| events_service         | 8007 | Minimal             | Event, EventRSVP                      | `/community/events/*`                                  |
+| media_service          | 8008 | Minimal             | MediaItem, Album, Gallery             | `/gallery/*`                                           |
+| transport_service      | 8009 | Production          | RideArea, PickupLocation, RideBooking | `/admin/transport/*`                                   |
+| store_service          | 8010 | Minimal             | Product, Order, Cart, Inventory       | `/store/*`, `/admin/store/*`                           |
+| identity_service       | N/A  | **Not Implemented** | -                                     | N/A                                                    |
 
 **Complete Service Registry:** See [docs/reference/SERVICE_REGISTRY.md](../../docs/reference/SERVICE_REGISTRY.md)
 
@@ -288,10 +291,10 @@ This service exists as an empty directory but has no implementation. Authenticat
   - Expose MCP tools aligned with key SwimBuddz actions.
   - Serve as the bridge between AI hosts (ChatGPT, Claude, etc.) and backend capabilities.
 - **Tool Categories**
-  - *Member*: `get_current_member_profile`, `update_member_profile`
-  - *Sessions*: `list_upcoming_sessions`, `get_session_details`
-  - *Attendance*: `sign_in_to_session`, `get_my_attendance_history`
-  - *Communications*: `list_announcements`, `create_announcement` (admin-only)
+  - _Member_: `get_current_member_profile`, `update_member_profile`
+  - _Sessions_: `list_upcoming_sessions`, `get_session_details`
+  - _Attendance_: `sign_in_to_session`, `get_my_attendance_history`
+  - _Communications_: `list_announcements`, `create_announcement` (admin-only)
 - **Implementation Notes**
   - Tools call domain logic or gateway endpoints rather than reimplementing business rules.
   - The server remains intentionally thin—a translation layer from LLM requests to backend operations.

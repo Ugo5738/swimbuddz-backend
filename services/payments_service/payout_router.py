@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
+from libs.common.service_client import get_member_by_auth_id, internal_get
 from libs.db.config import AsyncSessionLocal
 from sqlalchemy import func, select
 
@@ -254,9 +255,6 @@ async def initiate_transfer(
 
     Requires the coach to have a verified bank account with Paystack recipient code.
     """
-    # Import here to avoid circular dependency
-    from services.members_service.models import CoachBankAccount
-
     async with AsyncSessionLocal() as session:
         payout = await session.get(CoachPayout, payout_id)
         if not payout:
@@ -268,20 +266,24 @@ async def initiate_transfer(
                 detail=f"Cannot initiate transfer for payout with status: {payout.status.value}",
             )
 
-        # Get coach's bank account
-        bank_result = await session.execute(
-            select(CoachBankAccount).where(
-                CoachBankAccount.member_id == payout.coach_member_id
-            )
-        )
-        bank_account = bank_result.scalar_one_or_none()
+        # Get coach's bank account via members-service
+        from libs.common.config import get_settings
 
-        if not bank_account:
+        settings = get_settings()
+        bank_resp = await internal_get(
+            service_url=settings.MEMBERS_SERVICE_URL,
+            path=f"/internal/members/{payout.coach_member_id}/bank-account",
+            calling_service="payments",
+        )
+
+        if bank_resp.status_code == 404:
             raise HTTPException(
                 status_code=400, detail="Coach has no bank account on file"
             )
+        bank_resp.raise_for_status()
+        bank_account = bank_resp.json()
 
-        if not bank_account.paystack_recipient_code:
+        if not bank_account.get("recipient_code"):
             raise HTTPException(
                 status_code=400,
                 detail="Coach bank account does not have a Paystack recipient code",
@@ -292,7 +294,7 @@ async def initiate_transfer(
         try:
             reference = CoachPayout.generate_reference()
             transfer = await paystack.initiate_transfer(
-                recipient_code=bank_account.paystack_recipient_code,
+                recipient_code=bank_account["recipient_code"],
                 amount_kobo=payout.total_amount,
                 reason=f"SwimBuddz Coach Payout - {payout.period_label}",
                 reference=reference,
@@ -422,20 +424,19 @@ async def get_my_payouts(
     current_user: AuthUser = Depends(get_current_user),
 ):
     """Get current coach's payouts."""
-    # Import here to avoid circular dependency
-    from services.members_service.models import Member
+    # Resolve member via members-service
+    member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="payments"
+    )
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    from uuid import UUID as _UUID
+
+    member_uuid = _UUID(member["id"])
 
     async with AsyncSessionLocal() as session:
-        # Get member ID from auth
-        member_result = await session.execute(
-            select(Member).where(Member.auth_id == current_user.user_id)
-        )
-        member = member_result.scalar_one_or_none()
-
-        if not member:
-            raise HTTPException(status_code=404, detail="Member not found")
-
-        query = select(CoachPayout).where(CoachPayout.coach_member_id == member.id)
+        query = select(CoachPayout).where(CoachPayout.coach_member_id == member_uuid)
 
         if status:
             query = query.where(CoachPayout.status == status)
@@ -465,20 +466,21 @@ async def get_my_payout(
     current_user: AuthUser = Depends(get_current_user),
 ):
     """Get a specific payout for the current coach."""
-    from services.members_service.models import Member
+    # Resolve member via members-service
+    member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="payments"
+    )
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    from uuid import UUID as _UUID
+
+    member_uuid = _UUID(member["id"])
 
     async with AsyncSessionLocal() as session:
-        member_result = await session.execute(
-            select(Member).where(Member.auth_id == current_user.user_id)
-        )
-        member = member_result.scalar_one_or_none()
-
-        if not member:
-            raise HTTPException(status_code=404, detail="Member not found")
-
         payout = await session.get(CoachPayout, payout_id)
 
-        if not payout or payout.coach_member_id != member.id:
+        if not payout or payout.coach_member_id != member_uuid:
             raise HTTPException(status_code=404, detail="Payout not found")
 
         return _payout_to_response(payout)

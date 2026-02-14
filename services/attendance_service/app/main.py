@@ -1,7 +1,7 @@
 """FastAPI application for the Attendance Service."""
 
 from fastapi import FastAPI
-
+from services.attendance_service.internal_router import router as internal_router
 from services.attendance_service.router import router as attendance_router
 
 
@@ -20,6 +20,9 @@ def create_app() -> FastAPI:
 
     # Include attendance router
     app.include_router(attendance_router, prefix="/attendance")
+
+    # Internal service-to-service endpoints
+    app.include_router(internal_router)
 
     return app
 

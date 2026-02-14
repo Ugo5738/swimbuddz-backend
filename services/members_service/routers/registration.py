@@ -387,7 +387,7 @@ async def complete_pending_registration(
         social_instagram=profile_data.get("social_instagram"),
         social_linkedin=profile_data.get("social_linkedin"),
         social_other=profile_data.get("social_other"),
-        show_in_directory=profile_data.get("show_in_directory", False),
+        show_in_directory=profile_data.get("show_in_directory", True),
         interest_tags=profile_data.get("interest_tags"),
     )
     db.add(member_profile)

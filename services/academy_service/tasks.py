@@ -6,6 +6,12 @@ from datetime import timedelta
 from libs.common.datetime_utils import utc_now
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
+from libs.common.service_client import (
+    get_member_by_id,
+    get_members_bulk,
+    get_next_session_for_cohort,
+    internal_get,
+)
 from libs.db.session import get_async_db
 from services.academy_service.models import (
     Cohort,
@@ -13,7 +19,6 @@ from services.academy_service.models import (
     Enrollment,
     EnrollmentStatus,
 )
-from services.members_service.models import Member
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -55,18 +60,25 @@ async def send_enrollment_reminders():
                 reminder_key = f"{days_until}_days"
 
                 # Get enrolled students
-                enrollment_query = (
-                    select(Enrollment, Member)
-                    .join(Member, Enrollment.member_id == Member.id)
-                    .where(
-                        Enrollment.cohort_id == cohort.id,
-                        Enrollment.status == EnrollmentStatus.ENROLLED,
-                    )
+                enrollment_query = select(Enrollment).where(
+                    Enrollment.cohort_id == cohort.id,
+                    Enrollment.status == EnrollmentStatus.ENROLLED,
                 )
                 result = await db.execute(enrollment_query)
-                enrollments = result.all()  # List of (Enrollment, Member) tuples
+                enrollment_list = result.scalars().all()
 
-                for enrollment, member in enrollments:
+                # Bulk-lookup member details
+                member_ids = list({str(e.member_id) for e in enrollment_list})
+                members_data = await get_members_bulk(
+                    member_ids, calling_service="academy"
+                )
+                members_map = {m["id"]: m for m in members_data}
+
+                for enrollment in enrollment_list:
+                    member = members_map.get(str(enrollment.member_id), {})
+                    if not member:
+                        continue
+
                     # Check if already sent
                     reminders_sent = enrollment.reminders_sent or []
                     if reminder_key in reminders_sent:
@@ -76,9 +88,9 @@ async def send_enrollment_reminders():
                     email_client = get_email_client()
                     success = await email_client.send_template(
                         template_type="enrollment_reminder",
-                        to_email=member.email,
+                        to_email=member["email"],
                         template_data={
-                            "member_name": member.first_name,
+                            "member_name": member["first_name"],
                             "program_name": (
                                 cohort.program.name
                                 if cohort.program
@@ -97,11 +109,11 @@ async def send_enrollment_reminders():
                         new_reminders = reminders_sent + [reminder_key]
                         enrollment.reminders_sent = new_reminders
                         logger.info(
-                            f"Sent {days_until}-day reminder to {member.email} for cohort {cohort.id}"
+                            f"Sent {days_until}-day reminder to {member['email']} for cohort {cohort.id}"
                         )
                     else:
                         logger.error(
-                            f"Failed to send {days_until}-day reminder to {member.email}"
+                            f"Failed to send {days_until}-day reminder to {member['email']}"
                         )
 
             await db.commit()
@@ -150,8 +162,7 @@ async def process_waitlist():
                     if spots_available > 0:
                         # Find oldest waitlisted students (FIFO)
                         waitlist_query = (
-                            select(Enrollment, Member)
-                            .join(Member, Enrollment.member_id == Member.id)
+                            select(Enrollment)
                             .where(
                                 Enrollment.cohort_id == cohort.id,
                                 Enrollment.status == EnrollmentStatus.WAITLIST,
@@ -160,30 +171,39 @@ async def process_waitlist():
                             .limit(spots_available)
                         )
                         result = await db.execute(waitlist_query)
-                        to_promote = result.all()  # List of (Enrollment, Member)
+                        to_promote = result.scalars().all()
 
-                        for enrollment, member in to_promote:
+                        # Bulk-lookup member details
+                        wl_member_ids = [str(e.member_id) for e in to_promote]
+                        wl_members = await get_members_bulk(
+                            wl_member_ids, calling_service="academy"
+                        )
+                        wl_members_map = {m["id"]: m for m in wl_members}
+
+                        for enrollment in to_promote:
+                            member = wl_members_map.get(str(enrollment.member_id), {})
                             # Promote student
                             enrollment.status = EnrollmentStatus.PENDING_APPROVAL
                             logger.info(
-                                f"Promoting user {member.email} from waitlist for cohort {cohort.name}"
+                                f"Promoting user {member.get('email', 'unknown')} from waitlist for cohort {cohort.name}"
                             )
 
-                            # Send email via centralized email service
-                            email_client = get_email_client()
-                            await email_client.send_template(
-                                template_type="waitlist_promotion",
-                                to_email=member.email,
-                                template_data={
-                                    "member_name": member.first_name,
-                                    "program_name": (
-                                        cohort.program.name
-                                        if cohort.program
-                                        else "Swimming Course"
-                                    ),
-                                    "cohort_name": cohort.name,
-                                },
-                            )
+                            if member:
+                                # Send email via centralized email service
+                                email_client = get_email_client()
+                                await email_client.send_template(
+                                    template_type="waitlist_promotion",
+                                    to_email=member["email"],
+                                    template_data={
+                                        "member_name": member["first_name"],
+                                        "program_name": (
+                                            cohort.program.name
+                                            if cohort.program
+                                            else "Swimming Course"
+                                        ),
+                                        "cohort_name": cohort.name,
+                                    },
+                                )
 
             await db.commit()
 
@@ -282,16 +302,19 @@ async def send_weekly_progress_reports():
                     continue
 
                 # Get all enrollments for this cohort
-                enrollment_query = (
-                    select(Enrollment, Member)
-                    .join(Member, Enrollment.member_id == Member.id)
-                    .where(
-                        Enrollment.cohort_id == cohort.id,
-                        Enrollment.status == EnrollmentStatus.ENROLLED,
-                    )
+                enrollment_query = select(Enrollment).where(
+                    Enrollment.cohort_id == cohort.id,
+                    Enrollment.status == EnrollmentStatus.ENROLLED,
                 )
                 result = await db.execute(enrollment_query)
-                enrollments = result.all()
+                enrollment_list = result.scalars().all()
+
+                # Bulk-lookup member details
+                pr_member_ids = list({str(e.member_id) for e in enrollment_list})
+                pr_members = await get_members_bulk(
+                    pr_member_ids, calling_service="academy"
+                )
+                pr_members_map = {m["id"]: m for m in pr_members}
 
                 # Get total milestones for program
                 milestone_query = select(Milestone).where(
@@ -302,7 +325,10 @@ async def send_weekly_progress_reports():
                 total_milestones = len(all_milestones)
                 milestone_map = {m.id: m.name for m in all_milestones}
 
-                for enrollment, member in enrollments:
+                for enrollment in enrollment_list:
+                    member = pr_members_map.get(str(enrollment.member_id), {})
+                    if not member:
+                        continue
                     # Get all progress for this enrollment
                     progress_query = select(StudentProgress).where(
                         StudentProgress.enrollment_id == enrollment.id
@@ -352,7 +378,7 @@ async def send_weekly_progress_reports():
                     # Generate PDF
                     try:
                         generate_progress_report_pdf(
-                            student_name=f"{member.first_name} {member.last_name}",
+                            student_name=f"{member['first_name']} {member['last_name']}",
                             program_name=program.name,
                             cohort_name=cohort.name,
                             start_date=cohort.start_date,
@@ -364,7 +390,7 @@ async def send_weekly_progress_reports():
                         )
                     except Exception as pdf_err:
                         logger.error(
-                            f"Failed to generate PDF for {member.email}: {pdf_err}"
+                            f"Failed to generate PDF for {member['email']}: {pdf_err}"
                         )
 
                     # Send email via centralized email service
@@ -372,9 +398,9 @@ async def send_weekly_progress_reports():
                         email_client = get_email_client()
                         await email_client.send_template(
                             template_type="progress_report",
-                            to_email=member.email,
+                            to_email=member["email"],
                             template_data={
-                                "member_name": member.first_name,
+                                "member_name": member["first_name"],
                                 "program_name": program.name,
                                 "cohort_name": cohort.name,
                                 "milestones_completed": completed_count,
@@ -384,10 +410,10 @@ async def send_weekly_progress_reports():
                                 # Note: PDF attachment not yet supported via API
                             },
                         )
-                        logger.info(f"Sent progress report to {member.email}")
+                        logger.info(f"Sent progress report to {member['email']}")
                     except Exception as email_err:
                         logger.error(
-                            f"Failed to send progress report to {member.email}: {email_err}"
+                            f"Failed to send progress report to {member['email']}: {email_err}"
                         )
 
         except Exception as e:
@@ -434,19 +460,25 @@ async def check_and_issue_certificates():
                     continue  # No milestones defined
 
                 # Get enrollments without certificates
-                enrollment_query = (
-                    select(Enrollment, Member)
-                    .join(Member, Enrollment.member_id == Member.id)
-                    .where(
-                        Enrollment.cohort_id == cohort.id,
-                        Enrollment.status == EnrollmentStatus.ENROLLED,
-                        Enrollment.certificate_issued_at.is_(None),
-                    )
+                enrollment_query = select(Enrollment).where(
+                    Enrollment.cohort_id == cohort.id,
+                    Enrollment.status == EnrollmentStatus.ENROLLED,
+                    Enrollment.certificate_issued_at.is_(None),
                 )
                 enrollment_result = await db.execute(enrollment_query)
-                enrollments = enrollment_result.all()
+                cert_enrollments = enrollment_result.scalars().all()
 
-                for enrollment, member in enrollments:
+                # Bulk-lookup member details
+                cert_member_ids = list({str(e.member_id) for e in cert_enrollments})
+                cert_members = await get_members_bulk(
+                    cert_member_ids, calling_service="academy"
+                )
+                cert_members_map = {m["id"]: m for m in cert_members}
+
+                for enrollment in cert_enrollments:
+                    member = cert_members_map.get(str(enrollment.member_id), {})
+                    if not member:
+                        continue
                     # Count achieved milestones for this enrollment
                     progress_query = select(func.count(StudentProgress.id)).where(
                         StudentProgress.enrollment_id == enrollment.id,
@@ -466,7 +498,7 @@ async def check_and_issue_certificates():
                         enrollment.certificate_code = verification_code
 
                         logger.info(
-                            f"Issuing certificate to {member.email} for {program.name}"
+                            f"Issuing certificate to {member['email']} for {program.name}"
                         )
 
                         # Send email via centralized email service
@@ -474,18 +506,18 @@ async def check_and_issue_certificates():
                             email_client = get_email_client()
                             await email_client.send_template(
                                 template_type="certificate",
-                                to_email=member.email,
+                                to_email=member["email"],
                                 template_data={
-                                    "member_name": member.first_name,
+                                    "member_name": member["first_name"],
                                     "program_name": program.name,
                                     "completion_date": now.strftime("%B %d, %Y"),
                                     "verification_code": verification_code,
                                 },
                             )
-                            logger.info(f"Certificate email sent to {member.email}")
+                            logger.info(f"Certificate email sent to {member['email']}")
                         except Exception as email_err:
                             logger.error(
-                                f"Failed to send certificate email to {member.email}: {email_err}"
+                                f"Failed to send certificate email to {member['email']}: {email_err}"
                             )
 
             await db.commit()
@@ -540,7 +572,7 @@ async def check_attendance_and_notify():
     """
     from datetime import timedelta
 
-    from sqlalchemy import text
+    from libs.common.config import get_settings
 
     async for db in get_async_db():
         try:
@@ -559,90 +591,86 @@ async def check_attendance_and_notify():
             cohort_result = await db.execute(cohort_query)
             cohorts = cohort_result.scalars().all()
 
+            settings = get_settings()
+
             for cohort in cohorts:
                 if not cohort.coach_id:
                     continue
 
                 program = cohort.program
 
-                # Get coach email
-                coach_query = text(
-                    "SELECT first_name, email FROM members WHERE id = :coach_id"
+                # Get coach info via members-service
+                coach = await get_member_by_id(
+                    str(cohort.coach_id), calling_service="academy"
                 )
-                coach_result = await db.execute(
-                    coach_query, {"coach_id": cohort.coach_id}
-                )
-                coach = coach_result.mappings().first()
                 if not coach:
                     continue
 
-                # Get sessions in last 7 days for this cohort
-                session_query = text(
-                    """
-                    SELECT id FROM sessions 
-                    WHERE cohort_id = :cohort_id 
-                    AND starts_at >= :start_date 
-                    AND starts_at <= :end_date
-                    AND status = 'completed'
-                """
-                )
-                session_result = await db.execute(
-                    session_query,
-                    {
-                        "cohort_id": cohort.id,
-                        "start_date": seven_days_ago,
-                        "end_date": now,
+                # Get completed sessions in last 7 days via sessions-service
+                sessions_resp = await internal_get(
+                    service_url=settings.SESSIONS_SERVICE_URL,
+                    path=f"/internal/cohorts/{cohort.id}/completed-session-ids",
+                    calling_service="academy",
+                    params={
+                        "start_date": seven_days_ago.isoformat(),
+                        "end_date": now.isoformat(),
                     },
                 )
-                session_ids = [row[0] for row in session_result.fetchall()]
+                if sessions_resp.status_code != 200:
+                    continue
+                session_ids = sessions_resp.json()
                 total_sessions = len(session_ids)
 
                 if total_sessions == 0:
                     continue  # No sessions to report on
 
                 # Get enrolled students
-                enrollment_query = (
-                    select(Enrollment, Member)
-                    .join(Member, Enrollment.member_id == Member.id)
-                    .where(
-                        Enrollment.cohort_id == cohort.id,
-                        Enrollment.status == EnrollmentStatus.ENROLLED,
-                    )
+                enrollment_query = select(Enrollment).where(
+                    Enrollment.cohort_id == cohort.id,
+                    Enrollment.status == EnrollmentStatus.ENROLLED,
                 )
                 enrollment_result = await db.execute(enrollment_query)
-                enrollments = enrollment_result.all()
+                att_enrollments = enrollment_result.scalars().all()
+
+                # Bulk-lookup member details
+                att_member_ids = list({str(e.member_id) for e in att_enrollments})
+                att_members = await get_members_bulk(
+                    att_member_ids, calling_service="academy"
+                )
+                att_members_map = {m["id"]: m for m in att_members}
 
                 student_stats = []
                 at_risk_students = []
 
-                for enrollment, member in enrollments:
-                    # Get attendance for this student in these sessions
-                    attendance_query = text(
-                        """
-                        SELECT status FROM attendance_records
-                        WHERE member_id = :member_id
-                        AND session_id = ANY(:session_ids)
-                    """
-                    )
-                    attendance_result = await db.execute(
-                        attendance_query,
-                        {
-                            "member_id": member.id,
-                            "session_ids": session_ids,
-                        },
-                    )
-                    records = attendance_result.fetchall()
+                for enrollment in att_enrollments:
+                    member = att_members_map.get(str(enrollment.member_id), {})
+                    if not member:
+                        continue
 
-                    present = sum(1 for r in records if r[0] in ("PRESENT", "LATE"))
-                    absent = sum(1 for r in records if r[0] == "ABSENT")
-                    late = sum(1 for r in records if r[0] == "LATE")
+                    # Get attendance for this student via attendance-service
+                    att_resp = await internal_get(
+                        service_url=settings.ATTENDANCE_SERVICE_URL,
+                        path=f"/internal/attendance/member/{enrollment.member_id}",
+                        calling_service="academy",
+                        params={"session_ids": ",".join(str(s) for s in session_ids)},
+                    )
+                    if att_resp.status_code == 200:
+                        records = att_resp.json()
+                    else:
+                        records = []
+
+                    present = sum(
+                        1 for r in records if r.get("status") in ("PRESENT", "LATE")
+                    )
+                    absent = sum(1 for r in records if r.get("status") == "ABSENT")
+                    late = sum(1 for r in records if r.get("status") == "LATE")
                     rate = (
                         round((present / total_sessions) * 100)
                         if total_sessions > 0
                         else 0
                     )
 
-                    student_name = f"{member.first_name} {member.last_name}"
+                    student_name = f"{member['first_name']} {member['last_name']}"
                     student_stats.append(
                         {
                             "name": student_name,

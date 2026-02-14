@@ -30,17 +30,18 @@ npx tsc --noEmit
 ```
 
 Or use the workflow shortcut:
+
 ```
 /generate-types
 ```
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `swimbuddz-backend/openapi.json` | Generated OpenAPI 3.0 spec |
-| `swimbuddz-frontend/src/lib/api-types.ts` | Generated TypeScript types |
-| `swimbuddz-frontend/src/lib/members.ts` | Re-exports with API client methods |
+| File                                      | Purpose                            |
+| ----------------------------------------- | ---------------------------------- |
+| `swimbuddz-backend/openapi.json`          | Generated OpenAPI 3.0 spec         |
+| `swimbuddz-frontend/src/lib/api-types.ts` | Generated TypeScript types         |
+| `swimbuddz-frontend/src/lib/members.ts`   | Re-exports with API client methods |
 
 ## Best Practices
 
@@ -65,14 +66,15 @@ class MemberResponse(BaseModel):
 ```typescript
 // 3. Use in frontend (type is now available)
 const member: Member = await MembersApi.getMe();
-console.log(member.nickname);  // TypeScript knows this exists
+console.log(member.nickname); // TypeScript knows this exists
 ```
 
 ## Breaking Change Detection
 
 Before merging, compare the generated `openapi.json` diff:
+
 - Removed fields = breaking change
-- Renamed fields = breaking change  
+- Renamed fields = breaking change
 - New optional fields = safe
 - Changed types = breaking change
 

@@ -5,6 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from libs.auth.dependencies import get_current_user, is_admin_or_service, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
+from libs.common.service_client import (
+    get_member_by_auth_id,
+    get_members_bulk,
+    get_session_by_id,
+    get_session_ids_for_cohort,
+    internal_get,
+)
 from libs.db.session import get_async_db
 from services.attendance_service.models import AttendanceRecord, MemberRef
 from services.attendance_service.schemas import (
@@ -14,9 +21,7 @@ from services.attendance_service.schemas import (
     PublicAttendanceCreate,
     StudentAttendanceSummary,
 )
-from services.members_service.models import Member
-from services.sessions_service.models import Session
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["attendance"])
@@ -46,18 +51,16 @@ async def require_admin_or_coach_for_session(
             detail="Admin or coach privileges required",
         )
 
-    # Get the session to find its cohort_id
-    session_result = await db.execute(
-        select(Session.cohort_id).where(Session.id == session_id)
+    # Get the session to find its cohort_id (via sessions-service)
+    session_data = await get_session_by_id(
+        str(session_id), calling_service="attendance"
     )
-    session_row = session_result.first()
-
-    if not session_row:
+    if not session_data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
         )
 
-    cohort_id = session_row[0]
+    cohort_id = session_data.get("cohort_id")
 
     # Non-cohort sessions are admin-only
     if cohort_id is None:
@@ -66,31 +69,29 @@ async def require_admin_or_coach_for_session(
             detail="Only admins can view attendance for non-cohort sessions",
         )
 
-    # Get member_id from auth_id
-    member_result = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": current_user.user_id},
+    # Get member_id from auth_id (via members-service)
+    member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="attendance"
     )
-    member_row = member_result.mappings().first()
-
-    if not member_row:
+    if not member:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Member profile not found"
         )
 
-    # Check if coach is assigned to this cohort
-    cohort_result = await db.execute(
-        text("SELECT coach_id FROM cohorts WHERE id = :cohort_id"),
-        {"cohort_id": str(cohort_id)},
+    # Check if coach is assigned to this cohort (via academy-service)
+    settings = get_settings()
+    cohort_resp = await internal_get(
+        service_url=settings.ACADEMY_SERVICE_URL,
+        path=f"/internal/cohorts/{cohort_id}",
+        calling_service="attendance",
     )
-    cohort_row = cohort_result.mappings().first()
-
-    if not cohort_row:
+    if cohort_resp.status_code != 200:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Cohort not found"
         )
+    cohort_data = cohort_resp.json()
 
-    if str(cohort_row["coach_id"]) != str(member_row["id"]):
+    if str(cohort_data.get("coach_id")) != str(member["id"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not the assigned coach for this cohort",
@@ -116,17 +117,17 @@ async def get_current_member(
 async def sign_in_to_session(
     session_id: uuid.UUID,
     attendance_in: AttendanceCreate,
-    current_member: Member = Depends(get_current_member),
+    current_member: MemberRef = Depends(get_current_member),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
     Sign in to a session. Idempotent upsert.
     """
-    # Verify session exists
-    query = select(Session).where(Session.id == session_id)
-    result = await db.execute(query)
-    session = result.scalar_one_or_none()
-    if not session:
+    # Verify session exists (via sessions-service)
+    session_data = await get_session_by_id(
+        str(session_id), calling_service="attendance"
+    )
+    if not session_data:
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Check for existing attendance
@@ -169,11 +170,11 @@ async def public_sign_in_to_session(
     """
     Public sign in to a session (no auth required). Idempotent upsert.
     """
-    # Verify session exists
-    query = select(Session).where(Session.id == session_id)
-    result = await db.execute(query)
-    session = result.scalar_one_or_none()
-    if not session:
+    # Verify session exists (via sessions-service)
+    session_data = await get_session_by_id(
+        str(session_id), calling_service="attendance"
+    )
+    if not session_data:
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Verify member exists
@@ -230,22 +231,24 @@ async def list_session_attendance(
     # Check authorization (admin or coach for this session's cohort)
     await require_admin_or_coach_for_session(session_id, current_user, db)
 
-    query = (
-        select(AttendanceRecord, Member)
-        .select_from(AttendanceRecord)
-        .join(Member, Member.id == AttendanceRecord.member_id)
-        .where(AttendanceRecord.session_id == session_id)
-    )
+    query = select(AttendanceRecord).where(AttendanceRecord.session_id == session_id)
     result = await db.execute(query)
-    rows = result.all()
+    records = result.scalars().all()
+
+    # Bulk-lookup member details
+    member_ids = list({str(r.member_id) for r in records})
+    members_data = await get_members_bulk(member_ids, calling_service="attendance")
+    members_map = {m["id"]: m for m in members_data}
 
     responses = []
-    for attendance, member in rows:
-        # Convert SQLAlchemy model to Pydantic model
+    for attendance in records:
         resp = AttendanceResponse.model_validate(attendance)
-        # Manually populate extra fields
-        resp.member_name = f"{member.first_name} {member.last_name}"
-        resp.member_email = member.email
+        member = members_map.get(str(attendance.member_id), {})
+        resp.member_name = (
+            f"{member.get('first_name', '')} {member.get('last_name', '')}".strip()
+            or None
+        )
+        resp.member_email = member.get("email")
         responses.append(resp)
 
     return responses
@@ -273,18 +276,11 @@ async def get_cohort_attendance_summary(
     # Check authorization
     await require_coach_for_cohort(current_user, str(cohort_id), db)
 
-    # Get all sessions for this cohort
-    sessions_result = await db.execute(
-        text(
-            """
-            SELECT id FROM sessions
-            WHERE cohort_id = :cohort_id
-            ORDER BY starts_at
-            """
-        ),
-        {"cohort_id": str(cohort_id)},
+    # Get all sessions for this cohort (via sessions-service)
+    session_id_strs = await get_session_ids_for_cohort(
+        str(cohort_id), calling_service="attendance"
     )
-    session_ids = [row[0] for row in sessions_result.fetchall()]
+    session_ids = [uuid.UUID(sid) for sid in session_id_strs]
     total_sessions = len(session_ids)
 
     if total_sessions == 0:
@@ -294,48 +290,53 @@ async def get_cohort_attendance_summary(
             students=[],
         )
 
-    # Get all enrolled students in this cohort
-    enrollments_result = await db.execute(
-        text(
-            """
-            SELECT e.member_id, m.first_name, m.last_name, m.email
-            FROM enrollments e
-            JOIN members m ON e.member_id = m.id
-            WHERE e.cohort_id = :cohort_id
-            AND e.status IN ('CONFIRMED', 'COMPLETED')
-            """
-        ),
-        {"cohort_id": str(cohort_id)},
+    # Get enrolled students via academy-service
+    settings = get_settings()
+    enrolled_resp = await internal_get(
+        service_url=settings.ACADEMY_SERVICE_URL,
+        path=f"/internal/cohorts/{cohort_id}/enrolled-students",
+        calling_service="attendance",
     )
-    students = enrollments_result.mappings().fetchall()
+    if enrolled_resp.status_code != 200:
+        enrolled_students = []
+    else:
+        enrolled_students = enrolled_resp.json()
 
-    # Get attendance counts per student for this cohort's sessions
+    # Bulk-lookup member details
+    enrolled_member_ids = [str(s["member_id"]) for s in enrolled_students]
+    members_data = await get_members_bulk(
+        enrolled_member_ids, calling_service="attendance"
+    )
+    members_map = {m["id"]: m for m in members_data}
+
+    # Get attendance counts per student for this cohort's sessions (our own table)
     attendance_result = await db.execute(
-        text(
-            """
-            SELECT member_id, COUNT(*) as attended
-            FROM attendance_records
-            WHERE session_id = ANY(:session_ids)
-            AND status = 'PRESENT'
-            GROUP BY member_id
-            """
-        ),
-        {"session_ids": session_ids},
+        select(
+            AttendanceRecord.member_id,
+            func.count(AttendanceRecord.id).label("attended"),
+        )
+        .where(
+            AttendanceRecord.session_id.in_(session_ids),
+            AttendanceRecord.status == "PRESENT",
+        )
+        .group_by(AttendanceRecord.member_id)
     )
     attendance_counts = {
-        row["member_id"]: row["attended"]
-        for row in attendance_result.mappings().fetchall()
+        str(row.member_id): row.attended for row in attendance_result.all()
     }
 
     # Build summary for each student
     student_summaries = []
-    for student in students:
-        attended = attendance_counts.get(student["member_id"], 0)
+    for enrollment in enrolled_students:
+        mid = str(enrollment["member_id"])
+        member = members_map.get(mid, {})
+        attended = attendance_counts.get(mid, 0)
         student_summaries.append(
             StudentAttendanceSummary(
-                member_id=student["member_id"],
-                member_name=f"{student['first_name']} {student['last_name']}",
-                member_email=student["email"],
+                member_id=enrollment["member_id"],
+                member_name=f"{member.get('first_name', '')} {member.get('last_name', '')}".strip()
+                or "Unknown",
+                member_email=member.get("email"),
                 sessions_attended=attended,
                 sessions_total=total_sessions,
                 attendance_rate=(
@@ -351,9 +352,9 @@ async def get_cohort_attendance_summary(
     )
 
 
-@router.get("/me/attendance", response_model=List[AttendanceResponse])
+@router.get("/me", response_model=List[AttendanceResponse])
 async def get_my_attendance_history(
-    current_member: Member = Depends(get_current_member),
+    current_member: MemberRef = Depends(get_current_member),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
@@ -377,20 +378,21 @@ async def get_pool_list_csv(
     """
     Export pool list as CSV (Admin only).
     """
-    # Join with Member to get names
-    query = (
-        select(AttendanceRecord, Member)
-        .select_from(AttendanceRecord)
-        .join(Member, Member.id == AttendanceRecord.member_id)
-        .where(AttendanceRecord.session_id == session_id)
-    )
+    # Get attendance records
+    query = select(AttendanceRecord).where(AttendanceRecord.session_id == session_id)
     result = await db.execute(query)
-    rows = result.all()
+    records = result.scalars().all()
 
-    # Simple CSV generation (status/role removed per request)
+    # Bulk-lookup member details
+    pool_member_ids = list({str(r.member_id) for r in records})
+    pool_members = await get_members_bulk(pool_member_ids, calling_service="attendance")
+    pool_members_map = {m["id"]: m for m in pool_members}
+
+    # Simple CSV generation
     csv_content = "First Name,Last Name,Email,Notes\n"
-    for attendance, member in rows:
-        csv_content += f"{member.first_name},{member.last_name},{member.email},{attendance.notes or ''}\n"
+    for attendance in records:
+        member = pool_members_map.get(str(attendance.member_id), {})
+        csv_content += f"{member.get('first_name', '')},{member.get('last_name', '')},{member.get('email', '')},{attendance.notes or ''}\n"
 
     return Response(content=csv_content, media_type="text/csv")
 
