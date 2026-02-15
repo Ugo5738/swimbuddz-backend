@@ -2031,12 +2031,9 @@ async def download_cohort_progress_report(
     milestone_map = {m.id: m.name for m in all_milestones}
 
     # Get all enrollments
-    enrollment_query = (
-        select(Enrollment)
-        .where(
-            Enrollment.cohort_id == cohort_id,
-            Enrollment.status == EnrollmentStatus.ENROLLED,
-        )
+    enrollment_query = select(Enrollment).where(
+        Enrollment.cohort_id == cohort_id,
+        Enrollment.status == EnrollmentStatus.ENROLLED,
     )
     enrollment_result = await db.execute(enrollment_query)
     enrollments = enrollment_result.scalars().all()

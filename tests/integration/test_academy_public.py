@@ -74,7 +74,6 @@ async def test_create_cohort(academy_client, db_session):
     db_session.add(program)
     await db_session.commit()
 
-
     from tests.factories import _tomorrow
 
     start = _tomorrow()

@@ -1,6 +1,5 @@
 """Integration tests for attendance_service internal endpoints."""
 
-
 import pytest
 from tests.factories import AttendanceRecordFactory, MemberFactory, SessionFactory
 
