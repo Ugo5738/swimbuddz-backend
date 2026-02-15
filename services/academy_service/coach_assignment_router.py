@@ -9,8 +9,13 @@ from libs.auth.dependencies import get_current_user, require_admin, require_coac
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
+from libs.common.service_client import (
+    get_coach_readiness_data,
+    get_member_by_auth_id,
+    get_member_by_id,
+)
 from libs.db.session import get_async_db
-from sqlalchemy import select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -35,16 +40,12 @@ router = APIRouter(prefix="/coach-assignments", tags=["coach-assignments"])
 # ── Helpers ──
 
 
-async def _get_member_name(db: AsyncSession, member_id: uuid.UUID) -> str:
-    """Get a member's display name by ID."""
-    result = await db.execute(
-        text("SELECT first_name, last_name FROM members WHERE id = :id"),
-        {"id": member_id},
-    )
-    row = result.mappings().first()
-    if not row:
+async def _get_member_name(member_id: uuid.UUID) -> str:
+    """Get a member's display name by ID via members-service."""
+    member = await get_member_by_id(str(member_id), calling_service="academy")
+    if not member:
         return "Unknown"
-    return f"{row['first_name']} {row['last_name']}"
+    return f"{member['first_name']} {member['last_name']}"
 
 
 def _assignment_to_response(
@@ -73,16 +74,12 @@ def _assignment_to_response(
     )
 
 
-async def _get_member_id_from_auth(
-    db: AsyncSession, auth_id: str
-) -> Optional[uuid.UUID]:
-    """Get member ID from Supabase auth_id."""
-    result = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": auth_id},
-    )
-    row = result.mappings().first()
-    return row["id"] if row else None
+async def _get_member_id_from_auth(auth_id: str) -> Optional[uuid.UUID]:
+    """Get member ID from Supabase auth_id via members-service."""
+    member = await get_member_by_auth_id(auth_id, calling_service="academy")
+    if not member:
+        return None
+    return uuid.UUID(member["id"])
 
 
 # ── Assignment Endpoints ──
@@ -106,7 +103,7 @@ async def create_assignment(
         raise HTTPException(status_code=404, detail="Cohort not found")
 
     # Get admin member ID
-    admin_id = await _get_member_id_from_auth(db, current_user.user_id)
+    admin_id = await _get_member_id_from_auth(current_user.user_id)
     if not admin_id:
         raise HTTPException(status_code=400, detail="Admin member not found")
 
@@ -131,7 +128,7 @@ async def create_assignment(
     await db.commit()
     await db.refresh(assignment)
 
-    coach_name = await _get_member_name(db, data.coach_id)
+    coach_name = await _get_member_name(data.coach_id)
     return _assignment_to_response(
         assignment,
         coach_name=coach_name,
@@ -156,7 +153,7 @@ async def list_cohort_assignments(
 
     responses = []
     for a in assignments:
-        coach_name = await _get_member_name(db, a.coach_id)
+        coach_name = await _get_member_name(a.coach_id)
         responses.append(_assignment_to_response(a, coach_name=coach_name))
     return responses
 
@@ -167,7 +164,7 @@ async def list_my_assignments(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List my coach assignments."""
-    member_id = await _get_member_id_from_auth(db, current_user.user_id)
+    member_id = await _get_member_id_from_auth(current_user.user_id)
     if not member_id:
         raise HTTPException(status_code=404, detail="Member not found")
 
@@ -209,7 +206,7 @@ async def list_coach_assignments(
     )
     assignments = result.scalars().all()
 
-    coach_name = await _get_member_name(db, coach_id)
+    coach_name = await _get_member_name(coach_id)
     responses = []
     for a in assignments:
         cohort = a.cohort
@@ -250,7 +247,7 @@ async def update_assignment(
     await db.commit()
     await db.refresh(assignment)
 
-    coach_name = await _get_member_name(db, assignment.coach_id)
+    coach_name = await _get_member_name(assignment.coach_id)
     return _assignment_to_response(assignment, coach_name=coach_name)
 
 
@@ -299,7 +296,7 @@ async def create_shadow_evaluation(
             detail="Evaluations can only be created for shadow assignments",
         )
 
-    evaluator_id = await _get_member_id_from_auth(db, current_user.user_id)
+    evaluator_id = await _get_member_id_from_auth(current_user.user_id)
     if not evaluator_id:
         raise HTTPException(status_code=404, detail="Evaluator member not found")
 
@@ -315,7 +312,7 @@ async def create_shadow_evaluation(
     await db.commit()
     await db.refresh(evaluation)
 
-    evaluator_name = await _get_member_name(db, evaluator_id)
+    evaluator_name = await _get_member_name(evaluator_id)
 
     return ShadowEvaluationResponse(
         id=str(evaluation.id),
@@ -348,7 +345,7 @@ async def list_evaluations(
 
     responses = []
     for e in evaluations:
-        evaluator_name = await _get_member_name(db, e.evaluator_id)
+        evaluator_name = await _get_member_name(e.evaluator_id)
         responses.append(
             ShadowEvaluationResponse(
                 id=str(e.id),
@@ -383,20 +380,13 @@ async def get_coach_readiness(
     - Grade 2: Grade 1 + >=50 hours, >=3 cohorts completed, rating >=4.0
     - Grade 3: Grade 2 + >=200 hours, >=10 lead cohorts, rating >=4.3
     """
-    coach_name = await _get_member_name(db, coach_id)
+    coach_name = await _get_member_name(coach_id)
     checks: list[ReadinessCheckItem] = []
     missing: list[str] = []
     recommendations: list[str] = []
 
-    # --- Check: Coach profile exists ---
-    profile_result = await db.execute(
-        text(
-            "SELECT id, total_coaching_hours, average_rating, background_check_status, "
-            "has_cpr_training, cpr_expiry_date FROM coach_profiles WHERE member_id = :id"
-        ),
-        {"id": coach_id},
-    )
-    profile = profile_result.mappings().first()
+    # --- Check: Coach profile exists (via members-service) ---
+    profile = await get_coach_readiness_data(str(coach_id), calling_service="academy")
 
     if not profile:
         return CoachReadinessResponse(
@@ -413,22 +403,18 @@ async def get_coach_readiness(
     rating = float(profile.get("average_rating") or 0)
     bg_status = profile.get("background_check_status") or ""
     cpr_training = profile.get("has_cpr_training") or False
-    cpr_expiry = profile.get("cpr_expiry_date")
-    if cpr_expiry:
+    cpr_expiry_str = profile.get("cpr_expiry_date")
+    if cpr_expiry_str:
+        from datetime import datetime as dt
+
+        cpr_expiry = dt.fromisoformat(cpr_expiry_str)
         cpr_valid = cpr_expiry >= datetime.now(timezone.utc)
     else:
         cpr_valid = True
     cpr = bool(cpr_training and cpr_valid)
 
-    # --- Check: Agreement signed ---
-    agreement_result = await db.execute(
-        text(
-            "SELECT id FROM coach_agreements WHERE coach_profile_id = :profile_id "
-            "AND is_active = true LIMIT 1"
-        ),
-        {"profile_id": profile["id"]},
-    )
-    has_agreement = agreement_result.first() is not None
+    # --- Check: Agreement signed (returned from members-service) ---
+    has_agreement = profile.get("has_active_agreement", False)
     checks.append(
         ReadinessCheckItem(
             name="Agreement Signed",
@@ -528,13 +514,13 @@ async def get_coach_readiness(
         if hours < hours_required:
             missing.append(f"Log {hours_required - hours} more coaching hours")
 
-        # Completed cohorts
+        # Completed cohorts (coach_assignments is our own table)
         completed_result = await db.execute(
-            text(
-                "SELECT COUNT(*) FROM coach_assignments "
-                "WHERE coach_id = :coach_id AND role IN ('lead', 'assistant') AND status = 'completed'"
-            ),
-            {"coach_id": coach_id},
+            select(func.count(CoachAssignment.id)).where(
+                CoachAssignment.coach_id == coach_id,
+                CoachAssignment.role.in_(["lead", "assistant"]),
+                CoachAssignment.status == "completed",
+            )
         )
         completed_cohorts = completed_result.scalar() or 0
         cohorts_required = 3
@@ -598,13 +584,13 @@ async def get_coach_readiness(
                 f"Log {hours_required_g3 - hours} more coaching hours for Grade 3"
             )
 
-        # Lead cohorts
+        # Lead cohorts (coach_assignments is our own table)
         lead_result = await db.execute(
-            text(
-                "SELECT COUNT(*) FROM coach_assignments "
-                "WHERE coach_id = :coach_id AND role = 'lead' AND status = 'completed'"
-            ),
-            {"coach_id": coach_id},
+            select(func.count(CoachAssignment.id)).where(
+                CoachAssignment.coach_id == coach_id,
+                CoachAssignment.role == "lead",
+                CoachAssignment.status == "completed",
+            )
         )
         lead_cohorts = lead_result.scalar() or 0
         lead_required = 10

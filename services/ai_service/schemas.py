@@ -97,6 +97,40 @@ class CoachGradeScoringResponse(BaseModel):
 
 
 # ============================================================================
+# COACH SUGGESTION SCHEMAS
+# ============================================================================
+
+
+class CoachSuggestionRequest(BaseModel):
+    """Input for AI-assisted coach suggestion."""
+
+    program_category: str
+    cohort_name: str = ""
+    program_name: str = ""
+    total_score: int = 0
+    required_coach_grade: str = "grade_1"
+    dimension_summary: str = ""
+    location: str = ""
+    capacity: int = 8
+    coaches: list[dict] = []
+
+
+class CoachRanking(BaseModel):
+    member_id: str
+    name: str = "Unknown"
+    match_score: float = Field(ge=0, le=1)
+    rationale: str = ""
+
+
+class CoachSuggestionResponse(BaseModel):
+    """AI-suggested coach rankings for a cohort."""
+
+    rankings: list[CoachRanking]
+    ai_request_id: str
+    model_used: str
+
+
+# ============================================================================
 # MODEL CONFIG SCHEMAS
 # ============================================================================
 

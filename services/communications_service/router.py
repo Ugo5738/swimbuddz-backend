@@ -9,6 +9,7 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
+from libs.common.member_utils import resolve_members_basic
 from libs.db.session import get_async_db
 from services.communications_service.models import (
     Announcement,
@@ -1014,9 +1015,20 @@ async def list_content_comments(
     )
 
     result = await db.execute(query)
-    comments = result.scalars().all()
+    comments_list = result.scalars().all()
 
-    return [ContentCommentResponse.model_validate(comment) for comment in comments]
+    # Resolve member names via HTTP to members service
+    member_ids = [c.member_id for c in comments_list]
+    member_map = await resolve_members_basic(member_ids) if member_ids else {}
+
+    comments = []
+    for comment in comments_list:
+        resp = ContentCommentResponse.model_validate(comment)
+        info = member_map.get(str(comment.member_id))
+        resp.member_name = info.full_name if info else None
+        comments.append(resp)
+
+    return comments
 
 
 # ===== ANNOUNCEMENT COMMENT ENDPOINTS =====
@@ -1069,6 +1081,17 @@ async def list_announcement_comments(
     )
 
     result = await db.execute(query)
-    comments = result.scalars().all()
+    comments_list = result.scalars().all()
 
-    return [AnnouncementCommentResponse.model_validate(comment) for comment in comments]
+    # Resolve member names via HTTP to members service
+    member_ids = [c.member_id for c in comments_list]
+    member_map = await resolve_members_basic(member_ids) if member_ids else {}
+
+    comments = []
+    for comment in comments_list:
+        resp = AnnouncementCommentResponse.model_validate(comment)
+        info = member_map.get(str(comment.member_id))
+        resp.member_name = info.full_name if info else None
+        comments.append(resp)
+
+    return comments

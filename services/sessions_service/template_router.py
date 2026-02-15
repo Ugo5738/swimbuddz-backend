@@ -5,10 +5,7 @@ from typing import List
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.db.session import get_async_db
-from services.sessions_service.models import (
-    Session,
-    SessionTemplate,
-)
+from services.sessions_service.models import Session, SessionTemplate
 from services.sessions_service.template_schemas import (
     GenerateSessionsRequest,
     SessionTemplateCreate,
@@ -17,6 +14,14 @@ from services.sessions_service.template_schemas import (
 )
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# Map location slugs to display names
+LOCATION_DISPLAY_NAMES: dict[str, str] = {
+    "sunfit_pool": "Sunfit Pool",
+    "rowe_park_pool": "Rowe Park, Yaba",
+    "federal_palace_pool": "Federal Palace Pool",
+    "open_water": "Open Water",
+}
 
 router = APIRouter(prefix="/sessions/templates", tags=["session-templates"])
 
@@ -180,7 +185,9 @@ async def generate_sessions(
         session = Session(
             title=template.title,
             description=template.description,
-            location_name=template.location,  # Template uses string location
+            location_name=LOCATION_DISPLAY_NAMES.get(
+                template.location, template.location
+            ),
             session_type=template.session_type,
             pool_fee=float(template.pool_fee),
             capacity=template.capacity,

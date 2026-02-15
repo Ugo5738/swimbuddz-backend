@@ -21,7 +21,9 @@ class ServiceClient:
         last_exc: Exception | None = None
         for attempt in range(3):
             try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with httpx.AsyncClient(
+                    timeout=self.timeout, follow_redirects=True
+                ) as client:
                     response = await client.request(
                         method, f"{self.base_url}{path}", **kwargs
                     )

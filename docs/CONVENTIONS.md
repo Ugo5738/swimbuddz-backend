@@ -18,13 +18,11 @@ We use **async FastAPI endpoints** plus SQLAlchemy 2.x's async ORM/session APIs.
 ## 2. Project Structure
 
 - Shared code:
-
   - `libs/common` – configuration, logging, shared helpers.
   - `libs/db` – DB engine, Base, session dependencies.
   - `libs/auth` – auth dependencies and Supabase JWT validation.
 
 - Services:
-
   - `services/<service_name>/app/main.py` – FastAPI app entrypoint.
   - `services/<service_name>/app/api/` – routers.
   - `services/<service_name>/app/models/` – SQLAlchemy models.

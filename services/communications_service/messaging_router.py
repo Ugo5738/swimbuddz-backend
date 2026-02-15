@@ -10,6 +10,13 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import is_admin_or_service, require_coach
 from libs.auth.models import AuthUser
+from libs.common.config import get_settings
+from libs.common.service_client import (
+    get_member_by_auth_id,
+    get_member_by_id,
+    get_members_bulk,
+    internal_get,
+)
 from libs.db.session import get_async_db
 from services.communications_service.models import MessageLog, MessageRecipientType
 from services.communications_service.schemas import (
@@ -19,101 +26,133 @@ from services.communications_service.schemas import (
     StudentMessageCreate,
 )
 from services.communications_service.templates.messaging import send_message_email
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/messages", tags=["messaging"])
 
 
-async def get_member_id_from_auth(auth_id: str, db: AsyncSession) -> uuid.UUID:
-    """Get member_id from auth_id."""
-    result = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": auth_id},
-    )
-    row = result.mappings().first()
-    if not row:
+async def get_member_id_from_auth(auth_id: str) -> uuid.UUID:
+    """Get member_id from auth_id via members-service."""
+    member = await get_member_by_auth_id(auth_id, calling_service="communications")
+    if not member:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Member profile not found",
         )
-    return row["id"]
+    return uuid.UUID(member["id"])
 
 
 async def validate_coach_owns_cohort(
-    coach_member_id: uuid.UUID, cohort_id: uuid.UUID, db: AsyncSession
+    coach_member_id: uuid.UUID, cohort_id: uuid.UUID
 ) -> dict:
     """
-    Validate that the coach is assigned to the cohort.
+    Validate that the coach is assigned to the cohort via academy-service.
     Returns cohort info if valid.
     """
-    result = await db.execute(
-        text(
-            """
-            SELECT id, name, coach_id FROM cohorts WHERE id = :cohort_id
-            """
-        ),
-        {"cohort_id": str(cohort_id)},
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.ACADEMY_SERVICE_URL,
+        path=f"/academy/internal/cohorts/{cohort_id}",
+        calling_service="communications",
     )
-    cohort = result.mappings().first()
-
-    if not cohort:
+    if resp.status_code == 404:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Cohort not found",
         )
+    resp.raise_for_status()
+    cohort = resp.json()
 
-    if str(cohort["coach_id"]) != str(coach_member_id):
+    if str(cohort.get("coach_id")) != str(coach_member_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not the assigned coach for this cohort",
         )
 
-    return dict(cohort)
+    return cohort
 
 
 async def get_cohort_enrolled_students(
-    cohort_id: uuid.UUID, db: AsyncSession
+    cohort_id: uuid.UUID,
 ) -> List[dict]:
-    """Get all enrolled students in a cohort with their email addresses."""
-    result = await db.execute(
-        text(
-            """
-            SELECT e.id as enrollment_id, e.member_id, m.email, m.first_name, m.last_name
-            FROM enrollments e
-            JOIN members m ON e.member_id = m.id
-            WHERE e.cohort_id = :cohort_id
-            AND e.status IN ('CONFIRMED', 'ACTIVE')
-            """
-        ),
-        {"cohort_id": str(cohort_id)},
+    """Get all enrolled students in a cohort with their email addresses.
+
+    Queries academy-service for enrollments, then members-service for member details.
+    """
+    settings = get_settings()
+    # Get enrollments from academy-service
+    enroll_resp = await internal_get(
+        service_url=settings.ACADEMY_SERVICE_URL,
+        path=f"/academy/internal/cohorts/{cohort_id}/enrolled-students",
+        calling_service="communications",
     )
-    return [dict(row) for row in result.mappings().fetchall()]
+    enroll_resp.raise_for_status()
+    enrollments = enroll_resp.json()  # [{enrollment_id, member_id, status}, ...]
+
+    if not enrollments:
+        return []
+
+    # Get member details from members-service
+    member_ids = [str(e["member_id"]) for e in enrollments]
+    members = await get_members_bulk(member_ids, calling_service="communications")
+    member_map = {m["id"]: m for m in members}
+
+    results = []
+    for e in enrollments:
+        m = member_map.get(str(e["member_id"]), {})
+        results.append(
+            {
+                "enrollment_id": e["enrollment_id"],
+                "member_id": e["member_id"],
+                "email": m.get("email"),
+                "first_name": m.get("first_name"),
+                "last_name": m.get("last_name"),
+            }
+        )
+    return results
 
 
-async def get_enrollment_student(enrollment_id: uuid.UUID, db: AsyncSession) -> dict:
-    """Get student info from enrollment."""
-    result = await db.execute(
-        text(
-            """
-            SELECT e.id as enrollment_id, e.member_id, e.cohort_id,
-                   m.email, m.first_name, m.last_name
-            FROM enrollments e
-            JOIN members m ON e.member_id = m.id
-            WHERE e.id = :enrollment_id
-            """
-        ),
-        {"enrollment_id": str(enrollment_id)},
+async def get_enrollment_student(enrollment_id: uuid.UUID) -> dict:
+    """Get student info from enrollment via academy-service and members-service."""
+    settings = get_settings()
+    enroll_resp = await internal_get(
+        service_url=settings.ACADEMY_SERVICE_URL,
+        path=f"/academy/internal/enrollments/{enrollment_id}",
+        calling_service="communications",
     )
-    student = result.mappings().first()
-
-    if not student:
+    if enroll_resp.status_code == 404:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Enrollment not found",
         )
+    enroll_resp.raise_for_status()
+    enrollment = enroll_resp.json()
 
-    return dict(student)
+    # Get member details
+    member = (
+        await get_member_by_auth_id(
+            str(enrollment.get("member_auth_id", "")), calling_service="communications"
+        )
+        if enrollment.get("member_auth_id")
+        else None
+    )
+
+    if not member and enrollment.get("member_id"):
+        from libs.common.service_client import get_member_by_id
+
+        member = await get_member_by_id(
+            str(enrollment["member_id"]), calling_service="communications"
+        )
+
+    return {
+        "enrollment_id": str(enrollment.get("id", enrollment_id)),
+        "member_id": enrollment.get("member_id"),
+        "cohort_id": enrollment.get("cohort_id"),
+        "email": member.get("email") if member else None,
+        "first_name": member.get("first_name") if member else None,
+        "last_name": member.get("last_name") if member else None,
+    }
 
 
 @router.post("/cohorts/{cohort_id}", response_model=MessageResponse)
@@ -131,14 +170,14 @@ async def send_cohort_message(
     - Admins: Can send to any cohort
     """
     # Get sender's member_id
-    sender_member_id = await get_member_id_from_auth(current_user.user_id, db)
+    sender_member_id = await get_member_id_from_auth(current_user.user_id)
 
     # If not admin, validate coach owns the cohort
     if not is_admin_or_service(current_user):
-        await validate_coach_owns_cohort(sender_member_id, cohort_id, db)
+        await validate_coach_owns_cohort(sender_member_id, cohort_id)
 
     # Get all enrolled students
-    students = await get_cohort_enrolled_students(cohort_id, db)
+    students = await get_cohort_enrolled_students(cohort_id)
 
     if not students:
         return MessageResponse(
@@ -192,10 +231,10 @@ async def send_student_message(
     - Admins: Can send to any student
     """
     # Get sender's member_id
-    sender_member_id = await get_member_id_from_auth(current_user.user_id, db)
+    sender_member_id = await get_member_id_from_auth(current_user.user_id)
 
     # Get student info
-    student = await get_enrollment_student(enrollment_id, db)
+    student = await get_enrollment_student(enrollment_id)
 
     # If not admin, validate coach owns the cohort
     if not is_admin_or_service(current_user):
@@ -241,7 +280,7 @@ async def list_message_logs(
     - Admins: See all messages (optionally filtered by cohort)
     """
     # Get sender's member_id
-    sender_member_id = await get_member_id_from_auth(current_user.user_id, db)
+    sender_member_id = await get_member_id_from_auth(current_user.user_id)
 
     query = select(MessageLog).order_by(MessageLog.sent_at.desc())
 
@@ -262,11 +301,9 @@ async def list_message_logs(
     # Get sender names
     responses = []
     for log in logs:
-        sender_result = await db.execute(
-            text("SELECT first_name, last_name FROM members WHERE id = :id"),
-            {"id": str(log.sender_id)},
+        sender = await get_member_by_id(
+            str(log.sender_id), calling_service="communications"
         )
-        sender = sender_result.mappings().first()
         sender_name = (
             f"{sender['first_name']} {sender['last_name']}" if sender else None
         )

@@ -1328,6 +1328,80 @@ async def update_coach_grades(
         )
 
 
+@admin_router.post("/{coach_profile_id}/suggest-grades")
+async def suggest_coach_grades(
+    coach_profile_id: str,
+    _admin: AuthUser = Depends(require_admin),
+):
+    """
+    Get AI-suggested grades for a coach based on their profile data.
+
+    Proxies to the AI service's coach grade scoring endpoint.
+    Returns recommended grade, rationale, strengths, and areas for improvement.
+    """
+    from libs.common.service_client import internal_post
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(CoachProfile)
+            .options(selectinload(CoachProfile.member))
+            .where(CoachProfile.id == coach_profile_id)
+        )
+        coach = result.scalar_one_or_none()
+
+        if not coach:
+            raise HTTPException(status_code=404, detail="Coach profile not found")
+
+        # Determine current highest grade
+        grade_order = {"grade_1": 1, "grade_2": 2, "grade_3": 3}
+        current_grade = None
+        highest_level = 0
+        for _category, field_name in CATEGORY_TO_FIELD.items():
+            grade = getattr(coach, field_name)
+            if grade and grade_order.get(grade, 0) > highest_level:
+                highest_level = grade_order[grade]
+                current_grade = grade
+
+        # Collect certifications from the coach profile
+        certifications = coach.certifications or []
+
+        # Build AI scoring payload
+        ai_payload = {
+            "coach_id": str(coach.id),
+            "coaching_hours": coach.total_coaching_hours or 0,
+            "cohorts_completed": coach.cohorts_completed or 0,
+            "feedback_rating": float(coach.average_feedback_rating or 0),
+            "certifications": certifications,
+            "shadow_evaluations_passed": 0,  # TODO: track shadow evaluations
+            "current_grade": current_grade,
+        }
+
+    settings = get_settings()
+    try:
+        resp = await internal_post(
+            service_url=settings.AI_SERVICE_URL,
+            path="/ai/score/coach-grade",
+            calling_service="members",
+            json=ai_payload,
+            timeout=30.0,
+        )
+    except Exception as e:
+        logger.error(f"AI service call failed for coach grade suggestion: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail="AI service is unavailable. Please try again later.",
+        )
+
+    if resp.status_code != 200:
+        logger.error(f"AI grade suggestion failed: {resp.status_code} – {resp.text}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI scoring service returned {resp.status_code}",
+        )
+
+    return resp.json()
+
+
 @admin_router.get(
     "/eligible/{category}/{required_grade}",
     response_model=list[EligibleCoachListItem],

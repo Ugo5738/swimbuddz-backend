@@ -2,6 +2,12 @@
 
 Generates complexity dimension scores for a cohort based on its
 characteristics (age group, skill level, special needs, etc.).
+
+The dimension names are category-specific — e.g. a "Learn to Swim"
+cohort is scored on "Age Group Complexity", "Skill Phase", etc., while
+an "Institutional" cohort uses "Institution Type", "Logistics
+Complexity", etc.  The full mapping lives in
+``services.academy_service.scoring.DIMENSION_LABELS``.
 """
 
 from libs.common.logging import get_logger
@@ -14,9 +20,80 @@ from services.ai_service.schemas import (
 
 logger = get_logger(__name__)
 
+# ── Category → Dimension Labels ────────────────────────────────────
+# Mirror of academy_service.scoring.DIMENSION_LABELS so that the AI
+# prompt uses the correct per-category labels.
+
+CATEGORY_DIMENSIONS: dict[str, list[str]] = {
+    "learn_to_swim": [
+        "Age Group Complexity",
+        "Skill Phase",
+        "Learner-to-Coach Ratio",
+        "Emotional Labour",
+        "Environment",
+        "Session Prep & Adaptation",
+        "Parent/Guardian Management",
+    ],
+    "special_populations": [
+        "Population Type",
+        "Medical/Safety Coordination",
+        "Adaptation Intensity",
+        "Psychological Sensitivity",
+        "Caregiver/Support Coordination",
+        "Liability & Documentation",
+        "Coach Certification Required",
+    ],
+    "institutional": [
+        "Institution Type",
+        "Group Size",
+        "Logistics Complexity",
+        "Reporting & Accountability",
+        "Customization Required",
+        "Stakeholder Management",
+        "Contract/Commercial Pressure",
+    ],
+    "competitive_elite": [
+        "Performance Level",
+        "Training Volume",
+        "Periodization Complexity",
+        "Technical Precision",
+        "Mental Performance Coaching",
+        "Athlete Management",
+        "Competition & Travel",
+    ],
+    "certifications": [
+        "Certification Type",
+        "Assessment Rigor",
+        "Curriculum Standardization",
+        "Instructor Qualification Required",
+        "Liability & Compliance",
+        "Pass Rate Pressure",
+        "Materials & Equipment",
+    ],
+    "specialized_disciplines": [
+        "Discipline Type",
+        "Technical Specialization",
+        "Safety & Risk Profile",
+        "Equipment & Facility Requirements",
+        "Physical Conditioning Demands",
+        "Coach Background Required",
+        "Competition/Performance Pathway",
+    ],
+    "adjacent_services": [
+        "Service Type",
+        "Participant Management",
+        "External Partnerships",
+        "Operational Complexity",
+        "Staff Requirements",
+        "Revenue & Commercial Model",
+        "Risk & Insurance",
+    ],
+}
+
+
 SYSTEM_PROMPT = """You are an expert swimming education analyst for SwimBuddz, a swimming academy in Lagos, Nigeria.
 
-Your task is to evaluate the complexity of a swimming cohort across 7 standardized dimensions.
+Your task is to evaluate the complexity of a swimming cohort across 7 standardised dimensions.
 Each dimension is scored 1-5 where:
 - 1 = Very Low complexity (minimal coach expertise needed)
 - 2 = Low complexity
@@ -24,14 +101,7 @@ Each dimension is scored 1-5 where:
 - 4 = High complexity
 - 5 = Very High complexity (requires expert-level coach)
 
-The 7 dimensions are:
-1. skill_technical: Technical skill difficulty of the curriculum
-2. safety_risk: Water safety risk level (age, ability, venue)
-3. class_management: Difficulty of managing the class dynamics
-4. curriculum_depth: Depth and breadth of curriculum content
-5. student_diversity: Variation in student abilities/needs
-6. environmental_complexity: Venue and environmental factors
-7. assessment_complexity: How complex the evaluation/progress tracking is
+The 7 dimensions are CATEGORY-SPECIFIC and will be listed in the user prompt.
 
 Based on the total score, recommend a coach grade:
 - grade_1 (total 7-14): Entry-level coach can handle
@@ -50,22 +120,33 @@ USER_PROMPT_TEMPLATE = """Evaluate the complexity of this swimming cohort:
 - Duration: {duration_weeks} weeks
 - Class Size: {class_size} students
 
+Score the following 7 dimensions (specific to the "{program_category}" category):
+{dimension_list}
+
 Return JSON with this exact structure:
 {{
     "dimensions": [
-        {{"dimension": "skill_technical", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}},
-        {{"dimension": "safety_risk", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}},
-        {{"dimension": "class_management", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}},
-        {{"dimension": "curriculum_depth", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}},
-        {{"dimension": "student_diversity", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}},
-        {{"dimension": "environmental_complexity", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}},
-        {{"dimension": "assessment_complexity", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}}
+        {{"dimension": "dimension_1", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}},
+        {{"dimension": "dimension_2", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}},
+        {{"dimension": "dimension_3", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}},
+        {{"dimension": "dimension_4", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}},
+        {{"dimension": "dimension_5", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}},
+        {{"dimension": "dimension_6", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}},
+        {{"dimension": "dimension_7", "score": <1-5>, "rationale": "<why>", "confidence": <0-1>}}
     ],
     "total_score": <sum of all scores>,
     "required_coach_grade": "<grade_1|grade_2|grade_3>",
     "overall_rationale": "<summary explanation>",
     "confidence": <overall confidence 0-1>
 }}"""
+
+
+def _build_dimension_list(category: str) -> str:
+    """Build a numbered list of category-specific dimension labels for the prompt."""
+    labels = CATEGORY_DIMENSIONS.get(category, CATEGORY_DIMENSIONS["learn_to_swim"])
+    return "\n".join(
+        f"{i + 1}. dimension_{i + 1}: {label}" for i, label in enumerate(labels)
+    )
 
 
 async def score_cohort_complexity(
@@ -77,6 +158,9 @@ async def score_cohort_complexity(
     Returns both the parsed response and the raw AI provider response
     for logging purposes.
     """
+    category_key = request.program_category
+    dimension_list = _build_dimension_list(category_key)
+
     user_prompt = USER_PROMPT_TEMPLATE.format(
         program_category=request.program_category,
         age_group=request.age_group,
@@ -85,6 +169,7 @@ async def score_cohort_complexity(
         location_type=request.location_type,
         duration_weeks=request.duration_weeks,
         class_size=request.class_size,
+        dimension_list=dimension_list,
     )
 
     ai_response = await call_llm(

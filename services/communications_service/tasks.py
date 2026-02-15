@@ -7,12 +7,14 @@ Handles:
 - Cancelling notifications when sessions are cancelled
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
+from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
+from libs.common.service_client import get_members_bulk, get_session_by_id, internal_get
 from libs.db.session import get_async_db
 from services.communications_service.models import (
     NotificationPreferences,
@@ -26,14 +28,18 @@ from services.communications_service.templates.session_notifications import (
     send_session_cancelled_email,
     send_session_reminder_email,
 )
-from services.sessions_service.models import Session, SessionStatus, SessionType
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
 # Short notice threshold in hours
 SHORT_NOTICE_THRESHOLD_HOURS = 6
+
+
+async def _get_session_data(session_id: UUID) -> Optional[dict]:
+    """Get session data from sessions-service."""
+    return await get_session_by_id(str(session_id), calling_service="communications")
 
 
 async def schedule_session_notifications(
@@ -54,8 +60,8 @@ async def schedule_session_notifications(
     """
     async for db in get_async_db():
         try:
-            # Get session details
-            session = await db.get(Session, session_id)
+            # Get session details via sessions-service
+            session = await _get_session_data(session_id)
             if not session:
                 logger.error(
                     f"Session {session_id} not found for notification scheduling"
@@ -63,7 +69,7 @@ async def schedule_session_notifications(
                 return
 
             now = utc_now()
-            session_start = session.starts_at
+            session_start = datetime.fromisoformat(session["starts_at"])
 
             # Calculate reminder times
             reminder_24h = session_start - timedelta(hours=24)
@@ -139,54 +145,80 @@ async def send_session_announcement(
     """
     async for db in get_async_db():
         try:
-            # Get session
-            session = await db.get(Session, session_id)
+            # Get session via sessions-service
+            session = await _get_session_data(session_id)
             if not session:
                 logger.error(f"Session {session_id} not found for announcement")
                 return
 
             now = utc_now()
-            is_short_notice = (session.starts_at - now).total_seconds() < (
+            session_start = datetime.fromisoformat(session["starts_at"])
+            is_short_notice = (session_start - now).total_seconds() < (
                 SHORT_NOTICE_THRESHOLD_HOURS * 3600
             )
 
-            # Determine which members to notify based on session type
+            # Determine subscription field based on session type
             session_type_subscription_map = {
-                SessionType.COMMUNITY: "subscribe_community_sessions",
-                SessionType.CLUB: "subscribe_club_sessions",
-                SessionType.EVENT: "subscribe_event_sessions",
+                "community": "subscribe_community_sessions",
+                "club": "subscribe_club_sessions",
+                "event": "subscribe_event_sessions",
             }
-
             subscription_field = session_type_subscription_map.get(
-                session.session_type, "subscribe_community_sessions"
+                session["session_type"], "subscribe_community_sessions"
             )
 
-            # Get members with matching subscription preference
-            # Using raw SQL for cross-service query
-            members_query = text(
-                f"""
-                SELECT m.id, m.email, m.first_name 
-                FROM members m
-                LEFT JOIN notification_preferences np ON np.member_id = m.id
-                WHERE m.status = 'active'
-                AND (np.{subscription_field} IS NULL OR np.{subscription_field} = true)
-                AND (np.email_session_reminders IS NULL OR np.email_session_reminders = true)
-                """
+            # Get active members from members-service
+            settings = get_settings()
+            members_resp = await internal_get(
+                service_url=settings.MEMBERS_SERVICE_URL,
+                path="/internal/members/active",
+                calling_service="communications",
             )
-            result = await db.execute(members_query)
-            members = result.mappings().all()
+            if members_resp.status_code != 200:
+                logger.error("Failed to get active members for announcement")
+                return
+            all_members = members_resp.json()
+
+            # Filter by notification preferences (our own table)
+            member_ids_with_prefs = {}
+            for m in all_members:
+                member_ids_with_prefs[m["id"]] = m
+
+            # Get notification preferences for these members
+            member_uuids = [UUID(m["id"]) for m in all_members]
+            prefs_result = await db.execute(
+                select(NotificationPreferences).where(
+                    NotificationPreferences.member_id.in_(member_uuids)
+                )
+            )
+            prefs_map = {str(p.member_id): p for p in prefs_result.scalars().all()}
+
+            # Filter members based on preferences
+            eligible_members = []
+            for m in all_members:
+                pref = prefs_map.get(m["id"])
+                # Default: subscribed (None means opted-in)
+                subscribed = True
+                if pref:
+                    sub_val = getattr(pref, subscription_field, None)
+                    if sub_val is False:
+                        subscribed = False
+                    if pref.email_session_reminders is False:
+                        subscribed = False
+                if subscribed:
+                    eligible_members.append(m)
 
             # Format session details
-            session_date = session.starts_at.strftime("%A, %B %d, %Y")
-            session_time = session.starts_at.strftime("%I:%M %p")
+            session_date = session_start.strftime("%A, %B %d, %Y")
+            session_time = session_start.strftime("%I:%M %p")
 
             sent_count = 0
-            for member in members:
+            for member in eligible_members:
                 # Check if already sent (prevent duplicates)
                 existing_log = await db.execute(
                     select(SessionNotificationLog).where(
                         SessionNotificationLog.session_id == session_id,
-                        SessionNotificationLog.member_id == member["id"],
+                        SessionNotificationLog.member_id == UUID(member["id"]),
                         SessionNotificationLog.notification_type
                         == SessionNotificationType.SESSION_PUBLISHED,
                     )
@@ -198,17 +230,15 @@ async def send_session_announcement(
                     success = await send_session_announcement_email(
                         to_email=member["email"],
                         member_name=member["first_name"],
-                        session_title=session.title,
-                        session_type=session.session_type.value,
+                        session_title=session["title"],
+                        session_type=session["session_type"],
                         session_date=session_date,
                         session_time=session_time,
-                        session_location=(
-                            session.location_name or session.location.value
-                            if session.location
-                            else "TBD"
-                        ),
-                        session_address=session.location_address or "",
-                        pool_fee=session.pool_fee or 0,
+                        session_location=session.get("location_name")
+                        or session.get("location")
+                        or "TBD",
+                        session_address=session.get("location_address") or "",
+                        pool_fee=session.get("pool_fee") or 0,
                         is_short_notice=is_short_notice,
                         short_notice_message=short_notice_message,
                     )
@@ -217,7 +247,7 @@ async def send_session_announcement(
                         # Log the notification
                         log_entry = SessionNotificationLog(
                             session_id=session_id,
-                            member_id=member["id"],
+                            member_id=UUID(member["id"]),
                             notification_type=SessionNotificationType.SESSION_PUBLISHED,
                             channel="email",
                             delivery_status="sent",
@@ -296,23 +326,23 @@ async def _process_single_notification(
     notification: ScheduledNotification,
 ) -> None:
     """Process a single scheduled notification."""
-    # Get session
-    session = await db.get(Session, notification.session_id)
+    # Get session via sessions-service
+    session = await _get_session_data(notification.session_id)
     if not session:
         notification.status = ScheduledNotificationStatus.CANCELLED
         notification.error_message = "Session not found"
         return
 
     # Skip if session is cancelled or completed
-    if session.status in [SessionStatus.CANCELLED, SessionStatus.COMPLETED]:
+    if session["status"] in ["cancelled", "completed"]:
         notification.status = ScheduledNotificationStatus.CANCELLED
-        notification.error_message = f"Session is {session.status.value}"
+        notification.error_message = f"Session is {session['status']}"
         return
 
     # Determine recipients based on notification type
     if notification.notification_type == SessionNotificationType.REMINDER_1H:
         # 1h reminders go only to coaches
-        members = await _get_session_coaches(db, session)
+        members = await _get_session_coaches(session)
     else:
         # 24h and 3h reminders go to registered attendees and coaches
         members = await _get_session_attendees_and_coaches(db, session)
@@ -320,13 +350,14 @@ async def _process_single_notification(
     reminder_type = notification.notification_type.value.replace("reminder_", "")
 
     # Format session details
-    session_date = session.starts_at.strftime("%A, %B %d, %Y")
-    session_time = session.starts_at.strftime("%I:%M %p")
+    session_start = datetime.fromisoformat(session["starts_at"])
+    session_date = session_start.strftime("%A, %B %d, %Y")
+    session_time = session_start.strftime("%I:%M %p")
 
     sent_count = 0
     for member in members:
         # Check preferences
-        prefs = await _get_member_preferences(db, member["id"])
+        prefs = await _get_member_preferences(db, UUID(member["id"]))
         if not _should_send_reminder(prefs, reminder_type):
             continue
 
@@ -334,7 +365,7 @@ async def _process_single_notification(
         existing = await db.execute(
             select(SessionNotificationLog).where(
                 SessionNotificationLog.session_id == notification.session_id,
-                SessionNotificationLog.member_id == member["id"],
+                SessionNotificationLog.member_id == UUID(member["id"]),
                 SessionNotificationLog.notification_type
                 == notification.notification_type,
             )
@@ -346,20 +377,21 @@ async def _process_single_notification(
             success = await send_session_reminder_email(
                 to_email=member["email"],
                 member_name=member["first_name"],
-                session_title=session.title,
+                session_title=session["title"],
                 session_date=session_date,
                 session_time=session_time,
-                session_location=session.location_name
-                or (session.location.value if session.location else "TBD"),
-                session_address=session.location_address or "",
+                session_location=session.get("location_name")
+                or session.get("location")
+                or "TBD",
+                session_address=session.get("location_address") or "",
                 reminder_type=reminder_type,
-                pool_fee=session.pool_fee or 0,
+                pool_fee=session.get("pool_fee") or 0,
             )
 
             if success:
                 log_entry = SessionNotificationLog(
                     session_id=notification.session_id,
-                    member_id=member["id"],
+                    member_id=UUID(member["id"]),
                     notification_type=notification.notification_type,
                     channel="email",
                     delivery_status="sent",
@@ -407,7 +439,7 @@ async def cancel_session_notifications(
             )
 
             # Get session details for cancellation email
-            session = await db.get(Session, session_id)
+            session = await _get_session_data(session_id)
             if not session:
                 await db.commit()
                 return
@@ -415,8 +447,9 @@ async def cancel_session_notifications(
             # Send cancellation emails to registered attendees
             members = await _get_session_attendees_and_coaches(db, session)
 
-            session_date = session.starts_at.strftime("%A, %B %d, %Y")
-            session_time = session.starts_at.strftime("%I:%M %p")
+            session_start = datetime.fromisoformat(session["starts_at"])
+            session_date = session_start.strftime("%A, %B %d, %Y")
+            session_time = session_start.strftime("%I:%M %p")
 
             sent_count = 0
             for member in members:
@@ -424,7 +457,7 @@ async def cancel_session_notifications(
                     success = await send_session_cancelled_email(
                         to_email=member["email"],
                         member_name=member["first_name"],
-                        session_title=session.title,
+                        session_title=session["title"],
                         session_date=session_date,
                         session_time=session_time,
                         cancellation_reason=cancellation_reason,
@@ -433,7 +466,7 @@ async def cancel_session_notifications(
                     if success:
                         log_entry = SessionNotificationLog(
                             session_id=session_id,
-                            member_id=member["id"],
+                            member_id=UUID(member["id"]),
                             notification_type=SessionNotificationType.SESSION_CANCELLED,
                             channel="email",
                             delivery_status="sent",
@@ -462,59 +495,66 @@ async def cancel_session_notifications(
 # ─── Helper functions ─────────────────────────────────────────────────
 
 
-async def _get_session_coaches(db: AsyncSession, session: Session) -> list[dict]:
-    """Get coach members for a session."""
-    query = text(
-        """
-        SELECT m.id, m.email, m.first_name
-        FROM members m
-        JOIN session_coaches sc ON sc.coach_id = m.id
-        WHERE sc.session_id = :session_id
-        AND m.status = 'active'
-        """
+async def _get_session_coaches(session: dict) -> list[dict]:
+    """Get coach members for a session via sessions-service + members-service."""
+    settings = get_settings()
+
+    # Get coach IDs from sessions-service
+    resp = await internal_get(
+        service_url=settings.SESSIONS_SERVICE_URL,
+        path=f"/internal/sessions/{session['id']}/coaches",
+        calling_service="communications",
     )
-    result = await db.execute(query, {"session_id": session.id})
-    return [dict(row) for row in result.mappings().all()]
+    if resp.status_code != 200:
+        return []
+    coach_ids = resp.json()
+
+    if not coach_ids:
+        return []
+
+    # Bulk-lookup coach member details
+    return await get_members_bulk(coach_ids, calling_service="communications")
 
 
 async def _get_session_attendees_and_coaches(
-    db: AsyncSession, session: Session
+    db: AsyncSession, session: dict
 ) -> list[dict]:
     """
     Get all members who should receive session notifications:
-    - Registered attendees (from attendance_records)
+    - Registered attendees (from attendance_records — our local table if shared,
+      otherwise via attendance-service)
     - Assigned coaches
 
     TODO: Once RSVP system is implemented, query from RSVPs instead.
     """
-    query = text(
-        """
-        SELECT DISTINCT m.id, m.email, m.first_name
-        FROM members m
-        WHERE m.status = 'active'
-        AND (
-            -- Coaches assigned to this session
-            m.id IN (
-                SELECT coach_id FROM session_coaches WHERE session_id = :session_id
-            )
-            -- OR registered via attendance (for now, all active members for community sessions)
-            OR (
-                :session_type = 'community'
-                AND m.id IN (
-                    SELECT member_id FROM attendance_records WHERE session_id = :session_id
-                )
-            )
+    settings = get_settings()
+
+    # Get coaches via sessions-service
+    coaches = await _get_session_coaches(session)
+    coach_id_set = {m["id"] for m in coaches}
+
+    # For community sessions, also get registered attendees via attendance-service
+    attendees = []
+    if session.get("session_type") == "community":
+        att_resp = await internal_get(
+            service_url=settings.ATTENDANCE_SERVICE_URL,
+            path=f"/internal/attendance/session/{session['id']}/member-ids",
+            calling_service="communications",
         )
-        """
-    )
-    result = await db.execute(
-        query,
-        {
-            "session_id": session.id,
-            "session_type": session.session_type.value,
-        },
-    )
-    return [dict(row) for row in result.mappings().all()]
+        if att_resp.status_code == 200:
+            attendee_ids = att_resp.json()
+            # Remove duplicates with coaches
+            unique_attendee_ids = [
+                aid for aid in attendee_ids if aid not in coach_id_set
+            ]
+            if unique_attendee_ids:
+                attendees = await get_members_bulk(
+                    unique_attendee_ids, calling_service="communications"
+                )
+
+    # Combine and deduplicate
+    all_members = coaches + attendees
+    return all_members
 
 
 async def _get_member_preferences(
@@ -566,22 +606,21 @@ async def send_weekly_session_digest() -> None:
             week_start = now
             week_end = now + timedelta(days=7)
 
-            # Get upcoming sessions for the week (only published ones)
-            sessions_query = text(
-                """
-                SELECT id, title, session_type, starts_at, location_name, location
-                FROM sessions
-                WHERE status = 'scheduled'
-                AND starts_at >= :week_start
-                AND starts_at < :week_end
-                ORDER BY starts_at ASC
-                """
+            # Get upcoming sessions for the week via sessions-service
+            settings = get_settings()
+            sessions_resp = await internal_get(
+                service_url=settings.SESSIONS_SERVICE_URL,
+                path="/internal/sessions/scheduled",
+                calling_service="communications",
+                params={
+                    "start_date": week_start.isoformat(),
+                    "end_date": week_end.isoformat(),
+                },
             )
-            result = await db.execute(
-                sessions_query,
-                {"week_start": week_start, "week_end": week_end},
-            )
-            sessions = result.mappings().all()
+            if sessions_resp.status_code != 200:
+                logger.error("Failed to get scheduled sessions for digest")
+                return
+            sessions = sessions_resp.json()
 
             if not sessions:
                 logger.info("No sessions this week for digest")
@@ -592,9 +631,11 @@ async def send_weekly_session_digest() -> None:
                 {
                     "title": s["title"],
                     "type": s["session_type"],
-                    "date": s["starts_at"].strftime("%A, %B %d"),
-                    "time": s["starts_at"].strftime("%I:%M %p"),
-                    "location": s["location_name"] or s["location"] or "TBD",
+                    "date": datetime.fromisoformat(s["starts_at"]).strftime(
+                        "%A, %B %d"
+                    ),
+                    "time": datetime.fromisoformat(s["starts_at"]).strftime("%I:%M %p"),
+                    "location": s.get("location_name") or s.get("location") or "TBD",
                 }
                 for s in sessions
             ]
@@ -603,21 +644,36 @@ async def send_weekly_session_digest() -> None:
                 f"{week_start.strftime('%B %d')} - {week_end.strftime('%d, %Y')}"
             )
 
-            # Get members who opted in for weekly digest
-            members_query = text(
-                """
-                SELECT m.id, m.email, m.first_name
-                FROM members m
-                LEFT JOIN notification_preferences np ON np.member_id = m.id
-                WHERE m.status = 'active'
-                AND (np.weekly_session_digest IS NULL OR np.weekly_session_digest = true)
-                """
+            # Get active members from members-service
+            members_resp = await internal_get(
+                service_url=settings.MEMBERS_SERVICE_URL,
+                path="/internal/members/active",
+                calling_service="communications",
             )
-            members_result = await db.execute(members_query)
-            members = members_result.mappings().all()
+            if members_resp.status_code != 200:
+                logger.error("Failed to get active members for digest")
+                return
+            all_members = members_resp.json()
+
+            # Filter by weekly digest preference (our own table)
+            member_uuids = [UUID(m["id"]) for m in all_members]
+            prefs_result = await db.execute(
+                select(NotificationPreferences).where(
+                    NotificationPreferences.member_id.in_(member_uuids)
+                )
+            )
+            prefs_map = {str(p.member_id): p for p in prefs_result.scalars().all()}
+
+            eligible_members = []
+            for m in all_members:
+                pref = prefs_map.get(m["id"])
+                # Default: opted-in (None means yes)
+                if pref and pref.weekly_session_digest is False:
+                    continue
+                eligible_members.append(m)
 
             sent_count = 0
-            for member in members:
+            for member in eligible_members:
                 try:
                     success = await send_weekly_session_digest_email(
                         to_email=member["email"],
