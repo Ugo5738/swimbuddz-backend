@@ -12,7 +12,7 @@ Usage:
 
 import json
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 # ---------------------------------------------------------------------------
 # Helpers

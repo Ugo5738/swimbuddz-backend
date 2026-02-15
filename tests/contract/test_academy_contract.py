@@ -3,7 +3,6 @@
 These tests verify response shapes match what other services expect.
 """
 
-import uuid
 
 import pytest
 from tests.factories import (

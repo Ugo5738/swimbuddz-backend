@@ -7,7 +7,7 @@ and payout endpoint coverage.
 import uuid
 
 import pytest
-from tests.factories import CoachPayoutFactory, MemberFactory, PaymentFactory
+from tests.factories import CoachPayoutFactory, PaymentFactory
 
 # ---------------------------------------------------------------------------
 # GET /payments/pricing — Public pricing config

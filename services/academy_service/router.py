@@ -2030,24 +2030,36 @@ async def download_cohort_progress_report(
     total_milestones = len(all_milestones)
     milestone_map = {m.id: m.name for m in all_milestones}
 
-    # Get all enrollments with members
+    # Get all enrollments
     enrollment_query = (
-        select(Enrollment, Member)
-        .join(Member, Enrollment.member_id == Member.id)
+        select(Enrollment)
         .where(
             Enrollment.cohort_id == cohort_id,
             Enrollment.status == EnrollmentStatus.ENROLLED,
         )
     )
     enrollment_result = await db.execute(enrollment_query)
-    enrollments = enrollment_result.all()
+    enrollments = enrollment_result.scalars().all()
 
     if not enrollments:
         raise HTTPException(status_code=404, detail="No enrolled students found")
 
     # For cohort PDF, we'll generate for the first student as a demo
     # In a real implementation, you might want a cohort-level summary PDF
-    enrollment, member = enrollments[0]
+    enrollment = enrollments[0]
+
+    # Get member name from members service
+    student_name = "Student"
+    try:
+        member_data = await get_member_by_id(
+            str(enrollment.member_id), calling_service="academy"
+        )
+        if member_data:
+            first_name = member_data.get("first_name", "")
+            last_name = member_data.get("last_name", "")
+            student_name = f"{first_name} {last_name}".strip() or "Student"
+    except Exception:
+        pass
 
     # Get progress for this enrollment
     progress_query = select(StudentProgress).where(
@@ -2069,7 +2081,7 @@ async def download_cohort_progress_report(
 
     # Generate PDF
     pdf_bytes = generate_progress_report_pdf(
-        student_name=f"{member.first_name} {member.last_name}",
+        student_name=student_name,
         program_name=program.name,
         cohort_name=cohort.name,
         start_date=cohort.start_date,

@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from tests.factories import (
     CohortFactory,
-    EnrollmentFactory,
     MemberFactory,
     MilestoneFactory,
     ProgramFactory,
@@ -75,7 +74,6 @@ async def test_create_cohort(academy_client, db_session):
     db_session.add(program)
     await db_session.commit()
 
-    from datetime import timedelta
 
     from tests.factories import _tomorrow
 

@@ -3,7 +3,7 @@
 import uuid
 
 import pytest
-from tests.factories import DiscountFactory, MemberFactory
+from tests.factories import DiscountFactory
 
 # ---------------------------------------------------------------------------
 # Discount CRUD (admin auth)

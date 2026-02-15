@@ -111,7 +111,7 @@ async def get_active_members(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get all active members (for notifications/communications)."""
-    result = await db.execute(select(Member).where(Member.is_active == True))
+    result = await db.execute(select(Member).where(Member.is_active.is_(True)))
     members = result.scalars().all()
     return [
         MemberBasic(
@@ -314,7 +314,7 @@ async def get_coach_readiness_data(
         select(CoachAgreement.id)
         .where(
             CoachAgreement.coach_profile_id == profile.id,
-            CoachAgreement.is_active == True,
+            CoachAgreement.is_active.is_(True),
         )
         .limit(1)
     )

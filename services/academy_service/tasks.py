@@ -9,7 +9,6 @@ from libs.common.logging import get_logger
 from libs.common.service_client import (
     get_member_by_id,
     get_members_bulk,
-    get_next_session_for_cohort,
     internal_get,
 )
 from libs.db.session import get_async_db

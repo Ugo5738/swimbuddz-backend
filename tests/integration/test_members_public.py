@@ -10,10 +10,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from tests.conftest import (
-    make_admin_user,
     make_member_user,
     override_auth,
-    override_auth_as_member,
 )
 from tests.factories import MemberFactory
 

@@ -14,7 +14,6 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from tests.conftest import make_admin_user, make_member_user, override_auth
 from tests.factories import SessionFactory
 
 # ---------------------------------------------------------------------------
