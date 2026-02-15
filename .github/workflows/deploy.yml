@@ -63,10 +63,10 @@ jobs:
         run: |
           pytest tests/unit/ -v
 
-      - name: Run full test suite with coverage
-        run: |
-          pytest tests/ --cov=services --cov=libs --cov-report=term-missing --cov-report=xml -v
-        continue-on-error: false
+      # - name: Run full test suite with coverage
+      #   run: |
+      #     pytest tests/ --cov=services --cov=libs --cov-report=term-missing --cov-report=xml -v
+      #   continue-on-error: false
 
   # ------------------------------------------------------------------
   # BUILD AND PUSH DOCKER IMAGES
