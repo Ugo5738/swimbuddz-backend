@@ -418,7 +418,7 @@ class CohortResource(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     cohort_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("cohorts.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("cohorts.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str] = mapped_column(String, nullable=False)
     resource_type: Mapped[str] = mapped_column(
@@ -472,7 +472,7 @@ class Enrollment(Base):
         nullable=True,
     )
     cohort_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("cohorts.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("cohorts.id", ondelete="CASCADE"), nullable=True
     )
     member_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
@@ -627,7 +627,9 @@ class StudentProgress(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     enrollment_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("enrollments.id"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("enrollments.id", ondelete="CASCADE"),
+        nullable=False,
     )
     milestone_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("milestones.id"), nullable=False
@@ -698,7 +700,10 @@ class CohortComplexityScore(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     cohort_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("cohorts.id"), nullable=False, unique=True
+        UUID(as_uuid=True),
+        ForeignKey("cohorts.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
     )
 
     # Program category determines which dimensions are used

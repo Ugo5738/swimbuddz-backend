@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from services.sessions_service.internal_router import router as internal_router
 from services.sessions_service.router import router as sessions_router
 from services.sessions_service.template_router import router as templates_router
 
@@ -37,6 +38,9 @@ def create_app() -> FastAPI:
     # FastAPI is strict about trailing slashes - /sessions/templates != /sessions/templates/
     app.include_router(templates_router)
     app.include_router(sessions_router)
+
+    # Internal service-to-service endpoints (not exposed via gateway)
+    app.include_router(internal_router)
 
     return app
 

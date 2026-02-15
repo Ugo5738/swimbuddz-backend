@@ -21,9 +21,24 @@ jobs:
   backend-ci:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
-      # Set a dummy DATABASE_URL for tests (tests don't actually connect)
       DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+      DATABASE_SESSION_URL: postgresql+psycopg://test:test@localhost:5432/test_db
 
     steps:
       - uses: actions/checkout@v4
@@ -44,9 +59,14 @@ jobs:
           ruff check .
           ruff format --check .
 
-      - name: Run Tests
+      - name: Run unit tests (no DB required)
         run: |
-          pytest tests/
+          pytest tests/unit/ -v
+
+      - name: Run full test suite with coverage
+        run: |
+          pytest tests/ --cov=services --cov=libs --cov-report=term-missing --cov-report=xml -v
+        continue-on-error: false
 
   # ------------------------------------------------------------------
   # BUILD AND PUSH DOCKER IMAGES

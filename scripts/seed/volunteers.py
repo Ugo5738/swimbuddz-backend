@@ -255,7 +255,7 @@ SEED_ROLES = [
         "description": (
             "Keeps the WhatsApp groups active, organized, informed and motivated."
         ),
-        "category": VolunteerRoleCategory.ADMIN,
+        "category": VolunteerRoleCategory.OTHER,
         "min_tier": VolunteerTier.TIER_2,
         "icon": "🤝",
         "sort_order": 9,

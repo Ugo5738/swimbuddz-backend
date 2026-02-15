@@ -307,6 +307,23 @@ class MemberListResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MemberDirectoryResponse(BaseModel):
+    """Member info for the community directory."""
+
+    id: uuid.UUID
+    first_name: str
+    last_name: str
+    profile_photo_url: Optional[str] = None
+
+    # From profile sub-record
+    city: Optional[str] = None
+    country: Optional[str] = None
+    swim_level: Optional[str] = None
+    interest_tags: Optional[list[str]] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class MemberPublicResponse(BaseModel):
     """Public member info (minimal)."""
 

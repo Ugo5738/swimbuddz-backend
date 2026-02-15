@@ -1,9 +1,17 @@
+import enum
 import uuid
 from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
-from services.transport_service.models import RideShareOption
+
+
+class RideShareOption(str, enum.Enum):
+    """Local copy — avoids cross-service import from transport_service."""
+
+    NONE = "none"
+    LEAD = "lead"
+    JOIN = "join"
 
 
 class AttendanceBase(BaseModel):

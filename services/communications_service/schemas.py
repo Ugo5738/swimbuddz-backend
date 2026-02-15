@@ -184,6 +184,7 @@ class ContentCommentResponse(BaseModel):
     id: uuid.UUID
     post_id: uuid.UUID
     member_id: uuid.UUID
+    member_name: Optional[str] = None
     content: str
     created_at: datetime
     updated_at: datetime
@@ -197,6 +198,7 @@ class AnnouncementCommentResponse(BaseModel):
     id: uuid.UUID
     announcement_id: uuid.UUID
     member_id: uuid.UUID
+    member_name: Optional[str] = None
     content: str
     created_at: datetime
     updated_at: datetime

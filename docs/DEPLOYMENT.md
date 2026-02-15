@@ -7,6 +7,7 @@ Comprehensive deployment guide for the SwimBuddz microservices backend.
 ## Overview
 
 The SwimBuddz backend consists of:
+
 - **11 microservices** (ports 8000-8010)
 - **1 PostgreSQL database**
 - **Docker containerization**
@@ -29,6 +30,7 @@ The SwimBuddz backend consists of:
 ### Option 1: Docker Compose (Recommended for Small-Medium Scale)
 
 Best for:
+
 - Initial launch
 - Small to medium traffic
 - Single-server deployment
@@ -37,6 +39,7 @@ Best for:
 ### Option 2: Kubernetes (For Large Scale)
 
 Best for:
+
 - High traffic
 - Multi-server deployment
 - Auto-scaling requirements
@@ -51,6 +54,7 @@ Best for:
 ### 1. Server Setup
 
 **Requirements:**
+
 - Ubuntu 20.04+ or similar Linux distribution
 - 4+ GB RAM (8 GB recommended)
 - 50+ GB disk space
@@ -58,6 +62,7 @@ Best for:
 - Docker Compose 2.0+
 
 **Install Docker:**
+
 ```bash
 # Update system
 sudo apt update && sudo apt upgrade -y
@@ -137,6 +142,7 @@ ALLOWED_ORIGINS=https://swimbuddz.com,https://www.swimbuddz.com
 ```
 
 **⚠️ Security:**
+
 - Never commit `.env` to version control
 - Use strong passwords
 - Rotate secrets regularly
@@ -174,6 +180,7 @@ docker compose logs -f
 ```
 
 **Services should now be running:**
+
 - Gateway: http://localhost:8000
 - Individual services: http://localhost:8001-8010
 - Database: localhost:5432
@@ -198,6 +205,7 @@ open http://localhost:8000/docs
 ### Nginx Reverse Proxy (Recommended)
 
 **Install Nginx:**
+
 ```bash
 sudo apt install nginx -y
 ```
@@ -263,6 +271,7 @@ server {
 ```
 
 **Enable site:**
+
 ```bash
 sudo ln -s /etc/nginx/sites-available/swimbuddz-api /etc/nginx/sites-enabled/
 sudo nginx -t
@@ -323,6 +332,7 @@ chmod +x /usr/local/bin/backup-swimbuddz-db.sh
 ```
 
 **Add to crontab:**
+
 ```bash
 # Run daily at 2 AM
 sudo crontab -e
@@ -380,6 +390,7 @@ Docker automatically rotates logs. Configure in `/etc/docker/daemon.json`:
 ```
 
 Restart Docker:
+
 ```bash
 sudo systemctl restart docker
 ```
@@ -406,6 +417,7 @@ fi
 ```
 
 **Run every 5 minutes:**
+
 ```bash
 # Add to crontab
 */5 * * * * /usr/local/bin/check-swimbuddz-health.sh
@@ -445,6 +457,7 @@ jobs:
 ```
 
 **Set GitHub secrets:**
+
 - `SERVER_HOST` - Your server IP/domain
 - `SERVER_USER` - SSH username
 - `SSH_PRIVATE_KEY` - SSH private key
@@ -515,6 +528,7 @@ engine = create_engine(
 ### Caching (Future Enhancement)
 
 Consider adding Redis for:
+
 - Session caching
 - API response caching
 - Rate limiting
@@ -552,6 +566,7 @@ Consider adding Redis for:
 - ✅ Fail2ban for SSH protection
 
 **Configure Fail2ban:**
+
 ```bash
 sudo apt install fail2ban -y
 sudo systemctl enable fail2ban
@@ -565,11 +580,13 @@ sudo systemctl start fail2ban
 ### Services Won't Start
 
 **Check logs:**
+
 ```bash
 docker compose logs service-name
 ```
 
 **Common issues:**
+
 - Database not ready → Add healthcheck in docker-compose.yml
 - Port already in use → Check with `sudo netstat -tulpn`
 - Missing environment variables → Check `.env` file
@@ -577,6 +594,7 @@ docker compose logs service-name
 ### Database Connection Errors
 
 **Check:**
+
 1. Database is running: `docker compose ps db`
 2. Correct credentials in `.env`
 3. Database URL format: `postgresql+psycopg://user:pass@host:port/db`
@@ -584,6 +602,7 @@ docker compose logs service-name
 ### Migration Failures
 
 **Reset migrations (CAUTION - data loss):**
+
 ```bash
 # Drop all tables
 docker compose exec db psql -U swimbuddz_user -d swimbuddz -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
@@ -593,6 +612,7 @@ docker compose run --rm gateway-service alembic upgrade head
 ```
 
 **Create new migration:**
+
 ```bash
 docker compose run --rm gateway-service alembic revision --autogenerate -m "description"
 ```
@@ -600,11 +620,13 @@ docker compose run --rm gateway-service alembic revision --autogenerate -m "desc
 ### High Memory Usage
 
 **Check container stats:**
+
 ```bash
 docker stats
 ```
 
 **Restart specific service:**
+
 ```bash
 docker compose restart service-name
 ```
@@ -637,12 +659,14 @@ docker compose run --rm gateway-service alembic downgrade -1
 ### DigitalOcean Droplet (Recommended for Start)
 
 **$48/month:**
+
 - 4 GB RAM
 - 2 vCPUs
 - 80 GB SSD
 - 4 TB transfer
 
 **Sufficient for:**
+
 - 500-1000 active users
 - Moderate traffic
 - All 11 microservices
@@ -650,11 +674,13 @@ docker compose run --rm gateway-service alembic downgrade -1
 ### AWS EC2 (Alternative)
 
 **t3.medium: $30-40/month**
+
 - 4 GB RAM
 - 2 vCPUs
 - Similar performance
 
 **RDS PostgreSQL: $15-30/month**
+
 - Managed database
 - Automated backups
 - High availability
@@ -664,14 +690,17 @@ docker compose run --rm gateway-service alembic downgrade -1
 ## Support & Resources
 
 **SwimBuddz Documentation:**
+
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
 - [DEPLOY_ENV_GPG.md](./DEPLOY_ENV_GPG.md) - Environment secrets management
 - [CONVENTIONS.md](./CONVENTIONS.md) - Coding standards
 
 **Docker Documentation:**
+
 - https://docs.docker.com
 
 **FastAPI Deployment:**
+
 - https://fastapi.tiangolo.com/deployment/
 
 ---
@@ -696,6 +725,7 @@ docker compose run --rm gateway-service alembic downgrade -1
 ## ✅ Production Ready!
 
 Your backend is now deployed with:
+
 - ✅ 11 microservices running
 - ✅ PostgreSQL database
 - ✅ HTTPS with SSL

@@ -56,14 +56,15 @@ def create_app() -> FastAPI:
     # MEMBERS SERVICE PROXY
     # ==================================================================
     @app.api_route(
-        "/api/v1/members/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/members/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
     )
     async def proxy_members(path: str, request: Request):
         """Proxy all /api/v1/members/* requests to members service."""
         return await proxy_request(clients.members_client, f"/members/{path}", request)
 
     @app.api_route(
-        "/api/v1/admin/members/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/admin/members/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
     async def proxy_admin_members(path: str, request: Request):
         """Proxy all /api/v1/admin/members/* requests to members service."""
@@ -72,10 +73,12 @@ def create_app() -> FastAPI:
         )
 
     @app.api_route(
-        "/api/v1/pending-registrations", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/pending-registrations",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
     @app.api_route(
-        "/api/v1/pending-registrations/", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/pending-registrations/",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
     @limiter.limit("5/minute")
     async def proxy_pending_registrations_root(request: Request):
@@ -86,7 +89,7 @@ def create_app() -> FastAPI:
 
     @app.api_route(
         "/api/v1/pending-registrations/{path:path}",
-        methods=["GET", "POST", "PATCH", "DELETE"],
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
     @limiter.limit("5/minute")
     async def proxy_pending_registrations(path: str, request: Request):
@@ -99,14 +102,15 @@ def create_app() -> FastAPI:
     # COACHES SERVICE PROXY (routed to members service)
     # ==================================================================
     @app.api_route(
-        "/api/v1/coaches/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/coaches/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
     )
     async def proxy_coaches(path: str, request: Request):
         """Proxy all /api/v1/coaches/* requests to members service (coach router)."""
         return await proxy_request(clients.members_client, f"/coaches/{path}", request)
 
     @app.api_route(
-        "/api/v1/admin/coaches/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/admin/coaches/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
     async def proxy_admin_coaches(path: str, request: Request):
         """Proxy all /api/v1/admin/coaches/* requests to members service (admin coach router)."""
@@ -143,7 +147,8 @@ def create_app() -> FastAPI:
         )
 
     @app.api_route(
-        "/api/v1/sessions/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/sessions/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
     async def proxy_sessions(path: str, request: Request):
         """Proxy all /api/v1/sessions/* requests to sessions service."""
@@ -178,7 +183,8 @@ def create_app() -> FastAPI:
     # CHALLENGE PROXY (Members Service)
     # ==================================================================
     @app.api_route(
-        "/api/v1/challenges/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/challenges/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
     async def proxy_challenges(path: str, request: Request):
         """Proxy all /api/v1/challenges/* requests to members service."""
@@ -190,7 +196,8 @@ def create_app() -> FastAPI:
     # ATTENDANCE SERVICE PROXY
     # ==================================================================
     @app.api_route(
-        "/api/v1/attendance/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/attendance/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
     async def proxy_attendance(path: str, request: Request):
         """Proxy all /api/v1/attendance/* requests to attendance service."""
@@ -211,7 +218,8 @@ def create_app() -> FastAPI:
     # COMMUNICATIONS SERVICE PROXY
     # ==================================================================
     @app.api_route(
-        "/api/v1/communications/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/communications/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
     async def proxy_communications(path: str, request: Request):
         """Proxy all /api/v1/communications/* requests to communications service."""
@@ -222,7 +230,7 @@ def create_app() -> FastAPI:
         return await proxy_request(clients.communications_client, f"/{path}", request)
 
     @app.api_route(
-        "/api/v1/content/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/content/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
     )
     async def proxy_content(path: str, request: Request):
         """Proxy all /api/v1/content/* requests to communications service."""
@@ -265,7 +273,8 @@ def create_app() -> FastAPI:
         )
 
     @app.api_route(
-        "/api/v1/payments/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/payments/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
     async def proxy_payments(path: str, request: Request):
         """Proxy all /api/v1/payments/* requests to payments service."""
@@ -319,7 +328,7 @@ def create_app() -> FastAPI:
     # EVENTS SERVICE PROXY
     # ==================================================================
     @app.api_route(
-        "/api/v1/events/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/events/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
     )
     async def proxy_events(path: str, request: Request):
         """Proxy all /api/v1/events/* requests to events service."""
@@ -329,7 +338,7 @@ def create_app() -> FastAPI:
     # STORE SERVICE PROXY
     # ==================================================================
     @app.api_route(
-        "/api/v1/store/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"]
+        "/api/v1/store/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
     )
     async def proxy_store(path: str, request: Request):
         """Proxy all /api/v1/store/* requests to store service."""
@@ -337,7 +346,7 @@ def create_app() -> FastAPI:
 
     @app.api_route(
         "/api/v1/admin/store/{path:path}",
-        methods=["GET", "POST", "PATCH", "DELETE"],
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
     async def proxy_admin_store(path: str, request: Request):
         """Proxy all /api/v1/admin/store/* requests to store service."""
@@ -348,7 +357,9 @@ def create_app() -> FastAPI:
     # ==================================================================
     # AI SERVICE
     # ==================================================================
-    @app.api_route("/api/v1/ai/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
+    @app.api_route(
+        "/api/v1/ai/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
+    )
     async def proxy_ai(path: str, request: Request):
         """Proxy all /api/v1/ai/* requests to AI service."""
         return await proxy_request(clients.ai_client, f"/ai/{path}", request)
