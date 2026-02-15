@@ -613,7 +613,26 @@ async def list_my_coach_students(
         .order_by(Enrollment.created_at.desc())
     )
     result = await db.execute(query)
-    return result.unique().scalars().all()
+    enrollments = result.unique().scalars().all()
+
+    # Enrich with member names from members service
+    enriched = []
+    for enrollment in enrollments:
+        data = EnrollmentResponse.model_validate(enrollment)
+        try:
+            member_data = await get_member_by_id(
+                str(enrollment.member_id), calling_service="academy"
+            )
+            if member_data:
+                first_name = member_data.get("first_name", "")
+                last_name = member_data.get("last_name", "")
+                data.member_name = f"{first_name} {last_name}".strip() or None
+                data.member_email = member_data.get("email")
+        except Exception:
+            pass  # Gracefully degrade if members service is unavailable
+        enriched.append(data)
+
+    return enriched
 
 
 @router.get("/coach/me/earnings")
@@ -1059,7 +1078,7 @@ async def review_milestone_claim(
     cohort_result = await db.execute(cohort_query)
     coach_id = cohort_result.scalar_one_or_none()
 
-    if coach_id != member_id:
+    if str(coach_id) != str(member_id):
         raise HTTPException(
             status_code=403, detail="Not authorized to review this milestone"
         )
@@ -1070,7 +1089,7 @@ async def review_milestone_claim(
         progress.achieved_at = utc_now()
     elif action.action == "reject":
         progress.status = ProgressStatus.PENDING
-        progress.evidence_media_id = None  # Clear evidence so student can resubmit
+        # Keep evidence_media_id for audit trail - student will replace it on resubmission
     else:
         raise HTTPException(
             status_code=400, detail="Invalid action. Use 'approve' or 'reject'"
@@ -1283,7 +1302,7 @@ async def list_cohort_students(
     # Verify coach has access to this specific cohort
     await require_coach_for_cohort(current_user, str(cohort_id), db)
 
-    # Eager load progress records, cohort, and program; member data is resolved by ID externally
+    # Eager load progress records, cohort, and program
     from sqlalchemy.orm import joinedload, selectinload
 
     query = (
@@ -1296,7 +1315,26 @@ async def list_cohort_students(
         )
     )
     result = await db.execute(query)
-    return result.unique().scalars().all()
+    enrollments = result.unique().scalars().all()
+
+    # Enrich with member names from members service
+    enriched = []
+    for enrollment in enrollments:
+        data = EnrollmentResponse.model_validate(enrollment)
+        try:
+            member_data = await get_member_by_id(
+                str(enrollment.member_id), calling_service="academy"
+            )
+            if member_data:
+                first_name = member_data.get("first_name", "")
+                last_name = member_data.get("last_name", "")
+                data.member_name = f"{first_name} {last_name}".strip() or None
+                data.member_email = member_data.get("email")
+        except Exception:
+            pass  # Gracefully degrade if members service is unavailable
+        enriched.append(data)
+
+    return enriched
 
 
 # --- Milestones ---
@@ -1392,10 +1430,10 @@ async def list_enrollments(
 @router.get("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
 async def get_enrollment(
     enrollment_id: uuid.UUID,
-    current_user: AuthUser = Depends(require_admin),
+    current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Get detailed enrollment info."""
+    """Get detailed enrollment info. Accessible by admins and coaches."""
     from sqlalchemy.orm import selectinload
 
     query = (
@@ -1409,7 +1447,21 @@ async def get_enrollment(
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
 
-    return enrollment
+    # Enrich with member name/email
+    data = EnrollmentResponse.model_validate(enrollment)
+    try:
+        member_data = await get_member_by_id(
+            str(enrollment.member_id), calling_service="academy"
+        )
+        if member_data:
+            first_name = member_data.get("first_name", "")
+            last_name = member_data.get("last_name", "")
+            data.member_name = f"{first_name} {last_name}".strip() or None
+            data.member_email = member_data.get("email")
+    except Exception:
+        pass
+
+    return data
 
 
 @router.post("/enrollments/me", response_model=EnrollmentResponse)
@@ -2383,13 +2435,19 @@ async def claim_milestone(
     progress = progress_result.scalar_one_or_none()
 
     if progress:
-        # Update existing record
+        # Update existing record (handles both first claim and resubmission after rejection)
         progress.status = ProgressStatus.ACHIEVED
         progress.achieved_at = utc_now()
         if claim_in.evidence_media_id:
             progress.evidence_media_id = claim_in.evidence_media_id
-        if claim_in.student_notes:
+        if claim_in.student_notes is not None:
             progress.student_notes = claim_in.student_notes
+
+        # Clear previous review fields so it goes back to "pending review" state
+        progress.reviewed_at = None
+        progress.reviewed_by_coach_id = None
+        progress.score = None
+        progress.coach_notes = None
     else:
         # Create new record
         progress = StudentProgress(
@@ -2430,10 +2488,10 @@ async def register_program_interest(
             detail="Program not found",
         )
 
-    # Get member info
-    member_query = select(Member).where(Member.auth_id == current_user.user_id)
-    member_result = await db.execute(member_query)
-    member = member_result.scalar_one_or_none()
+    # Get member info via members service
+    member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
+    )
 
     if not member:
         raise HTTPException(
@@ -2458,9 +2516,9 @@ async def register_program_interest(
     # Create interest record
     interest = ProgramInterest(
         program_id=program_id,
-        member_id=member.id,
+        member_id=member["id"],
         member_auth_id=current_user.user_id,
-        email=member.email,
+        email=member.get("email"),
     )
     db.add(interest)
     await db.commit()
@@ -2595,13 +2653,13 @@ async def create_cohort_complexity_score(
             detail="Complexity score already exists for this cohort. Use PUT to update.",
         )
 
-    # Get member_id from auth user
-    member_result = await db.execute(
-        select(Member.id).where(Member.auth_id == current_user.user_id)
+    # Get member_id from auth user via members service
+    member_info = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
     )
-    member_id = member_result.scalar_one_or_none()
-    if not member_id:
+    if not member_info:
         raise HTTPException(status_code=404, detail="Member not found")
+    member_id = member_info["id"]
 
     # Extract dimension scores
     dimension_scores = [
@@ -2704,10 +2762,10 @@ async def update_cohort_complexity_score(
         raise HTTPException(status_code=404, detail="Complexity score not found")
 
     # Get member_id from auth user for reviewer tracking
-    member_result = await db.execute(
-        select(Member.id).where(Member.auth_id == current_user.user_id)
+    member_info = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
     )
-    member_id = member_result.scalar_one_or_none()
+    member_id = member_info["id"] if member_info else None
 
     # Update category if provided
     if score_data.category is not None:
@@ -2820,11 +2878,11 @@ async def mark_complexity_score_reviewed(
     if not score:
         raise HTTPException(status_code=404, detail="Complexity score not found")
 
-    # Get member_id from auth user
-    member_result = await db.execute(
-        select(Member.id).where(Member.auth_id == current_user.user_id)
+    # Get member_id from auth user via members service
+    member_info = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
     )
-    member_id = member_result.scalar_one_or_none()
+    member_id = member_info["id"] if member_info else None
 
     score.reviewed_by_id = member_id
     score.reviewed_at = utc_now()

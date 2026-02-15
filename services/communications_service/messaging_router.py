@@ -53,7 +53,7 @@ async def validate_coach_owns_cohort(
     settings = get_settings()
     resp = await internal_get(
         service_url=settings.ACADEMY_SERVICE_URL,
-        path=f"/internal/cohorts/{cohort_id}",
+        path=f"/academy/internal/cohorts/{cohort_id}",
         calling_service="communications",
     )
     if resp.status_code == 404:
@@ -84,7 +84,7 @@ async def get_cohort_enrolled_students(
     # Get enrollments from academy-service
     enroll_resp = await internal_get(
         service_url=settings.ACADEMY_SERVICE_URL,
-        path=f"/internal/cohorts/{cohort_id}/enrolled-students",
+        path=f"/academy/internal/cohorts/{cohort_id}/enrolled-students",
         calling_service="communications",
     )
     enroll_resp.raise_for_status()

@@ -23,8 +23,9 @@ def create_app() -> FastAPI:
     app.include_router(payments_router)
 
     # Include payout routers for coach payout management
-    app.include_router(payout_admin_router)
-    app.include_router(payout_coach_router)
+    # Mount under /payments prefix to match gateway routing (/api/v1/payments/{path} → /payments/{path})
+    app.include_router(payout_admin_router, prefix="/payments")
+    app.include_router(payout_coach_router, prefix="/payments")
 
     return app
 

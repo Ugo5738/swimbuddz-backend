@@ -233,6 +233,10 @@ class EnrollmentResponse(EnrollmentBase):
     cohort: Optional[CohortResponse] = None
     program: Optional[ProgramResponse] = None
 
+    # Member info (populated by endpoint, not from ORM)
+    member_name: Optional[str] = None
+    member_email: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 
