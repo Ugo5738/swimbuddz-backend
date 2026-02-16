@@ -32,8 +32,8 @@ tests/
 # MCP server (not needed in service containers)
 mcp/
 
-# Scripts (dev/admin tooling)
-scripts/
+# Scripts (dev-only tooling, but NOT excluded — migrate-prod.sh is needed in gateway image)
+# scripts/
 
 # IDE
 .vscode

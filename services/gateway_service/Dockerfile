@@ -23,5 +23,6 @@ COPY --from=builder /install /usr/local
 
 COPY libs/ libs/
 COPY services/ services/
+COPY scripts/ scripts/
 
 CMD ["uvicorn", "services.gateway_service.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
