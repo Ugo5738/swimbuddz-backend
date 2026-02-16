@@ -1,5 +1,6 @@
 """Pending registration router - handles user registration flow."""
 
+import asyncio
 import json
 import re
 
@@ -7,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
+from libs.common.supabase import get_supabase_admin_client
 from libs.db.session import get_async_db
 from services.members_service.models import (
     Member,
@@ -136,20 +138,40 @@ async def create_pending_registration(
                     extra={"extra_fields": {"email": registration_in.email}},
                 )
 
-                # Set default app_metadata roles using service role
+                # Set app_metadata roles using service role
+                # Preserve roles from the registration payload (e.g. ["coach"])
                 try:
                     admin_supabase = get_supabase_admin_client()
                     user = getattr(response, "user", None)
                     user_id = getattr(user, "id", None) or (user or {}).get("id")
                     if user_id:
+                        # Read roles from registration payload; default to ["member"]
+                        requested_roles = registration_in.model_dump().get("roles")
+                        if isinstance(requested_roles, list) and requested_roles:
+                            # Ensure "member" is always included alongside any other roles
+                            initial_roles = list(
+                                dict.fromkeys(["member"] + requested_roles)
+                            )
+                        else:
+                            initial_roles = ["member"]
                         await asyncio.to_thread(
                             admin_supabase.auth.admin.update_user_by_id,
                             user_id,
-                            {"app_metadata": {"roles": ["member"], "role": "member"}},
+                            {
+                                "app_metadata": {
+                                    "roles": initial_roles,
+                                    "role": initial_roles[0],
+                                }
+                            },
                         )
                         logger.info(
                             "Updated app_metadata roles",
-                            extra={"extra_fields": {"user_id": user_id}},
+                            extra={
+                                "extra_fields": {
+                                    "user_id": user_id,
+                                    "roles": initial_roles,
+                                }
+                            },
                         )
                 except Exception as meta_err:
                     logger.warning(
@@ -516,6 +538,32 @@ async def complete_pending_registration(
                 detail="Member already exists",
             )
         raise e
+
+    # Sync member roles to Supabase app_metadata so JWT reflects them
+    # This ensures roles like "coach" set during registration are in the token
+    if member.roles and set(member.roles) != {"member"}:
+        try:
+            admin_supabase = get_supabase_admin_client()
+            final_roles = list(dict.fromkeys(["member"] + (member.roles or [])))
+            await asyncio.to_thread(
+                admin_supabase.auth.admin.update_user_by_id,
+                current_user.user_id,
+                {"app_metadata": {"roles": final_roles}},
+            )
+            logger.info(
+                "Synced member roles to Supabase on registration completion",
+                extra={
+                    "extra_fields": {
+                        "user_id": current_user.user_id,
+                        "roles": final_roles,
+                    }
+                },
+            )
+        except Exception as sync_err:
+            logger.warning(
+                "Could not sync member roles to Supabase",
+                extra={"extra_fields": {"error": str(sync_err)}},
+            )
 
     # Reload with all relationships for response
     query = (
