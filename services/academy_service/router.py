@@ -81,7 +81,7 @@ from services.academy_service.scoring import (
     calculate_complexity_score,
     get_dimension_labels,
 )
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -520,6 +520,62 @@ async def list_open_cohorts(
     )
     result = await db.execute(query)
     return result.scalars().all()
+
+
+def _is_mid_entry_open_now(cohort: Cohort, now_dt) -> bool:
+    if cohort.status != CohortStatus.ACTIVE:
+        return False
+    if not cohort.allow_mid_entry:
+        return False
+
+    days_since_start = (now_dt - cohort.start_date).days
+    current_week = (days_since_start // 7) + 1
+    return current_week <= cohort.mid_entry_cutoff_week
+
+
+@router.get("/cohorts/enrollable", response_model=List[CohortResponse])
+async def list_enrollable_cohorts(
+    program_id: uuid.UUID = None,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List cohorts members can enroll in right now.
+
+    Includes:
+    - OPEN cohorts (published programs)
+    - ACTIVE cohorts where mid-entry is enabled and still within cutoff week
+    """
+    from sqlalchemy.orm import selectinload
+
+    now = utc_now()
+
+    query = (
+        select(Cohort)
+        .join(Program, Cohort.program_id == Program.id)
+        .where(Program.is_published.is_(True))
+        .where(
+            or_(
+                Cohort.status == CohortStatus.OPEN,
+                and_(
+                    Cohort.status == CohortStatus.ACTIVE,
+                    Cohort.allow_mid_entry.is_(True),
+                ),
+            )
+        )
+        .options(selectinload(Cohort.program))
+        .order_by(Cohort.start_date.asc())
+    )
+
+    if program_id:
+        query = query.where(Cohort.program_id == program_id)
+
+    result = await db.execute(query)
+    cohorts = result.scalars().all()
+
+    return [
+        cohort
+        for cohort in cohorts
+        if cohort.status == CohortStatus.OPEN or _is_mid_entry_open_now(cohort, now)
+    ]
 
 
 @router.get("/cohorts/by-coach/{coach_member_id}", response_model=List[CohortResponse])
