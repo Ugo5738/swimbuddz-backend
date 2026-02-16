@@ -1,24 +1,36 @@
-FROM python:3.11-slim
+# ---- Stage 1: Build ----
+FROM python:3.11-slim AS builder
 
-WORKDIR /app
+WORKDIR /build
 
-# Install system dependencies for PIL/Pillow
 RUN apt-get update && apt-get install -y \
     gcc \
     libjpeg-dev \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy project files
-COPY pyproject.toml /app/
-COPY libs/ /app/libs/
-COPY services/media_service/ /app/services/media_service/
+COPY pyproject.toml README.md ./
+COPY libs/ libs/
+COPY services/media_service/ services/media_service/
 
-# Install the project in editable mode
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir --prefix=/install .
 
-# Expose port
+# ---- Stage 2: Runtime ----
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Pillow needs libjpeg and zlib at runtime
+RUN apt-get update && apt-get install -y \
+    libjpeg62-turbo \
+    zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /install /usr/local
+
+COPY libs/ libs/
+COPY services/media_service/ services/media_service/
+
 EXPOSE 8008
 
-# Run service
 CMD ["uvicorn", "services.media_service.app.main:app", "--host", "0.0.0.0", "--port", "8008"]

@@ -35,144 +35,108 @@ services:
     container_name: swimbuddz_members
     env_file:
       - .env.prod
-    ports:
-      - "8001:8001"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   sessions-service:
     image: ${DOCKER_USERNAME}/swimbuddz-sessions-service:latest
     container_name: swimbuddz_sessions
     env_file:
       - .env.prod
-    ports:
-      - "8002:8002"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   attendance-service:
     image: ${DOCKER_USERNAME}/swimbuddz-attendance-service:latest
     container_name: swimbuddz_attendance
     env_file:
       - .env.prod
-    ports:
-      - "8003:8003"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   communications-service:
     image: ${DOCKER_USERNAME}/swimbuddz-communications-service:latest
     container_name: swimbuddz_communications
     env_file:
       - .env.prod
-    ports:
-      - "8004:8004"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   payments-service:
     image: ${DOCKER_USERNAME}/swimbuddz-payments-service:latest
     container_name: swimbuddz_payments
     env_file:
       - .env.prod
-    ports:
-      - "8005:8005"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   academy-service:
     image: ${DOCKER_USERNAME}/swimbuddz-academy-service:latest
     container_name: swimbuddz_academy
     env_file:
       - .env.prod
-    ports:
-      - "8006:8006"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   media-service:
     image: ${DOCKER_USERNAME}/swimbuddz-media-service:latest
     container_name: swimbuddz_media
     env_file:
       - .env.prod
-    ports:
-      - "8008:8008"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   events-service:
     image: ${DOCKER_USERNAME}/swimbuddz-events-service:latest
     container_name: swimbuddz_events
     env_file:
       - .env.prod
-    ports:
-      - "8007:8007"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   transport-service:
     image: ${DOCKER_USERNAME}/swimbuddz-transport-service:latest
     container_name: swimbuddz_transport
     env_file:
       - .env.prod
-    ports:
-      - "8009:8009"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   store-service:
     image: ${DOCKER_USERNAME}/swimbuddz-store-service:latest
     container_name: swimbuddz_store
     env_file:
       - .env.prod
-    ports:
-      - "8010:8010"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   ai-service:
     image: ${DOCKER_USERNAME}/swimbuddz-ai-service:latest
     container_name: swimbuddz_ai
     env_file:
       - .env.prod
-    ports:
-      - "8011:8011"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   volunteer-service:
     image: ${DOCKER_USERNAME}/swimbuddz-volunteer-service:latest
     container_name: swimbuddz_volunteer
     env_file:
       - .env.prod
-    ports:
-      - "8012:8012"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   # ==================================================================
   # API GATEWAY
@@ -213,9 +177,10 @@ services:
       uvicorn services.gateway_service.app.main:app
       --host 0.0.0.0
       --port 8000
-      --reload
+      --workers 2
     volumes:
-      - .:/app
+      - ./.env.prod:/app/.env.prod:ro
+    restart: unless-stopped
     networks:
       - default
       - swimbuddz_proxy
@@ -247,8 +212,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: arq services.academy_service.worker.WorkerSettings
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   communications-worker:
     image: ${DOCKER_USERNAME}/swimbuddz-communications-service:latest
@@ -263,8 +227,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: arq services.communications_service.worker.WorkerSettings
-    volumes:
-      - .:/app
+    restart: unless-stopped
 
   # ==================================================================
   # INFRASTRUCTURE
@@ -272,8 +235,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: swimbuddz_redis
-    ports:
-      - "6379:6379"
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
@@ -282,9 +243,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+    restart: unless-stopped
 
 volumes:
-  swimbuddz_db_data:
   redis_data:
 
 networks:

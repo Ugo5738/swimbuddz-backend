@@ -1,22 +1,28 @@
-FROM python:3.11-slim
+# ---- Stage 1: Build ----
+FROM python:3.11-slim AS builder
 
-WORKDIR /app
+WORKDIR /build
 
-# Install system dependencies required for building Python packages (e.g. asyncpg)
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy project metadata
 COPY pyproject.toml README.md ./
-
-# Copy shared libraries and services
 COPY libs/ libs/
 COPY services/ services/
 
-# Install the project in editable mode
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir --prefix=/install .
 
-# Default command (can be overridden by docker-compose)
+# ---- Stage 2: Runtime ----
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY --from=builder /install /usr/local
+
+COPY libs/ libs/
+COPY services/ services/
+COPY scripts/ scripts/
+
 CMD ["uvicorn", "services.gateway_service.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
