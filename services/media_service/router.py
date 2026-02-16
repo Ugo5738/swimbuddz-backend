@@ -38,6 +38,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter(prefix="/api/v1/media", tags=["media"])
 
 
+def _maybe_presign_url(url: str | None) -> str | None:
+    """
+    If the URL points to our private S3 bucket, replace it with a presigned URL.
+    Public/CloudFront/external URLs are returned as-is.
+    """
+    if not url:
+        return url
+    private_bucket = (
+        storage_service.bucket_private
+        if hasattr(storage_service, "bucket_private")
+        else ""
+    )
+    if private_bucket and private_bucket in url and storage_service.backend == "s3":
+        from urllib.parse import urlparse
+
+        key = urlparse(url).path.lstrip("/")
+        if key:
+            try:
+                return storage_service.s3_client.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": private_bucket, "Key": key},
+                    ExpiresIn=3600,  # 1 hour
+                )
+            except Exception:
+                pass  # Fall through to return raw URL
+    return url
+
+
 async def _build_media_item_response(
     db: AsyncSession, media_item: MediaItem
 ) -> MediaItemResponse:
@@ -50,8 +78,8 @@ async def _build_media_item_response(
 
     return MediaItemResponse(
         id=media_item.id,
-        file_url=media_item.file_url,
-        thumbnail_url=media_item.thumbnail_url,
+        file_url=_maybe_presign_url(media_item.file_url),
+        thumbnail_url=_maybe_presign_url(media_item.thumbnail_url),
         title=media_item.title,
         description=media_item.description,
         alt_text=media_item.alt_text,
@@ -139,7 +167,7 @@ async def resolve_media_urls(
     result = await db.execute(query)
     rows = result.fetchall()
 
-    return {str(row[0]): row[1] for row in rows if row[1]}
+    return {str(row[0]): _maybe_presign_url(row[1]) for row in rows if row[1]}
 
 
 # ===== ALBUM ENDPOINTS =====
@@ -232,8 +260,8 @@ async def get_album(album_id: uuid.UUID, db: AsyncSession = Depends(get_async_db
         media_responses.append(
             MediaItemResponse(
                 id=item.id,
-                file_url=item.file_url,
-                thumbnail_url=item.thumbnail_url,
+                file_url=_maybe_presign_url(item.file_url),
+                thumbnail_url=_maybe_presign_url(item.thumbnail_url),
                 title=item.title,
                 description=item.description,
                 alt_text=item.alt_text,
@@ -380,8 +408,8 @@ async def upload_media(
 
     return MediaItemResponse(
         id=db_media.id,
-        file_url=db_media.file_url,
-        thumbnail_url=db_media.thumbnail_url,
+        file_url=_maybe_presign_url(db_media.file_url),
+        thumbnail_url=_maybe_presign_url(db_media.thumbnail_url),
         title=db_media.title,
         description=db_media.description,
         alt_text=db_media.alt_text,
@@ -681,8 +709,8 @@ async def list_media(
         response_list.append(
             MediaItemResponse(
                 id=item.id,
-                file_url=item.file_url,
-                thumbnail_url=item.thumbnail_url,
+                file_url=_maybe_presign_url(item.file_url),
+                thumbnail_url=_maybe_presign_url(item.thumbnail_url),
                 title=item.title,
                 description=item.description,
                 alt_text=item.alt_text,
