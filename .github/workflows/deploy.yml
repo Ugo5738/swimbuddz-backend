@@ -120,6 +120,9 @@ jobs:
             dockerfile: ./services/ai_service/Dockerfile
             image: swimbuddz-ai-service
           - context: .
+            dockerfile: ./services/wallet_service/Dockerfile
+            image: swimbuddz-wallet-service
+          - context: .
             dockerfile: ./services/volunteer_service/Dockerfile
             image: swimbuddz-volunteer-service
 
