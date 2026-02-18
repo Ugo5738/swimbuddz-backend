@@ -138,6 +138,15 @@ services:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
+  wallet-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-wallet-service:latest
+    container_name: swimbuddz_wallet
+    env_file:
+      - .env.prod
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
   # ==================================================================
   # API GATEWAY
   # ==================================================================
@@ -170,6 +179,8 @@ services:
       ai-service:
         condition: service_started
       volunteer-service:
+        condition: service_started
+      wallet-service:
         condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -227,6 +238,21 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: arq services.communications_service.worker.WorkerSettings
+    restart: unless-stopped
+
+  payments-worker:
+    image: ${DOCKER_USERNAME}/swimbuddz-payments-service:latest
+    container_name: swimbuddz_payments_worker
+    env_file:
+      - .env.prod
+    depends_on:
+      redis:
+        condition: service_healthy
+      payments-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.payments_service.worker.WorkerSettings
     restart: unless-stopped
 
   # ==================================================================

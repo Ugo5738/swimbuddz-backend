@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from libs.common.error_handler import add_exception_handlers
+from libs.common.logging import get_request_id
 from libs.common.middleware import add_observability_middleware
 from libs.common.rate_limit import limiter, rate_limit_exceeded_handler
 from services.gateway_service.app import clients
@@ -355,6 +356,27 @@ def create_app() -> FastAPI:
         )
 
     # ==================================================================
+    # WALLET SERVICE PROXY
+    # ==================================================================
+    @app.api_route(
+        "/api/v1/wallet/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_wallet(path: str, request: Request):
+        """Proxy all /api/v1/wallet/* requests to wallet service."""
+        return await proxy_request(clients.wallet_client, f"/wallet/{path}", request)
+
+    @app.api_route(
+        "/api/v1/admin/wallet/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_admin_wallet(path: str, request: Request):
+        """Proxy all /api/v1/admin/wallet/* requests to wallet service."""
+        return await proxy_request(
+            clients.wallet_client, f"/admin/wallet/{path}", request
+        )
+
+    # ==================================================================
     # AI SERVICE
     # ==================================================================
     @app.api_route(
@@ -420,6 +442,11 @@ async def proxy_request(client: clients.ServiceClient, path: str, request: Reque
             for k, v in request.headers.items()
             if k.lower() not in ["content-length", "host"]
         }
+        if not any(k.lower() == "x-request-id" for k in headers):
+            request_id = get_request_id()
+            if request_id:
+                headers["X-Request-ID"] = request_id
+        headers.setdefault("X-Caller-Service", "gateway")
 
         # Include query parameters
         query_params = request.url.query

@@ -490,3 +490,104 @@ class ContentPostFactory:
         }
         defaults.update(overrides)
         return ContentPost(**defaults)
+
+
+# ---------------------------------------------------------------------------
+# Wallet Service
+# ---------------------------------------------------------------------------
+
+
+class WalletFactory:
+    @staticmethod
+    def create(**overrides):
+        from services.wallet_service.models import Wallet, WalletStatus, WalletTier
+
+        defaults = {
+            "id": _uuid(),
+            "member_id": _uuid(),
+            "member_auth_id": str(_uuid()),
+            "balance": 100,
+            "status": WalletStatus.ACTIVE,
+            "tier": WalletTier.STANDARD,
+            "lifetime_bubbles_purchased": 100,
+            "lifetime_bubbles_spent": 0,
+            "lifetime_bubbles_received": 10,
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+        defaults.update(overrides)
+        return Wallet(**defaults)
+
+
+class WalletTransactionFactory:
+    @staticmethod
+    def create(wallet_id=None, **overrides):
+        from services.wallet_service.models import (
+            TransactionDirection,
+            TransactionStatus,
+            TransactionType,
+            WalletTransaction,
+        )
+
+        defaults = {
+            "id": _uuid(),
+            "wallet_id": wallet_id or _uuid(),
+            "idempotency_key": f"test-{uuid.uuid4().hex[:8]}",
+            "transaction_type": TransactionType.TOPUP,
+            "direction": TransactionDirection.CREDIT,
+            "amount": 50,
+            "balance_before": 100,
+            "balance_after": 150,
+            "status": TransactionStatus.COMPLETED,
+            "description": "Test transaction",
+            "service_source": "test",
+            "created_at": _now(),
+        }
+        defaults.update(overrides)
+        return WalletTransaction(**defaults)
+
+
+class WalletTopupFactory:
+    @staticmethod
+    def create(wallet_id=None, **overrides):
+        from services.wallet_service.models import (
+            PaymentMethod,
+            TopupStatus,
+            WalletTopup,
+        )
+
+        defaults = {
+            "id": _uuid(),
+            "wallet_id": wallet_id or _uuid(),
+            "member_auth_id": str(_uuid()),
+            "reference": f"TOP-{uuid.uuid4().hex[:5].upper()}",
+            "bubbles_amount": 100,
+            "naira_amount": 10000,
+            "payment_method": PaymentMethod.PAYSTACK,
+            "status": TopupStatus.PENDING,
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+        defaults.update(overrides)
+        return WalletTopup(**defaults)
+
+
+class PromotionalGrantFactory:
+    @staticmethod
+    def create(wallet_id=None, **overrides):
+        from services.wallet_service.models import GrantType, PromotionalBubbleGrant
+
+        defaults = {
+            "id": _uuid(),
+            "wallet_id": wallet_id or _uuid(),
+            "member_auth_id": str(_uuid()),
+            "grant_type": GrantType.WELCOME_BONUS,
+            "bubbles_amount": 10,
+            "bubbles_remaining": 10,
+            "reason": "Welcome bonus",
+            "granted_by": "system",
+            "expires_at": _now() + timedelta(days=60),
+            "created_at": _now(),
+        }
+        defaults.update(overrides)
+        return PromotionalBubbleGrant(**defaults)

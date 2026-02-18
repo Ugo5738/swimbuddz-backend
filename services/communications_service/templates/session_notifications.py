@@ -441,10 +441,10 @@ View the full schedule and register on the SwimBuddz app.
         session_cards += f"""
         <div style="background: #f8fafc; border-left: 4px solid {color}; 
                     border-radius: 0 8px 8px 0; padding: 16px 20px; margin: 12px 0;">
-            <strong style="color: #1e293b;">{s['title']}</strong><br/>
+            <strong style="color: #1e293b;">{s["title"]}</strong><br/>
             <span style="font-size: 14px; color: #64748b;">
-                📅 {s['date']} &nbsp;•&nbsp; ⏰ {s['time']}<br/>
-                📍 {s['location']}
+                📅 {s["date"]} &nbsp;•&nbsp; ⏰ {s["time"]}<br/>
+                📍 {s["location"]}
             </span>
         </div>
         """

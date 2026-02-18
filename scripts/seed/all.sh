@@ -39,6 +39,7 @@ SEED_TASKS=(
   "handbook.py|:Seed Handbook Version"
   "ai_config.py|:Seed AI Model Configs"
   "volunteers.py|:Seed Volunteer Roles"
+  "wallets.py|:Seed Wallet Data"
 )
 
 # -------------------------------------------------------------------------------

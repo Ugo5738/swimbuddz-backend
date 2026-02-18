@@ -11,7 +11,7 @@ from typing import Any, Optional
 import httpx
 from libs.auth.dependencies import _service_role_jwt
 from libs.common.config import get_settings
-from libs.common.logging import get_logger
+from libs.common.logging import get_logger, get_request_id
 
 logger = get_logger(__name__)
 
@@ -48,6 +48,10 @@ async def internal_request(
     """
     url = f"{service_url}{path}"
     headers = {"Authorization": f"Bearer {_service_role_jwt(calling_service)}"}
+    request_id = get_request_id()
+    if request_id:
+        headers["X-Request-ID"] = request_id
+    headers["X-Caller-Service"] = calling_service
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.request(
@@ -289,5 +293,125 @@ async def get_eligible_coaches(
             "eligible_grades": ",".join(eligible_grades),
         },
     )
+    resp.raise_for_status()
+    return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# Wallet Service helpers
+# ---------------------------------------------------------------------------
+
+
+async def get_wallet_balance(auth_id: str, *, calling_service: str) -> Optional[dict]:
+    """Look up a member's wallet balance.
+
+    Returns dict with {wallet_id, member_auth_id, balance, status} or None.
+    """
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.WALLET_SERVICE_URL,
+        path=f"/internal/wallet/balance/{auth_id}",
+        calling_service=calling_service,
+    )
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def debit_member_wallet(
+    auth_id: str,
+    *,
+    amount: int,
+    idempotency_key: str,
+    description: str,
+    calling_service: str,
+    transaction_type: str = "purchase",
+    reference_type: Optional[str] = None,
+    reference_id: Optional[str] = None,
+) -> dict:
+    """Debit Bubbles from a member's wallet.
+
+    Returns dict with {success, transaction_id, balance_after}.
+    Raises httpx errors on failure.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.WALLET_SERVICE_URL,
+        path="/internal/wallet/debit",
+        calling_service=calling_service,
+        json={
+            "idempotency_key": idempotency_key,
+            "member_auth_id": auth_id,
+            "amount": amount,
+            "transaction_type": transaction_type,
+            "description": description,
+            "service_source": calling_service,
+            "reference_type": reference_type,
+            "reference_id": reference_id,
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def credit_member_wallet(
+    auth_id: str,
+    *,
+    amount: int,
+    idempotency_key: str,
+    description: str,
+    calling_service: str,
+    transaction_type: str = "refund",
+    reference_type: Optional[str] = None,
+    reference_id: Optional[str] = None,
+) -> dict:
+    """Credit Bubbles to a member's wallet.
+
+    Returns dict with {success, transaction_id, balance_after}.
+    Raises httpx errors on failure.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.WALLET_SERVICE_URL,
+        path="/internal/wallet/credit",
+        calling_service=calling_service,
+        json={
+            "idempotency_key": idempotency_key,
+            "member_auth_id": auth_id,
+            "amount": amount,
+            "transaction_type": transaction_type,
+            "description": description,
+            "service_source": calling_service,
+            "reference_type": reference_type,
+            "reference_id": reference_id,
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def check_wallet_balance(
+    auth_id: str,
+    *,
+    required_amount: int,
+    calling_service: str,
+) -> Optional[dict]:
+    """Check if a member has sufficient Bubbles.
+
+    Returns dict with {sufficient, current_balance, required_amount, wallet_status}.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.WALLET_SERVICE_URL,
+        path="/internal/wallet/check-balance",
+        calling_service=calling_service,
+        json={
+            "member_auth_id": auth_id,
+            "required_amount": required_amount,
+        },
+    )
+    if resp.status_code == 404:
+        return None
     resp.raise_for_status()
     return resp.json()
