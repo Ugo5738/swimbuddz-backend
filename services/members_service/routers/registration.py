@@ -7,7 +7,9 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
+from libs.common.config import get_settings
 from libs.common.logging import get_logger
+from libs.common.service_client import internal_post
 from libs.common.supabase import get_supabase_admin_client
 from libs.db.session import get_async_db
 from services.members_service.models import (
@@ -34,6 +36,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/pending-registrations", tags=["pending-registrations"])
+settings = get_settings()
+
+
+async def _ensure_wallet_exists(member_id: str, member_auth_id: str) -> None:
+    """Best-effort wallet auto-provisioning on registration completion."""
+    try:
+        resp = await internal_post(
+            service_url=settings.WALLET_SERVICE_URL,
+            path="/internal/wallet/create",
+            calling_service="members",
+            json={
+                "member_id": member_id,
+                "member_auth_id": member_auth_id,
+            },
+            timeout=15.0,
+        )
+        if resp.status_code >= 400:
+            logger.warning(
+                "Wallet auto-create failed for member_auth_id=%s (http %d): %s",
+                member_auth_id,
+                resp.status_code,
+                resp.text,
+            )
+    except Exception as exc:
+        logger.warning(
+            "Wallet auto-create request failed for member_auth_id=%s: %s",
+            member_auth_id,
+            exc,
+        )
 
 
 @router.post(
@@ -250,6 +281,7 @@ async def complete_pending_registration(
     result = await db.execute(query)
     existing_member = result.scalar_one_or_none()
     if existing_member:
+        await _ensure_wallet_exists(str(existing_member.id), existing_member.auth_id)
         changed = await sync_member_roles(existing_member, current_user, db)
         if changed:
             normalize_member_tiers(existing_member)
@@ -274,6 +306,9 @@ async def complete_pending_registration(
         result = await db.execute(query)
         existing_member = result.scalar_one_or_none()
         if existing_member:
+            await _ensure_wallet_exists(
+                str(existing_member.id), existing_member.auth_id
+            )
             changed = await sync_member_roles(existing_member, current_user, db)
             if changed:
                 normalize_member_tiers(existing_member)
@@ -531,6 +566,9 @@ async def complete_pending_registration(
             result = await db.execute(query)
             existing_member = result.scalar_one_or_none()
             if existing_member:
+                await _ensure_wallet_exists(
+                    str(existing_member.id), existing_member.auth_id
+                )
                 return existing_member
 
             raise HTTPException(
@@ -538,6 +576,8 @@ async def complete_pending_registration(
                 detail="Member already exists",
             )
         raise e
+
+    await _ensure_wallet_exists(str(member.id), member.auth_id)
 
     # Sync member roles to Supabase app_metadata so JWT reflects them
     # This ensures roles like "coach" set during registration are in the token

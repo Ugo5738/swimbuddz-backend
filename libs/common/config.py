@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     STORE_SERVICE_URL: str = "http://store-service:8010"
     AI_SERVICE_URL: str = "http://ai-service:8011"
     VOLUNTEER_SERVICE_URL: str = "http://volunteer-service:8012"
+    WALLET_SERVICE_URL: str = "http://wallet-service:8013"
 
     # AI Service
     AI_DEFAULT_MODEL: str = "gpt-4o-mini"
@@ -63,6 +64,7 @@ class Settings(BaseSettings):
     CLUB_QUARTERLY_FEE_NGN: int = 42500
     CLUB_BIANNUAL_FEE_NGN: int = 80000
     CLUB_ANNUAL_FEE_NGN: int = 150000
+    WELCOME_BONUS_INCLUDE_COACHES: bool = False
 
     # Paystack (optional; used by payments_service)
     PAYSTACK_SECRET_KEY: str = ""

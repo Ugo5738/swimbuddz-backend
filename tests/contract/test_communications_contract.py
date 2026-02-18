@@ -61,6 +61,6 @@ async def test_email_template_response_contract(communications_client):
 
     required_fields = ["success", "message", "sent_count"]
     for field in required_fields:
-        assert (
-            field in data
-        ), f"Missing contract field '{field}' in template email response."
+        assert field in data, (
+            f"Missing contract field '{field}' in template email response."
+        )

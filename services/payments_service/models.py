@@ -38,6 +38,7 @@ class PaymentPurpose(str, enum.Enum):
 
     # E-commerce
     STORE_ORDER = "store_order"  # Store product purchase
+    WALLET_TOPUP = "wallet_topup"  # Bubble topup intent (wallet service fulfillment)
 
 
 class Payment(Base):

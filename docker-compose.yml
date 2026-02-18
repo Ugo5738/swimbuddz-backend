@@ -170,6 +170,20 @@ services:
     volumes:
       - .:/app
 
+  wallet-service:
+    build:
+      context: .
+      dockerfile: services/wallet_service/Dockerfile
+    container_name: swimbuddz_wallet
+    env_file:
+      - .env.dev
+    ports:
+      - "8013:8013"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
   # ==================================================================
   # API GATEWAY
   # ==================================================================
@@ -204,6 +218,8 @@ services:
       ai-service:
         condition: service_started
       volunteer-service:
+        condition: service_started
+      wallet-service:
         condition: service_started
     ports:
       - "8000:8000"
@@ -253,6 +269,24 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: arq services.communications_service.worker.WorkerSettings
+    volumes:
+      - .:/app
+
+  payments-worker:
+    build:
+      context: .
+      dockerfile: services/payments_service/Dockerfile
+    container_name: swimbuddz_payments_worker
+    env_file:
+      - .env.dev
+    depends_on:
+      redis:
+        condition: service_healthy
+      payments-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.payments_service.worker.WorkerSettings
     volumes:
       - .:/app
 

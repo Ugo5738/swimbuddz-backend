@@ -411,3 +411,17 @@ async def payments_client(db_session):
     ) as client:
         yield client
     payments_app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def wallet_client(db_session):
+    """AsyncClient for the wallet service with admin auth."""
+    from services.wallet_service.app.main import app as wallet_app
+
+    _wire_app(wallet_app, db_session)
+    async with AsyncClient(
+        transport=ASGITransport(app=wallet_app),
+        base_url="http://test",
+    ) as client:
+        yield client
+    wallet_app.dependency_overrides.clear()

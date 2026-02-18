@@ -146,22 +146,29 @@ See you soon!
 — The SwimBuddz Team
 """
 
-    body_html = f"<p>Hi {member_name},</p>" f"<p>{urgency_msg}</p>" + detail_box(
-        {
-            "Program": program_name,
-            "Cohort": cohort_name,
-            "When": f"{start_date} at {start_time}",
-            "Where": location,
-        }
-    ) + tip_html + checklist_box(
-        "🎒 Checklist",
-        [
-            "Swimwear and cap",
-            "Goggles",
-            "Towel and flip flops",
-            "Water bottle",
-        ],
-    ) + sign_off("See you in the water! 🏊\u200d♂️")
+    body_html = (
+        f"<p>Hi {member_name},</p>"
+        f"<p>{urgency_msg}</p>"
+        + detail_box(
+            {
+                "Program": program_name,
+                "Cohort": cohort_name,
+                "When": f"{start_date} at {start_time}",
+                "Where": location,
+            }
+        )
+        + tip_html
+        + checklist_box(
+            "🎒 Checklist",
+            [
+                "Swimwear and cap",
+                "Goggles",
+                "Towel and flip flops",
+                "Water bottle",
+            ],
+        )
+        + sign_off("See you in the water! 🏊\u200d♂️")
+    )
 
     html_body = wrap_html(
         title="🏊\u200d♂️ Getting Ready?",

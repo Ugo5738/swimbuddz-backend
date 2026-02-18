@@ -60,9 +60,9 @@ async def test_sign_in_to_session(client: AsyncClient, db_session: AsyncSession)
     from sqlalchemy import select
 
     result = await db_session.execute(select(Session).where(Session.id == session_id))
-    assert (
-        result.scalar_one_or_none() is not None
-    ), "Session not found in DB after flush"
+    assert result.scalar_one_or_none() is not None, (
+        "Session not found in DB after flush"
+    )
 
     # 2. Override member dependency
     app.dependency_overrides[get_current_member] = mock_get_current_member

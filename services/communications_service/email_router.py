@@ -299,22 +299,28 @@ async def send_templated_email(
             passed_checks=d.get("passed_checks", []),
             pending_checks=d.get("pending_checks", []),
         ),
-        "coach_application_approved": lambda d: coaching.send_coach_application_approved_email(
-            to_email=request.to_email,
-            coach_name=d.get("coach_name", ""),
-            onboarding_url=d.get(
-                "onboarding_url", "https://swimbuddz.com/coach/onboarding"
-            ),
+        "coach_application_approved": lambda d: (
+            coaching.send_coach_application_approved_email(
+                to_email=request.to_email,
+                coach_name=d.get("coach_name", ""),
+                onboarding_url=d.get(
+                    "onboarding_url", "https://swimbuddz.com/coach/onboarding"
+                ),
+            )
         ),
-        "coach_application_rejected": lambda d: coaching.send_coach_application_rejected_email(
-            to_email=request.to_email,
-            coach_name=d.get("coach_name", ""),
-            rejection_reason=d.get("rejection_reason", ""),
+        "coach_application_rejected": lambda d: (
+            coaching.send_coach_application_rejected_email(
+                to_email=request.to_email,
+                coach_name=d.get("coach_name", ""),
+                rejection_reason=d.get("rejection_reason", ""),
+            )
         ),
-        "coach_application_more_info": lambda d: coaching.send_coach_application_more_info_email(
-            to_email=request.to_email,
-            coach_name=d.get("coach_name", ""),
-            message=d.get("message", ""),
+        "coach_application_more_info": lambda d: (
+            coaching.send_coach_application_more_info_email(
+                to_email=request.to_email,
+                coach_name=d.get("coach_name", ""),
+                message=d.get("message", ""),
+            )
         ),
         # --- Member templates ---
         "member_approved": lambda d: members.send_member_approved_email(
