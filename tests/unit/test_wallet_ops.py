@@ -9,13 +9,11 @@ import uuid
 import pytest
 from fastapi import HTTPException
 from services.wallet_service.models import (
-    PromotionalBubbleGrant,
     TransactionDirection,
     TransactionStatus,
     TransactionType,
     Wallet,
     WalletStatus,
-    WalletTransaction,
 )
 from services.wallet_service.services.wallet_ops import (
     check_balance,
@@ -23,7 +21,6 @@ from services.wallet_service.services.wallet_ops import (
     credit_wallet,
     debit_wallet,
 )
-from sqlalchemy import select
 
 
 # ---------------------------------------------------------------------------
@@ -56,8 +53,8 @@ async def _make_active_wallet(db, balance=100, auth_id=None):
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-async def test_create_wallet_with_welcome_bonus(db_session):
-    """Wallet creation should auto-grant the welcome bonus (10 Bubbles)."""
+async def test_create_wallet_starts_with_zero_balance(db_session):
+    """Wallet creation starts at zero without implicit bonus grant."""
     member_id = uuid.uuid4()
     auth_id = f"auth-{uuid.uuid4().hex[:8]}"
 
@@ -67,29 +64,8 @@ async def test_create_wallet_with_welcome_bonus(db_session):
         member_auth_id=auth_id,
     )
 
-    assert wallet.balance == 10
-    assert wallet.lifetime_bubbles_received == 10
-
-    # Verify grant record
-    result = await db_session.execute(
-        select(PromotionalBubbleGrant).where(
-            PromotionalBubbleGrant.wallet_id == wallet.id
-        )
-    )
-    grant = result.scalar_one()
-    assert grant.bubbles_amount == 10
-    assert grant.transaction_id is not None
-
-    # Verify transaction record
-    result = await db_session.execute(
-        select(WalletTransaction).where(WalletTransaction.wallet_id == wallet.id)
-    )
-    txn = result.scalar_one()
-    assert txn.transaction_type == TransactionType.WELCOME_BONUS
-    assert txn.direction == TransactionDirection.CREDIT
-    assert txn.amount == 10
-    assert txn.balance_before == 0
-    assert txn.balance_after == 10
+    assert wallet.balance == 0
+    assert wallet.lifetime_bubbles_received == 0
 
 
 @pytest.mark.asyncio

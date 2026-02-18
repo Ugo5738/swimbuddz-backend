@@ -14,12 +14,12 @@ from tests.conftest import make_member_user, override_auth
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_create_wallet_endpoint(wallet_client, db_session):
-    """POST /wallet/create — creates wallet with welcome bonus."""
+    """POST /wallet/create — creates wallet with zero starting balance."""
     response = await wallet_client.post("/wallet/create")
 
     assert response.status_code == 201, response.text
     data = response.json()
-    assert data["balance"] == 10  # welcome bonus
+    assert data["balance"] == 0
     assert data["status"] == "active"
     assert "id" in data
 
@@ -35,7 +35,7 @@ async def test_get_my_wallet(wallet_client, db_session):
     response = await wallet_client.get("/wallet/me")
     assert response.status_code == 200
     data = response.json()
-    assert data["balance"] == 10
+    assert data["balance"] == 0
 
 
 @pytest.mark.asyncio
@@ -60,22 +60,34 @@ async def test_get_my_wallet_not_found(wallet_client, db_session):
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_list_transactions_empty(wallet_client, db_session):
-    """GET /wallet/transactions — empty wallet has only welcome bonus transaction."""
+    """GET /wallet/transactions — new wallet has no transactions yet."""
     await wallet_client.post("/wallet/create")
 
     response = await wallet_client.get("/wallet/transactions")
     assert response.status_code == 200
     data = response.json()
-    assert data["total"] == 1  # welcome bonus transaction
-    assert len(data["transactions"]) == 1
-    assert data["transactions"][0]["transaction_type"] == "welcome_bonus"
+    assert data["total"] == 0
+    assert len(data["transactions"]) == 0
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_list_transactions_with_data(wallet_client, db_session):
-    """GET /wallet/transactions — shows transactions after debit."""
+    """GET /wallet/transactions — shows transactions after credit + debit."""
     await wallet_client.post("/wallet/create")
+
+    credit_resp = await wallet_client.post(
+        "/wallet/credit",
+        json={
+            "idempotency_key": f"seed-{uuid.uuid4().hex[:8]}",
+            "member_auth_id": "ignored",
+            "amount": 20,
+            "transaction_type": "refund",
+            "description": "Seed funds for debit test",
+            "service_source": "test",
+        },
+    )
+    assert credit_resp.status_code == 200, credit_resp.text
 
     # Debit some Bubbles
     debit_resp = await wallet_client.post(
@@ -93,7 +105,7 @@ async def test_list_transactions_with_data(wallet_client, db_session):
 
     response = await wallet_client.get("/wallet/transactions")
     data = response.json()
-    assert data["total"] == 2  # welcome bonus + debit
+    assert data["total"] == 2  # credit + debit
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +118,18 @@ async def test_list_transactions_with_data(wallet_client, db_session):
 async def test_debit_endpoint(wallet_client, db_session):
     """POST /wallet/debit — decreases balance."""
     await wallet_client.post("/wallet/create")
+    seed_resp = await wallet_client.post(
+        "/wallet/credit",
+        json={
+            "idempotency_key": f"seed-{uuid.uuid4().hex[:8]}",
+            "member_auth_id": "ignored",
+            "amount": 20,
+            "transaction_type": "refund",
+            "description": "Seed funds for debit endpoint",
+            "service_source": "test",
+        },
+    )
+    assert seed_resp.status_code == 200, seed_resp.text
 
     response = await wallet_client.post(
         "/wallet/debit",
@@ -122,7 +146,7 @@ async def test_debit_endpoint(wallet_client, db_session):
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["success"] is True
-    assert data["balance_after"] == 5  # 10 (welcome) - 5 = 5
+    assert data["balance_after"] == 15  # 20 seeded - 5 debit
 
 
 @pytest.mark.asyncio
@@ -146,7 +170,7 @@ async def test_credit_endpoint(wallet_client, db_session):
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["success"] is True
-    assert data["balance_after"] == 30  # 10 (welcome) + 20 = 30
+    assert data["balance_after"] == 20
 
 
 @pytest.mark.asyncio
@@ -154,6 +178,18 @@ async def test_credit_endpoint(wallet_client, db_session):
 async def test_check_balance_endpoint(wallet_client, db_session):
     """POST /wallet/check-balance — returns sufficient flag."""
     await wallet_client.post("/wallet/create")
+    seed_resp = await wallet_client.post(
+        "/wallet/credit",
+        json={
+            "idempotency_key": f"seed-{uuid.uuid4().hex[:8]}",
+            "member_auth_id": "ignored",
+            "amount": 20,
+            "transaction_type": "refund",
+            "description": "Seed funds for balance check",
+            "service_source": "test",
+        },
+    )
+    assert seed_resp.status_code == 200, seed_resp.text
 
     # Sufficient
     response = await wallet_client.post(
@@ -163,7 +199,7 @@ async def test_check_balance_endpoint(wallet_client, db_session):
     assert response.status_code == 200
     data = response.json()
     assert data["sufficient"] is True
-    assert data["current_balance"] == 10
+    assert data["current_balance"] == 20
 
     # Insufficient
     response = await wallet_client.post(

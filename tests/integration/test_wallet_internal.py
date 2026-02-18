@@ -24,7 +24,7 @@ async def test_internal_create_wallet(wallet_client, db_session):
     )
     assert response.status_code in (200, 201), response.text
     data = response.json()
-    assert data["balance"] == 10  # welcome bonus
+    assert data["balance"] == 0
     assert data["member_auth_id"] == auth_id
 
 
