@@ -10,7 +10,6 @@ from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.wallet_service.models import (
     TransactionType,
-    Wallet,
     WalletTopup,
     WalletTransaction,
 )

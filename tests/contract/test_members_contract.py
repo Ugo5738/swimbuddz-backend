@@ -60,9 +60,9 @@ async def test_member_by_auth_id_contract(members_client, db_session):
 
     required_fields = ["id", "first_name", "last_name", "email"]
     for field in required_fields:
-        assert field in data, (
-            f"Missing contract field '{field}' in /internal/members/by-auth response."
-        )
+        assert (
+            field in data
+        ), f"Missing contract field '{field}' in /internal/members/by-auth response."
 
 
 @pytest.mark.asyncio
@@ -90,9 +90,9 @@ async def test_bulk_members_contract(members_client, db_session):
     item = data[0]
     required_fields = ["id", "first_name", "last_name", "email"]
     for field in required_fields:
-        assert field in item, (
-            f"Missing contract field '{field}' in bulk members response item."
-        )
+        assert (
+            field in item
+        ), f"Missing contract field '{field}' in bulk members response item."
 
 
 @pytest.mark.asyncio

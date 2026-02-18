@@ -14,7 +14,6 @@ from libs.db.session import get_async_db
 from services.wallet_service.models import (
     AuditAction,
     GrantType,
-    PromotionalBubbleGrant,
     TopupStatus,
     TransactionDirection,
     TransactionType,
@@ -32,14 +31,12 @@ from services.wallet_service.schemas import (
     AdminWalletListResponse,
     AdminWalletResponse,
     AdjustBalanceRequest,
-    AuditLogEntry,
     AuditLogListResponse,
     FreezeWalletRequest,
     GrantListResponse,
     GrantPromotionalRequest,
     GrantResponse,
     MemberIdentityResponse,
-    TransactionResponse,
     UnfreezeWalletRequest,
     WalletResponse,
 )

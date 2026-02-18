@@ -7,7 +7,6 @@ Phase 3–5 tables are stubs (models only, logic deferred).
 import enum
 import uuid
 from datetime import datetime
-from decimal import Decimal
 from typing import Optional
 
 from libs.common.datetime_utils import utc_now

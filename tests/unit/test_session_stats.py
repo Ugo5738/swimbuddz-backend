@@ -25,9 +25,9 @@ class TestSessionStatsDatetimeHandling:
         now_utc = datetime.now(timezone.utc)
 
         # Verify the datetime is timezone-aware
-        assert now_utc.tzinfo is not None, (
-            "datetime.now(timezone.utc) should be timezone-aware"
-        )
+        assert (
+            now_utc.tzinfo is not None
+        ), "datetime.now(timezone.utc) should be timezone-aware"
         assert now_utc.tzinfo == timezone.utc, "Timezone should be UTC"
 
     def test_session_time_comparison_edge_case(self):

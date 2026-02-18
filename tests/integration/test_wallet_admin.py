@@ -1,7 +1,5 @@
 """Integration tests for wallet_service admin endpoints."""
 
-import uuid
-
 import pytest
 from services.wallet_service.models import WalletStatus
 from tests.factories import WalletFactory

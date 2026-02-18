@@ -172,7 +172,7 @@ async def seed_wallets():
 
                 topup_txn = WalletTransaction(
                     wallet_id=active_wallet_id,
-                    idempotency_key=f"topup-seed-1",
+                    idempotency_key="topup-seed-1",
                     transaction_type=TransactionType.TOPUP,
                     direction=TransactionDirection.CREDIT,
                     amount=500,
@@ -192,7 +192,7 @@ async def seed_wallets():
                 session.add(
                     WalletTransaction(
                         wallet_id=active_wallet_id,
-                        idempotency_key=f"purchase-seed-1",
+                        idempotency_key="purchase-seed-1",
                         transaction_type=TransactionType.PURCHASE,
                         direction=TransactionDirection.DEBIT,
                         amount=15,
@@ -212,7 +212,7 @@ async def seed_wallets():
                 session.add(
                     WalletTransaction(
                         wallet_id=active_wallet_id,
-                        idempotency_key=f"purchase-seed-2",
+                        idempotency_key="purchase-seed-2",
                         transaction_type=TransactionType.PURCHASE,
                         direction=TransactionDirection.DEBIT,
                         amount=10,

@@ -4,8 +4,6 @@ These endpoints are called by other SwimBuddz services via service-role JWT,
 not by frontend clients directly.
 """
 
-import uuid
-
 from fastapi import APIRouter, Depends
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser

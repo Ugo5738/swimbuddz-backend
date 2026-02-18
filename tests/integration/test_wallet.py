@@ -4,7 +4,6 @@ import uuid
 
 import pytest
 from tests.conftest import make_member_user, override_auth
-from tests.factories import WalletFactory, WalletTransactionFactory
 
 
 # ---------------------------------------------------------------------------

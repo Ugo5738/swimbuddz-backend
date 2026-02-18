@@ -4,7 +4,6 @@ import uuid
 from datetime import timedelta
 from typing import Optional
 
-from fastapi import HTTPException, status
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from services.wallet_service.models import (

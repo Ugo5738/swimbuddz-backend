@@ -181,7 +181,7 @@ async def confirm_topup(
         return topup
 
     # Credit wallet
-    txn = await credit_wallet(
+    await credit_wallet(
         db,
         member_auth_id=topup.member_auth_id,
         amount=topup.bubbles_amount,
