@@ -59,7 +59,11 @@ jobs:
           ruff check .
           ruff format --check .
 
-      - name: Run unit tests (no DB required)
+      - name: Apply wallet migrations for tests
+        run: |
+          alembic -c services/wallet_service/alembic.ini upgrade head
+
+      - name: Run unit tests
         run: |
           pytest tests/unit/ -v
 

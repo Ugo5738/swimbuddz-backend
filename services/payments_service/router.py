@@ -2,12 +2,19 @@ import hashlib
 import hmac
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from libs.auth.dependencies import _service_role_jwt, get_current_user, require_admin
+from libs.auth.dependencies import (
+    _service_role_jwt,
+    get_current_user,
+    require_admin,
+    require_service_role,
+)
+from libs.common.service_client import internal_post
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.emails.client import get_email_client
@@ -30,6 +37,9 @@ from services.payments_service.schemas import (
     DiscountCreate,
     DiscountResponse,
     DiscountUpdate,
+    InternalInitializeRequest,
+    InternalInitializeResponse,
+    InternalPaystackVerifyResponse,
     PaymentIntentResponse,
     PaymentResponse,
     PricingConfigResponse,
@@ -40,6 +50,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter(prefix="/payments", tags=["payments"])
 settings = get_settings()
 logger = get_logger(__name__)
+
+FULFILLMENT_META_KEY = "fulfillment"
+MAX_FULFILLMENT_RETRIES = 8
+BASE_FULFILLMENT_RETRY_MINUTES = 2
 
 
 @router.get("/pricing", response_model=PricingConfigResponse)
@@ -81,13 +95,30 @@ def _verify_paystack_signature(raw_body: bytes, signature: str) -> bool:
 
 
 def _callback_url(reference: str, redirect_path: str = None) -> str:
-    if settings.PAYSTACK_CALLBACK_URL:
-        return settings.PAYSTACK_CALLBACK_URL
-    base = settings.FRONTEND_URL.rstrip("/")
-    # Paystack appends `trxref` and `reference` query params automatically.
-    # Use custom redirect_path if provided (e.g., enrollment detail page)
-    path = redirect_path or "/account/billing"
-    return f"{base}{path}?provider=paystack"
+    # If a service provides a redirect path (e.g. wallet topup), always honor it.
+    # PAYSTACK_CALLBACK_URL is treated as default only when no redirect is provided.
+    if redirect_path:
+        if redirect_path.startswith(("http://", "https://")):
+            callback = redirect_path
+        else:
+            base = settings.FRONTEND_URL.rstrip("/")
+            path = (
+                redirect_path if redirect_path.startswith("/") else f"/{redirect_path}"
+            )
+            callback = f"{base}{path}"
+    elif settings.PAYSTACK_CALLBACK_URL:
+        callback = settings.PAYSTACK_CALLBACK_URL
+    else:
+        base = settings.FRONTEND_URL.rstrip("/")
+        callback = f"{base}/account/billing"
+
+    # Ensure provider marker is present for frontend return handling.
+    parts = urlsplit(callback)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query.setdefault("provider", "paystack")
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
 
 
 async def _update_pending_payment_reference(
@@ -184,6 +215,76 @@ async def _verify_paystack_transaction(reference: str) -> dict:
             detail=f"Paystack verify failed: {body}",
         )
     return body.get("data") or {}
+
+
+def _next_retry_time(attempts: int) -> datetime:
+    # Exponential backoff capped at 60 minutes.
+    delay = min(60, BASE_FULFILLMENT_RETRY_MINUTES * (2 ** max(attempts - 1, 0)))
+    return datetime.now(timezone.utc) + timedelta(minutes=delay)
+
+
+def _fulfillment_meta(payment: Payment) -> dict:
+    metadata = payment.payment_metadata or {}
+    return dict(metadata.get(FULFILLMENT_META_KEY) or {})
+
+
+def _set_fulfillment_meta(payment: Payment, **fields) -> None:
+    metadata = dict(payment.payment_metadata or {})
+    fulfillment = _fulfillment_meta(payment)
+    fulfillment.update(fields)
+    metadata[FULFILLMENT_META_KEY] = fulfillment
+    payment.payment_metadata = metadata
+
+
+async def _apply_entitlement_with_tracking(payment: Payment) -> None:
+    now = datetime.now(timezone.utc)
+    existing = _fulfillment_meta(payment)
+    attempts = int(existing.get("attempts") or 0) + 1
+
+    _set_fulfillment_meta(
+        payment,
+        status="in_progress",
+        attempts=attempts,
+        last_attempt_at=now.isoformat(),
+    )
+
+    try:
+        await _apply_entitlement(payment)
+        payment.entitlement_applied_at = now
+        payment.entitlement_error = None
+        _set_fulfillment_meta(
+            payment,
+            status="applied",
+            next_retry_at=None,
+            last_error=None,
+        )
+    except Exception as exc:
+        error_message = str(exc)
+        payment.entitlement_error = error_message
+
+        if attempts >= MAX_FULFILLMENT_RETRIES:
+            _set_fulfillment_meta(
+                payment,
+                status="dead_letter",
+                next_retry_at=None,
+                last_error=error_message,
+            )
+        else:
+            retry_at = _next_retry_time(attempts)
+            _set_fulfillment_meta(
+                payment,
+                status="retry_scheduled",
+                next_retry_at=retry_at.isoformat(),
+                last_error=error_message,
+            )
+
+        logger.warning(
+            "Entitlement apply failed for %s (attempt %d/%d): %s",
+            payment.reference,
+            attempts,
+            MAX_FULFILLMENT_RETRIES,
+            error_message,
+        )
 
 
 async def _apply_entitlement(payment: Payment) -> None:
@@ -300,6 +401,29 @@ async def _apply_entitlement(payment: Payment) -> None:
                     detail=f"Failed to mark store order as paid ({resp.status_code}): {resp.text}",
                 )
         # No pending_payment_reference to clear for store orders
+        return
+
+    # Handle wallet topup payment
+    elif payment.purpose == PaymentPurpose.WALLET_TOPUP:
+        topup_reference = (payment.payment_metadata or {}).get(
+            "topup_reference"
+        ) or payment.reference
+        resp = await internal_post(
+            service_url=settings.WALLET_SERVICE_URL,
+            path="/internal/wallet/confirm-topup",
+            calling_service="payments",
+            json={
+                "topup_reference": topup_reference,
+                "payment_reference": payment.reference,
+                "status": "completed",
+            },
+            timeout=30.0,
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to confirm wallet topup ({resp.status_code}): {resp.text}",
+            )
         return
 
     # Handle Session fee payment - create attendance and optionally ride booking
@@ -660,12 +784,7 @@ async def _mark_paid_and_apply(
     await db.commit()
     await db.refresh(payment)
 
-    try:
-        await _apply_entitlement(payment)
-        payment.entitlement_applied_at = datetime.now(timezone.utc)
-        payment.entitlement_error = None
-    except Exception as e:
-        payment.entitlement_error = str(e)
+    await _apply_entitlement_with_tracking(payment)
 
     db.add(payment)
     await db.commit()
@@ -1190,16 +1309,43 @@ async def complete_payment(
     await db.commit()
     await db.refresh(payment)
 
-    try:
-        await _apply_entitlement(payment)
-        payment.entitlement_applied_at = datetime.now(timezone.utc)
-        payment.entitlement_error = None
-    except Exception as e:
-        payment.entitlement_error = str(e)
+    await _apply_entitlement_with_tracking(payment)
 
     db.add(payment)
     await db.commit()
     await db.refresh(payment)
+    return payment
+
+
+@router.post("/admin/{reference}/replay-entitlement", response_model=PaymentResponse)
+async def replay_payment_entitlement(
+    reference: str,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Replay entitlement fulfillment for a paid payment."""
+    result = await db.execute(select(Payment).where(Payment.reference == reference))
+    payment = result.scalar_one_or_none()
+    if not payment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found"
+        )
+    if payment.status != PaymentStatus.PAID:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Payment is not paid (status={payment.status.value})",
+        )
+
+    await _apply_entitlement_with_tracking(payment)
+    db.add(payment)
+    await db.commit()
+    await db.refresh(payment)
+
+    logger.info(
+        "Entitlement replay requested by %s for payment %s",
+        current_user.user_id,
+        reference,
+    )
     return payment
 
 
@@ -1229,6 +1375,44 @@ async def paystack_webhook(
     result = await db.execute(query)
     payment = result.scalar_one_or_none()
     if not payment:
+        # Check if this is a wallet topup (no Payment record — wallet service owns lifecycle)
+        metadata = data.get("metadata") or {}
+        if metadata.get("type") == "wallet_topup" and event in (
+            "charge.success",
+            "charge.failed",
+            "transaction.failed",
+        ):
+            topup_status = "completed" if event == "charge.success" else "failed"
+            try:
+                resp = await internal_post(
+                    service_url=settings.WALLET_SERVICE_URL,
+                    path="/internal/wallet/confirm-topup",
+                    calling_service="payments",
+                    json={
+                        "topup_reference": reference,
+                        "payment_reference": reference,
+                        "status": topup_status,
+                    },
+                )
+                if resp.status_code >= 400:
+                    logger.error(
+                        "Wallet topup confirm failed for %s with status=%s (http %d): %s",
+                        reference,
+                        topup_status,
+                        resp.status_code,
+                        resp.text,
+                    )
+                else:
+                    logger.info(
+                        "Wallet topup processed for %s with status=%s (http %d)",
+                        reference,
+                        topup_status,
+                        resp.status_code,
+                    )
+            except Exception as e:
+                logger.error("Failed to confirm wallet topup %s: %s", reference, e)
+            return {"received": True}
+
         logger.warning(
             f"Webhook received for unknown payment reference: {reference}",
             extra={"extra_fields": {"reference": reference, "event": event}},
@@ -1526,6 +1710,168 @@ async def preview_discount(
     )
 
 
+# ---------------------------------------------------------------------------
+# Internal service-to-service endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/internal/initialize",
+    response_model=InternalInitializeResponse,
+    dependencies=[Depends(require_service_role)],
+    tags=["internal-payments"],
+)
+async def internal_initialize_payment(
+    req: InternalInitializeRequest,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Initialize a Paystack transaction on behalf of another service.
+
+    Called by wallet_service for topups, or any service needing Paystack.
+    If purpose maps to PaymentPurpose, a Payment intent record is persisted
+    for unified reconciliation/forensics.
+
+    Auth: service-role JWT only (via ``require_service_role``).
+    """
+    if not _paystack_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Paystack is not configured.",
+        )
+
+    purpose_enum: PaymentPurpose | None = None
+    try:
+        purpose_enum = PaymentPurpose(str(req.purpose).lower())
+    except ValueError:
+        purpose_enum = None
+
+    if purpose_enum:
+        existing = await db.execute(
+            select(Payment).where(Payment.reference == req.reference)
+        )
+        payment = existing.scalar_one_or_none()
+        if not payment:
+            payment = Payment(
+                reference=req.reference,
+                member_auth_id=req.member_auth_id,
+                payer_email=(
+                    (req.metadata or {}).get("payer_email")
+                    if isinstance(req.metadata, dict)
+                    else None
+                ),
+                purpose=purpose_enum,
+                amount=req.amount,
+                currency=req.currency,
+                status=PaymentStatus.PENDING,
+                provider="paystack",
+                provider_reference=req.reference,
+                payment_method="paystack",
+                payment_metadata={
+                    **(req.metadata or {}),
+                    "internal_reference": req.reference,
+                    "purpose": req.purpose,
+                    "member_auth_id": req.member_auth_id,
+                },
+            )
+            db.add(payment)
+            await db.commit()
+
+    # Build callback URL
+    callback = _callback_url(req.reference, req.callback_url)
+
+    # Build Paystack payload
+    payload = {
+        "email": settings.ADMIN_EMAIL or "noreply@swimbuddz.com",
+        "amount": _to_kobo(req.amount),
+        "currency": req.currency,
+        "reference": req.reference,
+        "callback_url": callback,
+        "metadata": {
+            **(req.metadata or {}),
+            "purpose": req.purpose,
+            "member_auth_id": req.member_auth_id,
+        },
+    }
+    # In local/dev, limit channels to avoid flaky/unsupported methods
+    if settings.ENVIRONMENT in ("local", "development"):
+        payload["channels"] = ["card", "bank", "ussd", "bank_transfer"]
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{settings.PAYSTACK_API_BASE_URL.rstrip('/')}/transaction/initialize",
+                headers=_paystack_headers(),
+                json=payload,
+            )
+    except httpx.RequestError as exc:
+        logger.error("Paystack connection failed for %s: %s", req.reference, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not reach payment provider. Please try again.",
+        )
+
+    if resp.status_code >= 400:
+        logger.error("Paystack init failed for %s: %s", req.reference, resp.text)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Paystack initialize failed ({resp.status_code})",
+        )
+
+    body = resp.json()
+    if not body.get("status"):
+        logger.error("Paystack init rejected for %s: %s", req.reference, body)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Paystack initialize failed",
+        )
+
+    data = body.get("data") or {}
+    return InternalInitializeResponse(
+        reference=req.reference,
+        authorization_url=data.get("authorization_url"),
+        access_code=data.get("access_code"),
+    )
+
+
+@router.get(
+    "/internal/paystack/verify/{reference}",
+    response_model=InternalPaystackVerifyResponse,
+    dependencies=[Depends(require_service_role)],
+    tags=["internal-payments"],
+)
+async def internal_verify_paystack_reference(reference: str):
+    """Verify a Paystack reference for internal fulfillment reconciliation."""
+    data = await _verify_paystack_transaction(reference)
+    provider_status = str((data.get("status") or "")).lower()
+
+    if provider_status == "success":
+        status = "completed"
+    elif provider_status in {"failed", "abandoned", "reversed"}:
+        status = "failed"
+    elif provider_status in {"pending", "ongoing", "processing", "queued"}:
+        status = "pending"
+    else:
+        status = "unknown"
+
+    paid_at = None
+    paid_at_str = data.get("paid_at")
+    if isinstance(paid_at_str, str) and paid_at_str:
+        try:
+            paid_at = datetime.fromisoformat(paid_at_str.replace("Z", "+00:00"))
+        except ValueError:
+            paid_at = None
+
+    return InternalPaystackVerifyResponse(
+        reference=reference,
+        status=status,
+        provider_status=provider_status or None,
+        paid_at=paid_at,
+        amount_kobo=data.get("amount"),
+        currency=data.get("currency"),
+        raw=data,
+    )
+
+
 # --- Admin Discount Endpoints ---
 
 
@@ -1766,18 +2112,10 @@ async def approve_manual_payment(
 
     logger.info(f"Payment {reference} approved by admin {current_user.email}")
 
-    # Apply entitlements (same logic as Paystack webhook)
-    try:
-        await _apply_entitlement(payment)
-        payment.entitlement_applied_at = datetime.now(timezone.utc)
-        payment.entitlement_error = None
-        await db.commit()
-        await db.refresh(payment)
-    except Exception as e:
-        logger.error(f"Failed to apply entitlements for {reference}: {e}")
-        payment.entitlement_error = str(e)
-        await db.commit()
-        await db.refresh(payment)
+    # Apply entitlements (same logic as Paystack webhook) with durable retries.
+    await _apply_entitlement_with_tracking(payment)
+    await db.commit()
+    await db.refresh(payment)
 
     # Send email notification to member via centralized email service
     if payment.payer_email:

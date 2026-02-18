@@ -6,7 +6,7 @@ All endpoints assume Bearer authentication with a Supabase access token unless m
 
 ## Service Coverage
 
-✅ **Fully Documented:** Identity, Members, Sessions, Attendance, Announcements, Admin Dashboard, Academy, Payments, Transport, Events, Media, Store, Volunteers
+✅ **Fully Documented:** Identity, Members, Sessions, Attendance, Announcements, Admin Dashboard, Academy, Payments, Transport, Events, Media, Store, Volunteers, Wallet
 
 **Note:** All major services are now documented. For complete service information including models, database schema, and implementation details, see [SERVICE_REGISTRY.md](../../docs/reference/SERVICE_REGISTRY.md).
 
@@ -731,6 +731,8 @@ Announcements power the public noticeboard and admin share helpers.
 - Media (basic)
 - Store (basic)
 - Coach Management (agreements, admin)
+- Volunteers
+- Wallet (26 endpoints)
 
 **Service Details:** For complete service information including models, database schema, and use cases, see [SERVICE_REGISTRY.md](../../docs/reference/SERVICE_REGISTRY.md)
 
@@ -835,3 +837,226 @@ The Volunteer Service manages volunteer roles, opportunities, scheduling, hours 
 | ------ | --------------------------------------------- | ---------------------------------------------------------------- |
 | `GET`  | `/api/v1/admin/volunteers/dashboard`          | Dashboard summary (active, hours, unfilled, no-show rate, top 5) |
 | `GET`  | `/api/v1/admin/volunteers/reliability-report` | Reliability report (sorted worst-first)                          |
+
+---
+
+## 14. Wallet ("Bubbles" Closed-Loop Credit System)
+
+The Wallet Service manages the "Bubbles" closed-loop credit system. Members top up Bubbles via Paystack and spend them on sessions, events, academy fees, store purchases, and transport. Port 8013.
+
+### Member Endpoints (Auth Required)
+
+#### `GET /api/v1/wallet/me`
+
+- **Auth:** Required
+- **Description:** Get the current member's wallet
+- **Response 200:** `WalletRead`
+
+#### `POST /api/v1/wallet/create`
+
+- **Auth:** Required
+- **Description:** Create a wallet for the authenticated member
+- **Response 201:** `WalletRead`
+
+#### `POST /api/v1/wallet/topup`
+
+- **Auth:** Required
+- **Description:** Initiate a Bubbles topup via Paystack
+- **Body:**
+
+```json
+{
+  "bubbles_amount": 100,
+  "payment_method": "paystack"
+}
+```
+
+- `bubbles_amount` (integer, required): Amount of Bubbles to purchase (25–5000).
+- `payment_method` (string, required): Currently only `"paystack"`.
+- **Response 201:** `TopupRead` with payment URL
+
+#### `GET /api/v1/wallet/topup/{topup_id}`
+
+- **Auth:** Required
+- **Description:** Get topup status
+- **Response 200:** `TopupRead`
+
+#### `GET /api/v1/wallet/topups`
+
+- **Auth:** Required
+- **Description:** List the current member's topups
+- **Query Params:** `skip`, `limit`
+- **Response 200:** `TopupRead[]`
+
+#### `GET /api/v1/wallet/transactions`
+
+- **Auth:** Required
+- **Description:** List the current member's wallet transactions
+- **Query Params:** `skip`, `limit`, `transaction_type`
+- **Response 200:** `TransactionRead[]`
+
+#### `GET /api/v1/wallet/transactions/{transaction_id}`
+
+- **Auth:** Required
+- **Description:** Get transaction detail
+- **Response 200:** `TransactionRead`
+
+#### `POST /api/v1/wallet/debit`
+
+- **Auth:** Required
+- **Description:** Debit Bubbles from a wallet
+- **Body:**
+
+```json
+{
+  "idempotency_key": "unique-key",
+  "member_auth_id": "supabase-user-id",
+  "amount": 500,
+  "transaction_type": "session_fee",
+  "description": "Club training session fee",
+  "service_source": "sessions_service"
+}
+```
+
+- **Response 200:** `TransactionRead`
+
+#### `POST /api/v1/wallet/credit`
+
+- **Auth:** Required
+- **Description:** Credit Bubbles to a wallet
+- **Body:** Same structure as debit
+- **Response 200:** `TransactionRead`
+
+#### `POST /api/v1/wallet/check-balance`
+
+- **Auth:** Required
+- **Description:** Check if a member has sufficient balance
+- **Body:**
+
+```json
+{
+  "member_auth_id": "supabase-user-id",
+  "required_amount": 500
+}
+```
+
+- **Response 200:** Balance check result
+
+### Admin Endpoints (Admin Auth Required)
+
+#### `GET /api/v1/admin/wallet/wallets`
+
+- **Auth:** Admin
+- **Description:** List all wallets
+- **Query Params:** `skip`, `limit`, `status`
+- **Response 200:** `WalletRead[]`
+
+#### `GET /api/v1/admin/wallet/wallets/{wallet_id}`
+
+- **Auth:** Admin
+- **Description:** Get wallet details
+- **Response 200:** `WalletRead`
+
+#### `POST /api/v1/admin/wallet/wallets/{wallet_id}/freeze`
+
+- **Auth:** Admin
+- **Description:** Freeze a member's wallet
+- **Body:** `{ "reason": "Suspicious activity" }`
+- **Response 200:** Updated `WalletRead`
+
+#### `POST /api/v1/admin/wallet/wallets/{wallet_id}/unfreeze`
+
+- **Auth:** Admin
+- **Description:** Unfreeze a member's wallet
+- **Body:** `{ "reason": "Investigation cleared" }`
+- **Response 200:** Updated `WalletRead`
+
+#### `POST /api/v1/admin/wallet/wallets/{wallet_id}/adjust`
+
+- **Auth:** Admin
+- **Description:** Manually adjust wallet balance (credit or debit)
+- **Body:** `{ "amount": 100, "reason": "Compensation for service disruption" }`
+- **Response 200:** Updated `WalletRead`
+
+#### `POST /api/v1/admin/wallet/grants`
+
+- **Auth:** Admin
+- **Description:** Issue promotional Bubbles to a member
+- **Body:**
+
+```json
+{
+  "member_auth_id": "supabase-user-id",
+  "bubbles_amount": 50,
+  "grant_type": "welcome_bonus",
+  "reason": "New member welcome"
+}
+```
+
+- **Response 201:** `GrantRead`
+
+#### `GET /api/v1/admin/wallet/grants`
+
+- **Auth:** Admin
+- **Description:** List promotional grants
+- **Query Params:** `skip`, `limit`, `grant_type`
+- **Response 200:** `GrantRead[]`
+
+#### `GET /api/v1/admin/wallet/stats`
+
+- **Auth:** Admin
+- **Description:** System-wide wallet statistics
+- **Response 200:** Aggregate stats (total Bubbles in circulation, active wallets, etc.)
+
+#### `GET /api/v1/admin/wallet/transactions`
+
+- **Auth:** Admin
+- **Description:** List all wallet transactions across the platform
+- **Query Params:** `skip`, `limit`, `transaction_type`
+- **Response 200:** `TransactionRead[]`
+
+#### `GET /api/v1/admin/wallet/audit-log`
+
+- **Auth:** Admin
+- **Description:** View wallet audit log (admin actions)
+- **Query Params:** `skip`, `limit`
+- **Response 200:** `AuditLogRead[]`
+
+### Internal Endpoints (Service-to-Service Only)
+
+These endpoints are **not proxied through the gateway**. They are called directly by other backend services using `require_service_role` authentication.
+
+#### `POST /internal/wallet/debit`
+
+- **Auth:** Service Role
+- **Description:** Debit Bubbles from a wallet (called by sessions, academy, store, etc.)
+- **Body:** Same as member debit endpoint
+
+#### `POST /internal/wallet/credit`
+
+- **Auth:** Service Role
+- **Description:** Credit Bubbles to a wallet (refunds, rewards)
+- **Body:** Same as member credit endpoint
+
+#### `GET /internal/wallet/balance/{auth_id}`
+
+- **Auth:** Service Role
+- **Description:** Get a member's wallet balance
+- **Response 200:** Balance info
+
+#### `POST /internal/wallet/check-balance`
+
+- **Auth:** Service Role
+- **Description:** Check if a member has sufficient Bubbles for a transaction
+- **Body:** `{ "member_auth_id": "...", "required_amount": 500 }`
+- **Response 200:** Balance check result
+
+#### `POST /internal/wallet/confirm-topup`
+
+- **Auth:** Service Role
+- **Description:** Confirm a topup after successful Paystack payment (called by payments service)
+
+#### `POST /internal/wallet/create`
+
+- **Auth:** Service Role
+- **Description:** Create a wallet for a new member (called by members service during registration)

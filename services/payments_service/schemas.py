@@ -163,3 +163,42 @@ class PricingConfigResponse(BaseModel):
     club_biannual: int
     club_annual: int
     currency: str = "NGN"
+
+
+# --- Internal Service-to-Service Schemas ---
+
+
+class InternalInitializeRequest(BaseModel):
+    """Request from another service to initialize a Paystack transaction.
+
+    Used by wallet_service for topups, or any other service needing
+    Paystack checkout without creating a Payment record.
+    """
+
+    purpose: str  # e.g. "wallet_topup"
+    amount: float  # Naira amount (will be converted to kobo internally)
+    currency: str = "NGN"
+    reference: str
+    member_auth_id: str
+    callback_url: Optional[str] = None  # Redirect path appended to FRONTEND_URL
+    metadata: Optional[dict] = None
+
+
+class InternalInitializeResponse(BaseModel):
+    """Response with Paystack checkout details."""
+
+    reference: str
+    authorization_url: Optional[str] = None
+    access_code: Optional[str] = None
+
+
+class InternalPaystackVerifyResponse(BaseModel):
+    """Normalized Paystack verification response for internal services."""
+
+    reference: str
+    status: str  # completed | failed | pending | unknown
+    provider_status: Optional[str] = None
+    paid_at: Optional[datetime] = None
+    amount_kobo: Optional[int] = None
+    currency: Optional[str] = None
+    raw: Optional[dict] = None

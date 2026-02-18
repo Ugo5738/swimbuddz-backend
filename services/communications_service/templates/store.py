@@ -114,7 +114,7 @@ Thank you for shopping with SwimBuddz!
             bg_color="#ecfeff",
             border_color="#0891b2",
         )
-        + f'<p>We\'ll notify you when your order is ready for {"pickup" if fulfillment_type == "pickup" else "delivery"}.</p>'
+        + f"<p>We'll notify you when your order is ready for {'pickup' if fulfillment_type == 'pickup' else 'delivery'}.</p>"
         + sign_off("Thank you for shopping with SwimBuddz! 🏊\u200d♂️")
     )
 
