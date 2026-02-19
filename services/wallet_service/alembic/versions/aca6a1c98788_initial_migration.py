@@ -1,15 +1,15 @@
 """initial_migration
 
-Revision ID: dadd28cb37ea
+Revision ID: aca6a1c98788
 Revises: 
-Create Date: 2026-02-18 00:25:57.567133
+Create Date: 2026-02-19 07:27:26.773544
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = 'dadd28cb37ea'
+revision = 'aca6a1c98788'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -173,7 +173,7 @@ def upgrade() -> None:
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('wallet_id', sa.UUID(), nullable=False),
     sa.Column('member_auth_id', sa.String(), nullable=False),
-    sa.Column('grant_type', sa.Enum('WELCOME_BONUS', 'REFERRAL_REWARD', 'LOYALTY_REWARD', 'CAMPAIGN', 'COMPENSATION', 'ADMIN_MANUAL', name='grant_type_enum'), nullable=False),
+    sa.Column('grant_type', sa.Enum('WELCOME_BONUS', 'REFERRAL_REWARD', 'LOYALTY_REWARD', 'CAMPAIGN', 'COMPENSATION', 'ADMIN_MANUAL', 'SCHOLARSHIP', 'DISCOUNT', name='grant_type_enum'), nullable=False),
     sa.Column('bubbles_amount', sa.Integer(), nullable=False),
     sa.Column('reason', sa.String(), nullable=False),
     sa.Column('campaign_code', sa.String(), nullable=True),
