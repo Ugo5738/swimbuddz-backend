@@ -98,6 +98,7 @@ async def start_topup(
         bubbles_amount=body.bubbles_amount,
         payment_method=body.payment_method,
         payer_email=current_user.email,
+        callback_url=body.callback_url,
     )
     return topup
 

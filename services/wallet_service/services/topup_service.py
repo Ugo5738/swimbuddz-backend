@@ -40,6 +40,7 @@ async def initiate_topup(
     bubbles_amount: int,
     payment_method: PaymentMethod = PaymentMethod.PAYSTACK,
     payer_email: str | None = None,
+    callback_url: str | None = None,
 ) -> WalletTopup:
     """Initiate a Bubble purchase.
 
@@ -86,7 +87,7 @@ async def initiate_topup(
                     "currency": "NGN",
                     "reference": reference,
                     "member_auth_id": member_auth_id,
-                    "callback_url": f"/account/wallet?topup={topup.id}",
+                    "callback_url": f"{callback_url or '/account/wallet'}?topup={topup.id}",
                     "metadata": {
                         "topup_id": str(topup.id),
                         "wallet_id": str(wallet.id),
@@ -283,6 +284,7 @@ async def reconcile_topup_return(
                 payment_status="failed",
             )
     except Exception as exc:
+        await db.rollback()
         logger.warning(
             "Topup reconcile failed for %s: %s",
             topup_reference,

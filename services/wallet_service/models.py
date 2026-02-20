@@ -11,21 +11,11 @@ from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
-from sqlalchemy import (
-    Boolean,
-    CheckConstraint,
-    DateTime,
-    ForeignKey,
-    Index,
-    Integer,
-    String,
-    Text,
-    UniqueConstraint,
-)
+from sqlalchemy import Boolean, CheckConstraint, DateTime
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 
 # ---------------------------------------------------------------------------
 # Enums (match design doc Section 4)
@@ -93,6 +83,8 @@ class GrantType(str, enum.Enum):
     CAMPAIGN = "campaign"
     COMPENSATION = "compensation"
     ADMIN_MANUAL = "admin_manual"
+    SCHOLARSHIP = "scholarship"  # Academy scholarship — reduces installment obligation
+    DISCOUNT = "discount"  # Admin-applied fee discount deposited as Bubbles
 
 
 class ReferralStatus(str, enum.Enum):

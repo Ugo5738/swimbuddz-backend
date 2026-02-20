@@ -529,6 +529,20 @@ class ActivateClubRequest(BaseModel):
     )
 
 
+class ActivateAcademyRequest(BaseModel):
+    """Request to activate (or extend) academy tier until a specific date.
+
+    The caller passes the cohort end_date. The endpoint sets academy_paid_until
+    to whichever is later: the current value or the supplied cohort_end_date,
+    so that a member enrolled in multiple overlapping cohorts always retains
+    access until their last cohort finishes.
+    """
+
+    cohort_end_date: datetime = Field(
+        description="ISO datetime of the cohort end date (timezone-aware)"
+    )
+
+
 class PendingMemberResponse(MemberResponse):
     """Extended response for pending members (admin view)."""
 

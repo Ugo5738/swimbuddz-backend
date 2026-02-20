@@ -25,11 +25,32 @@ async def send_enrollment_confirmation_email(
     program_name: str,
     cohort_name: str,
     start_date: str,
+    location: Optional[str] = None,
+    coach_name: Optional[str] = None,
+    is_installment: bool = False,
+    installment_deposit: Optional[str] = None,
+    installment_schedule: Optional[list[str]] = None,
 ) -> bool:
     """
     Send enrollment confirmation email to a member.
+    Includes program details, before-you-start checklist, and installment
+    schedule when the member is paying in instalments.
     """
     subject = f"Welcome to {program_name}! Your enrollment is confirmed."
+
+    # Build plain-text installment note
+    installment_note = ""
+    if is_installment and installment_schedule:
+        schedule_lines = "\n".join(
+            f"  - {item}" for item in installment_schedule
+        )
+        installment_note = (
+            f"\nPayment Schedule (installments):\n{schedule_lines}\n"
+            "Remaining payments are auto-collected from your Bubbles wallet.\n"
+        )
+
+    location_line = f"Location: {location}\n" if location else ""
+    coach_line = f"Coach: {coach_name}\n" if coach_name else ""
 
     body = f"""Hi {member_name},
 
@@ -38,11 +59,12 @@ Congratulations! Your enrollment in the SwimBuddz Academy has been confirmed.
 Program: {program_name}
 Cohort: {cohort_name}
 Start Date: {start_date}
-
-What's Next:
-- Sessions will appear in your Sessions page once they're scheduled
-- Make sure your profile is complete with emergency contact information
+{location_line}{coach_line}{installment_note}
+Before your first session:
+- Pack your swim gear: swimsuit, goggles, towel, and swim cap
 - Review the program curriculum on your Academy dashboard
+- Check the session schedule and add sessions to your calendar
+- Explore prep materials and learning resources in the Academy section
 
 If you have any questions, please reach out to our team.
 
@@ -51,23 +73,49 @@ See you in the water!
 — The SwimBuddz Team
 """
 
+    # Build cohort detail dict
+    cohort_details: dict = {
+        "Program": program_name,
+        "Cohort": cohort_name,
+        "Start Date": start_date,
+    }
+    if location:
+        cohort_details["Location"] = location
+    if coach_name:
+        cohort_details["Coach"] = coach_name
+
+    # Build installment schedule HTML block
+    installment_html = ""
+    if is_installment and installment_schedule:
+        schedule_items = "".join(
+            f"<li style='padding:4px 0;'>{item}</li>"
+            for item in installment_schedule
+        )
+        installment_html = (
+            "<h3 style='margin-top:24px;margin-bottom:8px;'>💳 Payment Schedule</h3>"
+            f"<ul style='margin:0;padding-left:20px;color:#475569;'>{schedule_items}</ul>"
+            "<p style='font-size:13px;color:#64748b;margin-top:8px;'>"
+            "Remaining payments are automatically deducted from your Bubbles wallet "
+            "on schedule. You'll receive a reminder 3 days before each due date."
+            "</p>"
+        )
+
     body_html = (
         f"<p>Hi {member_name},</p>"
-        "<p>Congratulations! Your enrollment in the SwimBuddz Academy has been confirmed.</p>"
-        + detail_box(
-            {
-                "Program": program_name,
-                "Cohort": cohort_name,
-                "Start Date": start_date,
-            }
+        "<p>Congratulations! Your enrollment in the SwimBuddz Academy has been confirmed. "
+        "We're excited to have you join us.</p>"
+        + detail_box(cohort_details)
+        + installment_html
+        + checklist_box(
+            "Before Your First Session",
+            [
+                "Pack your swim gear: swimsuit, goggles, towel, and swim cap",
+                "Review the program curriculum on your Academy dashboard",
+                "Check the session schedule and add sessions to your calendar",
+                "Explore prep materials and learning resources in the Academy section",
+            ],
         )
-        + "<h3>What's Next:</h3>"
-        "<ul>"
-        "<li>Sessions will appear in your Sessions page once they're scheduled</li>"
-        "<li>Make sure your profile is complete with emergency contact information</li>"
-        "<li>Review the program curriculum on your Academy dashboard</li>"
-        "</ul>"
-        "<p>If you have any questions, please reach out to our team.</p>"
+        + "<p>If you have any questions, please reach out to our team.</p>"
         + sign_off("See you in the water! 🏊\u200d♂️")
     )
 
@@ -76,7 +124,7 @@ See you in the water!
         subtitle="Your enrollment has been confirmed",
         body_html=body_html,
         header_gradient=GRADIENT_CYAN,
-        preheader=f"Your enrollment in {program_name} is confirmed",
+        preheader=f"Your enrollment in {program_name} is confirmed — see what to do next",
     )
 
     return await send_email(to_email, subject, body, html_body)
@@ -563,6 +611,351 @@ Let's make this cohort a success!
         body_html=body_html,
         header_gradient=GRADIENT_GREEN,
         preheader=f"You've been assigned to {cohort_name}",
+    )
+
+    return await send_email(to_email, subject, body, html_body)
+
+
+async def send_installment_payment_reminder_email(
+    to_email: str,
+    member_name: str,
+    program_name: str,
+    cohort_name: str,
+    installment_number: int,
+    total_installments: Optional[int],
+    amount: int,
+    currency: str,
+    due_date: str,
+    days_until: int,
+    checkout_url: Optional[str] = None,
+    insufficient_wallet: bool = False,
+    dashboard_url: str = "https://swimbuddz.com/account/academy",
+) -> bool:
+    """
+    Remind a student that an installment payment is due.
+
+    Used for scheduled reminders (7, 3, 1 day before due date) and on due-date
+    when the wallet auto-deduction failed because the balance was insufficient.
+    """
+    amount_ngn = amount / 100  # kobo → NGN
+    currency_symbol = "₦" if currency == "NGN" else currency
+    amount_display = f"{currency_symbol}{amount_ngn:,.0f}"
+
+    installment_label = (
+        f"Installment {installment_number} of {total_installments}"
+        if total_installments
+        else f"Installment {installment_number}"
+    )
+
+    if days_until == 0 and insufficient_wallet:
+        urgency_intro = (
+            "Your installment payment is due today, but your SwimBuddz wallet doesn't have "
+            "enough Bubbles. Please pay using the link below before the end of day to keep "
+            "your access active."
+        )
+        subject = f"⚠️ Action Required: Academy Payment Due Today — {installment_label}"
+    elif days_until == 1:
+        urgency_intro = (
+            "Your installment payment is due tomorrow. Make sure your wallet is topped up "
+            "or use the payment link below to pay directly."
+        )
+        subject = f"Reminder: Academy Payment Due Tomorrow — {installment_label}"
+    else:
+        urgency_intro = (
+            f"Your next installment is due in {days_until} days. You can pay early at any time — "
+            "early payment is always welcome!"
+        )
+        subject = f"Payment Reminder: {installment_label} Due in {days_until} Days"
+
+    details = {
+        "Installment": installment_label,
+        "Amount Due": amount_display,
+        "Due Date": due_date,
+        "Program": program_name,
+        "Cohort": cohort_name,
+    }
+
+    alert_html = ""
+    if days_until == 0 and insufficient_wallet:
+        alert_html = info_box(
+            "<strong>⚠️ Wallet balance insufficient</strong><br/>"
+            "Your wallet did not have enough Bubbles to cover this installment automatically. "
+            "Please pay using the button below.",
+            bg_color="#fef3c7",
+            border_color="#f59e0b",
+        )
+
+    cta_html = ""
+    if checkout_url:
+        cta_html = cta_button("Pay Now", checkout_url, color="#0891b2")
+    else:
+        cta_html = cta_button("Go to Academy Dashboard", dashboard_url, color="#0891b2")
+
+    body = f"""Hi {member_name},
+
+{urgency_intro}
+
+{installment_label}
+Amount: {amount_display}
+Due: {due_date}
+
+Program: {program_name} ({cohort_name})
+
+Log in to your dashboard to pay: {dashboard_url}
+
+— The SwimBuddz Team
+"""
+
+    body_html = (
+        f"<p>Hi {member_name},</p>"
+        f"<p>{urgency_intro}</p>"
+        + alert_html
+        + detail_box(details, accent_color="#0891b2")
+        + cta_html
+        + sign_off("See you in the water! 🏊\u200d♂️")
+    )
+
+    html_body = wrap_html(
+        title="💳 Installment Payment Due",
+        subtitle=f"{program_name} — {installment_label}",
+        body_html=body_html,
+        header_gradient=GRADIENT_AMBER,
+        preheader=f"Payment of {amount_display} due on {due_date}",
+    )
+
+    return await send_email(to_email, subject, body, html_body)
+
+
+async def send_installment_payment_confirmation_email(
+    to_email: str,
+    member_name: str,
+    installment_number: int,
+    total_installments: Optional[int],
+    amount: float,
+    currency: str,
+    payment_reference: str,
+    paid_at: str,
+    payment_method: str = "paystack",
+    dashboard_url: str = "https://swimbuddz.com/account/academy",
+) -> bool:
+    """
+    Confirm a successful installment payment to the student.
+
+    Sent after every installment (except the first, which uses the enrollment
+    confirmation email) — whether paid via Paystack or wallet auto-deduction.
+    """
+    currency_symbol = "₦" if currency == "NGN" else currency
+    amount_display = f"{currency_symbol}{amount:,.0f}"
+
+    installment_label = (
+        f"Installment {installment_number} of {total_installments}"
+        if total_installments
+        else f"Installment {installment_number}"
+    )
+
+    method_display = "SwimBuddz Wallet 🫧" if payment_method == "wallet" else "Card / Bank transfer"
+
+    subject = f"✅ Payment Received — {installment_label}"
+
+    body = f"""Hi {member_name},
+
+We've received your payment for {installment_label}. Your academy access remains active.
+
+Amount: {amount_display}
+Reference: {payment_reference}
+Date: {paid_at}
+Method: {method_display}
+
+Log in to view your full payment schedule: {dashboard_url}
+
+Thank you!
+
+— The SwimBuddz Team
+"""
+
+    body_html = (
+        f"<p>Hi {member_name},</p>"
+        "<p>We've received your payment. Your academy access remains <strong>active</strong>.</p>"
+        + detail_box(
+            {
+                "Installment": installment_label,
+                "Amount Paid": amount_display,
+                "Payment Date": paid_at,
+                "Reference": payment_reference,
+                "Method": method_display,
+            },
+            accent_color="#10b981",
+        )
+        + cta_button("View Payment Schedule", dashboard_url, color="#10b981")
+        + sign_off("Thank you for keeping up with your payments! 🏊\u200d♂️")
+    )
+
+    html_body = wrap_html(
+        title="✅ Payment Received",
+        subtitle=f"{installment_label} — {amount_display}",
+        body_html=body_html,
+        header_gradient=GRADIENT_GREEN,
+        preheader=f"Payment of {amount_display} confirmed for {installment_label}",
+    )
+
+    return await send_email(to_email, subject, body, html_body)
+
+
+async def send_academy_access_suspended_email(
+    to_email: str,
+    member_name: str,
+    installment_number: Optional[int],
+    total_installments: Optional[int],
+    amount: float,
+    currency: str,
+    payment_reference: str,
+    enrollment_id: Optional[str],
+    dashboard_url: str = "https://swimbuddz.com/account/academy",
+) -> bool:
+    """
+    Notify the student that their academy access has been suspended due to a
+    failed installment payment.
+
+    The student can restore access by completing the overdue payment from their
+    academy dashboard. A 24-hour grace window applies after each due date.
+    """
+    currency_symbol = "₦" if currency == "NGN" else currency
+    amount_display = f"{currency_symbol}{amount:,.0f}"
+
+    installment_label = (
+        f"Installment {installment_number} of {total_installments}"
+        if installment_number and total_installments
+        else (f"Installment {installment_number}" if installment_number else "your installment")
+    )
+
+    subject = "⚠️ Academy Access Suspended — Installment Payment Failed"
+
+    body = f"""Hi {member_name},
+
+Your academy access has been temporarily suspended because a payment could not be processed.
+
+Installment: {installment_label}
+Amount: {amount_display}
+Reference: {payment_reference}
+
+Your access will be restored as soon as you complete this payment. Please log in to your dashboard to pay.
+
+{dashboard_url}
+
+If you believe this is an error, please contact our support team.
+
+— The SwimBuddz Team
+"""
+
+    alert_html = info_box(
+        "<strong>Your access to academy sessions has been suspended.</strong><br/>"
+        "Please complete your payment as soon as possible to restore access. "
+        "You have a 24-hour grace window after each installment due date.",
+        bg_color="#fef2f2",
+        border_color="#ef4444",
+    )
+
+    body_html = (
+        f"<p>Hi {member_name},</p>"
+        "<p>Unfortunately, we couldn't process your installment payment and your academy access has been <strong>temporarily suspended</strong>.</p>"
+        + alert_html
+        + detail_box(
+            {
+                "Installment": installment_label,
+                "Amount Due": amount_display,
+                "Failed Reference": payment_reference,
+            },
+            accent_color="#ef4444",
+        )
+        + cta_button("Pay Now to Restore Access", dashboard_url, color="#ef4444")
+        + "<p>If you believe this is an error or need help, please reach out to our support team.</p>"
+        + sign_off("We look forward to seeing you back in the water soon! 🏊\u200d♂️")
+    )
+
+    html_body = wrap_html(
+        title="⚠️ Access Suspended",
+        subtitle="Installment payment failed",
+        body_html=body_html,
+        header_gradient=GRADIENT_AMBER,
+        preheader=f"Action required: Your academy access has been suspended",
+    )
+
+    return await send_email(to_email, subject, body, html_body)
+
+
+async def send_admin_dropout_pending_email(
+    to_email: str,
+    member_name: str,
+    member_id: str,
+    enrollment_id: str,
+    program_name: str,
+    cohort_name: str,
+    missed_count: int,
+    admin_dashboard_url: str = "https://swimbuddz.com/admin/academy/enrollments",
+) -> bool:
+    """
+    Notify the admin team that a student has reached the dropout threshold
+    (2 missed installments) and requires admin approval to be formally dropped.
+
+    Only sent when cohort.admin_dropout_approval = True.
+    """
+    subject = f"⚠️ Dropout Approval Required — {member_name} ({cohort_name})"
+
+    body = f"""Admin Action Required,
+
+A student has reached the dropout threshold and requires your approval.
+
+Student: {member_name}
+Member ID: {member_id}
+Enrollment ID: {enrollment_id}
+Program: {program_name}
+Cohort: {cohort_name}
+Missed Installments: {missed_count}
+
+The student's status is now DROPOUT_PENDING. Their academy access has been suspended automatically.
+
+Please review this enrollment in the admin dashboard and either:
+  - Approve Dropout: Formally drop the student.
+  - Reverse Dropout: Reinstate access and allow the student to catch up.
+
+Admin Dashboard: {admin_dashboard_url}
+
+— The SwimBuddz System
+"""
+
+    alert_html = info_box(
+        f"<strong>Student:</strong> {member_name}<br/>"
+        f"<strong>Enrollment:</strong> {enrollment_id}<br/>"
+        f"<strong>Missed Installments:</strong> {missed_count}<br/>"
+        f"<strong>Status:</strong> DROPOUT_PENDING — awaiting your action",
+        bg_color="#fef3c7",
+        border_color="#f59e0b",
+    )
+
+    body_html = (
+        "<p>An enrollment has reached the dropout threshold and needs your review.</p>"
+        + detail_box(
+            {
+                "Student": member_name,
+                "Member ID": member_id,
+                "Program": program_name,
+                "Cohort": cohort_name,
+                "Missed Installments": str(missed_count),
+                "Status": "DROPOUT_PENDING",
+            },
+            accent_color="#f59e0b",
+        )
+        + alert_html
+        + "<p>Please review and take action in the admin dashboard:</p>"
+        + cta_button("Review Enrollment", admin_dashboard_url, color="#f59e0b")
+    )
+
+    html_body = wrap_html(
+        title="⚠️ Dropout Approval Required",
+        subtitle=f"{member_name} — {cohort_name}",
+        body_html=body_html,
+        header_gradient=GRADIENT_AMBER,
+        preheader=f"Action required: {member_name} has reached dropout threshold",
     )
 
     return await send_email(to_email, subject, body, html_body)

@@ -10,17 +10,22 @@ from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.wallet_service.schemas import (
+    AdminScholarshipCreditRequest,
     BalanceCheckRequest,
     BalanceCheckResponse,
     BalanceResponse,
     ConfirmTopupRequest,
     CreditRequest,
     DebitRequest,
+    GrantResponse,
     GrantWelcomeBonusRequest,
     GrantWelcomeBonusResponse,
     InternalDebitCreditResponse,
     WalletCreateRequest,
     WalletResponse,
+)
+from services.wallet_service.services.promotional_service import (
+    grant_promotional_bubbles,
 )
 from services.wallet_service.services.topup_service import confirm_topup
 from services.wallet_service.services.wallet_ops import (
@@ -29,8 +34,8 @@ from services.wallet_service.services.wallet_ops import (
     create_wallet,
     credit_wallet,
     debit_wallet,
-    grant_welcome_bonus_if_eligible,
     get_wallet_by_auth_id,
+    grant_welcome_bonus_if_eligible,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -175,3 +180,41 @@ async def internal_grant_welcome_bonus(
         bonus_granted=granted,
         bubbles_awarded=WELCOME_BONUS_BUBBLES if granted else 0,
     )
+
+
+@router.post(
+    "/scholarship-credit",
+    response_model=GrantResponse,
+    status_code=201,
+)
+async def internal_scholarship_credit(
+    body: AdminScholarshipCreditRequest,
+    caller: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Credit Bubbles to a student's wallet as a scholarship or discount.
+
+    Called by academy_service admin endpoints or admin tooling to deposit Bubbles
+    that cover part or all of a student's installment obligation.
+
+    The credit is recorded as a promotional grant (scholarship/discount type) and
+    uses ``body.idempotency_key`` to prevent duplicate credits on retry.
+
+    Auth: service-role JWT only.
+    """
+    grant = await grant_promotional_bubbles(
+        db,
+        member_auth_id=body.member_auth_id,
+        bubbles_amount=body.amount,
+        grant_type=body.grant_type,
+        reason=body.reason,
+        campaign_code=body.enrollment_id,  # enrollment_id used as audit trail code
+        granted_by=caller.user_id or "service",
+    )
+    logger.info(
+        "Scholarship/discount credit of %d Bubbles granted to %s (enrollment=%s)",
+        body.amount,
+        body.member_auth_id,
+        body.enrollment_id,
+    )
+    return grant

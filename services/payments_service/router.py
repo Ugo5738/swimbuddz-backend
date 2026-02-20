@@ -14,11 +14,11 @@ from libs.auth.dependencies import (
     require_admin,
     require_service_role,
 )
-from libs.common.service_client import internal_post
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
+from libs.common.service_client import internal_post
 from libs.db.session import get_async_db
 from pydantic import BaseModel
 from services.payments_service.models import (
@@ -366,19 +366,118 @@ async def _apply_entitlement(payment: Payment) -> None:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="enrollment_id missing in payment metadata",
             )
+        installment_id = (payment.payment_metadata or {}).get("installment_id")
+        installment_number = (payment.payment_metadata or {}).get("installment_number")
+        total_installments = (payment.payment_metadata or {}).get("total_installments")
         headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+        mark_paid_payload = {
+            "payment_reference": payment.reference,
+            "paid_at": (
+                payment.paid_at.isoformat()
+                if payment.paid_at
+                else datetime.now(timezone.utc).isoformat()
+            ),
+        }
+        if installment_id:
+            mark_paid_payload["installment_id"] = installment_id
+        if installment_number:
+            mark_paid_payload["installment_number"] = installment_number
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 f"{settings.ACADEMY_SERVICE_URL}/academy/admin/enrollments/{enrollment_id}/mark-paid",
                 headers=headers,
+                json=mark_paid_payload,
             )
             if resp.status_code >= 400:
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=f"Failed to mark enrollment as paid ({resp.status_code}): {resp.text}",
                 )
+
+            # Activate the academy tier on the member using the cohort end_date from
+            # the mark-paid response. We always pass the latest cohort end date so
+            # members with multiple simultaneous enrollments keep access until their
+            # last cohort finishes (the activate endpoint keeps the later date).
+            try:
+                enrollment_data = resp.json()
+                cohort_end_date = (enrollment_data.get("cohort") or {}).get(
+                    "end_date"
+                ) or enrollment_data.get("cohort_end_date")
+                if cohort_end_date and payment.member_auth_id:
+                    academy_resp = await client.post(
+                        f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/academy/activate",
+                        headers=headers,
+                        json={"cohort_end_date": cohort_end_date},
+                    )
+                    if academy_resp.status_code >= 400:
+                        logger.warning(
+                            f"Failed to activate academy tier for {payment.member_auth_id}: "
+                            f"{academy_resp.status_code} {academy_resp.text}"
+                        )
+                else:
+                    logger.warning(
+                        f"Academy cohort end_date missing in mark-paid response for "
+                        f"enrollment {enrollment_id} — academy tier not activated"
+                    )
+            except Exception as e:
+                # Non-fatal: enrollment is paid; tier activation failure is logged
+                logger.error(
+                    f"Failed to activate academy tier after payment {payment.reference}: {e}"
+                )
+
         # Clear pending payment reference on success
         await _update_pending_payment_reference(payment.member_auth_id, None)
+
+        # Send subsequent installment payment confirmation (not for first installment —
+        # first installment confirmation is sent by the academy service's mark-paid endpoint).
+        if installment_number and int(installment_number) > 1:
+            try:
+                member_headers = {
+                    "Authorization": f"Bearer {_service_role_jwt('payments')}"
+                }
+                async with httpx.AsyncClient(timeout=30) as client:
+                    member_resp = await client.get(
+                        f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{payment.member_auth_id}",
+                        headers=member_headers,
+                    )
+                    if member_resp.status_code < 400:
+                        member_data = member_resp.json()
+                        member_email = member_data.get("email") or payment.payer_email
+                        member_name = member_data.get("first_name", "Student")
+                    else:
+                        member_email = payment.payer_email
+                        member_name = "Student"
+
+                if member_email:
+                    email_client = get_email_client()
+                    await email_client.send_template(
+                        template_type="installment_payment_confirmation",
+                        to_email=member_email,
+                        template_data={
+                            "member_name": member_name,
+                            "installment_number": int(installment_number),
+                            "total_installments": (
+                                int(total_installments) if total_installments else None
+                            ),
+                            "amount": payment.amount,
+                            "currency": payment.currency,
+                            "payment_reference": payment.reference,
+                            "paid_at": (
+                                payment.paid_at.strftime("%B %d, %Y")
+                                if payment.paid_at
+                                else datetime.now(timezone.utc).strftime("%B %d, %Y")
+                            ),
+                        },
+                    )
+                    logger.info(
+                        f"Sent installment payment confirmation to {member_email} "
+                        f"(installment {installment_number} of {total_installments})"
+                    )
+            except Exception as e:
+                # Non-fatal — payment was successful; email failure must not raise
+                logger.error(
+                    f"Failed to send installment payment confirmation for {payment.reference}: {e}"
+                )
         return
 
     # Handle Store order payment
@@ -901,11 +1000,14 @@ async def create_payment_intent(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="enrollment_id is required for ACADEMY_COHORT payments",
             )
-        # Lookup enrollment and cohort price from academy_service
+        # Lookup enrollment and next payable installment from academy_service.
+        # Pass use_installments so the academy service can build the schedule on-demand
+        # if the member opted in and no schedule exists yet.
         headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
                 f"{settings.ACADEMY_SERVICE_URL}/academy/internal/enrollments/{payload.enrollment_id}",
+                params={"use_installments": str(payload.use_installments).lower()},
                 headers=headers,
             )
             if resp.status_code >= 400:
@@ -915,19 +1017,62 @@ async def create_payment_intent(
                 )
             enrollment_data = resp.json()
             cohort_id = enrollment_data.get("cohort_id")
-            program = enrollment_data.get("program") or {}
-            amount = float(program.get("price_amount") or 0)
+            installments = sorted(
+                enrollment_data.get("installments") or [],
+                key=lambda i: i.get("installment_number", 0),
+            )
 
-        if amount == 0:
+        paid_statuses = {"paid", "waived"}
+        next_installment = next(
+            (
+                i
+                for i in installments
+                if str(i.get("status") or "").lower() not in paid_statuses
+            ),
+            None,
+        )
+
+        if next_installment:
+            amount = float(next_installment.get("amount") or 0)
+        else:
+            # Backward-compatible fallback for older enrollments without an installment plan.
+            program = enrollment_data.get("program") or {}
+            cohort = enrollment_data.get("cohort") or {}
+            amount = float(
+                cohort.get("price_override")
+                if cohort.get("price_override") is not None
+                else (program.get("price_amount") or 0)
+            )
+            if str(enrollment_data.get("payment_status") or "").lower() == "paid":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="All required academy installments are already paid",
+                )
+
+        if amount <= 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cohort/Program has no price set",
+                detail="No payable installment is available for this enrollment",
             )
 
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "enrollment_id": str(payload.enrollment_id),
             "cohort_id": str(cohort_id) if cohort_id else None,
+            "installment_id": (
+                str(next_installment.get("id")) if next_installment else None
+            ),
+            "installment_number": (
+                int(next_installment.get("installment_number"))
+                if next_installment and next_installment.get("installment_number")
+                else None
+            ),
+            "installment_due_at": (
+                next_installment.get("due_at") if next_installment else None
+            ),
+            "total_installments": (
+                int(enrollment_data.get("total_installments") or 0) or None
+            ),
         }
 
     # Store order payment
@@ -1480,6 +1625,69 @@ async def paystack_webhook(
             }
             db.add(payment)
             await db.commit()
+
+            # For ACADEMY_COHORT payments: notify the student that their access
+            # is suspended because the installment payment failed.
+            if payment.purpose == PaymentPurpose.ACADEMY_COHORT:
+                try:
+                    enrollment_id = (payment.payment_metadata or {}).get(
+                        "enrollment_id"
+                    )
+                    installment_number = (payment.payment_metadata or {}).get(
+                        "installment_number"
+                    )
+                    total_installments = (payment.payment_metadata or {}).get(
+                        "total_installments"
+                    )
+                    member_email = payment.payer_email
+                    member_name = "Student"
+
+                    # Fetch member details for a personalised email
+                    svc_headers = {
+                        "Authorization": f"Bearer {_service_role_jwt('payments')}"
+                    }
+                    async with httpx.AsyncClient(timeout=30) as client:
+                        member_resp = await client.get(
+                            f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{payment.member_auth_id}",
+                            headers=svc_headers,
+                        )
+                        if member_resp.status_code < 400:
+                            member_data = member_resp.json()
+                            member_email = member_data.get("email") or member_email
+                            member_name = member_data.get("first_name", "Student")
+
+                    if member_email:
+                        email_client = get_email_client()
+                        await email_client.send_template(
+                            template_type="academy_access_suspended",
+                            to_email=member_email,
+                            template_data={
+                                "member_name": member_name,
+                                "installment_number": (
+                                    int(installment_number)
+                                    if installment_number
+                                    else None
+                                ),
+                                "total_installments": (
+                                    int(total_installments)
+                                    if total_installments
+                                    else None
+                                ),
+                                "amount": payment.amount,
+                                "currency": payment.currency,
+                                "payment_reference": payment.reference,
+                                "enrollment_id": enrollment_id,
+                            },
+                        )
+                        logger.info(
+                            f"Sent access-suspended notification to {member_email} "
+                            f"for failed installment payment {payment.reference}"
+                        )
+                except Exception as e:
+                    # Non-fatal — webhook must still return 200
+                    logger.error(
+                        f"Failed to send access-suspended notification for {payment.reference}: {e}"
+                    )
         return {"received": True}
 
     # Handle transfer events for coach payouts
