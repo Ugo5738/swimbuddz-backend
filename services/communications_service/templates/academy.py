@@ -41,9 +41,7 @@ async def send_enrollment_confirmation_email(
     # Build plain-text installment note
     installment_note = ""
     if is_installment and installment_schedule:
-        schedule_lines = "\n".join(
-            f"  - {item}" for item in installment_schedule
-        )
+        schedule_lines = "\n".join(f"  - {item}" for item in installment_schedule)
         installment_note = (
             f"\nPayment Schedule (installments):\n{schedule_lines}\n"
             "Remaining payments are auto-collected from your Bubbles wallet.\n"
@@ -88,8 +86,7 @@ See you in the water!
     installment_html = ""
     if is_installment and installment_schedule:
         schedule_items = "".join(
-            f"<li style='padding:4px 0;'>{item}</li>"
-            for item in installment_schedule
+            f"<li style='padding:4px 0;'>{item}</li>" for item in installment_schedule
         )
         installment_html = (
             "<h3 style='margin-top:24px;margin-bottom:8px;'>💳 Payment Schedule</h3>"
@@ -753,7 +750,9 @@ async def send_installment_payment_confirmation_email(
         else f"Installment {installment_number}"
     )
 
-    method_display = "SwimBuddz Wallet 🫧" if payment_method == "wallet" else "Card / Bank transfer"
+    method_display = (
+        "SwimBuddz Wallet 🫧" if payment_method == "wallet" else "Card / Bank transfer"
+    )
 
     subject = f"✅ Payment Received — {installment_label}"
 
@@ -825,7 +824,11 @@ async def send_academy_access_suspended_email(
     installment_label = (
         f"Installment {installment_number} of {total_installments}"
         if installment_number and total_installments
-        else (f"Installment {installment_number}" if installment_number else "your installment")
+        else (
+            f"Installment {installment_number}"
+            if installment_number
+            else "your installment"
+        )
     )
 
     subject = "⚠️ Academy Access Suspended — Installment Payment Failed"
@@ -877,7 +880,7 @@ If you believe this is an error, please contact our support team.
         subtitle="Installment payment failed",
         body_html=body_html,
         header_gradient=GRADIENT_AMBER,
-        preheader=f"Action required: Your academy access has been suspended",
+        preheader="Action required: Your academy access has been suspended",
     )
 
     return await send_email(to_email, subject, body, html_body)
