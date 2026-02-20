@@ -4,7 +4,7 @@ Tests program CRUD, cohort CRUD, enrollment operations, and milestones.
 """
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -222,6 +222,111 @@ async def test_create_enrollment(academy_client, db_session):
     data = response.json()
     assert data["cohort_id"] == str(cohort.id)
     assert data["member_id"] == str(member.id)
+    assert data["total_installments"] == 3
+    assert data["paid_installments_count"] == 0
+    assert len(data["installments"]) == 3
+    assert [i["amount"] for i in data["installments"]] == [50000, 50000, 50000]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_create_enrollment_caps_installments_to_three_when_fee_exceeds_150k(
+    academy_client, db_session
+):
+    """Fees above 150k are split into max three installments within first 12 weeks."""
+    program = ProgramFactory.create(duration_weeks=20, price_amount=250000)
+    db_session.add(program)
+    await db_session.flush()
+
+    from services.academy_service.models import CohortStatus
+
+    cohort = CohortFactory.create(
+        program_id=program.id,
+        status=CohortStatus.OPEN,
+    )
+    # Force an explicit 20-week window to match program duration.
+    cohort.end_date = cohort.start_date + timedelta(weeks=20)
+    db_session.add(cohort)
+    await db_session.flush()
+
+    member = MemberFactory.create()
+    db_session.add(member)
+    await db_session.commit()
+
+    response = await academy_client.post(
+        "/academy/enrollments",
+        json={
+            "program_id": str(program.id),
+            "cohort_id": str(cohort.id),
+            "member_id": str(member.id),
+        },
+    )
+
+    assert response.status_code in (200, 201), response.text
+    data = response.json()
+    assert data["total_installments"] == 3
+    assert [i["amount"] for i in data["installments"]] == [83334, 83333, 83333]
+    due_dates = [datetime.fromisoformat(i["due_at"]) for i in data["installments"]]
+    assert (due_dates[1] - due_dates[0]).days == 28
+    assert (due_dates[2] - due_dates[1]).days == 28
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_mark_paid_advances_installment_progress(academy_client, db_session):
+    """Marking paid should settle one installment at a time."""
+    program = ProgramFactory.create(duration_weeks=12, price_amount=150000)
+    db_session.add(program)
+    await db_session.flush()
+
+    from services.academy_service.models import CohortStatus
+
+    cohort = CohortFactory.create(program_id=program.id, status=CohortStatus.OPEN)
+    db_session.add(cohort)
+    await db_session.flush()
+
+    member = MemberFactory.create()
+    db_session.add(member)
+    await db_session.commit()
+
+    create_response = await academy_client.post(
+        "/academy/enrollments",
+        json={
+            "program_id": str(program.id),
+            "cohort_id": str(cohort.id),
+            "member_id": str(member.id),
+        },
+    )
+    assert create_response.status_code in (200, 201), create_response.text
+    enrollment_id = create_response.json()["id"]
+
+    with patch(
+        "services.academy_service.router.get_member_by_id",
+        new_callable=AsyncMock,
+        return_value={
+            "id": str(member.id),
+            "first_name": "Test",
+            "last_name": "User",
+            "email": member.email,
+        },
+    ):
+        first_payment = await academy_client.post(
+            f"/academy/admin/enrollments/{enrollment_id}/mark-paid",
+            json={"installment_number": 1, "payment_reference": "PAY-INST-1"},
+        )
+        assert first_payment.status_code == 200, first_payment.text
+        first_data = first_payment.json()
+        assert first_data["paid_installments_count"] == 1
+        assert first_data["payment_status"] == "paid"
+
+        final_payment = await academy_client.post(
+            f"/academy/admin/enrollments/{enrollment_id}/mark-paid",
+            json={"installment_number": 3, "payment_reference": "PAY-INST-3"},
+        )
+        assert final_payment.status_code == 200, final_payment.text
+        final_data = final_payment.json()
+        assert final_data["paid_installments_count"] == 2
+        assert final_data["total_installments"] == 3
 
 
 # ---------------------------------------------------------------------------

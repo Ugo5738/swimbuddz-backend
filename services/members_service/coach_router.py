@@ -12,6 +12,7 @@ from libs.common.config import get_settings
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url
+from libs.common.service_client import internal_post
 from libs.common.supabase import get_supabase_admin_client
 from libs.db.config import AsyncSessionLocal
 from sqlalchemy import delete, func, select
@@ -104,6 +105,34 @@ async def get_coach_profile_by_member_id(member_id: str) -> Optional[CoachProfil
             select(CoachProfile).where(CoachProfile.member_id == member_id)
         )
         return result.scalar_one_or_none()
+
+
+async def _ensure_wallet_exists(member_id: str, member_auth_id: str) -> None:
+    """Best-effort wallet auto-provisioning for coach accounts."""
+    try:
+        resp = await internal_post(
+            service_url=settings.WALLET_SERVICE_URL,
+            path="/internal/wallet/create",
+            calling_service="members",
+            json={
+                "member_id": member_id,
+                "member_auth_id": member_auth_id,
+            },
+            timeout=15.0,
+        )
+        if resp.status_code >= 400:
+            logger.warning(
+                "Wallet auto-create failed for coach member_auth_id=%s (http %d): %s",
+                member_auth_id,
+                resp.status_code,
+                resp.text,
+            )
+    except Exception as exc:
+        logger.warning(
+            "Wallet auto-create request failed for coach member_auth_id=%s: %s",
+            member_auth_id,
+            exc,
+        )
 
 
 def _build_coach_response(
@@ -229,6 +258,10 @@ async def apply_as_coach(
             member.roles = list(set((member.roles or []) + ["coach"]))
 
         await session.commit()
+
+        if member.auth_id:
+            await _ensure_wallet_exists(str(member.id), member.auth_id)
+
         await session.refresh(member)
         await session.refresh(coach_profile)
 
@@ -627,6 +660,9 @@ async def approve_coach_application(
         await session.commit()
 
         logger.info(f"Coach application {coach_profile_id} approved by {admin_email}")
+
+        if coach.member and coach.member.auth_id:
+            await _ensure_wallet_exists(str(coach.member.id), coach.member.auth_id)
 
         # Add "coach" role to Supabase app_metadata.roles
         # This ensures the JWT includes the coach role for auth checks

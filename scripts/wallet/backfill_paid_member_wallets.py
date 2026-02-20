@@ -1,15 +1,18 @@
-"""Backfill wallets + welcome bonus for already-paid members.
+"""Backfill wallets + welcome bonus for already-paid members and coaches.
 
 This script is idempotent:
 - Wallet creation is idempotent by member_auth_id.
 - Welcome bonus grant is idempotent by key: welcome-bonus-{member_auth_id}.
 
 Usage examples:
-  # Preview only (default dry-run)
+  # Preview only (default dry-run): paid members + coaches
   ENV_FILE=.env.prod python scripts/wallet/backfill_paid_member_wallets.py
 
   # Apply changes
   ENV_FILE=.env.prod python scripts/wallet/backfill_paid_member_wallets.py --apply
+
+  # Restrict to paid members only (exclude unpaid coaches)
+  ENV_FILE=.env.prod python scripts/wallet/backfill_paid_member_wallets.py --apply --paid-only
 
   # Restrict to active paid members only
   ENV_FILE=.env.prod python scripts/wallet/backfill_paid_member_wallets.py --apply --active-only
@@ -24,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 
 def _load_env_file() -> None:
@@ -62,7 +65,7 @@ def _bonus_eligibility(roles: list[str], include_coaches: bool) -> bool:
     return has_member_or_coach_role and (include_coaches or not is_coach)
 
 
-async def _load_targets(active_only: bool) -> list[TargetMember]:
+async def _load_targets(active_only: bool, include_coaches: bool) -> list[TargetMember]:
     from libs.common.config import get_settings
     from libs.db.config import AsyncSessionLocal
     from services.members_service.models import Member, MemberMembership
@@ -73,11 +76,15 @@ async def _load_targets(active_only: bool) -> list[TargetMember]:
     async with AsyncSessionLocal() as session:
         query = (
             select(Member, Wallet.id)
-            .join(MemberMembership, MemberMembership.member_id == Member.id)
+            .outerjoin(MemberMembership, MemberMembership.member_id == Member.id)
             .outerjoin(Wallet, Wallet.member_auth_id == Member.auth_id)
-            .where(MemberMembership.community_paid_until.is_not(None))
             .where(Member.auth_id.is_not(None))
         )
+        paid_filter = MemberMembership.community_paid_until.is_not(None)
+        if include_coaches:
+            query = query.where(or_(paid_filter, Member.roles.any("coach")))
+        else:
+            query = query.where(paid_filter)
         if active_only:
             query = query.where(Member.is_active.is_(True))
 
@@ -127,7 +134,7 @@ async def _apply(targets: list[TargetMember], limit: int | None) -> None:
                 "member_id": t.member_id,
                 "member_auth_id": t.member_auth_id,
                 "eligible": t.eligible_for_bonus,
-                "reason": "One-time backfill for already-paid members",
+                "reason": "One-time backfill for paid members and coaches",
                 "granted_by": "members_service",
             },
             timeout=20.0,
@@ -177,7 +184,7 @@ def _print_plan(targets: list[TargetMember], limit: int | None) -> None:
 
 async def _main() -> None:
     parser = argparse.ArgumentParser(
-        description="Backfill wallets/welcome bonus for already-paid members."
+        description="Backfill wallets/welcome bonus for paid members and coaches."
     )
     parser.add_argument(
         "--apply",
@@ -190,6 +197,11 @@ async def _main() -> None:
         help="Only include members with is_active=true.",
     )
     parser.add_argument(
+        "--paid-only",
+        action="store_true",
+        help="Only include paid members (exclude unpaid coaches).",
+    )
+    parser.add_argument(
         "--limit",
         type=int,
         default=None,
@@ -199,7 +211,10 @@ async def _main() -> None:
 
     _load_env_file()
 
-    targets = await _load_targets(active_only=args.active_only)
+    targets = await _load_targets(
+        active_only=args.active_only,
+        include_coaches=not args.paid_only,
+    )
     _print_plan(targets, limit=args.limit)
 
     if not args.apply:

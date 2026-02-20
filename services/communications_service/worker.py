@@ -37,6 +37,7 @@ class WorkerSettings:
     """ARQ worker settings with cron job schedules."""
 
     redis_settings = get_redis_settings()
+    queue_name = "arq:communications"
 
     # Register all task functions so ARQ can discover them
     functions = [

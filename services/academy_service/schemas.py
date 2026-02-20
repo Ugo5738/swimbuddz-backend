@@ -8,6 +8,7 @@ from services.academy_service.models import (
     CoachGrade,
     CohortStatus,
     EnrollmentStatus,
+    InstallmentStatus,
     LocationType,
     MilestoneType,
     PaymentStatus,
@@ -119,6 +120,9 @@ class CohortBase(BaseModel):
     require_approval: bool = (
         False  # If True, enrollment needs admin approval even after payment
     )
+    # If True, reaching 2 missed installments moves enrollment to DROPOUT_PENDING
+    # and requires admin to manually confirm the dropout instead of auto-dropping.
+    admin_dropout_approval: bool = False
     # Location
     timezone: Optional[str] = None
     location_type: Optional[LocationType] = None
@@ -127,6 +131,14 @@ class CohortBase(BaseModel):
     # Pricing override
     price_override: Optional[int] = None
     notes_internal: Optional[str] = None
+    # ── Installment billing ──────────────────────────────────────────────────
+    # Toggle: admin enables installment option for this cohort
+    installment_plan_enabled: bool = False
+    # Optional overrides — if None, business logic auto-computes from fee + duration
+    installment_count: Optional[int] = None  # Override auto-computed count
+    installment_deposit_amount: Optional[int] = (
+        None  # Override first-installment amount (₦)
+    )
 
 
 class CoachAssignmentInput(BaseModel):
@@ -152,6 +164,7 @@ class CohortUpdate(BaseModel):
     allow_mid_entry: Optional[bool] = None
     mid_entry_cutoff_week: Optional[int] = None
     require_approval: Optional[bool] = None
+    admin_dropout_approval: Optional[bool] = None
     # Location
     timezone: Optional[str] = None
     location_type: Optional[LocationType] = None
@@ -160,12 +173,17 @@ class CohortUpdate(BaseModel):
     # Pricing override
     price_override: Optional[int] = None
     notes_internal: Optional[str] = None
+    # ── Installment billing ──────────────────────────────────────────────────
+    installment_plan_enabled: Optional[bool] = None
+    installment_count: Optional[int] = None
+    installment_deposit_amount: Optional[int] = None
 
 
 class CohortResponse(CohortBase):
     id: UUID
     program_id: UUID
     coach_id: Optional[UUID] = None
+    admin_dropout_approval: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -216,6 +234,36 @@ class EnrollmentUpdate(BaseModel):
     status: Optional[EnrollmentStatus] = None
     payment_status: Optional[PaymentStatus] = None
     cohort_id: Optional[UUID] = None  # Allow assigning/changing cohort
+    access_suspended: Optional[bool] = None
+    missed_installments_count: Optional[int] = None
+
+
+class EnrollmentInstallmentResponse(BaseModel):
+    id: UUID
+    installment_number: int
+    amount: int
+    due_at: datetime
+    status: InstallmentStatus
+    paid_at: Optional[datetime] = None
+    payment_reference: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EnrollmentMarkPaidRequest(BaseModel):
+    installment_id: Optional[UUID] = None
+    installment_number: Optional[int] = Field(default=None, ge=1)
+    payment_reference: Optional[str] = None
+    paid_at: Optional[datetime] = None
+
+
+class AdminDropoutActionRequest(BaseModel):
+    """Admin action on an enrollment that is in DROPOUT_PENDING state."""
+
+    action: str  # "approve" → confirm drop, "reverse" → reinstate to ENROLLED
+    note: Optional[str] = None  # Optional admin note for the record
 
 
 class EnrollmentResponse(EnrollmentBase):
@@ -228,10 +276,15 @@ class EnrollmentResponse(EnrollmentBase):
     preferences: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
+    total_installments: int = 0
+    paid_installments_count: int = 0
+    missed_installments_count: int = 0
+    access_suspended: bool = False
 
     # Include details for UI
     cohort: Optional[CohortResponse] = None
     program: Optional[ProgramResponse] = None
+    installments: List[EnrollmentInstallmentResponse] = Field(default_factory=list)
 
     # Member info (populated by endpoint, not from ORM)
     member_name: Optional[str] = None

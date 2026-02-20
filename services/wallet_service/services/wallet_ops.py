@@ -17,6 +17,7 @@ from services.wallet_service.models import (
     WalletTransaction,
 )
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
@@ -246,7 +247,25 @@ async def debit_wallet(
     wallet.updated_at = utc_now()
 
     # 6. Commit
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Concurrent requests can pass the pre-check before one wins the unique key.
+        await db.rollback()
+        replay = await db.execute(
+            select(WalletTransaction).where(
+                WalletTransaction.idempotency_key == idempotency_key
+            )
+        )
+        existing_after_conflict = replay.scalar_one_or_none()
+        if existing_after_conflict:
+            logger.info(
+                "Idempotent conflict resolved for key=%s → txn=%s",
+                idempotency_key,
+                existing_after_conflict.id,
+            )
+            return existing_after_conflict
+        raise
     await db.refresh(txn)
 
     logger.info(
@@ -338,7 +357,25 @@ async def credit_wallet(
     wallet.updated_at = utc_now()
 
     # 5. Commit
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Concurrent requests can pass the pre-check before one wins the unique key.
+        await db.rollback()
+        replay = await db.execute(
+            select(WalletTransaction).where(
+                WalletTransaction.idempotency_key == idempotency_key
+            )
+        )
+        existing_after_conflict = replay.scalar_one_or_none()
+        if existing_after_conflict:
+            logger.info(
+                "Idempotent conflict resolved for key=%s → txn=%s",
+                idempotency_key,
+                existing_after_conflict.id,
+            )
+            return existing_after_conflict
+        raise
     await db.refresh(txn)
 
     logger.info(

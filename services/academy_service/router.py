@@ -24,6 +24,11 @@ from libs.common.service_client import (
     internal_post,
 )
 from libs.db.session import get_async_db
+from services.academy_service.installments import (
+    build_schedule,
+    mark_overdue_installments,
+    sync_enrollment_installment_state,
+)
 from services.academy_service.models import (
     CoachAssignment,
     CoachGrade,
@@ -32,7 +37,9 @@ from services.academy_service.models import (
     CohortResource,
     CohortStatus,
     Enrollment,
+    EnrollmentInstallment,
     EnrollmentStatus,
+    InstallmentStatus,
     Milestone,
     PaymentStatus,
     Program,
@@ -42,6 +49,7 @@ from services.academy_service.models import (
     StudentProgress,
 )
 from services.academy_service.schemas import (
+    AdminDropoutActionRequest,
     AICoachSuggestion,
     AICoachSuggestionResponse,
     AIDimensionSuggestion,
@@ -61,6 +69,7 @@ from services.academy_service.schemas import (
     DimensionLabelsResponse,
     EligibleCoachResponse,
     EnrollmentCreate,
+    EnrollmentMarkPaidRequest,
     EnrollmentResponse,
     EnrollmentUpdate,
     MemberMilestoneClaimRequest,
@@ -98,6 +107,147 @@ async def _ensure_active_coach(coach_member_id: uuid.UUID) -> None:
             status_code=400,
             detail="Coach must complete onboarding before assignment",
         )
+
+
+def _resolve_enrollment_total_fee(program: Program, cohort: Cohort | None) -> int:
+    if cohort and cohort.price_override is not None:
+        return int(cohort.price_override)
+    return int(program.price_amount or 0)
+
+
+async def _list_enrollment_installments(
+    db: AsyncSession, enrollment_id: uuid.UUID
+) -> list[EnrollmentInstallment]:
+    result = await db.execute(
+        select(EnrollmentInstallment)
+        .where(EnrollmentInstallment.enrollment_id == enrollment_id)
+        .order_by(EnrollmentInstallment.installment_number.asc())
+    )
+    return result.scalars().all()
+
+
+async def _ensure_installment_plan(
+    db: AsyncSession,
+    enrollment: Enrollment,
+    program: Program | None,
+    cohort: Cohort | None,
+    *,
+    use_installments: bool = False,
+) -> list[EnrollmentInstallment]:
+    """
+    Build the installment schedule for an enrollment if it doesn't exist yet.
+
+    Schedule is only created when:
+    - ``use_installments=True`` (member explicitly opted in at checkout), AND
+    - ``cohort.installment_plan_enabled=True`` (admin enabled it for this cohort).
+
+    If installments already exist they are returned as-is regardless of the flag,
+    so re-fetching the enrollment never accidentally clears an existing plan.
+    """
+    installments = await _list_enrollment_installments(db, enrollment.id)
+    if installments:
+        return installments
+
+    # Only build a schedule when both the cohort supports it AND the member chose it.
+    if not use_installments or not getattr(cohort, "installment_plan_enabled", False):
+        return []
+
+    if not program or not cohort:
+        return []
+
+    total_fee = _resolve_enrollment_total_fee(program, cohort)
+    if total_fee <= 0:
+        return []
+
+    # Apply cohort-level overrides if set, otherwise let build_schedule auto-compute.
+    count_override: int | None = getattr(cohort, "installment_count", None)
+    deposit_override: int | None = getattr(cohort, "installment_deposit_amount", None)
+
+    try:
+        schedule = build_schedule(
+            total_fee=total_fee,
+            duration_weeks=int(program.duration_weeks),
+            cohort_start=cohort.start_date,
+            count_override=count_override,
+            deposit_override=deposit_override,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    for item in schedule:
+        db.add(
+            EnrollmentInstallment(
+                enrollment_id=enrollment.id,
+                installment_number=item["installment_number"],
+                amount=item["amount"],
+                due_at=item["due_at"],
+                status=InstallmentStatus.PENDING,
+            )
+        )
+
+    enrollment.price_snapshot_amount = total_fee
+    enrollment.currency_snapshot = program.currency or "NGN"
+    await db.flush()
+    return await _list_enrollment_installments(db, enrollment.id)
+
+
+async def _sync_installment_state_for_enrollment(
+    db: AsyncSession,
+    enrollment: Enrollment,
+    *,
+    now_dt=None,
+    use_installments: bool = False,
+) -> list[EnrollmentInstallment]:
+    cohort = enrollment.__dict__.get("cohort")
+    program = enrollment.__dict__.get("program")
+
+    if cohort is None and enrollment.cohort_id:
+        cohort = (
+            (
+                await db.execute(
+                    select(Cohort)
+                    .where(Cohort.id == enrollment.cohort_id)
+                    .options(selectinload(Cohort.program))
+                )
+            )
+            .scalars()
+            .first()
+        )
+        enrollment.cohort = cohort
+
+    if program is None and cohort is not None:
+        program = cohort.__dict__.get("program")
+
+    if program is None and enrollment.program_id:
+        program = (
+            (
+                await db.execute(
+                    select(Program).where(Program.id == enrollment.program_id)
+                )
+            )
+            .scalars()
+            .first()
+        )
+        enrollment.program = program
+
+    installments = await _ensure_installment_plan(
+        db, enrollment, program, cohort, use_installments=use_installments
+    )
+    if not installments or not cohort or not program:
+        return installments
+
+    effective_now = now_dt or utc_now()
+    mark_overdue_installments(installments, now=effective_now)
+    sync_enrollment_installment_state(
+        enrollment=enrollment,
+        installments=installments,
+        duration_weeks=int(program.duration_weeks),
+        cohort_start=cohort.start_date,
+        cohort_requires_approval=bool(cohort.require_approval),
+        admin_dropout_approval=bool(cohort.admin_dropout_approval),
+        now=effective_now,
+    )
+    return installments
 
 
 # --- Admin Tasks ---
@@ -665,11 +815,15 @@ async def list_my_coach_students(
             selectinload(Enrollment.progress_records),
             joinedload(Enrollment.cohort).joinedload(Cohort.program),
             joinedload(Enrollment.program),
+            selectinload(Enrollment.installments),
         )
         .order_by(Enrollment.created_at.desc())
     )
     result = await db.execute(query)
     enrollments = result.unique().scalars().all()
+    for enrollment in enrollments:
+        await _sync_installment_state_for_enrollment(db, enrollment)
+    await db.commit()
 
     # Enrich with member names from members service
     enriched = []
@@ -1368,10 +1522,14 @@ async def list_cohort_students(
             selectinload(Enrollment.progress_records),
             joinedload(Enrollment.cohort).joinedload(Cohort.program),
             joinedload(Enrollment.program),
+            selectinload(Enrollment.installments),
         )
     )
     result = await db.execute(query)
     enrollments = result.unique().scalars().all()
+    for enrollment in enrollments:
+        await _sync_installment_state_for_enrollment(db, enrollment)
+    await db.commit()
 
     # Enrich with member names from members service
     enriched = []
@@ -1432,8 +1590,6 @@ async def enroll_student(
     current_user: AuthUser = Depends(require_admin),  # Admin can enroll anyone
     db: AsyncSession = Depends(get_async_db),
 ):
-    # Check if already enrolled
-    # Check if already enrolled in this program/cohort
     query = select(Enrollment).where(
         Enrollment.member_id == enrollment_in.member_id,
         Enrollment.program_id == enrollment_in.program_id,
@@ -1446,6 +1602,25 @@ async def enroll_student(
             status_code=400, detail="Member already enrolled in this cohort"
         )
 
+    program = (
+        await db.execute(select(Program).where(Program.id == enrollment_in.program_id))
+    ).scalar_one_or_none()
+    if not program:
+        raise HTTPException(status_code=404, detail="Program not found")
+
+    cohort = None
+    if enrollment_in.cohort_id:
+        cohort = (
+            await db.execute(select(Cohort).where(Cohort.id == enrollment_in.cohort_id))
+        ).scalar_one_or_none()
+        if not cohort:
+            raise HTTPException(status_code=404, detail="Cohort not found")
+        if cohort.program_id != enrollment_in.program_id:
+            raise HTTPException(
+                status_code=400, detail="Cohort does not belong to the selected program"
+            )
+
+    price_snapshot = _resolve_enrollment_total_fee(program, cohort)
     enrollment = Enrollment(
         program_id=enrollment_in.program_id,
         cohort_id=enrollment_in.cohort_id,
@@ -1453,11 +1628,26 @@ async def enroll_student(
         status=EnrollmentStatus.ENROLLED,  # Admin enrolls directly
         payment_status=PaymentStatus.PENDING,
         preferences=enrollment_in.preferences,
+        price_snapshot_amount=price_snapshot,
+        currency_snapshot=program.currency or "NGN",
     )
     db.add(enrollment)
+
+    await db.flush()
+    await _sync_installment_state_for_enrollment(db, enrollment)
+
     await db.commit()
-    await db.refresh(enrollment)
-    return enrollment
+
+    refreshed = await db.execute(
+        select(Enrollment)
+        .where(Enrollment.id == enrollment.id)
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
+        )
+    )
+    return refreshed.scalar_one()
 
 
 @router.get("/enrollments", response_model=List[EnrollmentResponse])
@@ -1471,7 +1661,11 @@ async def list_enrollments(
 
     query = (
         select(Enrollment)
-        .options(selectinload(Enrollment.cohort), selectinload(Enrollment.program))
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
+        )
         .order_by(Enrollment.created_at.desc())
     )
 
@@ -1479,8 +1673,11 @@ async def list_enrollments(
         query = query.where(Enrollment.status == status)
 
     result = await db.execute(query)
-    result = await db.execute(query)
-    return result.scalars().all()
+    enrollments = result.scalars().all()
+    for enrollment in enrollments:
+        await _sync_installment_state_for_enrollment(db, enrollment)
+    await db.commit()
+    return enrollments
 
 
 @router.get("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
@@ -1495,13 +1692,20 @@ async def get_enrollment(
     query = (
         select(Enrollment)
         .where(Enrollment.id == enrollment_id)
-        .options(selectinload(Enrollment.cohort), selectinload(Enrollment.program))
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
+        )
     )
     result = await db.execute(query)
     enrollment = result.scalar_one_or_none()
 
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    await _sync_installment_state_for_enrollment(db, enrollment)
+    await db.commit()
 
     # Enrich with member name/email
     data = EnrollmentResponse.model_validate(enrollment)
@@ -1542,6 +1746,8 @@ async def self_enroll(
 
     program_id = uuid.UUID(program_id_str) if program_id_str else None
     cohort_id = uuid.UUID(cohort_id_str) if cohort_id_str else None
+    program = None
+    cohort = None
 
     # 1. Get Member ID via members-service
     member = await get_member_by_auth_id(
@@ -1672,8 +1878,18 @@ async def self_enroll(
         status=enrollment_status,
         payment_status=PaymentStatus.PENDING,
         preferences=preferences or {},
+        price_snapshot_amount=(
+            _resolve_enrollment_total_fee(program, cohort)
+            if (program and cohort)
+            else None
+        ),
+        currency_snapshot=(program.currency if program else None),
     )
     db.add(enrollment)
+
+    await db.flush()
+    await _sync_installment_state_for_enrollment(db, enrollment)
+
     await db.commit()
 
     # Re-fetch with relationships to avoid lazy loading issues
@@ -1682,7 +1898,11 @@ async def self_enroll(
     query = (
         select(Enrollment)
         .where(Enrollment.id == enrollment.id)
-        .options(selectinload(Enrollment.cohort), selectinload(Enrollment.program))
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
+        )
     )
     result = await db.execute(query)
     return result.scalar_one()
@@ -1701,10 +1921,15 @@ async def get_my_enrollments(
         .options(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
         )
     )
     result = await db.execute(query)
-    return result.scalars().all()
+    enrollments = result.scalars().all()
+    for enrollment in enrollments:
+        await _sync_installment_state_for_enrollment(db, enrollment)
+    await db.commit()
+    return enrollments
 
 
 @router.get("/my-enrollments/{enrollment_id}/waitlist-position")
@@ -1767,6 +1992,7 @@ async def get_my_enrollment(
         .options(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
         )
     )
     result = await db.execute(query)
@@ -1775,18 +2001,24 @@ async def get_my_enrollment(
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
 
+    await _sync_installment_state_for_enrollment(db, enrollment)
+    await db.commit()
     return enrollment
 
 
 @router.get("/internal/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
 async def get_enrollment_internal(
     enrollment_id: uuid.UUID,
+    use_installments: bool = False,
     db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get a single enrollment by ID (internal service-to-service call).
     Used by payments service to lookup enrollment details.
     No auth required as this is called with service role token.
+
+    Pass ``?use_installments=true`` when the member opted for an installment
+    plan at checkout — this triggers schedule creation if none exists yet.
     """
     from sqlalchemy.orm import selectinload
 
@@ -1796,12 +2028,17 @@ async def get_enrollment_internal(
         .options(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
         )
     )
     result = await db.execute(query)
     enrollment = result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
+    await _sync_installment_state_for_enrollment(
+        db, enrollment, use_installments=use_installments
+    )
+    await db.commit()
     return enrollment
 
 
@@ -1880,6 +2117,7 @@ async def get_enrollment_onboarding(
         .options(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
         )
     )
     result = await db.execute(query)
@@ -1887,6 +2125,9 @@ async def get_enrollment_onboarding(
 
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    await _sync_installment_state_for_enrollment(db, enrollment)
+    await db.commit()
 
     cohort = enrollment.cohort
     program = enrollment.program or (cohort.program if cohort else None)
@@ -1939,7 +2180,7 @@ async def get_enrollment_onboarding(
         prep_materials=program.prep_materials,
         dashboard_link=f"/account/academy/enrollments/{enrollment.id}",
         resources_link=f"/account/academy/cohorts/{cohort.id}/resources",
-        sessions_link="/sessions",
+        sessions_link="/account/sessions",
         coach_name=coach_name,
         total_milestones=total_milestones,
     )
@@ -1951,9 +2192,21 @@ async def list_cohort_enrollments(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    query = select(Enrollment).where(Enrollment.cohort_id == cohort_id)
+    query = (
+        select(Enrollment)
+        .where(Enrollment.cohort_id == cohort_id)
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
+        )
+    )
     result = await db.execute(query)
-    return result.scalars().all()
+    enrollments = result.scalars().all()
+    for enrollment in enrollments:
+        await _sync_installment_state_for_enrollment(db, enrollment)
+    await db.commit()
+    return enrollments
 
 
 @router.get("/cohorts/{cohort_id}/analytics")
@@ -2240,6 +2493,7 @@ async def update_enrollment(
         .options(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
         )
     )
     result = await db.execute(query)
@@ -2252,6 +2506,7 @@ async def update_enrollment(
     for field, value in update_data.items():
         setattr(enrollment, field, value)
 
+    await _sync_installment_state_for_enrollment(db, enrollment)
     await db.commit()
 
     # Reload with relationships eager loaded to avoid lazy-load during response serialization
@@ -2265,6 +2520,7 @@ async def update_enrollment(
 )
 async def admin_mark_enrollment_paid(
     enrollment_id: uuid.UUID,
+    payload: EnrollmentMarkPaidRequest | None = None,
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -2277,7 +2533,11 @@ async def admin_mark_enrollment_paid(
     query = (
         select(Enrollment)
         .where(Enrollment.id == enrollment_id)
-        .options(selectinload(Enrollment.cohort), selectinload(Enrollment.program))
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
+        )
     )
     result = await db.execute(query)
     enrollment = result.scalar_one_or_none()
@@ -2285,55 +2545,286 @@ async def admin_mark_enrollment_paid(
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
 
-    # Update payment status to PAID
-    enrollment.payment_status = PaymentStatus.PAID
+    if payload and payload.paid_at:
+        now_dt = payload.paid_at
+    else:
+        now_dt = utc_now()
+    mark_payload = payload or EnrollmentMarkPaidRequest()
 
-    # If enrollment was pending approval, check if cohort requires manual approval
-    if enrollment.status == EnrollmentStatus.PENDING_APPROVAL:
-        cohort = enrollment.cohort
-        # Only auto-promote if cohort doesn't require approval
-        if not cohort or not cohort.require_approval:
-            enrollment.status = EnrollmentStatus.ENROLLED
+    installments = await _sync_installment_state_for_enrollment(
+        db, enrollment, now_dt=now_dt
+    )
+    was_any_installment_paid = enrollment.paid_installments_count > 0
+
+    if installments:
+        paid_statuses = {InstallmentStatus.PAID, InstallmentStatus.WAIVED}
+        target_installment: EnrollmentInstallment | None = None
+
+        if mark_payload.installment_id:
+            target_installment = next(
+                (i for i in installments if i.id == mark_payload.installment_id), None
+            )
+            if not target_installment:
+                raise HTTPException(status_code=400, detail="installment_id is invalid")
+        elif mark_payload.installment_number:
+            target_installment = next(
+                (
+                    i
+                    for i in installments
+                    if i.installment_number == mark_payload.installment_number
+                ),
+                None,
+            )
+            if not target_installment:
+                raise HTTPException(
+                    status_code=400, detail="installment_number is invalid"
+                )
+        else:
+            target_installment = next(
+                (i for i in installments if i.status not in paid_statuses),
+                None,
+            )
+
+        if target_installment and target_installment.status not in paid_statuses:
+            target_installment.status = InstallmentStatus.PAID
+            target_installment.paid_at = now_dt
+            target_installment.payment_reference = mark_payload.payment_reference
+
+        if mark_payload.payment_reference:
+            enrollment.payment_reference = mark_payload.payment_reference
+
+        await _sync_installment_state_for_enrollment(db, enrollment, now_dt=now_dt)
+    else:
+        enrollment.payment_status = PaymentStatus.PAID
+        enrollment.payment_reference = mark_payload.payment_reference
+        enrollment.paid_at = now_dt
+        if enrollment.status == EnrollmentStatus.PENDING_APPROVAL:
+            cohort = enrollment.cohort
+            if not cohort or not cohort.require_approval:
+                enrollment.status = EnrollmentStatus.ENROLLED
 
     await db.commit()
 
-    # Send enrollment confirmation email
+    should_send_confirmation = (
+        not was_any_installment_paid and enrollment.paid_installments_count > 0
+    ) or (not installments and enrollment.payment_status == PaymentStatus.PAID)
+
+    # Send enrollment confirmation email on first successful installment.
+    if should_send_confirmation:
+        try:
+            member_data = await get_member_by_id(
+                str(enrollment.member_id), calling_service="academy"
+            )
+            if member_data:
+                member_email = member_data.get("email")
+                member_name = member_data.get("first_name", "Member")
+
+                if member_email and enrollment.cohort:
+                    program_name = (
+                        enrollment.program.name
+                        if enrollment.program
+                        else "Academy Program"
+                    )
+                    cohort_name = enrollment.cohort.name
+                    start_date = (
+                        enrollment.cohort.start_date.strftime("%B %d, %Y")
+                        if enrollment.cohort.start_date
+                        else "TBD"
+                    )
+                    location = enrollment.cohort.location_name or None
+
+                    # Resolve coach name from assignments if available
+                    coach_name = None
+                    if (
+                        hasattr(enrollment.cohort, "coach_assignments")
+                        and enrollment.cohort.coach_assignments
+                    ):
+                        lead = (
+                            next(
+                                (
+                                    a
+                                    for a in enrollment.cohort.coach_assignments
+                                    if getattr(a, "role", None) == "lead"
+                                ),
+                                None,
+                            )
+                            or enrollment.cohort.coach_assignments[0]
+                        )
+                        if lead and hasattr(lead, "coach") and lead.coach:
+                            coach_name = f"{lead.coach.first_name} {lead.coach.last_name}".strip()
+
+                    # Build installment schedule lines if paying in installments
+                    is_installment = bool(installments)
+                    installment_schedule = None
+                    if is_installment and installments:
+                        installment_schedule = [
+                            f"Installment {inst.installment_number}: "
+                            f"₦{round(inst.amount / 100):,} due "
+                            f"{inst.due_at.strftime('%B %d, %Y') if hasattr(inst.due_at, 'strftime') else str(inst.due_at)}"
+                            for inst in sorted(
+                                installments, key=lambda i: i.installment_number
+                            )
+                        ]
+
+                    email_client = get_email_client()
+                    await email_client.send_template(
+                        template_type="enrollment_confirmation",
+                        to_email=member_email,
+                        template_data={
+                            "member_name": member_name,
+                            "program_name": program_name,
+                            "cohort_name": cohort_name,
+                            "start_date": start_date,
+                            "location": location,
+                            "coach_name": coach_name,
+                            "is_installment": is_installment,
+                            "installment_schedule": installment_schedule,
+                        },
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to send enrollment confirmation email: {e}")
+
+    # Activate the academy tier on the member for the duration of this cohort.
+    # We do this on every installment payment (not just the first) so that if a
+    # later cohort ends after the current academy_paid_until, the date is extended.
+    # The members_service endpoint keeps whichever date is later, so it is safe to
+    # call multiple times.
     try:
-        # Get member email from members service
-        member_data = await get_member_by_id(
-            str(enrollment.member_id), calling_service="academy"
-        )
-        if member_data:
-            member_email = member_data.get("email")
-            member_name = member_data.get("first_name", "Member")
+        _settings = get_settings()
+        cohort_end = enrollment.cohort.end_date if enrollment.cohort else None
+        member_auth_id = None
+        if enrollment.member_id:
+            member_data = await get_member_by_id(
+                str(enrollment.member_id), calling_service="academy"
+            )
+            if member_data:
+                member_auth_id = member_data.get("auth_id")
 
-            if member_email and enrollment.cohort:
-                program_name = (
-                    enrollment.program.name if enrollment.program else "Academy Program"
-                )
-                cohort_name = enrollment.cohort.name
-                start_date = (
-                    enrollment.cohort.start_date.strftime("%B %d, %Y")
-                    if enrollment.cohort.start_date
-                    else "TBD"
-                )
-
-                email_client = get_email_client()
-                await email_client.send_template(
-                    template_type="enrollment_confirmation",
-                    to_email=member_email,
-                    template_data={
-                        "member_name": member_name,
-                        "program_name": program_name,
-                        "cohort_name": cohort_name,
-                        "start_date": start_date,
-                    },
-                )
+        if cohort_end and member_auth_id:
+            end_iso = (
+                cohort_end.isoformat()
+                if hasattr(cohort_end, "isoformat")
+                else str(cohort_end)
+            )
+            await internal_post(
+                service_url=_settings.MEMBERS_SERVICE_URL,
+                path=f"/admin/members/by-auth/{member_auth_id}/academy/activate",
+                calling_service="academy",
+                json={"cohort_end_date": end_iso},
+            )
+        else:
+            logger.warning(
+                f"Skipping academy tier activation for enrollment {enrollment_id}: "
+                f"cohort_end={cohort_end}, member_auth_id={member_auth_id}"
+            )
     except Exception as e:
-        # Log but don't fail the request if email fails
-        logger.warning(f"Failed to send enrollment confirmation email: {e}")
+        # Non-fatal — enrollment payment succeeded; log and continue
+        logger.error(
+            f"Failed to activate academy tier for enrollment {enrollment_id}: {e}"
+        )
 
     # Re-fetch with relationships for response
+    result = await db.execute(query)
+    return result.scalar_one()
+
+
+@router.post(
+    "/admin/enrollments/{enrollment_id}/dropout-action",
+    response_model=EnrollmentResponse,
+)
+async def admin_dropout_action(
+    enrollment_id: uuid.UUID,
+    payload: AdminDropoutActionRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Admin action on a DROPOUT_PENDING enrollment.
+
+    action="approve" → confirms the dropout, moves enrollment to DROPPED.
+    action="reverse"  → reinstates the student, moves enrollment back to ENROLLED
+                        (or PENDING_APPROVAL if the cohort requires it).
+                        The missed_installments_count is NOT reset — it is a
+                        permanent behavioral counter.
+    """
+    query = (
+        select(Enrollment)
+        .where(Enrollment.id == enrollment_id)
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
+        )
+    )
+    result = await db.execute(query)
+    enrollment = result.scalar_one_or_none()
+
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    if enrollment.status != EnrollmentStatus.DROPOUT_PENDING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Enrollment is not in dropout_pending state (current: {enrollment.status})",
+        )
+
+    if payload.action == "approve":
+        enrollment.status = EnrollmentStatus.DROPPED
+        enrollment.access_suspended = True
+        enrollment.payment_status = PaymentStatus.FAILED
+        logger.info(
+            f"Admin {current_user.id} approved dropout for enrollment {enrollment_id}"
+        )
+
+    elif payload.action == "reverse":
+        # Reinstate the student. Access is restored only if installments are current.
+        # missed_installments_count stays as-is (permanent behavioral record).
+        cohort = enrollment.cohort
+        requires_approval = bool(cohort.require_approval) if cohort else False
+        enrollment.status = (
+            EnrollmentStatus.PENDING_APPROVAL
+            if requires_approval
+            else EnrollmentStatus.ENROLLED
+        )
+        enrollment.access_suspended = False
+        enrollment.payment_status = PaymentStatus.PAID
+
+        # Re-sync to correctly set access_suspended based on actual installment state
+        if cohort:
+            program = enrollment.program or (cohort.program if cohort else None)
+            if program:
+                installments = list(enrollment.installments or [])
+                sync_enrollment_installment_state(
+                    enrollment=enrollment,
+                    installments=installments,
+                    duration_weeks=int(program.duration_weeks),
+                    cohort_start=cohort.start_date,
+                    cohort_requires_approval=requires_approval,
+                    admin_dropout_approval=bool(cohort.admin_dropout_approval),
+                    now=utc_now(),
+                )
+                # Override: admin has manually reinstated, so force out of dropout states
+                if enrollment.status in (
+                    EnrollmentStatus.DROPPED,
+                    EnrollmentStatus.DROPOUT_PENDING,
+                ):
+                    enrollment.status = (
+                        EnrollmentStatus.PENDING_APPROVAL
+                        if requires_approval
+                        else EnrollmentStatus.ENROLLED
+                    )
+
+        logger.info(
+            f"Admin {current_user.id} reversed dropout for enrollment {enrollment_id}"
+        )
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid action. Must be 'approve' or 'reverse'.",
+        )
+
+    await db.commit()
+
     result = await db.execute(query)
     return result.scalar_one()
 
@@ -2356,7 +2847,15 @@ async def update_student_progress(
     - Coaches (can only update enrollments in their assigned cohorts)
     """
     # First, get the enrollment to check cohort access
-    enrollment_query = select(Enrollment).where(Enrollment.id == enrollment_id)
+    enrollment_query = (
+        select(Enrollment)
+        .where(Enrollment.id == enrollment_id)
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
+        )
+    )
     enrollment_result = await db.execute(enrollment_query)
     enrollment = enrollment_result.scalar_one_or_none()
 
@@ -2467,17 +2966,26 @@ async def claim_milestone(
             detail="You can only claim milestones for your own enrollments",
         )
 
-    # Check enrollment is approved and paid before allowing claims
+    await _sync_installment_state_for_enrollment(db, enrollment)
+    await db.commit()
+
+    # Check enrollment is approved and in good standing before allowing claims
     if enrollment.status == EnrollmentStatus.PENDING_APPROVAL:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your enrollment is awaiting admin approval. You cannot claim milestones yet.",
         )
 
-    if enrollment.payment_status != PaymentStatus.PAID:
+    if enrollment.status == EnrollmentStatus.DROPPED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Payment is required before claiming milestones.",
+            detail="Your enrollment has been dropped. Contact admin for reactivation.",
+        )
+
+    if enrollment.access_suspended:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access is suspended until required installment payment is completed.",
         )
 
     # Verify milestone exists and belongs to the program
