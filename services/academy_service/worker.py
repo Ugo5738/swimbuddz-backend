@@ -38,6 +38,14 @@ async def task_transition_cohort_statuses(ctx: dict):
     await transition_cohort_statuses()
 
 
+async def task_evaluate_installment_compliance(ctx: dict):
+    """Enforce installment due/suspension/dropout rules."""
+    from services.academy_service.tasks import evaluate_installment_compliance
+
+    logger.info("Running: evaluate_installment_compliance")
+    await evaluate_installment_compliance()
+
+
 async def task_check_and_issue_certificates(ctx: dict):
     """Issue certificates for completed enrollments."""
     from services.academy_service.tasks import check_and_issue_certificates
@@ -69,12 +77,14 @@ class WorkerSettings:
     """ARQ worker settings with cron job schedules."""
 
     redis_settings = get_redis_settings()
+    queue_name = "arq:academy"
 
     # Register all task functions so ARQ can discover them
     functions = [
         task_send_enrollment_reminders,
         task_process_waitlist,
         task_transition_cohort_statuses,
+        task_evaluate_installment_compliance,
         task_check_and_issue_certificates,
         task_send_weekly_progress_reports,
         task_check_attendance_and_notify,
@@ -95,6 +105,11 @@ class WorkerSettings:
         cron(
             task_transition_cohort_statuses,
             minute=30,
+            run_at_startup=False,
+        ),
+        cron(
+            task_evaluate_installment_compliance,
+            minute=45,
             run_at_startup=False,
         ),
         # Daily tasks (6 AM UTC)

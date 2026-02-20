@@ -23,6 +23,7 @@ async def task_retry_payment_fulfillment(ctx: dict):
 
 class WorkerSettings:
     redis_settings = get_redis_settings()
+    queue_name = "arq:payments"
 
     functions = [
         task_reconcile_pending_payments,

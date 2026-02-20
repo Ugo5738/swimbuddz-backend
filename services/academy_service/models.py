@@ -7,7 +7,7 @@ from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from sqlalchemy import JSON, Boolean, Date, DateTime
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,6 +47,9 @@ class EnrollmentStatus(str, enum.Enum):
     PENDING_APPROVAL = "pending_approval"
     ENROLLED = "enrolled"
     WAITLIST = "waitlist"
+    DROPOUT_PENDING = (
+        "dropout_pending"  # 2 missed payments; awaiting admin approval to drop
+    )
     DROPPED = "dropped"
     GRADUATED = "graduated"
 
@@ -61,6 +64,13 @@ class PaymentStatus(str, enum.Enum):
     PENDING = "pending"
     PAID = "paid"
     FAILED = "failed"
+    WAIVED = "waived"
+
+
+class InstallmentStatus(str, enum.Enum):
+    PENDING = "pending"
+    PAID = "paid"
+    MISSED = "missed"
     WAIVED = "waived"
 
 
@@ -381,7 +391,26 @@ class Cohort(Base):
     require_approval: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="false"
     )
+    # If True, admin must manually approve every dropout instead of it being automatic.
+    # When enabled, enrollment moves to DROPOUT_PENDING at missed_count=2 and waits for admin action.
+    admin_dropout_approval: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
     notes_internal: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # ── Installment billing ──────────────────────────────────────────────────
+    # When enabled, members can choose to pay in installments at checkout.
+    # The admin sets the number of installments and the deposit (first payment).
+    # Remaining installments are auto-debited from the member's wallet on schedule.
+    installment_plan_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
+    # Number of total installments (e.g. 3 means deposit + 2 follow-up payments)
+    installment_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Deposit amount in kobo. If null, defaults to (total_price / installment_count).
+    installment_deposit_amount: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
 
     # Coach grade requirement (derived from complexity score)
     # Values: "grade_1", "grade_2", "grade_3" (stored as strings for compatibility)
@@ -501,6 +530,18 @@ class Enrollment(Base):
     paid_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    total_installments: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, server_default="0"
+    )
+    paid_installments_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, server_default="0"
+    )
+    missed_installments_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, server_default="0"
+    )
+    access_suspended: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
 
     # Enrollment tracking
     enrolled_at: Mapped[Optional[datetime]] = mapped_column(
@@ -531,10 +572,62 @@ class Enrollment(Base):
     # Relationships
     program = relationship("Program")
     cohort = relationship("Cohort", back_populates="enrollments")
+    installments = relationship(
+        "EnrollmentInstallment",
+        back_populates="enrollment",
+        order_by="EnrollmentInstallment.installment_number",
+        cascade="all, delete-orphan",
+    )
     progress_records = relationship("StudentProgress", back_populates="enrollment")
 
     def __repr__(self):
         return f"<Enrollment Member={self.member_id} Cohort={self.cohort_id}>"
+
+
+class EnrollmentInstallment(Base):
+    __tablename__ = "enrollment_installments"
+    __table_args__ = (
+        UniqueConstraint(
+            "enrollment_id",
+            "installment_number",
+            name="uq_enrollment_installment_number",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    enrollment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("enrollments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    installment_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[InstallmentStatus] = mapped_column(
+        SAEnum(InstallmentStatus, name="installment_status_enum"),
+        nullable=False,
+        default=InstallmentStatus.PENDING,
+        server_default="PENDING",
+    )
+    paid_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    payment_reference: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    enrollment = relationship("Enrollment", back_populates="installments")
+
+    def __repr__(self):
+        return f"<EnrollmentInstallment Enrollment={self.enrollment_id} No={self.installment_number} Status={self.status}>"
 
 
 # ============================================================================

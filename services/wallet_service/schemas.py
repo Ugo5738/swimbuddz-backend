@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
-
 from services.wallet_service.models import (
     AuditAction,
     GrantType,
@@ -17,7 +16,6 @@ from services.wallet_service.models import (
     WalletStatus,
     WalletTier,
 )
-
 
 # ---------------------------------------------------------------------------
 # Wallet Schemas
@@ -91,6 +89,10 @@ class TopupInitiateRequest(BaseModel):
         ..., ge=25, le=5000, description="Bubbles to purchase (25–5,000)"
     )
     payment_method: PaymentMethod = PaymentMethod.PAYSTACK
+    callback_url: Optional[str] = Field(
+        None,
+        description="Frontend path to redirect to after payment (e.g. /coach/wallet). Defaults to /account/wallet.",
+    )
 
 
 class TopupResponse(BaseModel):
@@ -203,6 +205,36 @@ class GrantWelcomeBonusResponse(BaseModel):
     wallet_id: uuid.UUID
     bonus_granted: bool
     bubbles_awarded: int
+
+
+# ---------------------------------------------------------------------------
+# Admin Internal Schemas
+# ---------------------------------------------------------------------------
+
+
+class AdminScholarshipCreditRequest(BaseModel):
+    """Admin-initiated wallet credit for scholarship or discount deposits.
+
+    Called by academy_service admin endpoints (or directly by admin tooling)
+    to deposit Bubbles that cover part or all of a student's installment fees.
+    The credit is applied immediately and the idempotency_key ensures that
+    retries do not double-credit the same grant.
+    """
+
+    member_auth_id: str
+    amount: int = Field(..., gt=0, description="Amount in Bubbles (kobo-unit integers)")
+    idempotency_key: str = Field(
+        ...,
+        description=(
+            "Unique key for this credit operation. "
+            "Recommended format: scholarship-{enrollment_id}-{reason_slug}"
+        ),
+    )
+    reason: str = Field(
+        ..., min_length=3, description="Reason for credit (e.g. 'scholarship_50pct')"
+    )
+    grant_type: GrantType = GrantType.SCHOLARSHIP
+    enrollment_id: Optional[str] = None  # For audit trail linking
 
 
 # ---------------------------------------------------------------------------

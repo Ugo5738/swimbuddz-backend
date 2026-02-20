@@ -26,6 +26,7 @@ class CreatePaymentIntentRequest(BaseModel):
     enrollment_id: Optional[uuid.UUID] = None  # For ACADEMY_COHORT payments
     order_id: Optional[uuid.UUID] = None  # For STORE_ORDER payments
     discount_code: Optional[str] = None  # Optional discount code
+    use_installments: bool = False  # True → member chose installment plan at checkout
     include_community_extension: bool = (
         False  # Include Community extension if Club exceeds
     )

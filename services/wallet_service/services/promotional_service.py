@@ -43,11 +43,18 @@ async def grant_promotional_bubbles(
     wallet = await get_wallet_by_auth_id(db, member_auth_id)
 
     # Calculate expiry
+    # Scholarship and discount credits never expire — they're real fee reductions.
+    # Welcome bonus never expires either. Everything else gets a default 60-day window.
+    _no_expiry_types = (
+        GrantType.WELCOME_BONUS,
+        GrantType.SCHOLARSHIP,
+        GrantType.DISCOUNT,
+    )
     expires_at = None
     if expires_in_days is not None:
         expires_at = utc_now() + timedelta(days=expires_in_days)
-    elif grant_type not in (GrantType.WELCOME_BONUS,):
-        # Default expiry for non-welcome grants
+    elif grant_type not in _no_expiry_types:
+        # Default expiry for non-welcome, non-scholarship grants
         expires_at = utc_now() + timedelta(days=DEFAULT_PROMO_EXPIRY_DAYS)
 
     grant = PromotionalBubbleGrant(
@@ -70,6 +77,10 @@ async def grant_promotional_bubbles(
         desc_text = f"Promo — {campaign_code} ({bubbles_amount} 🫧)"
     elif grant_type == GrantType.COMPENSATION:
         desc_text = f"Adjustment — credited by admin ({bubbles_amount} 🫧)"
+    elif grant_type == GrantType.SCHOLARSHIP:
+        desc_text = f"Scholarship credit — {reason} ({bubbles_amount} 🫧)"
+    elif grant_type == GrantType.DISCOUNT:
+        desc_text = f"Discount credit — {reason} ({bubbles_amount} 🫧)"
     else:
         desc_text = f"Promo — {reason} ({bubbles_amount} 🫧)"
 
