@@ -134,7 +134,7 @@ async def send_password_reset_email(
             border_color="#0891b2",
         )
         + '<hr class="divider" />'
-        + "<p style=\"font-size: 13px; color: #94a3b8;\">Button not working? Copy and paste this link into your browser:<br/>"
+        + '<p style="font-size: 13px; color: #94a3b8;">Button not working? Copy and paste this link into your browser:<br/>'
         + f'<a href="{reset_url}" style="color: #0891b2; word-break: break-all;">{reset_url}</a></p>'
     )
 
