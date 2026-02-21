@@ -187,6 +187,7 @@ async def send_templated_email(
     - session_confirmation: Session booking confirmed
     - store_order_confirmation: Store order confirmed
     - store_order_ready: Store order ready for pickup/shipped
+    - password_reset: Password reset link
 
     Requires service role authentication (internal service-to-service calls).
     """
@@ -377,6 +378,10 @@ async def send_templated_email(
             rejection_reason=d.get(
                 "rejection_reason", "Does not meet current criteria"
             ),
+        ),
+        "password_reset": lambda d: members.send_password_reset_email(
+            to_email=request.to_email,
+            reset_url=d.get("reset_url", ""),
         ),
         # --- Payment templates ---
         "payment_approved": lambda d: payments.send_payment_approved_email(
