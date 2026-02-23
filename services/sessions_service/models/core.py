@@ -1,54 +1,20 @@
-import enum
 import uuid
 from datetime import datetime, time
 from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
+from services.sessions_service.models.enums import (
+    SessionLocation,
+    SessionStatus,
+    SessionType,
+    enum_values,
+)
 from sqlalchemy import Boolean, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import Float, ForeignKey, Integer, String, Text, Time
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-# Persist enum .value strings in DB.
-_enum_values = lambda enum_cls: [member.value for member in enum_cls]
-
-# ============================================================================
-# ENUMS
-# ============================================================================
-
-
-class SessionLocation(str, enum.Enum):
-    """Predefined pool locations."""
-
-    SUNFIT_POOL = "sunfit_pool"
-    ROWE_PARK_POOL = "rowe_park_pool"
-    FEDERAL_PALACE_POOL = "federal_palace_pool"
-    OPEN_WATER = "open_water"
-    OTHER = "other"  # Use custom location fields
-
-
-class SessionType(str, enum.Enum):
-    """Type of session - determines which fields are relevant."""
-
-    COHORT_CLASS = "cohort_class"  # Academy cohort session
-    ONE_ON_ONE = "one_on_one"  # 1:1 coaching session
-    GROUP_BOOKING = "group_booking"  # Small group booking
-    CLUB = "club"  # Club swim session
-    COMMUNITY = "community"  # Community event session
-    EVENT = "event"  # Linked to events service
-
-
-class SessionStatus(str, enum.Enum):
-    """Session lifecycle status."""
-
-    DRAFT = "draft"  # Not visible to members, no notifications sent
-    SCHEDULED = "scheduled"  # Published and visible, notifications active
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-
 
 # ============================================================================
 # SESSION MODEL
@@ -69,7 +35,7 @@ class Session(Base):
         SAEnum(
             SessionType,
             name="session_type_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         nullable=False,
@@ -80,7 +46,7 @@ class Session(Base):
         SAEnum(
             SessionStatus,
             name="session_status_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         nullable=False,
@@ -105,7 +71,7 @@ class Session(Base):
         SAEnum(
             SessionLocation,
             name="session_location_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         nullable=True,
@@ -219,7 +185,7 @@ class SessionTemplate(Base):
         SAEnum(
             SessionType,
             name="session_type_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
             create_type=False,
         ),

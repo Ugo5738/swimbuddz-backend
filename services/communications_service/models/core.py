@@ -1,42 +1,23 @@
-import enum
 import uuid
 from datetime import datetime
 from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
+from services.communications_service.models.enums import (
+    AnnouncementAudience,
+    AnnouncementCategory,
+    AnnouncementStatus,
+    MessageRecipientType,
+    ScheduledNotificationStatus,
+    SessionNotificationType,
+    enum_values,
+)
 from sqlalchemy import Boolean, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
-
-# Persist enum .value strings in DB.
-_enum_values = lambda enum_cls: [member.value for member in enum_cls]
-
-
-class AnnouncementCategory(str, enum.Enum):
-    """Default announcement categories. Custom categories can be added via AnnouncementCategoryConfig."""
-
-    RAIN_UPDATE = "rain_update"
-    SCHEDULE_CHANGE = "schedule_change"
-    ACADEMY_UPDATE = "academy_update"
-    EVENT = "event"
-    COMPETITION = "competition"
-    GENERAL = "general"
-    CUSTOM = "custom"  # For user-defined categories
-
-
-class AnnouncementStatus(str, enum.Enum):
-    DRAFT = "draft"
-    PUBLISHED = "published"
-    ARCHIVED = "archived"
-
-
-class AnnouncementAudience(str, enum.Enum):
-    COMMUNITY = "community"
-    CLUB = "club"
-    ACADEMY = "academy"
 
 
 class Announcement(Base):
@@ -53,7 +34,7 @@ class Announcement(Base):
         SAEnum(
             AnnouncementCategory,
             name="announcement_category_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=AnnouncementCategory.GENERAL,
@@ -66,7 +47,7 @@ class Announcement(Base):
         SAEnum(
             AnnouncementStatus,
             name="announcement_status_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=AnnouncementStatus.PUBLISHED,
@@ -76,7 +57,7 @@ class Announcement(Base):
         SAEnum(
             AnnouncementAudience,
             name="announcement_audience_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=AnnouncementAudience.COMMUNITY,
@@ -267,13 +248,6 @@ class AnnouncementComment(Base):
         return f"<AnnouncementComment announcement={self.announcement_id} member={self.member_id}>"
 
 
-class MessageRecipientType(str, enum.Enum):
-    """Type of message recipient."""
-
-    COHORT = "cohort"
-    STUDENT = "student"
-
-
 class MessageLog(Base):
     """Log of sent messages for audit trail."""
 
@@ -289,7 +263,7 @@ class MessageLog(Base):
         SAEnum(
             MessageRecipientType,
             name="message_recipient_type_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         nullable=False,
@@ -365,27 +339,6 @@ class NotificationPreferences(Base):
 # ============================================================================
 
 
-class SessionNotificationType(str, enum.Enum):
-    """Types of session notifications."""
-
-    SESSION_PUBLISHED = "session_published"  # Immediate announcement on publish
-    REMINDER_24H = "reminder_24h"  # 24 hours before session
-    REMINDER_3H = "reminder_3h"  # 3 hours before session
-    REMINDER_1H = "reminder_1h"  # 1 hour before (coaches only)
-    SESSION_CANCELLED = "session_cancelled"  # Immediate on cancellation
-    SESSION_UPDATED = "session_updated"  # Time/location changed
-    SPOTS_AVAILABLE = "spots_available"  # Waitlist notification
-
-
-class ScheduledNotificationStatus(str, enum.Enum):
-    """Status of a scheduled notification."""
-
-    PENDING = "pending"
-    SENT = "sent"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
-
 class ScheduledNotification(Base):
     """
     Tracks scheduled notifications for sessions.
@@ -404,7 +357,7 @@ class ScheduledNotification(Base):
         SAEnum(
             SessionNotificationType,
             name="session_notification_type_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         nullable=False,
@@ -416,7 +369,7 @@ class ScheduledNotification(Base):
         SAEnum(
             ScheduledNotificationStatus,
             name="scheduled_notification_status_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=ScheduledNotificationStatus.PENDING,
@@ -462,7 +415,7 @@ class SessionNotificationLog(Base):
         SAEnum(
             SessionNotificationType,
             name="session_notification_type_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
             create_type=False,
         ),

@@ -5,10 +5,10 @@ from services.transport_service.models.core import (
     PickupLocation,
     RideArea,
     RideBooking,
-    RideShareOption,
     RouteInfo,
     SessionRideConfig,
 )
+from services.transport_service.models.enums import RideShareOption
 
 __all__ = [
     "MemberRef",

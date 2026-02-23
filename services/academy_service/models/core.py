@@ -1,130 +1,30 @@
-import enum
 import uuid
 from datetime import datetime
 from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
+from services.academy_service.models.enums import (
+    BillingType,
+    CohortStatus,
+    EnrollmentSource,
+    EnrollmentStatus,
+    InstallmentStatus,
+    LocationType,
+    MilestoneType,
+    PaymentStatus,
+    ProgramLevel,
+    ProgressStatus,
+    RequiredEvidence,
+    ResourceSourceType,
+    ResourceVisibility,
+    enum_values,
+)
 from sqlalchemy import JSON, Boolean, Date, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-# Persist enum .value strings in DB (lower snake_case) instead of enum member names.
-_enum_values = lambda enum_cls: [member.value for member in enum_cls]
-
-# ============================================================================
-# ENUMS
-# ============================================================================
-
-
-class ProgramLevel(str, enum.Enum):
-    BEGINNER_1 = "beginner_1"
-    BEGINNER_2 = "beginner_2"
-    INTERMEDIATE = "intermediate"
-    ADVANCED = "advanced"
-    SPECIALTY = "specialty"
-
-
-class BillingType(str, enum.Enum):
-    ONE_TIME = "one_time"
-    SUBSCRIPTION = "subscription"
-    PER_SESSION = "per_session"
-
-
-class CohortStatus(str, enum.Enum):
-    OPEN = "open"
-    ACTIVE = "active"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-
-
-class LocationType(str, enum.Enum):
-    POOL = "pool"
-    OPEN_WATER = "open_water"
-    REMOTE = "remote"
-
-
-class EnrollmentStatus(str, enum.Enum):
-    PENDING_APPROVAL = "pending_approval"
-    ENROLLED = "enrolled"
-    WAITLIST = "waitlist"
-    DROPOUT_PENDING = (
-        "dropout_pending"  # 2 missed payments; awaiting admin approval to drop
-    )
-    DROPPED = "dropped"
-    GRADUATED = "graduated"
-
-
-class EnrollmentSource(str, enum.Enum):
-    WEB = "web"
-    ADMIN = "admin"
-    PARTNER = "partner"
-
-
-class PaymentStatus(str, enum.Enum):
-    PENDING = "pending"
-    PAID = "paid"
-    FAILED = "failed"
-    WAIVED = "waived"
-
-
-class InstallmentStatus(str, enum.Enum):
-    PENDING = "pending"
-    PAID = "paid"
-    MISSED = "missed"
-    WAIVED = "waived"
-
-
-class MilestoneType(str, enum.Enum):
-    SKILL = "skill"
-    ENDURANCE = "endurance"
-    TECHNIQUE = "technique"
-    ASSESSMENT = "assessment"
-
-
-class RequiredEvidence(str, enum.Enum):
-    NONE = "none"
-    VIDEO = "video"
-    TIME_TRIAL = "time_trial"
-
-
-class ProgressStatus(str, enum.Enum):
-    PENDING = "pending"
-    ACHIEVED = "achieved"
-
-
-class ResourceSourceType(str, enum.Enum):
-    URL = "url"
-    UPLOAD = "upload"
-
-
-class ResourceVisibility(str, enum.Enum):
-    PUBLIC = "public"
-    ENROLLED_ONLY = "enrolled_only"
-    COACHES_ONLY = "coaches_only"
-
-
-class ProgramCategory(str, enum.Enum):
-    """Category for program/cohort complexity scoring."""
-
-    LEARN_TO_SWIM = "learn_to_swim"
-    SPECIAL_POPULATIONS = "special_populations"
-    INSTITUTIONAL = "institutional"
-    COMPETITIVE_ELITE = "competitive_elite"
-    CERTIFICATIONS = "certifications"
-    SPECIALIZED_DISCIPLINES = "specialized_disciplines"
-    ADJACENT_SERVICES = "adjacent_services"
-
-
-class CoachGrade(str, enum.Enum):
-    """Coach grade levels based on credentials and experience."""
-
-    GRADE_1 = "grade_1"  # Foundational
-    GRADE_2 = "grade_2"  # Technical
-    GRADE_3 = "grade_3"  # Advanced/Specialist
-
 
 # ============================================================================
 # REFERENCE MODELS
@@ -164,7 +64,7 @@ class Program(Base):
         SAEnum(
             ProgramLevel,
             name="program_level_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         nullable=False,
@@ -183,7 +83,7 @@ class Program(Base):
         SAEnum(
             BillingType,
             name="billing_type_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=BillingType.ONE_TIME,
@@ -380,7 +280,7 @@ class Cohort(Base):
         SAEnum(
             LocationType,
             name="location_type_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=LocationType.POOL,
@@ -401,7 +301,7 @@ class Cohort(Base):
         SAEnum(
             CohortStatus,
             name="cohort_status_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=CohortStatus.OPEN,
@@ -485,7 +385,7 @@ class CohortResource(Base):
         SAEnum(
             ResourceSourceType,
             name="resource_source_type_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=ResourceSourceType.URL,
@@ -503,7 +403,7 @@ class CohortResource(Base):
         SAEnum(
             ResourceVisibility,
             name="resource_visibility_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=ResourceVisibility.ENROLLED_ONLY,
@@ -553,7 +453,7 @@ class Enrollment(Base):
         SAEnum(
             EnrollmentStatus,
             name="enrollment_status_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=EnrollmentStatus.PENDING_APPROVAL,
@@ -564,7 +464,7 @@ class Enrollment(Base):
         SAEnum(
             PaymentStatus,
             name="academy_payment_status_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=PaymentStatus.PENDING,
@@ -596,7 +496,7 @@ class Enrollment(Base):
         SAEnum(
             EnrollmentSource,
             name="enrollment_source_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=EnrollmentSource.WEB,
@@ -660,7 +560,7 @@ class EnrollmentInstallment(Base):
         SAEnum(
             InstallmentStatus,
             name="installment_status_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         nullable=False,
@@ -711,7 +611,7 @@ class Milestone(Base):
         SAEnum(
             MilestoneType,
             name="milestone_type_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=MilestoneType.SKILL,
@@ -724,7 +624,7 @@ class Milestone(Base):
         SAEnum(
             RequiredEvidence,
             name="required_evidence_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=RequiredEvidence.NONE,
@@ -797,7 +697,7 @@ class StudentProgress(Base):
         SAEnum(
             ProgressStatus,
             name="progress_status_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=ProgressStatus.PENDING,
@@ -934,19 +834,6 @@ class CohortComplexityScore(Base):
 # ============================================================================
 
 
-class CoachAssignmentRole(str, enum.Enum):
-    LEAD = "lead"
-    ASSISTANT = "assistant"
-    SHADOW = "shadow"
-    OBSERVER = "observer"
-
-
-class CoachAssignmentStatus(str, enum.Enum):
-    ACTIVE = "active"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-
-
 class CoachAssignment(Base):
     """Flexible coach-to-cohort assignment supporting multiple roles.
 
@@ -1016,12 +903,6 @@ class CoachAssignment(Base):
 
     def __repr__(self):
         return f"<CoachAssignment {self.role} coach={self.coach_id} cohort={self.cohort_id}>"
-
-
-class ShadowEvaluationRecommendation(str, enum.Enum):
-    CONTINUE_SHADOW = "continue_shadow"
-    READY_FOR_ASSISTANT = "ready_for_assistant"
-    READY_FOR_LEAD = "ready_for_lead"
 
 
 class ShadowEvaluation(Base):

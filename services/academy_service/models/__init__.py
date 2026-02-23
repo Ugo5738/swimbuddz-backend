@@ -3,9 +3,6 @@
 from services.academy_service.models.core import (
     BillingType,
     CoachAssignment,
-    CoachAssignmentRole,
-    CoachAssignmentStatus,
-    CoachGrade,
     Cohort,
     CohortComplexityScore,
     CohortResource,
@@ -24,7 +21,6 @@ from services.academy_service.models.core import (
     MilestoneType,
     PaymentStatus,
     Program,
-    ProgramCategory,
     ProgramCurriculum,
     ProgramInterest,
     ProgramLevel,
@@ -33,9 +29,15 @@ from services.academy_service.models.core import (
     ResourceSourceType,
     ResourceVisibility,
     ShadowEvaluation,
-    ShadowEvaluationRecommendation,
     Skill,
     StudentProgress,
+)
+from services.academy_service.models.enums import (
+    CoachAssignmentRole,
+    CoachAssignmentStatus,
+    CoachGrade,
+    ProgramCategory,
+    ShadowEvaluationRecommendation,
 )
 
 __all__ = [

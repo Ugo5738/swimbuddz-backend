@@ -1,4 +1,3 @@
-import enum
 import random
 import string
 import uuid
@@ -6,42 +5,19 @@ from datetime import datetime
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
+from services.payments_service.models.enums import (
+    DiscountType,
+    PaymentPurpose,
+    PaymentStatus,
+    PayoutMethod,
+    PayoutStatus,
+    enum_values,
+)
 from sqlalchemy import DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import Float, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
-
-# Persist enum .value strings in DB.
-_enum_values = lambda enum_cls: [member.value for member in enum_cls]
-
-
-class PaymentStatus(str, enum.Enum):
-    PENDING = "pending"  # Initial state, awaiting payment
-    PENDING_REVIEW = "pending_review"  # Manual payment submitted, awaiting admin review
-    PAID = "paid"
-    WAIVED = "waived"
-    FAILED = "failed"
-
-
-class PaymentMethod(str, enum.Enum):
-    PAYSTACK = "paystack"  # Online payment via Paystack
-    MANUAL_TRANSFER = "manual_transfer"  # Bank transfer with proof upload
-
-
-class PaymentPurpose(str, enum.Enum):
-    # Tier activations
-    COMMUNITY = "community"  # Community membership (₦20,000/year)
-    CLUB = "club"  # Club add-on (requires Community active)
-    CLUB_BUNDLE = "club_bundle"  # Community + Club together (new member bundle)
-    ACADEMY_COHORT = "academy_cohort"  # Specific cohort enrollment
-
-    # One-off fees
-    SESSION_FEE = "session_fee"  # Pool fees, ride share, event tickets
-
-    # E-commerce
-    STORE_ORDER = "store_order"  # Store product purchase
-    WALLET_TOPUP = "wallet_topup"  # Bubble topup intent (wallet service fulfillment)
 
 
 class Payment(Base):
@@ -61,7 +37,7 @@ class Payment(Base):
         SAEnum(
             PaymentPurpose,
             name="payment_purpose_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         nullable=False,
@@ -74,7 +50,7 @@ class Payment(Base):
         SAEnum(
             PaymentStatus,
             name="payment_status_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=PaymentStatus.PENDING,
@@ -128,11 +104,6 @@ class Payment(Base):
         return f"<Payment {self.reference}>"
 
 
-class DiscountType(str, enum.Enum):
-    PERCENTAGE = "percentage"  # e.g., 10% off
-    FIXED = "fixed"  # e.g., ₦5,000 off
-
-
 class Discount(Base):
     """Discount codes that can be applied to payments."""
 
@@ -150,7 +121,7 @@ class Discount(Base):
         SAEnum(
             DiscountType,
             name="discount_type_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         nullable=False,
@@ -189,24 +160,6 @@ class Discount(Base):
 
     def __repr__(self):
         return f"<Discount {self.code}>"
-
-
-class PayoutStatus(str, enum.Enum):
-    """Status of a coach payout."""
-
-    PENDING = "pending"  # Calculated, awaiting admin action
-    APPROVED = "approved"  # Admin approved, ready for transfer
-    PROCESSING = "processing"  # Transfer initiated (Paystack or manual)
-    PAID = "paid"  # Successfully transferred
-    FAILED = "failed"  # Transfer failed
-
-
-class PayoutMethod(str, enum.Enum):
-    """Method used for coach payout."""
-
-    PAYSTACK_TRANSFER = "paystack_transfer"  # Automated via Paystack
-    BANK_TRANSFER = "bank_transfer"  # Manual bank transfer
-    OTHER = "other"  # Cash, other platforms, etc.
 
 
 class CoachPayout(Base):
@@ -254,7 +207,7 @@ class CoachPayout(Base):
         SAEnum(
             PayoutStatus,
             name="payout_status_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=PayoutStatus.PENDING,
@@ -266,7 +219,7 @@ class CoachPayout(Base):
         SAEnum(
             PayoutMethod,
             name="payout_method_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         nullable=True,

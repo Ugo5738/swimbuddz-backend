@@ -1,32 +1,18 @@
-import enum
 import uuid
 from datetime import datetime
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
+from services.attendance_service.models.enums import (
+    AttendanceRole,
+    AttendanceStatus,
+    enum_values,
+)
 from sqlalchemy import DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
-
-# Persist enum .value strings in DB.
-_enum_values = lambda enum_cls: [member.value for member in enum_cls]
-
-
-class AttendanceStatus(str, enum.Enum):
-    PRESENT = "present"
-    ABSENT = "absent"
-    LATE = "late"
-    EXCUSED = "excused"
-    CANCELLED = "cancelled"
-
-
-class AttendanceRole(str, enum.Enum):
-    SWIMMER = "swimmer"
-    COACH = "coach"
-    VOLUNTEER = "volunteer"
-    GUEST = "guest"
 
 
 class MemberRef(Base):
@@ -62,7 +48,7 @@ class AttendanceRecord(Base):
         SAEnum(
             AttendanceStatus,
             name="attendance_status_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=AttendanceStatus.PRESENT,
@@ -71,7 +57,7 @@ class AttendanceRecord(Base):
         SAEnum(
             AttendanceRole,
             name="attendance_role_enum",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
         ),
         default=AttendanceRole.SWIMMER,

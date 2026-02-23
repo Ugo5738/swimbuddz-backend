@@ -10,7 +10,6 @@ Domain entities:
 - Audit Logs: Track sensitive changes
 """
 
-import enum
 import random
 import string
 import uuid
@@ -20,6 +19,17 @@ from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
+from services.store_service.models.enums import (
+    AuditEntityType,
+    CartStatus,
+    FulfillmentType,
+    InventoryMovementType,
+    OrderStatus,
+    ProductStatus,
+    SourcingType,
+    StoreCreditSourceType,
+    enum_values,
+)
 from sqlalchemy import Boolean, CheckConstraint, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import (
@@ -33,72 +43,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-# ============================================================================
-# ENUMS
-# ============================================================================
-
-
-class ProductStatus(str, enum.Enum):
-    DRAFT = "draft"
-    ACTIVE = "active"
-    ARCHIVED = "archived"
-
-
-class SourcingType(str, enum.Enum):
-    STOCKED = "stocked"  # In-stock, ships immediately
-    PREORDER = "preorder"  # Pre-order, ships when available
-
-
-class InventoryMovementType(str, enum.Enum):
-    RESTOCK = "restock"
-    SALE = "sale"
-    RESERVATION = "reservation"
-    RELEASE = "release"
-    ADJUSTMENT = "adjustment"
-    RETURN = "return"
-
-
-class CartStatus(str, enum.Enum):
-    ACTIVE = "active"
-    CONVERTED = "converted"  # Converted to order
-    ABANDONED = "abandoned"
-    EXPIRED = "expired"
-
-
-class OrderStatus(str, enum.Enum):
-    PENDING_PAYMENT = "pending_payment"
-    PAID = "paid"
-    PROCESSING = "processing"
-    READY_FOR_PICKUP = "ready_for_pickup"
-    PICKED_UP = "picked_up"
-    SHIPPED = "shipped"
-    DELIVERED = "delivered"
-    CANCELLED = "cancelled"
-    REFUNDED = "refunded"
-    PAYMENT_FAILED = "payment_failed"
-
-
-class FulfillmentType(str, enum.Enum):
-    PICKUP = "pickup"
-    DELIVERY = "delivery"
-
-
-class StoreCreditSourceType(str, enum.Enum):
-    RETURN = "return"
-    GOODWILL = "goodwill"
-    PROMOTION = "promotion"
-    ADMIN = "admin"
-
-
-class AuditEntityType(str, enum.Enum):
-    PRODUCT = "product"
-    INVENTORY = "inventory"
-    ORDER = "order"
-    STORE_CREDIT = "store_credit"
-    CATEGORY = "category"
-    PICKUP_LOCATION = "pickup_location"
-
 
 # ============================================================================
 # REFERENCE MODELS (cross-service references without imports)
@@ -194,7 +138,7 @@ class Product(Base):
     status: Mapped[ProductStatus] = mapped_column(
         SAEnum(
             ProductStatus,
-            values_callable=lambda x: [e.value for e in x],
+            values_callable=enum_values,
             name="store_product_status_enum",
         ),
         default=ProductStatus.DRAFT,
@@ -220,7 +164,7 @@ class Product(Base):
     sourcing_type: Mapped[SourcingType] = mapped_column(
         SAEnum(
             SourcingType,
-            values_callable=lambda x: [e.value for e in x],
+            values_callable=enum_values,
             name="store_sourcing_type_enum",
         ),
         default=SourcingType.STOCKED,
@@ -503,7 +447,7 @@ class InventoryMovement(Base):
     movement_type: Mapped[InventoryMovementType] = mapped_column(
         SAEnum(
             InventoryMovementType,
-            values_callable=lambda x: [e.value for e in x],
+            values_callable=enum_values,
             name="store_inventory_movement_type_enum",
         ),
         nullable=False,
@@ -565,7 +509,7 @@ class Cart(Base):
     status: Mapped[CartStatus] = mapped_column(
         SAEnum(
             CartStatus,
-            values_callable=lambda x: [e.value for e in x],
+            values_callable=enum_values,
             name="store_cart_status_enum",
         ),
         default=CartStatus.ACTIVE,
@@ -693,7 +637,7 @@ class Order(Base):
     status: Mapped[OrderStatus] = mapped_column(
         SAEnum(
             OrderStatus,
-            values_callable=lambda x: [e.value for e in x],
+            values_callable=enum_values,
             name="store_order_status_enum",
         ),
         default=OrderStatus.PENDING_PAYMENT,
@@ -709,7 +653,7 @@ class Order(Base):
     fulfillment_type: Mapped[FulfillmentType] = mapped_column(
         SAEnum(
             FulfillmentType,
-            values_callable=lambda x: [e.value for e in x],
+            values_callable=enum_values,
             name="store_fulfillment_type_enum",
         ),
         default=FulfillmentType.PICKUP,
@@ -880,7 +824,7 @@ class StoreCredit(Base):
     source_type: Mapped[StoreCreditSourceType] = mapped_column(
         SAEnum(
             StoreCreditSourceType,
-            values_callable=lambda x: [e.value for e in x],
+            values_callable=enum_values,
             name="store_credit_source_type_enum",
         ),
         nullable=False,
@@ -967,7 +911,7 @@ class StoreAuditLog(Base):
     entity_type: Mapped[AuditEntityType] = mapped_column(
         SAEnum(
             AuditEntityType,
-            values_callable=lambda x: [e.value for e in x],
+            values_callable=enum_values,
             name="store_audit_entity_type_enum",
         ),
         nullable=False,

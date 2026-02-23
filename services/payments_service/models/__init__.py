@@ -5,12 +5,12 @@ from services.payments_service.models.core import (
     Discount,
     DiscountType,
     Payment,
-    PaymentMethod,
     PaymentPurpose,
     PaymentStatus,
     PayoutMethod,
     PayoutStatus,
 )
+from services.payments_service.models.enums import PaymentMethod
 
 __all__ = [
     "CoachPayout",

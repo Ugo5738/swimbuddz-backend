@@ -1,4 +1,3 @@
-import enum
 import uuid
 from datetime import datetime
 
@@ -18,12 +17,6 @@ class MemberRef(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-
-
-class RideShareOption(str, enum.Enum):
-    NONE = "none"
-    LEAD = "lead"
-    JOIN = "join"
 
 
 class RideArea(Base):

@@ -10,7 +10,6 @@ The Member model is split into focused tables for better organization:
 - CoachProfile: Coach-specific data (linked to Member)
 """
 
-import enum
 import uuid
 from datetime import date, datetime
 from typing import Optional
@@ -20,22 +19,6 @@ from libs.db.base import Base
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-# ============================================================================
-# ENUMS
-# ============================================================================
-
-
-class CoachGrade(str, enum.Enum):
-    """Coach grade levels based on credentials and experience.
-
-    This mirrors the CoachGrade in academy_service to avoid cross-service imports.
-    Both services store grades as strings, so they are compatible.
-    """
-
-    GRADE_1 = "grade_1"  # Foundational
-    GRADE_2 = "grade_2"  # Technical
-    GRADE_3 = "grade_3"  # Advanced/Specialist
 
 
 class Member(Base):

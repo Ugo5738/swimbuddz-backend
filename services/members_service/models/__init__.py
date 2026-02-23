@@ -13,7 +13,6 @@ from services.members_service.models.core import (  # noqa: F401
     ClubChallenge,
     CoachAgreement,
     CoachBankAccount,
-    CoachGrade,
     CoachProfile,
     HandbookVersion,
     Member,
@@ -27,6 +26,7 @@ from services.members_service.models.core import (  # noqa: F401
     VolunteerInterest,
     VolunteerRole,
 )
+from services.members_service.models.enums import CoachGrade  # noqa: F401
 
 __all__ = [
     "CoachGrade",

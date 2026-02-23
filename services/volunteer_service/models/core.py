@@ -1,89 +1,24 @@
-import enum
 import uuid
 from datetime import date, datetime, time
 from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
+from services.volunteer_service.models.enums import (
+    OpportunityStatus,
+    OpportunityType,
+    RecognitionTier,
+    RewardType,
+    SlotStatus,
+    VolunteerRoleCategory,
+    VolunteerTier,
+    enum_values,
+)
 from sqlalchemy import ARRAY, Boolean, Date, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import Float, ForeignKey, Integer, String, Text, Time
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-# Persist enum .value strings in DB.
-_enum_values = lambda enum_cls: [member.value for member in enum_cls]
-
-# ============================================================================
-# ENUMS
-# ============================================================================
-
-
-class VolunteerRoleCategory(str, enum.Enum):
-    # Session roles
-    SESSION_LEAD = "session_lead"
-    WARMUP_LEAD = "warmup_lead"
-    LANE_MARSHAL = "lane_marshal"
-    CHECKIN = "checkin"
-    SAFETY = "safety"
-    # Community roles
-    WELCOME = "welcome"
-    RIDE_SHARE = "ride_share"
-    MENTOR = "mentor"
-    # Content & media roles
-    MEDIA = "media"
-    GALLERY_SUPPORT = "gallery_support"
-    # Events & logistics roles
-    EVENTS_LOGISTICS = "events_logistics"
-    TRIP_PLANNER = "trip_planner"
-    # Academy support roles
-    ACADEMY_ASSISTANT = "academy_assistant"
-    # Catch-all
-    OTHER = "other"
-
-
-class VolunteerTier(str, enum.Enum):
-    TIER_1 = "tier_1"  # Occasional
-    TIER_2 = "tier_2"  # Core
-    TIER_3 = "tier_3"  # Lead
-
-
-class OpportunityStatus(str, enum.Enum):
-    DRAFT = "draft"
-    OPEN = "open"
-    FILLED = "filled"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-
-
-class OpportunityType(str, enum.Enum):
-    OPEN_CLAIM = "open_claim"
-    APPROVAL_REQUIRED = "approval_required"
-
-
-class SlotStatus(str, enum.Enum):
-    CLAIMED = "claimed"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    CANCELLED = "cancelled"
-    NO_SHOW = "no_show"
-    COMPLETED = "completed"
-
-
-class RecognitionTier(str, enum.Enum):
-    BRONZE = "bronze"  # 10h
-    SILVER = "silver"  # 50h
-    GOLD = "gold"  # 100h
-
-
-class RewardType(str, enum.Enum):
-    DISCOUNTED_SESSION = "discounted_session"
-    FREE_MERCH = "free_merch"
-    PRIORITY_EVENT = "priority_event"
-    MEMBERSHIP_DISCOUNT = "membership_discount"
-    CUSTOM = "custom"
-
 
 # ============================================================================
 # MEMBER REFERENCE (soft reference — no cross-service imports)
@@ -120,7 +55,7 @@ class VolunteerRole(Base):
         SAEnum(
             VolunteerRoleCategory,
             name="volunteer_role_category",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
             create_constraint=False,
         ),
@@ -133,7 +68,7 @@ class VolunteerRole(Base):
         SAEnum(
             VolunteerTier,
             name="volunteer_tier",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
             create_constraint=False,
         ),
@@ -183,7 +118,7 @@ class VolunteerProfile(Base):
         SAEnum(
             VolunteerTier,
             name="volunteer_tier",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
             create_constraint=False,
         ),
@@ -193,7 +128,7 @@ class VolunteerProfile(Base):
         SAEnum(
             VolunteerTier,
             name="volunteer_tier",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
             create_constraint=False,
         ),
@@ -208,7 +143,7 @@ class VolunteerProfile(Base):
         SAEnum(
             RecognitionTier,
             name="recognition_tier",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
             create_constraint=False,
         ),
@@ -273,7 +208,7 @@ class VolunteerOpportunity(Base):
         SAEnum(
             OpportunityType,
             name="opportunity_type",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
             create_constraint=False,
         ),
@@ -283,7 +218,7 @@ class VolunteerOpportunity(Base):
         SAEnum(
             OpportunityStatus,
             name="opportunity_status",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
             create_constraint=False,
         ),
@@ -293,7 +228,7 @@ class VolunteerOpportunity(Base):
         SAEnum(
             VolunteerTier,
             name="volunteer_tier",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
             create_constraint=False,
         ),
@@ -345,7 +280,7 @@ class VolunteerSlot(Base):
         SAEnum(
             SlotStatus,
             name="slot_status",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
             create_constraint=False,
         ),
@@ -454,7 +389,7 @@ class VolunteerReward(Base):
         SAEnum(
             RewardType,
             name="reward_type",
-            values_callable=_enum_values,
+            values_callable=enum_values,
             validate_strings=True,
             create_constraint=False,
         ),
