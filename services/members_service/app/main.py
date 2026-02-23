@@ -1,16 +1,17 @@
 """FastAPI application for the Members Service."""
 
 from fastapi import FastAPI
-from services.members_service.coach_router import admin_router as coach_admin_router
-from services.members_service.coach_router import router as coach_router
-from services.members_service.router import (
+from services.members_service.routers import (
     admin_router,
+    challenge_router,
+    coach_admin_router,
+    coach_router,
     coaches_router,
+    internal_router,
+    members_router,
     registration_router,
+    volunteer_router,
 )
-from services.members_service.router import router as members_router
-from services.members_service.routers.internal import router as internal_router
-from services.members_service.volunteer_router import challenge_router
 
 
 def create_app() -> FastAPI:
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)  # Admin approval endpoints
     # NOTE: volunteer_router removed — now handled by volunteer_service (port 8012)
     app.include_router(challenge_router)
+    app.include_router(volunteer_router)
 
     # Coach routers (profile management, not public listing)
     app.include_router(coach_router)

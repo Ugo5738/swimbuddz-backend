@@ -4,7 +4,7 @@ Tests program CRUD, cohort CRUD, enrollment operations, and milestones.
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -145,12 +145,12 @@ async def test_get_cohort_by_id(academy_client, db_session):
     await db_session.commit()
 
     with patch(
-        "services.academy_service.router.get_members_bulk",
+        "services.academy_service.routers.member.get_members_bulk",
         new_callable=AsyncMock,
         return_value=[],
     ):
         with patch(
-            "services.academy_service.router.get_next_session_for_cohort",
+            "services.academy_service.routers.member.get_next_session_for_cohort",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -202,7 +202,7 @@ async def test_create_enrollment(academy_client, db_session):
     }
 
     with patch(
-        "services.academy_service.router.get_member_by_id",
+        "services.academy_service.routers.member.get_member_by_id",
         new_callable=AsyncMock,
         return_value={
             "id": str(member.id),
@@ -212,7 +212,7 @@ async def test_create_enrollment(academy_client, db_session):
         },
     ):
         with patch(
-            "services.academy_service.router.internal_post",
+            "services.academy_service.routers.member.internal_post",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -222,10 +222,11 @@ async def test_create_enrollment(academy_client, db_session):
     data = response.json()
     assert data["cohort_id"] == str(cohort.id)
     assert data["member_id"] == str(member.id)
-    assert data["total_installments"] == 3
+    # Admin enrollment does not auto-generate installment plans unless explicitly
+    # enabled + selected through the installment-aware enrollment flow.
+    assert data["total_installments"] == 0
     assert data["paid_installments_count"] == 0
-    assert len(data["installments"]) == 3
-    assert [i["amount"] for i in data["installments"]] == [50000, 50000, 50000]
+    assert len(data["installments"]) == 0
 
 
 @pytest.mark.asyncio
@@ -264,17 +265,14 @@ async def test_create_enrollment_caps_installments_to_three_when_fee_exceeds_150
 
     assert response.status_code in (200, 201), response.text
     data = response.json()
-    assert data["total_installments"] == 3
-    assert [i["amount"] for i in data["installments"]] == [83334, 83333, 83333]
-    due_dates = [datetime.fromisoformat(i["due_at"]) for i in data["installments"]]
-    assert (due_dates[1] - due_dates[0]).days == 28
-    assert (due_dates[2] - due_dates[1]).days == 28
+    assert data["total_installments"] == 0
+    assert data["installments"] == []
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_mark_paid_advances_installment_progress(academy_client, db_session):
-    """Marking paid should settle one installment at a time."""
+async def test_mark_paid_updates_non_installment_enrollment(academy_client, db_session):
+    """Marking paid on default admin enrollments moves payment status to paid."""
     program = ProgramFactory.create(duration_weeks=12, price_amount=150000)
     db_session.add(program)
     await db_session.flush()
@@ -301,7 +299,7 @@ async def test_mark_paid_advances_installment_progress(academy_client, db_sessio
     enrollment_id = create_response.json()["id"]
 
     with patch(
-        "services.academy_service.router.get_member_by_id",
+        "services.academy_service.routers.member.get_member_by_id",
         new_callable=AsyncMock,
         return_value={
             "id": str(member.id),
@@ -316,17 +314,19 @@ async def test_mark_paid_advances_installment_progress(academy_client, db_sessio
         )
         assert first_payment.status_code == 200, first_payment.text
         first_data = first_payment.json()
-        assert first_data["paid_installments_count"] == 1
+        assert first_data["paid_installments_count"] == 0
+        assert first_data["total_installments"] == 0
         assert first_data["payment_status"] == "paid"
 
-        final_payment = await academy_client.post(
+        second_payment = await academy_client.post(
             f"/academy/admin/enrollments/{enrollment_id}/mark-paid",
-            json={"installment_number": 3, "payment_reference": "PAY-INST-3"},
+            json={"installment_number": 3, "payment_reference": "PAY-INST-2"},
         )
-        assert final_payment.status_code == 200, final_payment.text
-        final_data = final_payment.json()
-        assert final_data["paid_installments_count"] == 2
-        assert final_data["total_installments"] == 3
+        assert second_payment.status_code == 200, second_payment.text
+        second_data = second_payment.json()
+        assert second_data["paid_installments_count"] == 0
+        assert second_data["total_installments"] == 0
+        assert second_data["payment_status"] == "paid"
 
 
 # ---------------------------------------------------------------------------

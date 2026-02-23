@@ -38,7 +38,7 @@ async def test_list_announcements_admin(communications_client, db_session):
 async def test_send_single_email(communications_client):
     """Service-to-service email send endpoint works with mocked sender."""
     with patch(
-        "services.communications_service.email_router.send_email",
+        "services.communications_service.routers.email.send_email",
         new_callable=AsyncMock,
         return_value=True,
     ):
@@ -62,7 +62,7 @@ async def test_send_single_email(communications_client):
 async def test_send_single_email_failure(communications_client):
     """Returns failed_count when email send fails."""
     with patch(
-        "services.communications_service.email_router.send_email",
+        "services.communications_service.routers.email.send_email",
         new_callable=AsyncMock,
         return_value=False,
     ):

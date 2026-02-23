@@ -1,8 +1,8 @@
 """Shared helper functions for members service routers."""
 
 from libs.common.media_utils import resolve_media_urls
-from services.members_service import service as member_service
 from services.members_service.models import Member
+from services.members_service.services import member_service
 from sqlalchemy.orm import selectinload
 
 

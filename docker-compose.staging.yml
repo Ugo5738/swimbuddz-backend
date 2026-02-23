@@ -169,7 +169,7 @@ services:
         condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: arq services.academy_service.worker.WorkerSettings
+    command: arq services.academy_service.tasks.worker.WorkerSettings
     volumes:
       - .:/app
 

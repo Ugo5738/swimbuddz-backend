@@ -508,7 +508,7 @@ class WalletFactory:
             "member_auth_id": str(_uuid()),
             "balance": 100,
             "status": WalletStatus.ACTIVE,
-            "tier": WalletTier.STANDARD,
+            "wallet_tier": WalletTier.STANDARD,
             "lifetime_bubbles_purchased": 100,
             "lifetime_bubbles_spent": 0,
             "lifetime_bubbles_received": 10,

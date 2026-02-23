@@ -1,11 +1,13 @@
-import pytest
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 import uuid
 from datetime import datetime, timedelta
 
-from services.attendance_service.router import get_current_member
-from services.gateway_service.app.main import app
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from libs.db.session import get_async_db
+from services.attendance_service.app.main import app
+from services.attendance_service.routers.member import get_current_member
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Mock member
 MOCK_MEMBER_ID = uuid.uuid4()
@@ -25,11 +27,27 @@ async def mock_get_current_member():
     )
 
 
+@pytest_asyncio.fixture
+async def attendance_client(db_session: AsyncSession):
+    async def _get_db():
+        yield db_session
+
+    app.dependency_overrides[get_async_db] = _get_db
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        yield client
+    app.dependency_overrides.clear()
+
+
 @pytest.mark.asyncio
-async def test_sign_in_to_session(client: AsyncClient, db_session: AsyncSession):
+async def test_sign_in_to_session(
+    attendance_client: AsyncClient, db_session: AsyncSession
+):
     # 1. Create a session and member
-    from services.sessions_service.models import Session, SessionLocation
     from services.members_service.models import Member
+    from services.sessions_service.models import Session, SessionLocation
 
     # Create Member
     member = Member(
@@ -70,7 +88,9 @@ async def test_sign_in_to_session(client: AsyncClient, db_session: AsyncSession)
     # 3. Sign in
     payload = {"status": "PRESENT", "role": "SWIMMER", "notes": "Ready to swim"}
 
-    response = await client.post(f"/api/v1/sessions/{session_id}/sign-in", json=payload)
+    response = await attendance_client.post(
+        f"/attendance/sessions/{session_id}/sign-in", json=payload
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["session_id"] == str(session_id)
@@ -82,11 +102,13 @@ async def test_sign_in_to_session(client: AsyncClient, db_session: AsyncSession)
 
 
 @pytest.mark.asyncio
-async def test_get_my_attendance_history(client: AsyncClient, db_session: AsyncSession):
+async def test_get_my_attendance_history(
+    attendance_client: AsyncClient, db_session: AsyncSession
+):
     # 1. Create session, member and attendance
-    from services.sessions_service.models import Session, SessionLocation
     from services.attendance_service.models import AttendanceRecord
     from services.members_service.models import Member
+    from services.sessions_service.models import Session, SessionLocation
 
     # Create Member
     member = Member(
@@ -126,7 +148,7 @@ async def test_get_my_attendance_history(client: AsyncClient, db_session: AsyncS
     app.dependency_overrides[get_current_member] = mock_get_current_member
 
     # 3. Get history
-    response = await client.get("/api/v1/me/attendance")
+    response = await attendance_client.get("/attendance/me")
     assert response.status_code == 200
     data = response.json()
     assert len(data) >= 1

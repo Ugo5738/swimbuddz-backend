@@ -1,7 +1,7 @@
 """FastAPI application for the Events Service."""
 
 from fastapi import FastAPI
-from services.events_service.router import router as events_router
+from services.events_service.routers.member import router as events_router
 
 
 def create_app() -> FastAPI:

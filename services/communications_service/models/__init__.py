@@ -1,0 +1,41 @@
+"""Communications Service models package."""
+
+from services.communications_service.models.core import (
+    Announcement,
+    AnnouncementAudience,
+    AnnouncementCategory,
+    AnnouncementCategoryConfig,
+    AnnouncementComment,
+    AnnouncementRead,
+    AnnouncementStatus,
+    ContentComment,
+    ContentPost,
+    MemberRef,
+    MessageLog,
+    MessageRecipientType,
+    NotificationPreferences,
+    ScheduledNotification,
+    ScheduledNotificationStatus,
+    SessionNotificationLog,
+    SessionNotificationType,
+)
+
+__all__ = [
+    "Announcement",
+    "AnnouncementAudience",
+    "AnnouncementCategory",
+    "AnnouncementCategoryConfig",
+    "AnnouncementComment",
+    "AnnouncementRead",
+    "AnnouncementStatus",
+    "ContentComment",
+    "ContentPost",
+    "MemberRef",
+    "MessageLog",
+    "MessageRecipientType",
+    "NotificationPreferences",
+    "ScheduledNotification",
+    "ScheduledNotificationStatus",
+    "SessionNotificationLog",
+    "SessionNotificationType",
+]

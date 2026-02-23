@@ -1,9 +1,9 @@
 """FastAPI application for the Payments Service."""
 
 from fastapi import FastAPI
-from services.payments_service.payout_router import admin_router as payout_admin_router
-from services.payments_service.payout_router import coach_router as payout_coach_router
-from services.payments_service.router import router as payments_router
+from services.payments_service.routers.member import router as payments_router
+from services.payments_service.routers.payout import admin_router as payout_admin_router
+from services.payments_service.routers.payout import coach_router as payout_coach_router
 
 
 def create_app() -> FastAPI:
