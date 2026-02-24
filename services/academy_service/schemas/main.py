@@ -18,6 +18,21 @@ from services.academy_service.models import (
     RequiredEvidence,
 )
 
+KOBO_PER_NAIRA = 100
+
+
+def _naira_to_kobo(value: int | None) -> int | None:
+    if value is None:
+        return None
+    return int(value) * KOBO_PER_NAIRA
+
+
+def _kobo_to_naira(value: int | None) -> int | None:
+    if value is None:
+        return None
+    return int(value) // KOBO_PER_NAIRA
+
+
 # --- Program Schemas ---
 
 
@@ -30,7 +45,7 @@ class ProgramBase(BaseModel):
     default_capacity: int = 10
     # Pricing
     currency: str = "NGN"
-    price_amount: int = 0  # In naira (major unit)
+    price_amount: int = 0  # API contract: naira (major unit)
     billing_type: BillingType = BillingType.ONE_TIME
     # Content
     curriculum_json: Optional[Dict[str, Any]] = None
@@ -40,7 +55,10 @@ class ProgramBase(BaseModel):
 
 
 class ProgramCreate(ProgramBase):
-    pass
+    @field_validator("price_amount", mode="before")
+    @classmethod
+    def convert_price_amount_to_kobo(cls, value: int) -> int:
+        return _naira_to_kobo(value) or 0
 
 
 class ProgramUpdate(BaseModel):
@@ -57,6 +75,11 @@ class ProgramUpdate(BaseModel):
     prep_materials: Optional[Dict[str, Any]] = None
     is_published: Optional[bool] = None
 
+    @field_validator("price_amount", mode="before")
+    @classmethod
+    def convert_price_amount_to_kobo(cls, value: Optional[int]) -> Optional[int]:
+        return _naira_to_kobo(value)
+
 
 class ProgramResponse(ProgramBase):
     id: UUID
@@ -64,6 +87,11 @@ class ProgramResponse(ProgramBase):
     cover_image_url: Optional[str] = None  # Resolved from media_id
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("price_amount", mode="before")
+    @classmethod
+    def convert_price_amount_to_naira(cls, value: int) -> int:
+        return _kobo_to_naira(value) or 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -129,7 +157,7 @@ class CohortBase(BaseModel):
     location_name: Optional[str] = None
     location_address: Optional[str] = None
     # Pricing override
-    price_override: Optional[int] = None
+    price_override: Optional[int] = None  # API contract: naira (major unit)
     notes_internal: Optional[str] = None
     # ── Installment billing ──────────────────────────────────────────────────
     # Toggle: admin enables installment option for this cohort
@@ -137,7 +165,7 @@ class CohortBase(BaseModel):
     # Optional overrides — if None, business logic auto-computes from fee + duration
     installment_count: Optional[int] = None  # Override auto-computed count
     installment_deposit_amount: Optional[int] = (
-        None  # Override first-installment amount (₦)
+        None  # API contract: override first-installment amount (₦)
     )
 
 
@@ -152,6 +180,11 @@ class CohortCreate(CohortBase):
     program_id: UUID
     coach_id: Optional[UUID] = None  # Legacy field, still supported
     coach_assignments: Optional[list[CoachAssignmentInput]] = None
+
+    @field_validator("price_override", "installment_deposit_amount", mode="before")
+    @classmethod
+    def convert_amounts_to_kobo(cls, value: Optional[int]) -> Optional[int]:
+        return _naira_to_kobo(value)
 
 
 class CohortUpdate(BaseModel):
@@ -177,6 +210,11 @@ class CohortUpdate(BaseModel):
     installment_plan_enabled: Optional[bool] = None
     installment_count: Optional[int] = None
     installment_deposit_amount: Optional[int] = None
+
+    @field_validator("price_override", "installment_deposit_amount", mode="before")
+    @classmethod
+    def convert_amounts_to_kobo(cls, value: Optional[int]) -> Optional[int]:
+        return _naira_to_kobo(value)
 
 
 class CohortTimelineShiftRequest(BaseModel):
@@ -268,6 +306,11 @@ class CohortResponse(CohortBase):
     # Include program details for UI convenience (avoid extra client round trips).
     program: Optional[ProgramResponse] = None
 
+    @field_validator("price_override", "installment_deposit_amount", mode="before")
+    @classmethod
+    def convert_amounts_to_naira(cls, value: Optional[int]) -> Optional[int]:
+        return _kobo_to_naira(value)
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -319,7 +362,7 @@ class EnrollmentUpdate(BaseModel):
 class EnrollmentInstallmentResponse(BaseModel):
     id: UUID
     installment_number: int
-    amount: int
+    amount: int  # Kobo (minor NGN unit)
     due_at: datetime
     status: InstallmentStatus
     paid_at: Optional[datetime] = None
@@ -333,6 +376,7 @@ class EnrollmentInstallmentResponse(BaseModel):
 class EnrollmentMarkPaidRequest(BaseModel):
     installment_id: Optional[UUID] = None
     installment_number: Optional[int] = Field(default=None, ge=1)
+    clear_installments: bool = False
     payment_reference: Optional[str] = None
     paid_at: Optional[datetime] = None
 
@@ -358,6 +402,7 @@ class EnrollmentResponse(EnrollmentBase):
     paid_installments_count: int = 0
     missed_installments_count: int = 0
     access_suspended: bool = False
+    uses_installments: bool = False
 
     # Include details for UI
     cohort: Optional[CohortResponse] = None

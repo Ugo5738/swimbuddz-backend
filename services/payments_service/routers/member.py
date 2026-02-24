@@ -54,6 +54,7 @@ logger = get_logger(__name__)
 FULFILLMENT_META_KEY = "fulfillment"
 MAX_FULFILLMENT_RETRIES = 8
 BASE_FULFILLMENT_RETRY_MINUTES = 2
+KOBO_PER_NAIRA = 100
 
 
 @router.get("/pricing", response_model=PricingConfigResponse)
@@ -85,7 +86,7 @@ def _paystack_headers() -> dict[str, str]:
 
 def _to_kobo(amount: float) -> int:
     value = Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return int(value * 100)
+    return int(value * KOBO_PER_NAIRA)
 
 
 def _verify_paystack_signature(raw_body: bytes, signature: str) -> bool:
@@ -378,6 +379,9 @@ async def _apply_entitlement(payment: Payment) -> None:
                 else datetime.now(timezone.utc).isoformat()
             ),
         }
+        if payment.amount <= 0:
+            # Fully discounted enrollment should not retain installment obligations.
+            mark_paid_payload["clear_installments"] = True
         if installment_id:
             mark_paid_payload["installment_id"] = installment_id
         if installment_number:
@@ -1033,7 +1037,8 @@ async def create_payment_intent(
         )
 
         if next_installment:
-            amount = float(next_installment.get("amount") or 0)
+            # Academy returns installment amounts in kobo; convert to NGN for payment intent.
+            amount = float(next_installment.get("amount") or 0) / KOBO_PER_NAIRA
         else:
             # Backward-compatible fallback for older enrollments without an installment plan.
             program = enrollment_data.get("program") or {}

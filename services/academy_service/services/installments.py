@@ -14,7 +14,7 @@ from services.academy_service.models import (
 )
 
 FOUR_WEEK_BLOCK_WEEKS = 4
-THREE_INSTALLMENT_CAP_THRESHOLD = 150_000
+THREE_INSTALLMENT_CAP_THRESHOLD_KOBO = 150_000 * 100
 MAX_INSTALLMENTS_OVER_CAP = 3
 WAT_TZ = ZoneInfo("Africa/Lagos")
 
@@ -37,7 +37,7 @@ def block_count_for_duration(duration_weeks: int) -> int:
 
 def installment_count(total_fee: int, duration_weeks: int) -> int:
     blocks = block_count_for_duration(duration_weeks)
-    if total_fee > THREE_INSTALLMENT_CAP_THRESHOLD:
+    if total_fee > THREE_INSTALLMENT_CAP_THRESHOLD_KOBO:
         return min(blocks, MAX_INSTALLMENTS_OVER_CAP)
     return blocks
 
@@ -75,9 +75,11 @@ def build_schedule(
 
     - ``count_override``: admin-set total number of installments; defaults to
       ``installment_count(total_fee, duration_weeks)``.
-    - ``deposit_override``: admin-set first-installment amount (₦); if set,
+    - ``deposit_override``: admin-set first-installment amount (kobo); if set,
       the remainder is split evenly across the remaining installments. Defaults
       to auto even-split via ``split_amounts``.
+
+    Amounts are returned in kobo (minor NGN unit) for internal consistency.
     """
     count = (
         count_override
@@ -100,12 +102,12 @@ def build_schedule(
     anchor_wat = monday_00_wat(cohort_start)
 
     schedule: list[dict] = []
-    for idx, amount in enumerate(amounts, start=1):
+    for idx, amount_kobo in enumerate(amounts, start=1):
         due_wat = anchor_wat + timedelta(weeks=(idx - 1) * FOUR_WEEK_BLOCK_WEEKS)
         schedule.append(
             {
                 "installment_number": idx,
-                "amount": amount,
+                "amount": amount_kobo,
                 "due_at": due_wat.astimezone(ZoneInfo("UTC")),
             }
         )

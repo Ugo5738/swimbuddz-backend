@@ -25,7 +25,6 @@ from services.academy_service.models import (
     InstallmentStatus,
 )
 from services.academy_service.services.installments import (
-    build_schedule,
     mark_overdue_installments,
     sync_enrollment_installment_state,
 )
@@ -33,6 +32,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 logger = get_logger(__name__)
+KOBO_PER_NAIRA = 100
+NAIRA_PER_BUBBLE = 100
+KOBO_PER_BUBBLE = KOBO_PER_NAIRA * NAIRA_PER_BUBBLE
 
 
 async def send_enrollment_reminders():
@@ -329,40 +331,9 @@ async def evaluate_installment_compliance():
 
                 installments = list(enrollment.installments or [])
                 if not installments:
-                    total_fee = int(
-                        cohort.price_override
-                        if cohort.price_override is not None
-                        else (program.price_amount or 0)
-                    )
-                    if total_fee <= 0:
-                        continue
-                    try:
-                        schedule = build_schedule(
-                            total_fee=total_fee,
-                            duration_weeks=int(program.duration_weeks),
-                            cohort_start=cohort.start_date,
-                        )
-                    except ValueError:
-                        continue
-
-                    for item in schedule:
-                        db.add(
-                            EnrollmentInstallment(
-                                enrollment_id=enrollment.id,
-                                installment_number=item["installment_number"],
-                                amount=item["amount"],
-                                due_at=item["due_at"],
-                            )
-                        )
-                    enrollment.price_snapshot_amount = total_fee
-                    enrollment.currency_snapshot = program.currency or "NGN"
-                    await db.flush()
-                    refreshed = await db.execute(
-                        select(EnrollmentInstallment)
-                        .where(EnrollmentInstallment.enrollment_id == enrollment.id)
-                        .order_by(EnrollmentInstallment.installment_number.asc())
-                    )
-                    installments = refreshed.scalars().all()
+                    # Do not auto-create installment schedules in periodic jobs.
+                    # Installment plans must come only from explicit member opt-in at checkout.
+                    continue
 
                 mark_overdue_installments(installments, now=now)
                 prev_status = enrollment.status
@@ -888,9 +859,11 @@ async def attempt_wallet_auto_deduction():
                     member.get("first_name", "Student") if member else "Student"
                 )
 
-                # Convert installment amount from kobo to Bubbles.
-                # 1 Bubble = ₦100 = 10,000 kobo  (100 NGN/Bubble × 100 kobo/NGN).
-                bubbles_needed = installment.amount // 10000
+                # Convert installment amount (kobo) to Bubbles.
+                # 1 Bubble = ₦100 = 10,000 kobo; round up to ensure full coverage.
+                bubbles_needed = (
+                    installment.amount + KOBO_PER_BUBBLE - 1
+                ) // KOBO_PER_BUBBLE
 
                 # --- Attempt wallet deduction ---
                 wallet_debited = False
@@ -918,11 +891,11 @@ async def attempt_wallet_auto_deduction():
                         wallet_debited = True
                         logger.info(
                             "Wallet auto-deduction successful for installment %s "
-                            "(enrollment %s, %d Bubbles / %d kobo)",
+                            "(enrollment %s, %d Bubbles / ₦%.2f)",
                             installment.id,
                             enrollment.id,
                             bubbles_needed,
-                            installment.amount,
+                            installment.amount / KOBO_PER_NAIRA,
                         )
                 except Exception as wallet_err:
                     logger.warning(
@@ -961,8 +934,6 @@ async def attempt_wallet_auto_deduction():
                     # Send wallet payment confirmation email
                     if member_email:
                         try:
-                            # installment.amount is in kobo; template expects NGN.
-                            amount_ngn = installment.amount / 100
                             email_client = get_email_client()
                             await email_client.send_template(
                                 template_type="installment_payment_confirmation",
@@ -971,7 +942,8 @@ async def attempt_wallet_auto_deduction():
                                     "member_name": member_name,
                                     "installment_number": installment.installment_number,
                                     "total_installments": enrollment.total_installments,
-                                    "amount": amount_ngn,
+                                    "amount": float(installment.amount)
+                                    / KOBO_PER_NAIRA,
                                     "currency": enrollment.currency_snapshot or "NGN",
                                     "payment_reference": idempotency_key,
                                     "paid_at": now.strftime("%B %d, %Y"),
@@ -999,7 +971,8 @@ async def attempt_wallet_auto_deduction():
                                 json={
                                     "reference": payment_ref,
                                     "member_auth_id": member_auth_id,
-                                    "amount": installment.amount / 100,  # kobo → NGN
+                                    "amount": float(installment.amount)
+                                    / KOBO_PER_NAIRA,
                                     "currency": enrollment.currency_snapshot or "NGN",
                                     "purpose": "academy_cohort",
                                     "callback_url": (

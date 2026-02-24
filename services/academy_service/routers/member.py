@@ -149,18 +149,28 @@ async def _ensure_installment_plan(
     Build the installment schedule for an enrollment if it doesn't exist yet.
 
     Schedule is only created when:
-    - ``use_installments=True`` (member explicitly opted in at checkout), AND
+    - enrollment.uses_installments=True (persisted member opt-in), AND
     - ``cohort.installment_plan_enabled=True`` (admin enabled it for this cohort).
 
     If installments already exist they are returned as-is regardless of the flag,
     so re-fetching the enrollment never accidentally clears an existing plan.
     """
+    # Persist installment preference once the member explicitly opts in at checkout.
+    if use_installments and not enrollment.uses_installments:
+        enrollment.uses_installments = True
+
     installments = await _list_enrollment_installments(db, enrollment.id)
     if installments:
         return installments
 
-    # Only build a schedule when both the cohort supports it AND the member chose it.
-    if not use_installments or not getattr(cohort, "installment_plan_enabled", False):
+    # Only build a schedule when both the cohort supports it AND the member opted in.
+    if not enrollment.uses_installments or not getattr(
+        cohort, "installment_plan_enabled", False
+    ):
+        return []
+
+    # Fully paid enrollments should never create installment obligations.
+    if enrollment.payment_status == PaymentStatus.PAID:
         return []
 
     if not program or not cohort:
@@ -589,9 +599,9 @@ async def list_programs(
 
     responses = []
     for program in programs:
-        resp = ProgramResponse.model_validate(program).model_dump()
+        resp = ProgramResponse.model_validate(program)
         if program.cover_image_media_id:
-            resp["cover_image_url"] = url_map.get(program.cover_image_media_id)
+            resp.cover_image_url = url_map.get(program.cover_image_media_id)
         responses.append(resp)
     return responses
 
@@ -611,9 +621,9 @@ async def list_published_programs(
 
     responses = []
     for program in programs:
-        resp = ProgramResponse.model_validate(program).model_dump()
+        resp = ProgramResponse.model_validate(program)
         if program.cover_image_media_id:
-            resp["cover_image_url"] = url_map.get(program.cover_image_media_id)
+            resp.cover_image_url = url_map.get(program.cover_image_media_id)
         responses.append(resp)
     return responses
 
@@ -630,8 +640,8 @@ async def get_program(
         raise HTTPException(status_code=404, detail="Program not found")
 
     # Resolve cover image URL
-    resp = ProgramResponse.model_validate(program).model_dump()
-    resp["cover_image_url"] = await resolve_media_url(program.cover_image_media_id)
+    resp = ProgramResponse.model_validate(program)
+    resp.cover_image_url = await resolve_media_url(program.cover_image_media_id)
     return resp
 
 
@@ -657,8 +667,8 @@ async def update_program(
     await db.refresh(program)
 
     # Resolve cover image URL
-    resp = ProgramResponse.model_validate(program).model_dump()
-    resp["cover_image_url"] = await resolve_media_url(program.cover_image_media_id)
+    resp = ProgramResponse.model_validate(program)
+    resp.cover_image_url = await resolve_media_url(program.cover_image_media_id)
     return resp
 
 
@@ -1100,46 +1110,56 @@ async def apply_cohort_timeline_shift(
     notification_attempts = 0
     notification_sent = 0
     if shift_in.notify_members and notify_enrollments:
-        member_ids = list({str(e.member_id) for e in notify_enrollments if e.member_id})
-        member_map = {
-            member["id"]: member
-            for member in await get_members_bulk(member_ids, calling_service="academy")
-        }
-        email_client = get_email_client()
-
-        async def _send_notice(member_payload: dict) -> bool:
-            full_name = (
-                f"{member_payload.get('first_name', '')} {member_payload.get('last_name', '')}"
-            ).strip() or "Swimmer"
-            return await email_client.send(
-                to_email=member_payload["email"],
-                subject=f"Schedule updated: {cohort.name}",
-                body=_build_shift_notice_body(
-                    member_name=full_name,
-                    cohort_name=cohort.name,
-                    old_start=old_start,
-                    old_end=old_end,
-                    new_start=new_start_utc,
-                    new_end=new_end_utc,
-                    reason=shift_in.reason,
-                ),
+        try:
+            member_ids = list(
+                {str(e.member_id) for e in notify_enrollments if e.member_id}
             )
+            member_map = {
+                member["id"]: member
+                for member in await get_members_bulk(
+                    member_ids, calling_service="academy"
+                )
+            }
+            email_client = get_email_client()
 
-        send_coroutines = []
-        for member in member_map.values():
-            if member.get("email"):
-                notification_attempts += 1
-                send_coroutines.append(_send_notice(member))
+            async def _send_notice(member_payload: dict) -> bool:
+                full_name = (
+                    f"{member_payload.get('first_name', '')} {member_payload.get('last_name', '')}"
+                ).strip() or "Swimmer"
+                return await email_client.send(
+                    to_email=member_payload["email"],
+                    subject=f"Schedule updated: {cohort.name}",
+                    body=_build_shift_notice_body(
+                        member_name=full_name,
+                        cohort_name=cohort.name,
+                        old_start=old_start,
+                        old_end=old_end,
+                        new_start=new_start_utc,
+                        new_end=new_end_utc,
+                        reason=shift_in.reason,
+                    ),
+                )
 
-        if send_coroutines:
-            send_results = await asyncio.gather(
-                *send_coroutines, return_exceptions=True
+            send_coroutines = []
+            for member in member_map.values():
+                if member.get("email"):
+                    notification_attempts += 1
+                    send_coroutines.append(_send_notice(member))
+
+            if send_coroutines:
+                send_results = await asyncio.gather(
+                    *send_coroutines, return_exceptions=True
+                )
+                for result in send_results:
+                    if result is True:
+                        notification_sent += 1
+                    elif isinstance(result, Exception):
+                        warnings.append(f"Member notification error: {result}")
+        except Exception as exc:
+            warnings.append(
+                "Member notifications skipped due to member lookup/send failure: "
+                f"{exc}"
             )
-            for result in send_results:
-                if result is True:
-                    notification_sent += 1
-                elif isinstance(result, Exception):
-                    warnings.append(f"Member notification error: {result}")
 
     actor_member_id = None
     try:
@@ -2294,6 +2314,7 @@ async def enroll_student(
         member_id=enrollment_in.member_id,
         status=EnrollmentStatus.ENROLLED,  # Admin enrolls directly
         payment_status=PaymentStatus.PENDING,
+        uses_installments=False,
         preferences=enrollment_in.preferences,
         price_snapshot_amount=price_snapshot,
         currency_snapshot=program.currency or "NGN",
@@ -2544,6 +2565,7 @@ async def self_enroll(
         member_auth_id=current_user.user_id,  # For decoupled ownership verification
         status=enrollment_status,
         payment_status=PaymentStatus.PENDING,
+        uses_installments=False,
         preferences=preferences or {},
         price_snapshot_amount=(
             _resolve_enrollment_total_fee(program, cohort)
@@ -3227,7 +3249,24 @@ async def admin_mark_enrollment_paid(
         paid_statuses = {InstallmentStatus.PAID, InstallmentStatus.WAIVED}
         target_installment: EnrollmentInstallment | None = None
 
-        if mark_payload.installment_id:
+        if mark_payload.clear_installments:
+            for inst in installments:
+                await db.delete(inst)
+            enrollment.uses_installments = False
+            enrollment.total_installments = 0
+            enrollment.paid_installments_count = 0
+            enrollment.missed_installments_count = 0
+            enrollment.access_suspended = False
+            enrollment.payment_status = PaymentStatus.PAID
+            enrollment.paid_at = now_dt
+            if mark_payload.payment_reference:
+                enrollment.payment_reference = mark_payload.payment_reference
+            if enrollment.status == EnrollmentStatus.PENDING_APPROVAL:
+                cohort = enrollment.cohort
+                if not cohort or not cohort.require_approval:
+                    enrollment.status = EnrollmentStatus.ENROLLED
+            installments = []
+        elif mark_payload.installment_id:
             target_installment = next(
                 (i for i in installments if i.id == mark_payload.installment_id), None
             )
@@ -3252,15 +3291,16 @@ async def admin_mark_enrollment_paid(
                 None,
             )
 
-        if target_installment and target_installment.status not in paid_statuses:
-            target_installment.status = InstallmentStatus.PAID
-            target_installment.paid_at = now_dt
-            target_installment.payment_reference = mark_payload.payment_reference
+        if not mark_payload.clear_installments:
+            if target_installment and target_installment.status not in paid_statuses:
+                target_installment.status = InstallmentStatus.PAID
+                target_installment.paid_at = now_dt
+                target_installment.payment_reference = mark_payload.payment_reference
 
-        if mark_payload.payment_reference:
-            enrollment.payment_reference = mark_payload.payment_reference
+            if mark_payload.payment_reference:
+                enrollment.payment_reference = mark_payload.payment_reference
 
-        await _sync_installment_state_for_enrollment(db, enrollment, now_dt=now_dt)
+            await _sync_installment_state_for_enrollment(db, enrollment, now_dt=now_dt)
     else:
         enrollment.payment_status = PaymentStatus.PAID
         enrollment.payment_reference = mark_payload.payment_reference
