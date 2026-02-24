@@ -1041,9 +1041,11 @@ async def apply_cohort_timeline_shift(
     if shift_in.shift_sessions:
         sessions = await _fetch_cohort_sessions_for_shift(cohort_id)
         session_impacts, _, _ = _build_session_impacts(sessions, delta)
-        sessions_shifted, sessions_skipped, session_warnings = (
-            await _shift_sessions_or_raise(impacts=session_impacts)
-        )
+        (
+            sessions_shifted,
+            sessions_skipped,
+            session_warnings,
+        ) = await _shift_sessions_or_raise(impacts=session_impacts)
         warnings.extend(session_warnings)
 
     pending_installments_shifted = 0
