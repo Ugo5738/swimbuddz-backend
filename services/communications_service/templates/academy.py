@@ -633,8 +633,10 @@ async def send_installment_payment_reminder_email(
 
     Used for scheduled reminders (7, 3, 1 day before due date) and on due-date
     when the wallet auto-deduction failed because the balance was insufficient.
+
+    ``amount`` is expected in kobo.
     """
-    amount_ngn = amount / 100  # kobo → NGN
+    amount_ngn = amount / 100  # kobo -> NGN
     currency_symbol = "₦" if currency == "NGN" else currency
     amount_display = f"{currency_symbol}{amount_ngn:,.0f}"
 
