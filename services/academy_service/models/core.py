@@ -78,7 +78,7 @@ class Program(Base):
     currency: Mapped[str] = mapped_column(String, default="NGN", server_default="NGN")
     price_amount: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0"
-    )  # In naira (major unit) - payment service converts to kobo for Paystack
+    )  # Kobo (minor NGN unit)
     billing_type: Mapped[BillingType] = mapped_column(
         SAEnum(
             BillingType,
@@ -294,7 +294,7 @@ class Cohort(Base):
         UUID(as_uuid=True), nullable=True
     )
 
-    # Pricing override
+    # Pricing override in kobo (minor NGN unit)
     price_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     status: Mapped[CohortStatus] = mapped_column(
@@ -522,6 +522,7 @@ class Enrollment(Base):
         ),
         default=PaymentStatus.PENDING,
     )
+    # Snapshot of enrollment price in kobo.
     price_snapshot_amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     currency_snapshot: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     payment_reference: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -538,6 +539,10 @@ class Enrollment(Base):
         Integer, default=0, nullable=False, server_default="0"
     )
     access_suspended: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
+    # True only when member explicitly selects installment billing at checkout.
+    uses_installments: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="false"
     )
 
@@ -607,7 +612,7 @@ class EnrollmentInstallment(Base):
         index=True,
     )
     installment_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)  # Kobo
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[InstallmentStatus] = mapped_column(
         SAEnum(
