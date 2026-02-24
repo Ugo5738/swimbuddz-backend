@@ -179,6 +179,84 @@ class CohortUpdate(BaseModel):
     installment_deposit_amount: Optional[int] = None
 
 
+class CohortTimelineShiftRequest(BaseModel):
+    """Request payload for timeline-shifting a cohort and linked records."""
+
+    new_start_date: datetime
+    new_end_date: datetime
+    expected_updated_at: Optional[datetime] = None
+    idempotency_key: Optional[str] = None
+    reason: Optional[str] = None
+    shift_sessions: bool = True
+    shift_installments: bool = True
+    reset_start_reminders: bool = True
+    notify_members: bool = True
+    set_status_to_open_if_future: bool = True
+
+
+class CohortTimelineSessionImpact(BaseModel):
+    session_id: str
+    status: str
+    starts_at: datetime
+    ends_at: datetime
+    new_starts_at: datetime
+    new_ends_at: datetime
+    will_shift: bool
+
+
+class CohortTimelineShiftPreviewResponse(BaseModel):
+    cohort_id: UUID
+    old_start_date: datetime
+    old_end_date: datetime
+    new_start_date: datetime
+    new_end_date: datetime
+    delta_seconds: int
+    already_applied: bool = False
+    sessions_total: int = 0
+    sessions_shiftable: int = 0
+    sessions_blocked: int = 0
+    pending_installments: int = 0
+    reminder_resets_possible: int = 0
+    session_impacts: List[CohortTimelineSessionImpact] = Field(default_factory=list)
+
+
+class CohortTimelineShiftApplyResponse(BaseModel):
+    cohort_id: UUID
+    old_start_date: datetime
+    old_end_date: datetime
+    new_start_date: datetime
+    new_end_date: datetime
+    delta_seconds: int
+    already_applied: bool = False
+    sessions_shifted: int = 0
+    sessions_skipped: int = 0
+    pending_installments_shifted: int = 0
+    reminder_resets_applied: int = 0
+    notification_attempts: int = 0
+    notification_sent: int = 0
+    warnings: List[str] = Field(default_factory=list)
+
+
+class CohortTimelineShiftLogResponse(BaseModel):
+    id: UUID
+    cohort_id: UUID
+    idempotency_key: Optional[str] = None
+    actor_auth_id: Optional[str] = None
+    actor_member_id: Optional[UUID] = None
+    reason: Optional[str] = None
+    old_start_date: datetime
+    old_end_date: datetime
+    new_start_date: datetime
+    new_end_date: datetime
+    delta_seconds: int
+    options_json: Dict[str, Any] = Field(default_factory=dict)
+    results_json: Dict[str, Any] = Field(default_factory=dict)
+    warnings: List[str] = Field(default_factory=list)
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class CohortResponse(CohortBase):
     id: UUID
     program_id: UUID

@@ -360,6 +360,59 @@ class Cohort(Base):
         return f"<Cohort {self.name} ({self.status})>"
 
 
+class CohortTimelineShiftLog(Base):
+    """Immutable audit record for cohort timeline shift executions."""
+
+    __tablename__ = "cohort_timeline_shift_logs"
+    __table_args__ = (
+        UniqueConstraint(
+            "cohort_id",
+            "idempotency_key",
+            name="uq_cohort_timeline_shift_logs_idempotency",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    cohort_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    actor_auth_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    actor_member_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    old_start_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    old_end_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    new_start_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    new_end_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    delta_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    options_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    results_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    warnings: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+    def __repr__(self):
+        return f"<CohortTimelineShiftLog Cohort={self.cohort_id} Created={self.created_at}>"
+
+
 # ============================================================================
 # RESOURCE MODELS
 # ============================================================================

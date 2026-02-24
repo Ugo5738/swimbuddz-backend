@@ -1,4 +1,6 @@
+import asyncio
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,6 +23,8 @@ from libs.common.service_client import (
     get_member_by_id,
     get_members_bulk,
     get_next_session_for_cohort,
+    internal_get,
+    internal_patch,
     internal_post,
 )
 from libs.db.session import get_async_db
@@ -31,6 +35,7 @@ from services.academy_service.models import (
     CohortComplexityScore,
     CohortResource,
     CohortStatus,
+    CohortTimelineShiftLog,
     Enrollment,
     EnrollmentInstallment,
     EnrollmentStatus,
@@ -58,6 +63,11 @@ from services.academy_service.schemas import (
     CohortCreate,
     CohortResourceResponse,
     CohortResponse,
+    CohortTimelineSessionImpact,
+    CohortTimelineShiftApplyResponse,
+    CohortTimelineShiftLogResponse,
+    CohortTimelineShiftPreviewResponse,
+    CohortTimelineShiftRequest,
     CohortUpdate,
     ComplexityScoreCalculateRequest,
     ComplexityScoreCalculation,
@@ -91,6 +101,7 @@ from services.academy_service.services.scoring import (
     get_dimension_labels,
 )
 from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -248,6 +259,243 @@ async def _sync_installment_state_for_enrollment(
         now=effective_now,
     )
     return installments
+
+
+_SHIFTABLE_SESSION_STATUSES = {"draft", "scheduled", "in_progress"}
+_START_COUNTDOWN_REMINDER_KEYS = {"7_days", "3_days", "1_days"}
+_COHORT_TIMELINE_NOTIFY_STATUSES = {
+    EnrollmentStatus.ENROLLED,
+    EnrollmentStatus.PENDING_APPROVAL,
+}
+
+
+def _to_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _validate_shift_window(
+    *,
+    old_start: datetime,
+    old_end: datetime,
+    new_start: datetime,
+    new_end: datetime,
+) -> timedelta:
+    old_start_utc = _to_utc(old_start)
+    old_end_utc = _to_utc(old_end)
+    new_start_utc = _to_utc(new_start)
+    new_end_utc = _to_utc(new_end)
+
+    if new_end_utc <= new_start_utc:
+        raise HTTPException(
+            status_code=400,
+            detail="new_end_date must be after new_start_date",
+        )
+
+    delta_start = new_start_utc - old_start_utc
+    delta_end = new_end_utc - old_end_utc
+    if delta_start != delta_end:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "start_date and end_date must shift by the same amount "
+                "(duration cannot change in timeline-shift mode)"
+            ),
+        )
+    return delta_start
+
+
+async def _fetch_cohort_sessions_for_shift(cohort_id: uuid.UUID) -> list[dict]:
+    settings = get_settings()
+    response = await internal_get(
+        service_url=settings.SESSIONS_SERVICE_URL,
+        # sessions-service list endpoint is mounted at "/sessions/".
+        # Calling "/sessions" causes a 307 redirect, which we treat as non-success.
+        path="/sessions/",
+        calling_service="academy",
+        params={"cohort_id": str(cohort_id), "include_drafts": "true"},
+        timeout=20.0,
+    )
+    if not response.is_success:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Failed to fetch cohort sessions from sessions service "
+                f"(status={response.status_code})"
+            ),
+        )
+    data = response.json()
+    if not isinstance(data, list):
+        raise HTTPException(
+            status_code=502,
+            detail="Invalid sessions-service response while preparing timeline shift",
+        )
+    return data
+
+
+def _build_session_impacts(
+    sessions: list[dict], delta: timedelta
+) -> tuple[list[CohortTimelineSessionImpact], int, int]:
+    impacts: list[CohortTimelineSessionImpact] = []
+    shiftable = 0
+    blocked = 0
+
+    for raw in sessions:
+        status_raw = (raw.get("status") or "").lower()
+        starts_at = _parse_iso_datetime(str(raw["starts_at"]))
+        ends_at = _parse_iso_datetime(str(raw["ends_at"]))
+        will_shift = status_raw in _SHIFTABLE_SESSION_STATUSES
+        if will_shift:
+            shiftable += 1
+        else:
+            blocked += 1
+
+        impacts.append(
+            CohortTimelineSessionImpact(
+                session_id=str(raw["id"]),
+                status=status_raw,
+                starts_at=starts_at,
+                ends_at=ends_at,
+                new_starts_at=starts_at + delta,
+                new_ends_at=ends_at + delta,
+                will_shift=will_shift,
+            )
+        )
+
+    return impacts, shiftable, blocked
+
+
+async def _shift_sessions_or_raise(
+    *,
+    impacts: list[CohortTimelineSessionImpact],
+) -> tuple[int, int, list[str]]:
+    settings = get_settings()
+    shifted_count = 0
+    skipped_count = 0
+    warnings: list[str] = []
+    patched_sessions: list[CohortTimelineSessionImpact] = []
+
+    for impact in impacts:
+        if not impact.will_shift:
+            skipped_count += 1
+            continue
+
+        response = await internal_patch(
+            service_url=settings.SESSIONS_SERVICE_URL,
+            path=f"/sessions/{impact.session_id}",
+            calling_service="academy",
+            json={
+                "starts_at": impact.new_starts_at.isoformat(),
+                "ends_at": impact.new_ends_at.isoformat(),
+            },
+            timeout=20.0,
+        )
+        if response.is_success:
+            shifted_count += 1
+            patched_sessions.append(impact)
+            continue
+
+        rollback_failed: list[str] = []
+        for applied in reversed(patched_sessions):
+            rollback_resp = await internal_patch(
+                service_url=settings.SESSIONS_SERVICE_URL,
+                path=f"/sessions/{applied.session_id}",
+                calling_service="academy",
+                json={
+                    "starts_at": applied.starts_at.isoformat(),
+                    "ends_at": applied.ends_at.isoformat(),
+                },
+                timeout=20.0,
+            )
+            if not rollback_resp.is_success:
+                rollback_failed.append(applied.session_id)
+
+        if rollback_failed:
+            warnings.append(
+                "Rollback failed for sessions after patch error: "
+                + ", ".join(rollback_failed)
+            )
+
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Failed to shift session timeline "
+                f"(session_id={impact.session_id}, status={response.status_code})"
+            ),
+        )
+
+    return shifted_count, skipped_count, warnings
+
+
+def _format_date_for_notice(value: datetime) -> str:
+    return _to_utc(value).strftime("%B %d, %Y %H:%M UTC")
+
+
+def _updated_at_mismatch(current: datetime, expected: datetime | None) -> bool:
+    if expected is None:
+        return False
+    return _to_utc(current) != _to_utc(expected)
+
+
+def _build_shift_notice_body(
+    *,
+    member_name: str,
+    cohort_name: str,
+    old_start: datetime,
+    old_end: datetime,
+    new_start: datetime,
+    new_end: datetime,
+    reason: str | None,
+) -> str:
+    lines = [
+        f"Hi {member_name},",
+        "",
+        f"We've updated the schedule for your cohort: {cohort_name}.",
+        "",
+        f"Previous dates: {_format_date_for_notice(old_start)} to {_format_date_for_notice(old_end)}",
+        f"New dates: {_format_date_for_notice(new_start)} to {_format_date_for_notice(new_end)}",
+    ]
+    if reason:
+        lines.extend(["", f"Reason: {reason}"])
+    lines.extend(
+        [
+            "",
+            "Your enrollment remains active. Please check your dashboard for the updated timeline.",
+            "",
+            "SwimBuddz Team",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _timeline_shift_response_from_log(
+    log_row: CohortTimelineShiftLog,
+) -> CohortTimelineShiftApplyResponse:
+    results = dict(log_row.results_json or {})
+    warnings = list(log_row.warnings or [])
+    return CohortTimelineShiftApplyResponse(
+        cohort_id=log_row.cohort_id,
+        old_start_date=log_row.old_start_date,
+        old_end_date=log_row.old_end_date,
+        new_start_date=log_row.new_start_date,
+        new_end_date=log_row.new_end_date,
+        delta_seconds=log_row.delta_seconds,
+        already_applied=bool(results.get("already_applied", False)),
+        sessions_shifted=int(results.get("sessions_shifted", 0)),
+        sessions_skipped=int(results.get("sessions_skipped", 0)),
+        pending_installments_shifted=int(
+            results.get("pending_installments_shifted", 0)
+        ),
+        reminder_resets_applied=int(results.get("reminder_resets_applied", 0)),
+        notification_attempts=int(results.get("notification_attempts", 0)),
+        notification_sent=int(results.get("notification_sent", 0)),
+        warnings=warnings,
+    )
 
 
 # --- Admin Tasks ---
@@ -567,6 +815,423 @@ async def update_cohort(
     )
     result = await db.execute(query)
     return result.scalar_one()
+
+
+@router.post(
+    "/cohorts/{cohort_id}/timeline-shifts/preview",
+    response_model=CohortTimelineShiftPreviewResponse,
+)
+async def preview_cohort_timeline_shift(
+    cohort_id: uuid.UUID,
+    shift_in: CohortTimelineShiftRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Preview a cohort timeline shift without applying changes.
+
+    This endpoint is intentionally side-effect free and reports:
+    - date delta validation
+    - session shiftability breakdown
+    - pending installment count that would be rebased
+    - reminder reset opportunities
+    """
+    query = select(Cohort).where(Cohort.id == cohort_id)
+    result = await db.execute(query)
+    cohort = result.scalar_one_or_none()
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    new_start_utc = _to_utc(shift_in.new_start_date)
+    new_end_utc = _to_utc(shift_in.new_end_date)
+    delta = _validate_shift_window(
+        old_start=cohort.start_date,
+        old_end=cohort.end_date,
+        new_start=new_start_utc,
+        new_end=new_end_utc,
+    )
+    already_applied = (
+        _to_utc(cohort.start_date) == new_start_utc
+        and _to_utc(cohort.end_date) == new_end_utc
+    )
+    if (
+        _updated_at_mismatch(cohort.updated_at, shift_in.expected_updated_at)
+        and not already_applied
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Cohort was updated by another change. Refresh and retry.",
+        )
+
+    sessions: list[dict] = []
+    impacts: list[CohortTimelineSessionImpact] = []
+    shiftable = 0
+    blocked = 0
+    if shift_in.shift_sessions and not already_applied:
+        sessions = await _fetch_cohort_sessions_for_shift(cohort_id)
+        impacts, shiftable, blocked = _build_session_impacts(sessions, delta)
+
+    pending_installments = 0
+    if shift_in.shift_installments and not already_applied:
+        pending_installments_result = await db.execute(
+            select(func.count(EnrollmentInstallment.id))
+            .join(Enrollment, Enrollment.id == EnrollmentInstallment.enrollment_id)
+            .where(Enrollment.cohort_id == cohort_id)
+            .where(EnrollmentInstallment.status == InstallmentStatus.PENDING)
+        )
+        pending_installments = pending_installments_result.scalar() or 0
+
+    reminder_resets_possible = 0
+    if shift_in.reset_start_reminders and not already_applied:
+        enrollments_result = await db.execute(
+            select(Enrollment).where(
+                Enrollment.cohort_id == cohort_id,
+                Enrollment.status.in_(_COHORT_TIMELINE_NOTIFY_STATUSES),
+            )
+        )
+        enrollments = enrollments_result.scalars().all()
+        reminder_resets_possible = sum(
+            1
+            for enrollment in enrollments
+            if set(enrollment.reminders_sent or []).intersection(
+                _START_COUNTDOWN_REMINDER_KEYS
+            )
+        )
+
+    return CohortTimelineShiftPreviewResponse(
+        cohort_id=cohort_id,
+        old_start_date=cohort.start_date,
+        old_end_date=cohort.end_date,
+        new_start_date=new_start_utc,
+        new_end_date=new_end_utc,
+        delta_seconds=int(delta.total_seconds()),
+        already_applied=already_applied,
+        sessions_total=len(sessions),
+        sessions_shiftable=shiftable,
+        sessions_blocked=blocked,
+        pending_installments=pending_installments,
+        reminder_resets_possible=reminder_resets_possible,
+        session_impacts=impacts,
+    )
+
+
+@router.post(
+    "/cohorts/{cohort_id}/timeline-shifts",
+    response_model=CohortTimelineShiftApplyResponse,
+)
+async def apply_cohort_timeline_shift(
+    cohort_id: uuid.UUID,
+    shift_in: CohortTimelineShiftRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Apply a cohort timeline shift and propagate it across linked records.
+
+    Workflow:
+    1. Validate equal start/end delta (duration preserved)
+    2. Shift eligible sessions in sessions-service (with compensation on failure)
+    3. Shift pending installment due dates
+    4. Reset enrollment countdown reminders
+    5. Persist cohort dates and send member notifications (best effort)
+    """
+    # Serialize timeline-shift operations per cohort to avoid concurrent
+    # double-apply races from duplicate submits/retries.
+    query = select(Cohort).where(Cohort.id == cohort_id).with_for_update()
+    result = await db.execute(query)
+    cohort = result.scalar_one_or_none()
+    if not cohort:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    idempotency_key = (
+        shift_in.idempotency_key.strip() if shift_in.idempotency_key else None
+    )
+    if idempotency_key:
+        existing_log_result = await db.execute(
+            select(CohortTimelineShiftLog).where(
+                CohortTimelineShiftLog.cohort_id == cohort_id,
+                CohortTimelineShiftLog.idempotency_key == idempotency_key,
+            )
+        )
+        existing_log = existing_log_result.scalar_one_or_none()
+        if existing_log:
+            return _timeline_shift_response_from_log(existing_log)
+
+    if cohort.status in {CohortStatus.COMPLETED, CohortStatus.CANCELLED}:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot timeline-shift completed or cancelled cohorts",
+        )
+
+    new_start_utc = _to_utc(shift_in.new_start_date)
+    new_end_utc = _to_utc(shift_in.new_end_date)
+    delta = _validate_shift_window(
+        old_start=cohort.start_date,
+        old_end=cohort.end_date,
+        new_start=new_start_utc,
+        new_end=new_end_utc,
+    )
+    old_start = cohort.start_date
+    old_end = cohort.end_date
+
+    already_applied = (
+        _to_utc(old_start) == new_start_utc and _to_utc(old_end) == new_end_utc
+    )
+    if (
+        _updated_at_mismatch(cohort.updated_at, shift_in.expected_updated_at)
+        and not already_applied
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Cohort was updated by another change. Refresh and retry.",
+        )
+    if already_applied:
+        response = CohortTimelineShiftApplyResponse(
+            cohort_id=cohort_id,
+            old_start_date=old_start,
+            old_end_date=old_end,
+            new_start_date=new_start_utc,
+            new_end_date=new_end_utc,
+            delta_seconds=int(delta.total_seconds()),
+            already_applied=True,
+        )
+        if idempotency_key:
+            log_row = CohortTimelineShiftLog(
+                cohort_id=cohort_id,
+                idempotency_key=idempotency_key,
+                actor_auth_id=current_user.user_id,
+                reason=shift_in.reason,
+                old_start_date=old_start,
+                old_end_date=old_end,
+                new_start_date=new_start_utc,
+                new_end_date=new_end_utc,
+                delta_seconds=int(delta.total_seconds()),
+                options_json={
+                    "shift_sessions": bool(shift_in.shift_sessions),
+                    "shift_installments": bool(shift_in.shift_installments),
+                    "reset_start_reminders": bool(shift_in.reset_start_reminders),
+                    "notify_members": bool(shift_in.notify_members),
+                    "set_status_to_open_if_future": bool(
+                        shift_in.set_status_to_open_if_future
+                    ),
+                },
+                results_json={"already_applied": True},
+                warnings=[],
+            )
+            db.add(log_row)
+            try:
+                await db.commit()
+            except IntegrityError:
+                await db.rollback()
+                existing_log_result = await db.execute(
+                    select(CohortTimelineShiftLog).where(
+                        CohortTimelineShiftLog.cohort_id == cohort_id,
+                        CohortTimelineShiftLog.idempotency_key == idempotency_key,
+                    )
+                )
+                existing_log = existing_log_result.scalar_one_or_none()
+                if existing_log:
+                    return _timeline_shift_response_from_log(existing_log)
+        return response
+
+    session_impacts: list[CohortTimelineSessionImpact] = []
+    sessions_shifted = 0
+    sessions_skipped = 0
+    warnings: list[str] = []
+    if shift_in.shift_sessions:
+        sessions = await _fetch_cohort_sessions_for_shift(cohort_id)
+        session_impacts, _, _ = _build_session_impacts(sessions, delta)
+        sessions_shifted, sessions_skipped, session_warnings = (
+            await _shift_sessions_or_raise(impacts=session_impacts)
+        )
+        warnings.extend(session_warnings)
+
+    pending_installments_shifted = 0
+    reminder_resets_applied = 0
+    notify_enrollments: list[Enrollment] = []
+
+    cohort.start_date = new_start_utc
+    cohort.end_date = new_end_utc
+
+    now = utc_now()
+    if (
+        shift_in.set_status_to_open_if_future
+        and new_start_utc > now
+        and cohort.status == CohortStatus.ACTIVE
+    ):
+        cohort.status = CohortStatus.OPEN
+
+    if shift_in.shift_installments:
+        pending_installments_result = await db.execute(
+            select(EnrollmentInstallment)
+            .join(Enrollment, Enrollment.id == EnrollmentInstallment.enrollment_id)
+            .where(Enrollment.cohort_id == cohort_id)
+            .where(EnrollmentInstallment.status == InstallmentStatus.PENDING)
+        )
+        pending_installments = pending_installments_result.scalars().all()
+        for installment in pending_installments:
+            installment.due_at = installment.due_at + delta
+        pending_installments_shifted = len(pending_installments)
+
+    if shift_in.reset_start_reminders or shift_in.notify_members:
+        enrollment_result = await db.execute(
+            select(Enrollment).where(
+                Enrollment.cohort_id == cohort_id,
+                Enrollment.status.in_(_COHORT_TIMELINE_NOTIFY_STATUSES),
+            )
+        )
+        notify_enrollments = enrollment_result.scalars().all()
+
+    if shift_in.reset_start_reminders:
+        for enrollment in notify_enrollments:
+            existing = list(enrollment.reminders_sent or [])
+            filtered = [
+                key for key in existing if key not in _START_COUNTDOWN_REMINDER_KEYS
+            ]
+            if filtered != existing:
+                enrollment.reminders_sent = filtered
+                reminder_resets_applied += 1
+
+    await db.commit()
+    await db.refresh(cohort)
+
+    notification_attempts = 0
+    notification_sent = 0
+    if shift_in.notify_members and notify_enrollments:
+        member_ids = list({str(e.member_id) for e in notify_enrollments if e.member_id})
+        member_map = {
+            member["id"]: member
+            for member in await get_members_bulk(member_ids, calling_service="academy")
+        }
+        email_client = get_email_client()
+
+        async def _send_notice(member_payload: dict) -> bool:
+            full_name = (
+                f"{member_payload.get('first_name', '')} {member_payload.get('last_name', '')}"
+            ).strip() or "Swimmer"
+            return await email_client.send(
+                to_email=member_payload["email"],
+                subject=f"Schedule updated: {cohort.name}",
+                body=_build_shift_notice_body(
+                    member_name=full_name,
+                    cohort_name=cohort.name,
+                    old_start=old_start,
+                    old_end=old_end,
+                    new_start=new_start_utc,
+                    new_end=new_end_utc,
+                    reason=shift_in.reason,
+                ),
+            )
+
+        send_coroutines = []
+        for member in member_map.values():
+            if member.get("email"):
+                notification_attempts += 1
+                send_coroutines.append(_send_notice(member))
+
+        if send_coroutines:
+            send_results = await asyncio.gather(
+                *send_coroutines, return_exceptions=True
+            )
+            for result in send_results:
+                if result is True:
+                    notification_sent += 1
+                elif isinstance(result, Exception):
+                    warnings.append(f"Member notification error: {result}")
+
+    actor_member_id = None
+    try:
+        actor_member = await get_member_by_auth_id(
+            current_user.user_id, calling_service="academy"
+        )
+        if actor_member:
+            actor_member_id = actor_member.get("id")
+    except Exception as exc:
+        warnings.append(f"Could not resolve actor member for audit log: {exc}")
+
+    log_row = CohortTimelineShiftLog(
+        cohort_id=cohort_id,
+        idempotency_key=idempotency_key,
+        actor_auth_id=current_user.user_id,
+        actor_member_id=actor_member_id,
+        reason=shift_in.reason,
+        old_start_date=old_start,
+        old_end_date=old_end,
+        new_start_date=new_start_utc,
+        new_end_date=new_end_utc,
+        delta_seconds=int(delta.total_seconds()),
+        options_json={
+            "shift_sessions": bool(shift_in.shift_sessions),
+            "shift_installments": bool(shift_in.shift_installments),
+            "reset_start_reminders": bool(shift_in.reset_start_reminders),
+            "notify_members": bool(shift_in.notify_members),
+            "set_status_to_open_if_future": bool(shift_in.set_status_to_open_if_future),
+        },
+        results_json={
+            "already_applied": False,
+            "sessions_shifted": sessions_shifted,
+            "sessions_skipped": sessions_skipped,
+            "pending_installments_shifted": pending_installments_shifted,
+            "reminder_resets_applied": reminder_resets_applied,
+            "notification_attempts": notification_attempts,
+            "notification_sent": notification_sent,
+        },
+        warnings=warnings,
+    )
+    db.add(log_row)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        if idempotency_key:
+            existing_log_result = await db.execute(
+                select(CohortTimelineShiftLog).where(
+                    CohortTimelineShiftLog.cohort_id == cohort_id,
+                    CohortTimelineShiftLog.idempotency_key == idempotency_key,
+                )
+            )
+            existing_log = existing_log_result.scalar_one_or_none()
+            if existing_log:
+                return _timeline_shift_response_from_log(existing_log)
+        warnings.append("Audit log write failed due to idempotency conflict")
+
+    return CohortTimelineShiftApplyResponse(
+        cohort_id=cohort_id,
+        old_start_date=old_start,
+        old_end_date=old_end,
+        new_start_date=new_start_utc,
+        new_end_date=new_end_utc,
+        delta_seconds=int(delta.total_seconds()),
+        already_applied=False,
+        sessions_shifted=sessions_shifted,
+        sessions_skipped=sessions_skipped,
+        pending_installments_shifted=pending_installments_shifted,
+        reminder_resets_applied=reminder_resets_applied,
+        notification_attempts=notification_attempts,
+        notification_sent=notification_sent,
+        warnings=warnings,
+    )
+
+
+@router.get(
+    "/cohorts/{cohort_id}/timeline-shifts",
+    response_model=List[CohortTimelineShiftLogResponse],
+)
+async def list_cohort_timeline_shift_logs(
+    cohort_id: uuid.UUID,
+    limit: int = 20,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List immutable timeline-shift audit logs for a cohort (newest first)."""
+    capped_limit = max(1, min(limit, 100))
+    result = await db.execute(
+        select(CohortTimelineShiftLog)
+        .where(CohortTimelineShiftLog.cohort_id == cohort_id)
+        .order_by(CohortTimelineShiftLog.created_at.desc())
+        .limit(capped_limit)
+    )
+    return result.scalars().all()
 
 
 @router.delete("/cohorts/{cohort_id}", status_code=status.HTTP_204_NO_CONTENT)
