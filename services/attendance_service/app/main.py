@@ -1,8 +1,8 @@
 """FastAPI application for the Attendance Service."""
 
 from fastapi import FastAPI
-from services.attendance_service.internal_router import router as internal_router
-from services.attendance_service.router import router as attendance_router
+from services.attendance_service.routers.internal import router as internal_router
+from services.attendance_service.routers.member import router as attendance_router
 
 
 def create_app() -> FastAPI:

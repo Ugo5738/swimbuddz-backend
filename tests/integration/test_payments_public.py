@@ -72,8 +72,8 @@ async def test_list_payouts_admin(payments_client, db_session):
     db_session.add(payout)
     await db_session.commit()
 
-    # Payout admin router is mounted at /admin/payouts/ (trailing slash required)
-    response = await payments_client.get("/admin/payouts/")
+    # Payout admin router is included with "/payments" app prefix.
+    response = await payments_client.get("/payments/admin/payouts/")
 
     assert response.status_code == 200
     data = response.json()

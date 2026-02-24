@@ -4,7 +4,6 @@ import pytest
 from services.wallet_service.models import WalletStatus
 from tests.factories import WalletFactory
 
-
 # ---------------------------------------------------------------------------
 # Admin wallet list / detail
 # ---------------------------------------------------------------------------
@@ -121,7 +120,7 @@ async def test_admin_grant_promotional(wallet_client, db_session):
         json={
             "member_auth_id": w.member_auth_id,
             "bubbles_amount": 25,
-            "grant_type": "promotional",
+            "grant_type": "admin_manual",
             "reason": "Community event participation reward",
         },
     )

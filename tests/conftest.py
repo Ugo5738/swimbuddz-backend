@@ -8,6 +8,7 @@ Provides:
 - Service client mock builders
 """
 
+import uuid
 from contextlib import contextmanager
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -301,7 +302,7 @@ def _db_override(db_session):
 
 def _admin_override():
     """Create auth override that returns an admin user."""
-    admin = make_admin_user()
+    admin = make_admin_user(user_id=str(uuid.uuid4()))
 
     async def _get_admin():
         return admin

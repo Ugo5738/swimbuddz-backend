@@ -1,6 +1,12 @@
 """Members service routers package."""
 
 from services.members_service.routers.admin import router as admin_router
+from services.members_service.routers.challenges import (
+    challenge_router,
+    volunteer_router,
+)
+from services.members_service.routers.coach import admin_router as coach_admin_router
+from services.members_service.routers.coach import router as coach_router
 from services.members_service.routers.coaches import router as coaches_router
 from services.members_service.routers.internal import router as internal_router
 from services.members_service.routers.members import router as members_router
@@ -12,4 +18,8 @@ __all__ = [
     "coaches_router",
     "admin_router",
     "internal_router",
+    "coach_router",
+    "coach_admin_router",
+    "challenge_router",
+    "volunteer_router",
 ]

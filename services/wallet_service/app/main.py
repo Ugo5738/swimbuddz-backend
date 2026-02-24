@@ -1,9 +1,9 @@
 """FastAPI application for the Wallet Service."""
 
 from fastapi import FastAPI
-from services.wallet_service.admin_router import router as admin_router
-from services.wallet_service.internal_router import router as internal_router
-from services.wallet_service.router import router as wallet_router
+from services.wallet_service.routers.admin import router as admin_router
+from services.wallet_service.routers.internal import router as internal_router
+from services.wallet_service.routers.member import router as wallet_router
 
 
 def create_app() -> FastAPI:

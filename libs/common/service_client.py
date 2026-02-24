@@ -102,6 +102,25 @@ async def internal_post(
     )
 
 
+async def internal_patch(
+    *,
+    service_url: str,
+    path: str,
+    calling_service: str,
+    json: Any = None,
+    timeout: float = _DEFAULT_TIMEOUT,
+) -> httpx.Response:
+    """Convenience wrapper for PATCH requests."""
+    return await internal_request(
+        service_url=service_url,
+        method="PATCH",
+        path=path,
+        calling_service=calling_service,
+        json=json,
+        timeout=timeout,
+    )
+
+
 async def internal_delete(
     *,
     service_url: str,

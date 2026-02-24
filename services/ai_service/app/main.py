@@ -1,7 +1,7 @@
 """FastAPI application for the AI Service."""
 
 from fastapi import FastAPI
-from services.ai_service.router import admin_router, router
+from services.ai_service.routers.member import admin_router, router
 
 
 def create_app() -> FastAPI:
