@@ -1100,46 +1100,56 @@ async def apply_cohort_timeline_shift(
     notification_attempts = 0
     notification_sent = 0
     if shift_in.notify_members and notify_enrollments:
-        member_ids = list({str(e.member_id) for e in notify_enrollments if e.member_id})
-        member_map = {
-            member["id"]: member
-            for member in await get_members_bulk(member_ids, calling_service="academy")
-        }
-        email_client = get_email_client()
-
-        async def _send_notice(member_payload: dict) -> bool:
-            full_name = (
-                f"{member_payload.get('first_name', '')} {member_payload.get('last_name', '')}"
-            ).strip() or "Swimmer"
-            return await email_client.send(
-                to_email=member_payload["email"],
-                subject=f"Schedule updated: {cohort.name}",
-                body=_build_shift_notice_body(
-                    member_name=full_name,
-                    cohort_name=cohort.name,
-                    old_start=old_start,
-                    old_end=old_end,
-                    new_start=new_start_utc,
-                    new_end=new_end_utc,
-                    reason=shift_in.reason,
-                ),
+        try:
+            member_ids = list(
+                {str(e.member_id) for e in notify_enrollments if e.member_id}
             )
+            member_map = {
+                member["id"]: member
+                for member in await get_members_bulk(
+                    member_ids, calling_service="academy"
+                )
+            }
+            email_client = get_email_client()
 
-        send_coroutines = []
-        for member in member_map.values():
-            if member.get("email"):
-                notification_attempts += 1
-                send_coroutines.append(_send_notice(member))
+            async def _send_notice(member_payload: dict) -> bool:
+                full_name = (
+                    f"{member_payload.get('first_name', '')} {member_payload.get('last_name', '')}"
+                ).strip() or "Swimmer"
+                return await email_client.send(
+                    to_email=member_payload["email"],
+                    subject=f"Schedule updated: {cohort.name}",
+                    body=_build_shift_notice_body(
+                        member_name=full_name,
+                        cohort_name=cohort.name,
+                        old_start=old_start,
+                        old_end=old_end,
+                        new_start=new_start_utc,
+                        new_end=new_end_utc,
+                        reason=shift_in.reason,
+                    ),
+                )
 
-        if send_coroutines:
-            send_results = await asyncio.gather(
-                *send_coroutines, return_exceptions=True
+            send_coroutines = []
+            for member in member_map.values():
+                if member.get("email"):
+                    notification_attempts += 1
+                    send_coroutines.append(_send_notice(member))
+
+            if send_coroutines:
+                send_results = await asyncio.gather(
+                    *send_coroutines, return_exceptions=True
+                )
+                for result in send_results:
+                    if result is True:
+                        notification_sent += 1
+                    elif isinstance(result, Exception):
+                        warnings.append(f"Member notification error: {result}")
+        except Exception as exc:
+            warnings.append(
+                "Member notifications skipped due to member lookup/send failure: "
+                f"{exc}"
             )
-            for result in send_results:
-                if result is True:
-                    notification_sent += 1
-                elif isinstance(result, Exception):
-                    warnings.append(f"Member notification error: {result}")
 
     actor_member_id = None
     try:
