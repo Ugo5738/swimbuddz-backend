@@ -14,7 +14,7 @@ import pytest
 async def test_email_send_response_contract(communications_client):
     """All services expect EmailResponse shape from /email/send."""
     with patch(
-        "services.communications_service.email_router.send_email",
+        "services.communications_service.routers.email.send_email",
         new_callable=AsyncMock,
         return_value=True,
     ):

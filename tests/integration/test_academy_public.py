@@ -4,16 +4,33 @@ Tests program CRUD, cohort CRUD, enrollment operations, and milestones.
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import select
 from tests.factories import (
     CohortFactory,
+    EnrollmentFactory,
     MemberFactory,
     MilestoneFactory,
     ProgramFactory,
 )
+
+
+class _FakeResponse:
+    def __init__(self, payload=None, status_code=200, text=""):
+        self._payload = payload
+        self.status_code = status_code
+        self.text = text
+
+    @property
+    def is_success(self):
+        return 200 <= self.status_code < 300
+
+    def json(self):
+        return self._payload
+
 
 # ---------------------------------------------------------------------------
 # Programs — CRUD
@@ -145,12 +162,12 @@ async def test_get_cohort_by_id(academy_client, db_session):
     await db_session.commit()
 
     with patch(
-        "services.academy_service.router.get_members_bulk",
+        "services.academy_service.routers.member.get_members_bulk",
         new_callable=AsyncMock,
         return_value=[],
     ):
         with patch(
-            "services.academy_service.router.get_next_session_for_cohort",
+            "services.academy_service.routers.member.get_next_session_for_cohort",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -202,7 +219,7 @@ async def test_create_enrollment(academy_client, db_session):
     }
 
     with patch(
-        "services.academy_service.router.get_member_by_id",
+        "services.academy_service.routers.member.get_member_by_id",
         new_callable=AsyncMock,
         return_value={
             "id": str(member.id),
@@ -212,7 +229,7 @@ async def test_create_enrollment(academy_client, db_session):
         },
     ):
         with patch(
-            "services.academy_service.router.internal_post",
+            "services.academy_service.routers.member.internal_post",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -222,10 +239,11 @@ async def test_create_enrollment(academy_client, db_session):
     data = response.json()
     assert data["cohort_id"] == str(cohort.id)
     assert data["member_id"] == str(member.id)
-    assert data["total_installments"] == 3
+    # Admin enrollment does not auto-generate installment plans unless explicitly
+    # enabled + selected through the installment-aware enrollment flow.
+    assert data["total_installments"] == 0
     assert data["paid_installments_count"] == 0
-    assert len(data["installments"]) == 3
-    assert [i["amount"] for i in data["installments"]] == [50000, 50000, 50000]
+    assert len(data["installments"]) == 0
 
 
 @pytest.mark.asyncio
@@ -264,17 +282,14 @@ async def test_create_enrollment_caps_installments_to_three_when_fee_exceeds_150
 
     assert response.status_code in (200, 201), response.text
     data = response.json()
-    assert data["total_installments"] == 3
-    assert [i["amount"] for i in data["installments"]] == [83334, 83333, 83333]
-    due_dates = [datetime.fromisoformat(i["due_at"]) for i in data["installments"]]
-    assert (due_dates[1] - due_dates[0]).days == 28
-    assert (due_dates[2] - due_dates[1]).days == 28
+    assert data["total_installments"] == 0
+    assert data["installments"] == []
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_mark_paid_advances_installment_progress(academy_client, db_session):
-    """Marking paid should settle one installment at a time."""
+async def test_mark_paid_updates_non_installment_enrollment(academy_client, db_session):
+    """Marking paid on default admin enrollments moves payment status to paid."""
     program = ProgramFactory.create(duration_weeks=12, price_amount=150000)
     db_session.add(program)
     await db_session.flush()
@@ -301,7 +316,7 @@ async def test_mark_paid_advances_installment_progress(academy_client, db_sessio
     enrollment_id = create_response.json()["id"]
 
     with patch(
-        "services.academy_service.router.get_member_by_id",
+        "services.academy_service.routers.member.get_member_by_id",
         new_callable=AsyncMock,
         return_value={
             "id": str(member.id),
@@ -316,17 +331,366 @@ async def test_mark_paid_advances_installment_progress(academy_client, db_sessio
         )
         assert first_payment.status_code == 200, first_payment.text
         first_data = first_payment.json()
-        assert first_data["paid_installments_count"] == 1
+        assert first_data["paid_installments_count"] == 0
+        assert first_data["total_installments"] == 0
         assert first_data["payment_status"] == "paid"
 
-        final_payment = await academy_client.post(
+        second_payment = await academy_client.post(
             f"/academy/admin/enrollments/{enrollment_id}/mark-paid",
-            json={"installment_number": 3, "payment_reference": "PAY-INST-3"},
+            json={"installment_number": 3, "payment_reference": "PAY-INST-2"},
         )
-        assert final_payment.status_code == 200, final_payment.text
-        final_data = final_payment.json()
-        assert final_data["paid_installments_count"] == 2
-        assert final_data["total_installments"] == 3
+        assert second_payment.status_code == 200, second_payment.text
+        second_data = second_payment.json()
+        assert second_data["paid_installments_count"] == 0
+        assert second_data["total_installments"] == 0
+        assert second_data["payment_status"] == "paid"
+
+
+# ---------------------------------------------------------------------------
+# Cohort Timeline Shift Workflow
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_preview_cohort_timeline_shift(academy_client, db_session):
+    """Preview reports session impact counts and no side effects."""
+    program = ProgramFactory.create()
+    db_session.add(program)
+    await db_session.flush()
+
+    start = datetime.now(timezone.utc) + timedelta(days=5)
+    cohort = CohortFactory.create(
+        program_id=program.id,
+        start_date=start,
+        end_date=start + timedelta(weeks=12),
+    )
+    db_session.add(cohort)
+    await db_session.commit()
+
+    session_payload = [
+        {
+            "id": str(uuid.uuid4()),
+            "status": "scheduled",
+            "starts_at": (start + timedelta(days=1)).isoformat(),
+            "ends_at": (start + timedelta(days=1, hours=1)).isoformat(),
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "status": "completed",
+            "starts_at": (start - timedelta(days=2)).isoformat(),
+            "ends_at": (start - timedelta(days=2) + timedelta(hours=1)).isoformat(),
+        },
+    ]
+
+    with patch(
+        "services.academy_service.routers.member.internal_get",
+        new_callable=AsyncMock,
+        return_value=_FakeResponse(payload=session_payload),
+    ):
+        response = await academy_client.post(
+            f"/academy/cohorts/{cohort.id}/timeline-shifts/preview",
+            json={
+                "new_start_date": (cohort.start_date + timedelta(days=14)).isoformat(),
+                "new_end_date": (cohort.end_date + timedelta(days=14)).isoformat(),
+                "expected_updated_at": cohort.updated_at.isoformat(),
+                "shift_sessions": True,
+                "shift_installments": True,
+                "reset_start_reminders": True,
+                "notify_members": False,
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["sessions_total"] == 2
+    assert data["sessions_shiftable"] == 1
+    assert data["sessions_blocked"] == 1
+    assert data["delta_seconds"] == 14 * 24 * 60 * 60
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_apply_cohort_timeline_shift_updates_related_records(
+    academy_client, db_session
+):
+    """Apply shifts cohort dates, shiftable sessions, pending installments, and reminders."""
+    from services.academy_service.models import (
+        Enrollment,
+        EnrollmentInstallment,
+        EnrollmentStatus,
+        InstallmentStatus,
+    )
+
+    program = ProgramFactory.create()
+    db_session.add(program)
+    await db_session.flush()
+
+    start = datetime.now(timezone.utc) + timedelta(days=3)
+    cohort = CohortFactory.create(
+        program_id=program.id,
+        start_date=start,
+        end_date=start + timedelta(weeks=12),
+    )
+    db_session.add(cohort)
+    await db_session.flush()
+
+    member = MemberFactory.create()
+    db_session.add(member)
+    await db_session.flush()
+
+    enrollment = EnrollmentFactory.create(
+        cohort_id=cohort.id,
+        program_id=program.id,
+        member_id=member.id,
+        status=EnrollmentStatus.ENROLLED,
+        reminders_sent=["7_days", "wallet_deduction_1"],
+    )
+    db_session.add(enrollment)
+    await db_session.flush()
+
+    pending_due = start + timedelta(weeks=4)
+    paid_due = start
+    db_session.add_all(
+        [
+            EnrollmentInstallment(
+                enrollment_id=enrollment.id,
+                installment_number=1,
+                amount=50000,
+                due_at=pending_due,
+                status=InstallmentStatus.PENDING,
+            ),
+            EnrollmentInstallment(
+                enrollment_id=enrollment.id,
+                installment_number=2,
+                amount=50000,
+                due_at=paid_due,
+                status=InstallmentStatus.PAID,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    session_payload = [
+        {
+            "id": str(uuid.uuid4()),
+            "status": "scheduled",
+            "starts_at": (start + timedelta(days=1)).isoformat(),
+            "ends_at": (start + timedelta(days=1, hours=1)).isoformat(),
+        }
+    ]
+
+    with (
+        patch(
+            "services.academy_service.routers.member.internal_get",
+            new_callable=AsyncMock,
+            return_value=_FakeResponse(payload=session_payload),
+        ),
+        patch(
+            "services.academy_service.routers.member.internal_patch",
+            new_callable=AsyncMock,
+            return_value=_FakeResponse(payload={}),
+        ),
+    ):
+        response = await academy_client.post(
+            f"/academy/cohorts/{cohort.id}/timeline-shifts",
+            json={
+                "new_start_date": (cohort.start_date + timedelta(days=14)).isoformat(),
+                "new_end_date": (cohort.end_date + timedelta(days=14)).isoformat(),
+                "expected_updated_at": cohort.updated_at.isoformat(),
+                "shift_sessions": True,
+                "shift_installments": True,
+                "reset_start_reminders": True,
+                "notify_members": False,
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["sessions_shifted"] == 1
+    assert data["pending_installments_shifted"] == 1
+    assert data["reminder_resets_applied"] == 1
+
+    await db_session.refresh(cohort)
+    assert cohort.start_date == start + timedelta(days=14)
+    assert cohort.end_date == start + timedelta(weeks=12, days=14)
+
+    refreshed_enrollment = (
+        (
+            await db_session.execute(
+                select(Enrollment).where(Enrollment.id == enrollment.id)
+            )
+        )
+        .scalars()
+        .one()
+    )
+    assert "7_days" not in (refreshed_enrollment.reminders_sent or [])
+    assert "wallet_deduction_1" in (refreshed_enrollment.reminders_sent or [])
+
+    installments = (
+        (
+            await db_session.execute(
+                select(EnrollmentInstallment).where(
+                    EnrollmentInstallment.enrollment_id == enrollment.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    installment_by_number = {inst.installment_number: inst for inst in installments}
+    assert installment_by_number[1].due_at == pending_due + timedelta(days=14)
+    assert installment_by_number[2].due_at == paid_due
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_apply_cohort_timeline_shift_idempotency_replays_logged_result(
+    academy_client, db_session
+):
+    """Repeated apply with same idempotency_key returns immutable logged result."""
+    from services.academy_service.models import CohortTimelineShiftLog
+
+    program = ProgramFactory.create()
+    db_session.add(program)
+    await db_session.flush()
+
+    start = datetime.now(timezone.utc) + timedelta(days=4)
+    cohort = CohortFactory.create(
+        program_id=program.id,
+        start_date=start,
+        end_date=start + timedelta(weeks=12),
+    )
+    db_session.add(cohort)
+    await db_session.commit()
+
+    session_payload = [
+        {
+            "id": str(uuid.uuid4()),
+            "status": "scheduled",
+            "starts_at": (start + timedelta(days=1)).isoformat(),
+            "ends_at": (start + timedelta(days=1, hours=1)).isoformat(),
+        }
+    ]
+    idempotency_key = f"timeline-shift-{uuid.uuid4()}"
+
+    with (
+        patch(
+            "services.academy_service.routers.member.internal_get",
+            new_callable=AsyncMock,
+            return_value=_FakeResponse(payload=session_payload),
+        ),
+        patch(
+            "services.academy_service.routers.member.internal_patch",
+            new_callable=AsyncMock,
+            return_value=_FakeResponse(payload={}),
+        ) as patch_mock,
+    ):
+        first_response = await academy_client.post(
+            f"/academy/cohorts/{cohort.id}/timeline-shifts",
+            json={
+                "new_start_date": (cohort.start_date + timedelta(days=14)).isoformat(),
+                "new_end_date": (cohort.end_date + timedelta(days=14)).isoformat(),
+                "expected_updated_at": cohort.updated_at.isoformat(),
+                "idempotency_key": idempotency_key,
+                "shift_sessions": True,
+                "shift_installments": False,
+                "reset_start_reminders": False,
+                "notify_members": False,
+            },
+        )
+        second_response = await academy_client.post(
+            f"/academy/cohorts/{cohort.id}/timeline-shifts",
+            json={
+                "new_start_date": (cohort.start_date + timedelta(days=14)).isoformat(),
+                "new_end_date": (cohort.end_date + timedelta(days=14)).isoformat(),
+                "expected_updated_at": cohort.updated_at.isoformat(),
+                "idempotency_key": idempotency_key,
+                "shift_sessions": True,
+                "shift_installments": False,
+                "reset_start_reminders": False,
+                "notify_members": False,
+            },
+        )
+
+    assert first_response.status_code == 200, first_response.text
+    assert second_response.status_code == 200, second_response.text
+    assert first_response.json()["sessions_shifted"] == 1
+    assert second_response.json()["sessions_shifted"] == 1
+    # Replay should return from immutable log and avoid re-patching sessions.
+    assert patch_mock.await_count == 1
+
+    logs = (
+        (
+            await db_session.execute(
+                select(CohortTimelineShiftLog).where(
+                    CohortTimelineShiftLog.cohort_id == cohort.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(logs) == 1
+    assert logs[0].idempotency_key == idempotency_key
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_list_cohort_timeline_shift_logs_returns_newest_first(
+    academy_client, db_session
+):
+    """Admin can fetch immutable timeline shift logs by cohort."""
+    from services.academy_service.models import CohortTimelineShiftLog
+
+    program = ProgramFactory.create()
+    db_session.add(program)
+    await db_session.flush()
+
+    cohort = CohortFactory.create(program_id=program.id)
+    db_session.add(cohort)
+    await db_session.flush()
+
+    older = CohortTimelineShiftLog(
+        cohort_id=cohort.id,
+        idempotency_key=f"k-{uuid.uuid4()}",
+        actor_auth_id="auth-old",
+        reason="old",
+        old_start_date=cohort.start_date,
+        old_end_date=cohort.end_date,
+        new_start_date=cohort.start_date + timedelta(days=7),
+        new_end_date=cohort.end_date + timedelta(days=7),
+        delta_seconds=7 * 24 * 60 * 60,
+        options_json={"shift_sessions": True},
+        results_json={"sessions_shifted": 2},
+        warnings=[],
+        created_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+    )
+    newer = CohortTimelineShiftLog(
+        cohort_id=cohort.id,
+        idempotency_key=f"k-{uuid.uuid4()}",
+        actor_auth_id="auth-new",
+        reason="new",
+        old_start_date=cohort.start_date + timedelta(days=7),
+        old_end_date=cohort.end_date + timedelta(days=7),
+        new_start_date=cohort.start_date + timedelta(days=14),
+        new_end_date=cohort.end_date + timedelta(days=14),
+        delta_seconds=7 * 24 * 60 * 60,
+        options_json={"shift_sessions": True},
+        results_json={"sessions_shifted": 3},
+        warnings=[],
+        created_at=datetime.now(timezone.utc),
+    )
+    db_session.add_all([older, newer])
+    await db_session.commit()
+
+    response = await academy_client.get(f"/academy/cohorts/{cohort.id}/timeline-shifts")
+
+    assert response.status_code == 200, response.text
+    rows = response.json()
+    assert len(rows) == 2
+    assert rows[0]["reason"] == "new"
+    assert rows[1]["reason"] == "old"
 
 
 # ---------------------------------------------------------------------------

@@ -1,17 +1,19 @@
 """FastAPI application for the Communications Service."""
 
 from fastapi import FastAPI
-from services.communications_service.email_router import router as email_router
-from services.communications_service.messaging_router import router as messaging_router
-from services.communications_service.preferences_router import (
-    router as preferences_router,
-)
-from services.communications_service.router import (
+from services.communications_service.routers.announcements import (
     admin_router,
     category_router,
     content_router,
 )
-from services.communications_service.router import router as communications_router
+from services.communications_service.routers.announcements import (
+    router as communications_router,
+)
+from services.communications_service.routers.email import router as email_router
+from services.communications_service.routers.messaging import router as messaging_router
+from services.communications_service.routers.preferences import (
+    router as preferences_router,
+)
 
 
 def create_app() -> FastAPI:

@@ -1,9 +1,8 @@
 """FastAPI application for the Store Service."""
 
 from fastapi import FastAPI
-
-from services.store_service.router import router as store_router
-from services.store_service.admin_router import router as admin_router
+from services.store_service.routers.admin import router as admin_router
+from services.store_service.routers.member import router as store_router
 
 
 def create_app() -> FastAPI:

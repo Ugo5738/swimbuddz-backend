@@ -1,8 +1,8 @@
 """FastAPI application for the Volunteer Service."""
 
 from fastapi import FastAPI
-from services.volunteer_service.admin_router import router as admin_router
-from services.volunteer_service.router import router as volunteer_router
+from services.volunteer_service.routers.admin import router as admin_router
+from services.volunteer_service.routers.member import router as volunteer_router
 
 
 def create_app() -> FastAPI:

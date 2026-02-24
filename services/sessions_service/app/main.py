@@ -2,9 +2,9 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from services.sessions_service.internal_router import router as internal_router
-from services.sessions_service.router import router as sessions_router
-from services.sessions_service.template_router import router as templates_router
+from services.sessions_service.routers.internal import router as internal_router
+from services.sessions_service.routers.member import router as sessions_router
+from services.sessions_service.routers.templates import router as templates_router
 
 
 def create_app() -> FastAPI:
