@@ -850,7 +850,6 @@ async def start_checkout(
     # Bubbles wallet payment
     bubbles_applied: int | None = None
     wallet_txn_id: str | None = None
-    order_status = OrderStatus.PENDING_PAYMENT
 
     if request.pay_with_bubbles and amount_after_credit > 0:
         bubbles_needed = kobo_to_bubbles(int(amount_after_credit * 100))

@@ -5,7 +5,7 @@ from datetime import datetime
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
-from sqlalchemy import DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
