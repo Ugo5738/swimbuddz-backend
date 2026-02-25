@@ -723,7 +723,6 @@ async def create_cohort(
 
     # Create CoachAssignment records
     if coach_assignments_input:
-
         for ca_input in coach_assignments_input:
             assignment = CoachAssignment(
                 cohort_id=cohort.id,
@@ -767,7 +766,6 @@ async def update_cohort(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-
     query = (
         select(Cohort)
         .where(Cohort.id == cohort_id)
@@ -1327,7 +1325,6 @@ async def list_cohorts(
     program_id: uuid.UUID = None,
     db: AsyncSession = Depends(get_async_db),
 ):
-
     query = select(Cohort).order_by(Cohort.start_date.desc())
     if program_id:
         query = query.where(Cohort.program_id == program_id)
@@ -2114,7 +2111,6 @@ async def get_cohort(
     cohort_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
-
     query = (
         select(Cohort)
         .where(Cohort.id == cohort_id)

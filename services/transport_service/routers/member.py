@@ -463,7 +463,6 @@ async def delete_route(
     result = await db.execute(query)
     route = result.scalar_one_or_none()
     if not route:
-
         raise HTTPException(status_code=404, detail="Route not found")
 
     await db.delete(route)
