@@ -37,7 +37,8 @@ async def list_templates(
         query = query.where(SessionTemplate.is_active.is_(True))
     query = query.order_by(SessionTemplate.day_of_week, SessionTemplate.start_time)
     result = await db.execute(query)
-    return result.scalars().all()
+    templates = result.scalars().all()
+    return [SessionTemplateResponse.model_validate(t) for t in templates]
 
 
 @router.get("/{template_id}", response_model=SessionTemplateResponse)
@@ -54,7 +55,7 @@ async def get_template(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
         )
-    return template
+    return SessionTemplateResponse.model_validate(template)
 
 
 @router.post(
@@ -65,11 +66,17 @@ async def create_template(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Create a new session template."""
-    template = SessionTemplate(**template_in.model_dump())
+    template_data = template_in.model_dump()
+    # Convert naira fee inputs (float) to kobo (int) for DB storage.
+    template_data["pool_fee"] = round((template_data.get("pool_fee") or 0.0) * 100)
+    template_data["ride_share_fee"] = round(
+        (template_data.get("ride_share_fee") or 0.0) * 100
+    )
+    template = SessionTemplate(**template_data)
     db.add(template)
     await db.commit()
     await db.refresh(template)
-    return template
+    return SessionTemplateResponse.model_validate(template)
 
 
 @router.patch("/{template_id}", response_model=SessionTemplateResponse)
@@ -89,13 +96,19 @@ async def update_template(
         )
 
     update_data = template_in.model_dump(exclude_unset=True)
+    # Convert naira fee inputs (float) to kobo (int) for DB storage.
+    if "pool_fee" in update_data and update_data["pool_fee"] is not None:
+        update_data["pool_fee"] = round(update_data["pool_fee"] * 100)
+    if "ride_share_fee" in update_data and update_data["ride_share_fee"] is not None:
+        update_data["ride_share_fee"] = round(update_data["ride_share_fee"] * 100)
+
     for field, value in update_data.items():
         setattr(template, field, value)
 
     db.add(template)
     await db.commit()
     await db.refresh(template)
-    return template
+    return SessionTemplateResponse.model_validate(template)
 
 
 @router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -189,7 +202,7 @@ async def generate_sessions(
                 template.location, template.location
             ),
             session_type=template.session_type,
-            pool_fee=float(template.pool_fee),
+            pool_fee=template.pool_fee,  # both are kobo integers after migration
             capacity=template.capacity,
             starts_at=start_datetime,
             ends_at=end_datetime,

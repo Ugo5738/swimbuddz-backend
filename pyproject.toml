@@ -36,6 +36,8 @@ dependencies = [
     "litellm>=1.30,<2.0",
     # AI observability
     "langfuse>=2.0,<3.0",
+    # PDF generation for academy certificates/reports
+    "reportlab>=4.0,<5.0",
 ]
 
 [project.optional-dependencies]

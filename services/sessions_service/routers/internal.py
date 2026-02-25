@@ -38,7 +38,9 @@ class SessionBasic(BaseModel):
     location: Optional[str] = None
     cohort_id: Optional[str] = None
     capacity: int
-    pool_fee: Optional[float] = None
+    # pool_fee is returned in KOBO (integer) for service-to-service use.
+    # Consuming services: call kobo_to_bubbles(pool_fee) to get the Bubble charge.
+    pool_fee: Optional[int] = None
     week_number: Optional[int] = None
     lesson_title: Optional[str] = None
 

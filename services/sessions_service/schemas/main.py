@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from services.sessions_service.models import SessionLocation, SessionStatus, SessionType
 
 
@@ -24,10 +24,10 @@ class SessionBase(BaseModel):
     ends_at: datetime
     timezone: str = "Africa/Lagos"
 
-    # Capacity & Fees
+    # Capacity & Fees — API layer uses Naira (float); DB stores kobo (int).
     capacity: int = 20
-    pool_fee: float = 0.0
-    ride_share_fee: float = 0.0
+    pool_fee: float = 0.0  # naira input/output
+    ride_share_fee: float = 0.0  # naira input/output
 
     # Context links
     cohort_id: Optional[uuid.UUID] = None
@@ -60,8 +60,8 @@ class SessionUpdate(BaseModel):
     timezone: Optional[str] = None
 
     capacity: Optional[int] = None
-    pool_fee: Optional[float] = None
-    ride_share_fee: Optional[float] = None
+    pool_fee: Optional[float] = None  # naira — router converts to kobo on write
+    ride_share_fee: Optional[float] = None  # naira — router converts to kobo on write
 
     cohort_id: Optional[uuid.UUID] = None
     event_id: Optional[uuid.UUID] = None
@@ -81,3 +81,40 @@ class SessionResponse(SessionBase):
     is_recurring_instance: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _convert_kobo_to_naira(cls, obj):
+        """When reading from the ORM, convert kobo fee fields to naira for the API."""
+        if isinstance(obj, dict):
+            return obj
+        # ORM instance: read attributes and convert integer kobo → float naira
+        pool_fee_kobo = getattr(obj, "pool_fee", 0) or 0
+        ride_share_fee_kobo = getattr(obj, "ride_share_fee", 0) or 0
+        return {
+            "id": obj.id,
+            "title": obj.title,
+            "description": obj.description,
+            "notes": obj.notes,
+            "session_type": obj.session_type,
+            "status": obj.status,
+            "location": obj.location,
+            "location_name": obj.location_name,
+            "location_address": obj.location_address,
+            "starts_at": obj.starts_at,
+            "ends_at": obj.ends_at,
+            "timezone": obj.timezone,
+            "capacity": obj.capacity,
+            "pool_fee": pool_fee_kobo / 100.0,
+            "ride_share_fee": ride_share_fee_kobo / 100.0,
+            "cohort_id": obj.cohort_id,
+            "event_id": obj.event_id,
+            "booking_id": obj.booking_id,
+            "week_number": obj.week_number,
+            "lesson_title": obj.lesson_title,
+            "template_id": obj.template_id,
+            "is_recurring_instance": obj.is_recurring_instance,
+            "published_at": obj.published_at,
+            "created_at": obj.created_at,
+            "updated_at": obj.updated_at,
+        }

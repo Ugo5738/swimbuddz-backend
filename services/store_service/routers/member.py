@@ -8,10 +8,13 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import get_current_user, get_optional_user
 from libs.auth.models import AuthUser
+from libs.common.currency import kobo_to_bubbles
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
+from libs.common.service_client import check_wallet_balance, debit_member_wallet
 from libs.db.session import get_async_db
 from services.store_service.models import (
     Cart,
@@ -841,7 +844,32 @@ async def start_checkout(
             store_credit_applied += apply_amount
             remaining_to_cover -= apply_amount
 
-    # Create order
+    # Amount remaining after store credit
+    amount_after_credit = final_total - store_credit_applied
+
+    # Bubbles wallet payment
+    bubbles_applied: int | None = None
+    wallet_txn_id: str | None = None
+
+    if request.pay_with_bubbles and amount_after_credit > 0:
+        bubbles_needed = kobo_to_bubbles(int(amount_after_credit * 100))
+        if bubbles_needed > 0:
+            # Check balance first (non-destructive)
+            balance_check = await check_wallet_balance(
+                current_user.user_id,
+                required_amount=bubbles_needed,
+                calling_service="store",
+            )
+            if not balance_check or not balance_check.get("sufficient"):
+                current_balance = (
+                    balance_check.get("current_balance", 0) if balance_check else 0
+                )
+                raise HTTPException(
+                    status_code=402,
+                    detail=f"Insufficient Bubbles. Need {bubbles_needed} 🫧, have {current_balance} 🫧.",
+                )
+
+    # Create order (flush to get ID before wallet debit for idempotency key)
     order = Order(
         order_number=Order.generate_order_number(),
         member_auth_id=current_user.user_id,
@@ -853,7 +881,7 @@ async def start_checkout(
         discount_amount_ngn=discount_amount,
         store_credit_applied_ngn=store_credit_applied,
         delivery_fee_ngn=delivery_fee,
-        total_ngn=final_total - store_credit_applied,
+        total_ngn=amount_after_credit,
         discount_code=cart.discount_code,
         discount_breakdown={
             "member_tier_discount": float(cart.member_discount_percent or 0),
@@ -869,6 +897,37 @@ async def start_checkout(
     )
     db.add(order)
     await db.flush()  # Get order ID
+
+    # Debit wallet after we have the order ID (use it as idempotency scope)
+    if request.pay_with_bubbles and amount_after_credit > 0:
+        bubbles_needed = kobo_to_bubbles(int(amount_after_credit * 100))
+        if bubbles_needed > 0:
+            try:
+                result_txn = await debit_member_wallet(
+                    current_user.user_id,
+                    amount=bubbles_needed,
+                    idempotency_key=f"order-{order.id}",
+                    description=f"Store order {order.order_number} ({bubbles_needed} 🫧)",
+                    calling_service="store",
+                    transaction_type="purchase",
+                    reference_type="order",
+                    reference_id=str(order.id),
+                )
+                bubbles_applied = bubbles_needed
+                wallet_txn_id = result_txn.get("transaction_id")
+                order.bubbles_applied = bubbles_applied
+                order.wallet_transaction_id = wallet_txn_id
+                order.status = OrderStatus.PAID
+                order.paid_at = datetime.utcnow()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 400:
+                    detail = e.response.json().get("detail", "")
+                    if "Insufficient" in detail:
+                        raise HTTPException(
+                            status_code=402,
+                            detail="Insufficient Bubbles. Please top up your wallet.",
+                        )
+                raise HTTPException(status_code=502, detail="Payment service error.")
 
     # Create order items
     for item in cart.items:
@@ -901,7 +960,10 @@ async def start_checkout(
         order_number=order.order_number,
         total_ngn=order.total_ngn,
         delivery_fee_ngn=order.delivery_fee_ngn,
-        requires_payment=order.total_ngn > 0,
+        requires_payment=(
+            order.total_ngn > 0 and order.status == OrderStatus.PENDING_PAYMENT
+        ),
+        bubbles_applied=bubbles_applied,
     )
 
 

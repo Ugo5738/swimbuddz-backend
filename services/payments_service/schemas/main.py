@@ -1,16 +1,13 @@
-import enum
 import uuid
 from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from services.payments_service.models import PaymentPurpose, PaymentStatus
-
-
-class ClubBillingCycle(str, enum.Enum):
-    QUARTERLY = "quarterly"
-    BIANNUAL = "biannual"
-    ANNUAL = "annual"
+from services.payments_service.schemas.enums import (
+    ClubBillingCycle,
+    SessionAttendanceStatus,
+)
 
 
 class CreatePaymentIntentRequest(BaseModel):
@@ -35,7 +32,9 @@ class CreatePaymentIntentRequest(BaseModel):
     session_id: Optional[uuid.UUID] = None  # For SESSION_FEE payments
     ride_config_id: Optional[uuid.UUID] = None  # Optional ride share config
     pickup_location_id: Optional[uuid.UUID] = None  # Optional pickup location
-    attendance_status: str = Field(default="PRESENT")  # PRESENT, LATE, EARLY
+    attendance_status: SessionAttendanceStatus = Field(
+        default=SessionAttendanceStatus.PRESENT
+    )
     direct_amount: Optional[float] = None  # Direct amount for session fees
 
     # Accept "metadata" for backwards-compat, store internally as payment_metadata.

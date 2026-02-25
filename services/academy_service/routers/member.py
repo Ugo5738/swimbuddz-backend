@@ -3,7 +3,9 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from libs.auth.dependencies import (
     get_current_user,
     require_admin,
@@ -12,17 +14,21 @@ from libs.auth.dependencies import (
 )
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
+from libs.common.currency import kobo_to_bubbles
 from libs.common.datetime_utils import utc_now
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
+from libs.common.pdf import generate_certificate_pdf, generate_progress_report_pdf
 from libs.common.service_client import (
+    debit_member_wallet,
     get_coach_profile,
     get_eligible_coaches,
     get_member_by_auth_id,
     get_member_by_id,
     get_members_bulk,
     get_next_session_for_cohort,
+    internal_delete,
     internal_get,
     internal_patch,
     internal_post,
@@ -100,13 +106,22 @@ from services.academy_service.services.scoring import (
     calculate_complexity_score,
     get_dimension_labels,
 )
+from services.academy_service.tasks import transition_cohort_statuses
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 router = APIRouter(tags=["academy"])
 logger = get_logger(__name__)
+
+
+_SHIFTABLE_SESSION_STATUSES = {"draft", "scheduled", "in_progress"}
+_START_COUNTDOWN_REMINDER_KEYS = {"7_days", "3_days", "1_days"}
+_COHORT_TIMELINE_NOTIFY_STATUSES = {
+    EnrollmentStatus.ENROLLED,
+    EnrollmentStatus.PENDING_APPROVAL,
+}
 
 
 async def _ensure_active_coach(coach_member_id: uuid.UUID) -> None:
@@ -269,14 +284,6 @@ async def _sync_installment_state_for_enrollment(
         now=effective_now,
     )
     return installments
-
-
-_SHIFTABLE_SESSION_STATUSES = {"draft", "scheduled", "in_progress"}
-_START_COUNTDOWN_REMINDER_KEYS = {"7_days", "3_days", "1_days"}
-_COHORT_TIMELINE_NOTIFY_STATUSES = {
-    EnrollmentStatus.ENROLLED,
-    EnrollmentStatus.PENDING_APPROVAL,
-}
 
 
 def _to_utc(dt: datetime) -> datetime:
@@ -520,7 +527,6 @@ async def trigger_cohort_status_transitions(
     Manually trigger cohort status transitions (OPEN→ACTIVE, ACTIVE→COMPLETED).
     Useful for testing or manual corrections.
     """
-    from services.academy_service.tasks import transition_cohort_statuses
 
     await transition_cohort_statuses()
     return {"message": "Cohort status transitions triggered successfully"}
@@ -699,8 +705,6 @@ async def create_cohort(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    from sqlalchemy.orm import selectinload
-
     if cohort_in.coach_id:
         await _ensure_active_coach(cohort_in.coach_id)
 
@@ -719,8 +723,6 @@ async def create_cohort(
 
     # Create CoachAssignment records
     if coach_assignments_input:
-        from services.academy_service.models import CoachAssignment
-
         for ca_input in coach_assignments_input:
             assignment = CoachAssignment(
                 cohort_id=cohort.id,
@@ -736,7 +738,6 @@ async def create_cohort(
                 cohort.coach_id = ca_input.coach_id
     elif cohort_in.coach_id:
         # Legacy: if coach_id provided without coach_assignments, create lead assignment
-        from services.academy_service.models import CoachAssignment
 
         assignment = CoachAssignment(
             cohort_id=cohort.id,
@@ -765,8 +766,6 @@ async def update_cohort(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    from sqlalchemy.orm import selectinload
-
     query = (
         select(Cohort)
         .where(Cohort.id == cohort_id)
@@ -1270,7 +1269,6 @@ async def delete_cohort(
         raise HTTPException(status_code=404, detail="Cohort not found")
 
     # Clean up sessions via sessions-service (cross-service, no FK cascade).
-    from libs.common.service_client import internal_delete
 
     settings = get_settings()
     resp = await internal_delete(
@@ -1327,8 +1325,6 @@ async def list_cohorts(
     program_id: uuid.UUID = None,
     db: AsyncSession = Depends(get_async_db),
 ):
-    from sqlalchemy.orm import selectinload
-
     query = select(Cohort).order_by(Cohort.start_date.desc())
     if program_id:
         query = query.where(Cohort.program_id == program_id)
@@ -1343,7 +1339,6 @@ async def list_open_cohorts(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all cohorts with status OPEN, only from published programs."""
-    from sqlalchemy.orm import selectinload
 
     query = (
         select(Cohort)
@@ -1381,7 +1376,6 @@ async def list_enrollable_cohorts(
     - OPEN cohorts (published programs)
     - ACTIVE cohorts where mid-entry is enabled and still within cutoff week
     """
-    from sqlalchemy.orm import selectinload
 
     now = utc_now()
 
@@ -1443,7 +1437,6 @@ async def list_my_coach_cohorts(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List cohorts where the current user is the assigned coach."""
-    from sqlalchemy.orm import selectinload
 
     # 1. Resolve Member ID via members-service
     member = await get_member_by_auth_id(
@@ -1472,7 +1465,6 @@ async def list_my_coach_students(
 
     Returns enrollments with cohort, program, and progress data.
     """
-    from sqlalchemy.orm import joinedload, selectinload
 
     # 1. Resolve Member ID via members-service
     member = await get_member_by_auth_id(
@@ -1543,7 +1535,6 @@ async def get_my_coach_earnings(
     - academy_cohort_stipend from CoachProfile
     - Number of active/completed cohorts
     """
-    from sqlalchemy.orm import selectinload
 
     # 1. Resolve Member ID via members-service
     member = await get_member_by_auth_id(
@@ -1630,7 +1621,6 @@ async def list_my_coach_resources(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all resources across all cohorts where the current user is the assigned coach."""
-    from sqlalchemy.orm import joinedload
 
     # 1. Resolve Member ID via members-service
     member = await get_member_by_auth_id(
@@ -1827,7 +1817,6 @@ async def list_pending_milestone_reviews(
 
     Returns claims that have evidence submitted but haven't been reviewed yet.
     """
-    from sqlalchemy.orm import joinedload
 
     # 1. Resolve Member ID via members-service
     member = await get_member_by_auth_id(
@@ -2122,8 +2111,6 @@ async def get_cohort(
     cohort_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
-    from sqlalchemy.orm import selectinload
-
     query = (
         select(Cohort)
         .where(Cohort.id == cohort_id)
@@ -2200,8 +2187,6 @@ async def list_cohort_students(
     await require_coach_for_cohort(current_user, str(cohort_id), db)
 
     # Eager load progress records, cohort, and program
-    from sqlalchemy.orm import joinedload, selectinload
-
     query = (
         select(Enrollment)
         .where(Enrollment.cohort_id == cohort_id)
@@ -2345,7 +2330,6 @@ async def list_enrollments(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all enrollments (admin only). Filter by status optional."""
-    from sqlalchemy.orm import selectinload
 
     query = (
         select(Enrollment)
@@ -2375,7 +2359,6 @@ async def get_enrollment(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get detailed enrollment info. Accessible by admins and coaches."""
-    from sqlalchemy.orm import selectinload
 
     query = (
         select(Enrollment)
@@ -2582,8 +2565,6 @@ async def self_enroll(
     await db.commit()
 
     # Re-fetch with relationships to avoid lazy loading issues
-    from sqlalchemy.orm import selectinload
-
     query = (
         select(Enrollment)
         .where(Enrollment.id == enrollment.id)
@@ -2709,7 +2690,6 @@ async def get_enrollment_internal(
     Pass ``?use_installments=true`` when the member opted for an installment
     plan at checkout — this triggers schedule creation if none exists yet.
     """
-    from sqlalchemy.orm import selectinload
 
     query = (
         select(Enrollment)
@@ -3003,9 +2983,6 @@ async def download_cohort_progress_report(
     Download a PDF progress report for a specific cohort.
     Contains all students and their milestone progress.
     """
-    from fastapi.responses import Response
-    from libs.common.pdf import generate_progress_report_pdf
-
     # Get cohort with program
     cohort_query = (
         select(Cohort)
@@ -3106,9 +3083,6 @@ async def download_certificate(
     Download completion certificate for an enrollment.
     Only available if all milestones are completed and certificate was issued.
     """
-    from fastapi.responses import Response
-    from libs.common.pdf import generate_certificate_pdf
-
     # Get enrollment with program and cohort
     query = (
         select(Enrollment)
@@ -3217,8 +3191,6 @@ async def admin_mark_enrollment_paid(
     Mark an enrollment as paid (service-to-service call from payments_service).
     Updates payment_status to PAID and enrollment status to ENROLLED if pending.
     """
-    from sqlalchemy.orm import selectinload
-
     query = (
         select(Enrollment)
         .where(Enrollment.id == enrollment_id)
@@ -4528,3 +4500,134 @@ async def ai_suggest_coach(
         model_used=ai_result.get("model_used", "unknown"),
         ai_request_id=ai_result.get("ai_request_id"),
     )
+
+
+# ============================================================================
+# WALLET PAYMENT — INSTALLMENTS
+# ============================================================================
+
+
+@router.post(
+    "/enrollments/{enrollment_id}/installments/{installment_id}/pay-with-bubbles",
+    response_model=EnrollmentResponse,
+)
+async def pay_installment_with_bubbles(
+    enrollment_id: uuid.UUID,
+    installment_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Pay a pending enrollment installment using Bubbles wallet.
+
+    - Deducts the installment amount from the member's wallet.
+    - Marks the installment as PAID with the wallet transaction ID.
+    - Re-syncs enrollment payment status (may lift suspension, unlock access).
+    - Idempotent: repeated calls return the current state without double-charging.
+    """
+
+    # Load enrollment (member must own it)
+    member_data = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
+    )
+    if not member_data:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+
+    result = await db.execute(
+        select(Enrollment)
+        .where(
+            Enrollment.id == enrollment_id,
+            Enrollment.member_id == member_data["id"],
+        )
+        .options(selectinload(Enrollment.program))
+    )
+    enrollment = result.scalar_one_or_none()
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    # Load the specific installment
+    inst_result = await db.execute(
+        select(EnrollmentInstallment).where(
+            EnrollmentInstallment.id == installment_id,
+            EnrollmentInstallment.enrollment_id == enrollment_id,
+        )
+    )
+    installment = inst_result.scalar_one_or_none()
+    if not installment:
+        raise HTTPException(status_code=404, detail="Installment not found")
+
+    # Idempotency: already paid
+    paid_statuses = {InstallmentStatus.PAID, InstallmentStatus.WAIVED}
+    if installment.status in paid_statuses:
+        # Re-sync and return current state
+        all_installments = await _list_enrollment_installments(db, enrollment_id)
+        cohort = await db.get(Cohort, enrollment.cohort_id)
+        if cohort:
+            sync_enrollment_installment_state(
+                enrollment=enrollment,
+                installments=all_installments,
+                duration_weeks=cohort.duration_weeks,
+                cohort_start=cohort.start_date,
+                cohort_requires_approval=cohort.require_approval,
+            )
+        await db.commit()
+        await db.refresh(enrollment)
+        return EnrollmentResponse.model_validate(enrollment)
+
+    fee_bubbles = kobo_to_bubbles(installment.amount)
+    if fee_bubbles <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Installment amount is too small to pay with Bubbles",
+        )
+
+    idempotency_key = f"installment-{installment.id}"
+    try:
+        txn_result = await debit_member_wallet(
+            current_user.user_id,
+            amount=fee_bubbles,
+            idempotency_key=idempotency_key,
+            description=f"Academy installment #{installment.installment_number} ({fee_bubbles} 🫧)",
+            calling_service="academy",
+            transaction_type="purchase",
+            reference_type="enrollment",
+            reference_id=str(enrollment_id),
+        )
+        wallet_txn_id = txn_result.get("transaction_id")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 400:
+            detail = e.response.json().get("detail", "")
+            if "Insufficient" in detail:
+                raise HTTPException(
+                    status_code=402,
+                    detail="Insufficient Bubbles. Please top up your wallet.",
+                )
+            if "frozen" in detail.lower() or "suspended" in detail.lower():
+                raise HTTPException(
+                    status_code=403,
+                    detail="Wallet is inactive. Please contact support.",
+                )
+        raise HTTPException(
+            status_code=502, detail="Payment service error. Please try again."
+        )
+
+    # Mark installment as paid
+    installment.status = InstallmentStatus.PAID
+    installment.paid_at = utc_now()
+    installment.payment_reference = str(wallet_txn_id) if wallet_txn_id else "bubbles"
+
+    # Re-sync enrollment state
+    all_installments = await _list_enrollment_installments(db, enrollment_id)
+    cohort = await db.get(Cohort, enrollment.cohort_id)
+    if cohort:
+        sync_enrollment_installment_state(
+            enrollment=enrollment,
+            installments=all_installments,
+            duration_weeks=cohort.duration_weeks,
+            cohort_start=cohort.start_date,
+            cohort_requires_approval=cohort.require_approval,
+        )
+
+    await db.commit()
+    await db.refresh(enrollment)
+    return EnrollmentResponse.model_validate(enrollment)

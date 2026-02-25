@@ -380,6 +380,9 @@ class CheckoutStartRequest(BaseModel):
     customer_notes: Optional[str] = None
     size_chart_acknowledged: bool = False  # Required if any product needs it
     apply_store_credit: bool = False  # Apply available store credit to reduce total
+    pay_with_bubbles: bool = (
+        False  # Debit Bubbles wallet instead of (or after) store credit
+    )
 
 
 class CheckoutStartResponse(BaseModel):
@@ -389,7 +392,8 @@ class CheckoutStartResponse(BaseModel):
     order_number: str
     total_ngn: Decimal
     delivery_fee_ngn: Decimal
-    requires_payment: bool  # False if total is 0 (all store credit)
+    requires_payment: bool  # False if total is 0 (all store credit / bubbles)
+    bubbles_applied: Optional[int] = None  # Bubbles debited from wallet (if any)
 
 
 class PaymentInitRequest(BaseModel):
@@ -453,6 +457,8 @@ class OrderResponse(BaseModel):
     customer_notes: Optional[str]
 
     payment_reference: Optional[str]
+    bubbles_applied: Optional[int] = None  # Bubbles debited from wallet (if any)
+    wallet_transaction_id: Optional[str] = None
     paid_at: Optional[datetime]
     fulfilled_at: Optional[datetime]
     cancelled_at: Optional[datetime]
