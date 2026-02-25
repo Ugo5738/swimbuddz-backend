@@ -1,6 +1,7 @@
 """Integration tests for attendance_service internal endpoints."""
 
 import pytest
+from services.attendance_service.models.enums import AttendanceStatus
 from tests.factories import AttendanceRecordFactory, MemberFactory, SessionFactory
 
 # ---------------------------------------------------------------------------
@@ -20,7 +21,7 @@ async def test_get_member_attendance(attendance_client, db_session):
     record = AttendanceRecordFactory.create(
         session_id=session.id,
         member_id=member.id,
-        status="PRESENT",
+        status=AttendanceStatus.PRESENT.value,
     )
     db_session.add(record)
     await db_session.commit()
@@ -32,7 +33,7 @@ async def test_get_member_attendance(attendance_client, db_session):
     assert len(data) == 1
     assert data[0]["member_id"] == str(member.id)
     assert data[0]["session_id"] == str(session.id)
-    assert data[0]["status"] == "PRESENT"
+    assert data[0]["status"] == AttendanceStatus.PRESENT.value
 
 
 @pytest.mark.asyncio

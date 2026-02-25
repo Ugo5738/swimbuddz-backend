@@ -42,11 +42,20 @@ class AlbumUpdate(BaseModel):
     slug: Optional[str] = None
 
 
+class AlbumCoverPhoto(BaseModel):
+    """Lightweight album cover photo payload for album cards."""
+
+    id: uuid.UUID
+    file_url: str
+    thumbnail_url: Optional[str] = None
+
+
 class AlbumResponse(AlbumBase):
     """Album response schema."""
 
     id: uuid.UUID
     cover_media_id: Optional[uuid.UUID] = None
+    cover_photo: Optional[AlbumCoverPhoto] = None
     created_by: uuid.UUID
     created_at: datetime
     updated_at: datetime

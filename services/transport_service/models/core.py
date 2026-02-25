@@ -17,6 +17,9 @@ class MemberRef(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    auth_id: Mapped[str] = mapped_column(
+        String, unique=True, index=True, nullable=False
+    )
 
 
 class RideArea(Base):
@@ -123,8 +126,8 @@ class SessionRideConfig(Base):
         ForeignKey("ride_areas.id", ondelete="CASCADE"),
         nullable=False,
     )
-    # Session-specific overrides
-    cost: Mapped[float] = mapped_column(Float, default=0.0)
+    # Session-specific overrides — stored as kobo (integer). API uses naira (float).
+    cost: Mapped[int] = mapped_column(Integer, default=0)
     capacity: Mapped[int] = mapped_column(Integer, default=4)
     departure_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=True

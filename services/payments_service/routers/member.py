@@ -43,6 +43,8 @@ from services.payments_service.schemas import (
     PaymentIntentResponse,
     PaymentResponse,
     PricingConfigResponse,
+    SessionAttendanceRole,
+    SessionAttendanceStatus,
 )
 from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -120,6 +122,24 @@ def _callback_url(reference: str, redirect_path: str = None) -> str:
     return urlunsplit(
         (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
     )
+
+
+def _require_attendance_status(
+    raw_status: SessionAttendanceStatus | str | None, source: str
+) -> SessionAttendanceStatus:
+    if isinstance(raw_status, SessionAttendanceStatus):
+        return raw_status
+    status_value = str(raw_status or "").strip()
+    if not status_value:
+        return SessionAttendanceStatus.PRESENT
+    try:
+        return SessionAttendanceStatus(status_value)
+    except ValueError:
+        allowed = ", ".join([status.value for status in SessionAttendanceStatus])
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{source} must be one of: {allowed}",
+        )
 
 
 async def _update_pending_payment_reference(
@@ -534,8 +554,11 @@ async def _apply_entitlement(payment: Payment) -> None:
         session_id = (payment.payment_metadata or {}).get("session_id")
         ride_config_id = (payment.payment_metadata or {}).get("ride_config_id")
         pickup_location_id = (payment.payment_metadata or {}).get("pickup_location_id")
-        attendance_status = (payment.payment_metadata or {}).get(
-            "attendance_status", "PRESENT"
+        attendance_status = _require_attendance_status(
+            (payment.payment_metadata or {}).get(
+                "attendance_status", SessionAttendanceStatus.PRESENT.value
+            ),
+            source="payment_metadata.attendance_status",
         )
 
         if not session_id:
@@ -564,8 +587,8 @@ async def _apply_entitlement(payment: Payment) -> None:
                 f"{settings.ATTENDANCE_SERVICE_URL}/attendance/sessions/{session_id}/attendance/public",
                 json={
                     "member_id": member_id,
-                    "status": attendance_status,
-                    "role": "SWIMMER",
+                    "status": attendance_status.value,
+                    "role": SessionAttendanceRole.SWIMMER.value,
                     "notes": f"Payment ref: {payment.reference}",
                 },
                 headers=headers,
@@ -1127,6 +1150,10 @@ async def create_payment_intent(
                 detail="direct_amount is required and must be greater than zero for SESSION_FEE payments",
             )
         amount = float(payload.direct_amount)
+        attendance_status = _require_attendance_status(
+            payload.attendance_status,
+            source="attendance_status",
+        )
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "session_id": str(payload.session_id),
@@ -1136,7 +1163,7 @@ async def create_payment_intent(
             "pickup_location_id": (
                 str(payload.pickup_location_id) if payload.pickup_location_id else None
             ),
-            "attendance_status": payload.attendance_status,
+            "attendance_status": attendance_status.value,
         }
 
     else:
@@ -1952,12 +1979,21 @@ async def internal_initialize_payment(
             detail="Paystack is not configured.",
         )
 
+    payer_email = None
+    if isinstance(req.metadata, dict):
+        candidate = req.metadata.get("payer_email")
+        if isinstance(candidate, str):
+            candidate = candidate.strip()
+            if candidate:
+                payer_email = candidate
+
     purpose_enum: PaymentPurpose | None = None
     try:
         purpose_enum = PaymentPurpose(str(req.purpose).lower())
     except ValueError:
         purpose_enum = None
 
+    payment: Payment | None = None
     if purpose_enum:
         existing = await db.execute(
             select(Payment).where(Payment.reference == req.reference)
@@ -1967,11 +2003,7 @@ async def internal_initialize_payment(
             payment = Payment(
                 reference=req.reference,
                 member_auth_id=req.member_auth_id,
-                payer_email=(
-                    (req.metadata or {}).get("payer_email")
-                    if isinstance(req.metadata, dict)
-                    else None
-                ),
+                payer_email=payer_email,
                 purpose=purpose_enum,
                 amount=req.amount,
                 currency=req.currency,
@@ -1988,13 +2020,17 @@ async def internal_initialize_payment(
             )
             db.add(payment)
             await db.commit()
+        elif payer_email and payment.payer_email != payer_email:
+            payment.payer_email = payer_email
+            await db.commit()
 
     # Build callback URL
     callback = _callback_url(req.reference, req.callback_url)
 
     # Build Paystack payload
+    paystack_email = payer_email or (payment.payer_email if payment else None)
     payload = {
-        "email": settings.ADMIN_EMAIL or "noreply@swimbuddz.com",
+        "email": paystack_email or settings.ADMIN_EMAIL or "noreply@swimbuddz.com",
         "amount": _to_kobo(req.amount),
         "currency": req.currency,
         "reference": req.reference,

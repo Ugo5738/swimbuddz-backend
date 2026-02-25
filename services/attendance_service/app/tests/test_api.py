@@ -86,7 +86,16 @@ async def test_sign_in_to_session(
     app.dependency_overrides[get_current_member] = mock_get_current_member
 
     # 3. Sign in
-    payload = {"status": "PRESENT", "role": "SWIMMER", "notes": "Ready to swim"}
+    from services.attendance_service.models.enums import (
+        AttendanceRole,
+        AttendanceStatus,
+    )
+
+    payload = {
+        "status": AttendanceStatus.PRESENT.value,
+        "role": AttendanceRole.SWIMMER.value,
+        "notes": "Ready to swim",
+    }
 
     response = await attendance_client.post(
         f"/attendance/sessions/{session_id}/sign-in", json=payload
@@ -95,8 +104,8 @@ async def test_sign_in_to_session(
     data = response.json()
     assert data["session_id"] == str(session_id)
     assert data["member_id"] == str(MOCK_MEMBER_ID)
-    assert data["status"] == "PRESENT"
-    assert data["role"] == "SWIMMER"
+    assert data["status"] == AttendanceStatus.PRESENT.value
+    assert data["role"] == AttendanceRole.SWIMMER.value
 
     app.dependency_overrides.clear()
 
@@ -138,8 +147,8 @@ async def test_get_my_attendance_history(
     attendance = AttendanceRecord(
         session_id=session_id,
         member_id=MOCK_MEMBER_ID,
-        status="PRESENT",
-        role="SWIMMER",
+        status="present",
+        role="swimmer",
     )
     db_session.add(attendance)
     await db_session.flush()
@@ -152,6 +161,9 @@ async def test_get_my_attendance_history(
     assert response.status_code == 200
     data = response.json()
     assert len(data) >= 1
+    assert any(a["session_id"] == str(session_id) for a in data)
+
+    app.dependency_overrides.clear()
     assert any(a["session_id"] == str(session_id) for a in data)
 
     app.dependency_overrides.clear()

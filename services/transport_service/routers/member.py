@@ -2,22 +2,62 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends
-from libs.auth.dependencies import require_admin
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, status
+from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
+from libs.common.currency import kobo_to_bubbles, naira_to_kobo
+from libs.common.service_client import debit_member_wallet
 from libs.db.session import get_async_db
 from pydantic import BaseModel, ConfigDict
 from services.transport_service.models import (
+    MemberRef,
     PickupLocation,
     RideArea,
     RideBooking,
     RouteInfo,
     SessionRideConfig,
 )
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/transport", tags=["transport"])
+
+
+async def get_current_member(
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> MemberRef:
+    """Resolve the authenticated Supabase user to a transport MemberRef."""
+    result = await db.execute(
+        select(MemberRef).where(MemberRef.auth_id == current_user.user_id)
+    )
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member profile not found. Please complete registration.",
+        )
+    return member
+
+
+def _raise_wallet_error(e: httpx.HTTPStatusError) -> None:
+    """Convert wallet HTTP errors into user-friendly FastAPI exceptions."""
+    if e.response.status_code == 400:
+        detail = e.response.json().get("detail", "")
+        if "Insufficient" in detail:
+            raise HTTPException(
+                status_code=402,
+                detail="Insufficient Bubbles. Please top up your wallet.",
+            )
+        if "frozen" in detail.lower() or "suspended" in detail.lower():
+            raise HTTPException(
+                status_code=403,
+                detail="Wallet is inactive. Please contact support.",
+            )
+    raise HTTPException(
+        status_code=502, detail="Payment service error. Please try again."
+    )
 
 
 # RideArea Management Endpoints
@@ -423,7 +463,6 @@ async def delete_route(
     result = await db.execute(query)
     route = result.scalar_one_or_none()
     if not route:
-        from fastapi import HTTPException
 
         raise HTTPException(status_code=404, detail="Route not found")
 
@@ -436,7 +475,7 @@ async def delete_route(
 
 class SessionRideConfigCreate(BaseModel):
     ride_area_id: uuid.UUID
-    cost: float = 0.0
+    cost: float = 0.0  # Naira (float) — router converts to kobo on write
     capacity: int = 4
     departure_time: Optional[datetime] = None
 
@@ -448,7 +487,7 @@ class SessionRideConfigResponse(BaseModel):
     ride_area_name: str  # Populated via join
     # Populated via join with availability and route info
     pickup_locations: List[Dict] = []
-    cost: float
+    cost: float  # Naira (float) — converted from kobo on read
     capacity: int
     departure_time: Optional[datetime]
     created_at: datetime
@@ -480,7 +519,7 @@ async def attach_ride_areas_to_session(
         cfg = SessionRideConfig(
             session_id=session_id,
             ride_area_id=cfg_data.ride_area_id,
-            cost=cfg_data.cost,
+            cost=naira_to_kobo(cfg_data.cost),  # Store as kobo integer
             capacity=cfg_data.capacity,
             departure_time=cfg_data.departure_time,
         )
@@ -520,7 +559,7 @@ async def attach_ride_areas_to_session(
                     }
                     for loc in locations
                 ],
-                cost=cfg.cost,
+                cost=cfg.cost / 100.0,  # kobo → naira for API response
                 capacity=cfg.capacity,
                 departure_time=cfg.departure_time,
                 created_at=cfg.created_at,
@@ -674,7 +713,7 @@ async def get_session_ride_configs(
                 ride_area_id=cfg.ride_area_id,
                 ride_area_name=area.name,
                 pickup_locations=pickup_locations_data,
-                cost=cfg.cost,
+                cost=cfg.cost / 100.0,  # kobo → naira for API response
                 capacity=cfg.capacity,
                 departure_time=cfg.departure_time,
                 created_at=cfg.created_at,
@@ -691,6 +730,7 @@ async def get_session_ride_configs(
 class RideBookingCreate(BaseModel):
     session_ride_config_id: uuid.UUID
     pickup_location_id: uuid.UUID
+    pay_with_bubbles: bool = False  # If True, debit wallet for the ride cost
 
 
 class RideBookingResponse(BaseModel):
@@ -702,7 +742,7 @@ class RideBookingResponse(BaseModel):
     pickup_location_name: str  # Populated
     ride_area_name: str  # Populated
     assigned_ride_number: int
-    cost: float  # From config
+    cost: float  # From config — naira (kobo converted on read)
     created_at: datetime
     updated_at: datetime
 
@@ -713,44 +753,62 @@ class RideBookingResponse(BaseModel):
 async def create_ride_booking(
     session_id: uuid.UUID,
     booking_in: RideBookingCreate,
-    member_id: uuid.UUID,  # Passed from frontend or auth
+    current_member: MemberRef = Depends(get_current_member),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Create or update a ride booking for a member."""
-    # Check existing
+    """Create or update a ride booking for the authenticated member."""
+    member_id = current_member.id
+
+    # Check existing booking
     query = select(RideBooking).where(
         RideBooking.session_id == session_id, RideBooking.member_id == member_id
     )
     result = await db.execute(query)
     existing = result.scalar_one_or_none()
 
+    # Always fetch the ride config upfront (needed for cost + capacity)
+    cfg_query = select(SessionRideConfig).where(
+        SessionRideConfig.id == booking_in.session_ride_config_id
+    )
+    cfg_result = await db.execute(cfg_query)
+    cfg_for_cost = cfg_result.scalar_one_or_none()
+    if not cfg_for_cost:
+        raise HTTPException(status_code=404, detail="Ride config not found")
+
     if existing:
-        # Update
+        # Update existing booking (no re-charge)
         existing.session_ride_config_id = booking_in.session_ride_config_id
         existing.pickup_location_id = booking_in.pickup_location_id
         await db.commit()
         await db.refresh(existing)
         booking = existing
     else:
-        # Calculate ride number
-        from sqlalchemy import func
+        # Debit wallet for new bookings when requested and ride has a cost
+        if booking_in.pay_with_bubbles and cfg_for_cost.cost > 0:
+            fee_bubbles = kobo_to_bubbles(cfg_for_cost.cost)
+            idempotency_key = f"ride-{session_id}-{member_id}"
+            try:
+                await debit_member_wallet(
+                    current_member.auth_id,
+                    amount=fee_bubbles,
+                    idempotency_key=idempotency_key,
+                    description=f"Ride share booking — {fee_bubbles} 🫧",
+                    calling_service="transport",
+                    transaction_type="purchase",
+                    reference_type="ride_booking",
+                    reference_id=str(session_id),
+                )
+            except httpx.HTTPStatusError as e:
+                _raise_wallet_error(e)
 
+        # Calculate ride number
         count_query = select(func.count(RideBooking.id)).where(
             RideBooking.session_ride_config_id == booking_in.session_ride_config_id,
             RideBooking.pickup_location_id == booking_in.pickup_location_id,
         )
         count_result = await db.execute(count_query)
         count = count_result.scalar_one() or 0
-
-        # Get capacity from config
-        cfg_query = select(SessionRideConfig).where(
-            SessionRideConfig.id == booking_in.session_ride_config_id
-        )
-        cfg_result = await db.execute(cfg_query)
-        cfg = cfg_result.scalar_one()
-        capacity = cfg.capacity
-
-        assigned_ride_number = (count // capacity) + 1
+        assigned_ride_number = (count // cfg_for_cost.capacity) + 1
 
         booking = RideBooking(
             session_id=session_id,
@@ -763,7 +821,7 @@ async def create_ride_booking(
         await db.commit()
         await db.refresh(booking)
 
-    # Get details for response
+    # Get details for response (with join on RideArea)
     cfg_query = (
         select(SessionRideConfig, RideArea)
         .join(RideArea)
@@ -772,7 +830,6 @@ async def create_ride_booking(
     cfg_result = await db.execute(cfg_query)
     row = cfg_result.first()
     if not row:
-        # Graceful fallback if config is missing
         cfg, area = None, None
     else:
         cfg, area = row
@@ -792,7 +849,7 @@ async def create_ride_booking(
         pickup_location_name=location.name if location else "Unknown Location",
         ride_area_name=area.name if area else "Unknown Area",
         assigned_ride_number=booking.assigned_ride_number,
-        cost=cfg.cost if cfg else 0.0,
+        cost=(cfg.cost / 100.0) if cfg else 0.0,  # kobo → naira
         created_at=booking.created_at,
         updated_at=booking.updated_at,
     )
@@ -803,10 +860,11 @@ async def create_ride_booking(
 )
 async def get_my_booking(
     session_id: uuid.UUID,
-    member_id: uuid.UUID,
+    current_member: MemberRef = Depends(get_current_member),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Get current member's booking for a session."""
+    """Get the authenticated member's booking for a session."""
+    member_id = current_member.id
     query = select(RideBooking).where(
         RideBooking.session_id == session_id, RideBooking.member_id == member_id
     )
@@ -844,7 +902,7 @@ async def get_my_booking(
         pickup_location_name=location.name if location else "Unknown Location",
         ride_area_name=area.name if area else "Unknown Area",
         assigned_ride_number=booking.assigned_ride_number,
-        cost=cfg.cost if cfg else 0.0,
+        cost=(cfg.cost / 100.0) if cfg else 0.0,  # kobo → naira
         created_at=booking.created_at,
         updated_at=booking.updated_at,
     )
@@ -891,7 +949,7 @@ async def list_session_bookings(
                 pickup_location_name=location.name if location else "Unknown Location",
                 ride_area_name=area.name if area else "Unknown Area",
                 assigned_ride_number=booking.assigned_ride_number,
-                cost=cfg.cost if cfg else 0.0,
+                cost=(cfg.cost / 100.0) if cfg else 0.0,  # kobo → naira
                 created_at=booking.created_at,
                 updated_at=booking.updated_at,
             )

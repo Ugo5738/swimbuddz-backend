@@ -649,6 +649,12 @@ class Order(Base):
         String(100), index=True, nullable=True
     )
 
+    # Bubbles wallet payment (null if paid by other method)
+    bubbles_applied: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    wallet_transaction_id: Mapped[Optional[str]] = mapped_column(
+        String(100), index=True, nullable=True
+    )
+
     # Fulfillment
     fulfillment_type: Mapped[FulfillmentType] = mapped_column(
         SAEnum(
