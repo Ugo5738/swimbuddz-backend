@@ -233,6 +233,12 @@ async def create_session(
     # Remove ride_share_areas if present in input, though schema should handle it
     session_data.pop("ride_share_areas", None)
 
+    # Convert naira fee inputs (float) to kobo (int) for DB storage.
+    session_data["pool_fee"] = round((session_data.get("pool_fee") or 0.0) * 100)
+    session_data["ride_share_fee"] = round(
+        (session_data.get("ride_share_fee") or 0.0) * 100
+    )
+
     # Default statuses:
     # - Cohort sessions should be immediately visible to enrolled members.
     # - Other session types default to DRAFT so admins can review before publish.
@@ -411,6 +417,13 @@ async def update_session(
 
     old_status = session.status
     update_data = session_in.model_dump(exclude_unset=True)
+
+    # Convert naira fee inputs (float) to kobo (int) for DB storage.
+    if "pool_fee" in update_data and update_data["pool_fee"] is not None:
+        update_data["pool_fee"] = round(update_data["pool_fee"] * 100)
+    if "ride_share_fee" in update_data and update_data["ride_share_fee"] is not None:
+        update_data["ride_share_fee"] = round(update_data["ride_share_fee"] * 100)
+
     for field, value in update_data.items():
         setattr(session, field, value)
 

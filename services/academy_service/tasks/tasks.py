@@ -1173,10 +1173,10 @@ async def check_attendance_and_notify():
                         records = []
 
                     present = sum(
-                        1 for r in records if r.get("status") in ("PRESENT", "LATE")
+                        1 for r in records if r.get("status") in ("present", "late")
                     )
-                    absent = sum(1 for r in records if r.get("status") == "ABSENT")
-                    late = sum(1 for r in records if r.get("status") == "LATE")
+                    absent = sum(1 for r in records if r.get("status") == "absent")
+                    late = sum(1 for r in records if r.get("status") == "late")
                     rate = (
                         round((present / total_sessions) * 100)
                         if total_sessions > 0

@@ -1,6 +1,8 @@
 """FastAPI router for Media Service."""
 
+import hashlib
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -16,6 +18,7 @@ from services.media_service.models import (
     SiteAsset,
 )
 from services.media_service.schemas import (
+    AlbumCoverPhoto,
     AlbumCreate,
     AlbumResponse,
     AlbumUpdate,
@@ -64,6 +67,21 @@ def _maybe_presign_url(url: str | None) -> str | None:
             except Exception:
                 pass  # Fall through to return raw URL
     return url
+
+
+def _stable_daily_album_index(album_id: uuid.UUID, item_count: int) -> int:
+    """
+    Deterministic per-day selector:
+    - Stable for a given album within the same UTC day.
+    - Rotates once per UTC day.
+    """
+    if item_count <= 0:
+        return 0
+
+    day_key = datetime.now(timezone.utc).date().isoformat()
+    seed = f"{album_id}:{day_key}".encode("utf-8")
+    digest = hashlib.sha256(seed).hexdigest()
+    return int(digest, 16) % item_count
 
 
 async def _build_media_item_response(
@@ -208,20 +226,68 @@ async def list_albums(
     result = await db.execute(query)
     albums = result.scalars().all()
 
-    # Add media counts
+    if not albums:
+        return []
+
+    album_ids = [album.id for album in albums]
+
+    # Load album media once so we can derive:
+    # 1) media_count
+    # 2) cover_photo (manual cover first, then stable daily fallback)
+    items_result = await db.execute(
+        select(
+            AlbumItem.album_id.label("album_id"),
+            AlbumItem.order.label("item_order"),
+            MediaItem.id.label("media_id"),
+            MediaItem.file_url.label("file_url"),
+            MediaItem.thumbnail_url.label("thumbnail_url"),
+            MediaItem.created_at.label("created_at"),
+        )
+        .join(MediaItem, MediaItem.id == AlbumItem.media_item_id)
+        .where(AlbumItem.album_id.in_(album_ids))
+        .order_by(AlbumItem.album_id, AlbumItem.order, desc(MediaItem.created_at))
+    )
+    item_rows = items_result.fetchall()
+
+    media_by_album: dict[uuid.UUID, list[dict[str, object]]] = {}
+    for row in item_rows:
+        media_by_album.setdefault(row.album_id, []).append(
+            {
+                "id": row.media_id,
+                "file_url": row.file_url,
+                "thumbnail_url": row.thumbnail_url,
+            }
+        )
+
     response_list = []
     for album in albums:
         album_data = AlbumResponse.model_validate(album)
-        # Count items via AlbumItem association or direct linkage if we supported that (but we use AlbumItem now)
-        # Actually, we need to decide if we strictly use AlbumItem or if MediaItem has album_id.
-        # The new schema has AlbumItem for M2M, but let's check if we kept album_id on MediaItem?
-        # In the new schema I defined: AlbumItem link table. MediaItem does NOT have album_id column in the new schema.
-        # So we count via AlbumItem.
-        count_query = select(func.count(AlbumItem.id)).where(
-            AlbumItem.album_id == album.id
-        )
-        count_result = await db.execute(count_query)
-        album_data.media_count = count_result.scalar_one()
+        album_media = media_by_album.get(album.id, [])
+        album_data.media_count = len(album_media)
+
+        selected_cover: Optional[dict[str, object]] = None
+        if album.cover_media_id:
+            selected_cover = next(
+                (
+                    media
+                    for media in album_media
+                    if str(media["id"]) == str(album.cover_media_id)
+                ),
+                None,
+            )
+
+        if not selected_cover and album_media:
+            selected_cover = album_media[
+                _stable_daily_album_index(album.id, len(album_media))
+            ]
+
+        if selected_cover:
+            album_data.cover_photo = AlbumCoverPhoto(
+                id=selected_cover["id"],
+                file_url=_maybe_presign_url(selected_cover["file_url"]),
+                thumbnail_url=_maybe_presign_url(selected_cover["thumbnail_url"]),
+            )
+
         response_list.append(album_data)
 
     return response_list
@@ -286,6 +352,7 @@ async def get_album(album_id: uuid.UUID, db: AsyncSession = Depends(get_async_db
 
 
 @router.put("/albums/{album_id}", response_model=AlbumResponse)
+@router.patch("/albums/{album_id}", response_model=AlbumResponse)
 async def update_album(
     album_id: uuid.UUID,
     album_update: AlbumUpdate,

@@ -65,6 +65,11 @@ class AttendanceRecord(Base):
 
     notes: Mapped[str] = mapped_column(String, nullable=True)
 
+    # Wallet payment reference (nullable — only set when paid with Bubbles)
+    wallet_transaction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )

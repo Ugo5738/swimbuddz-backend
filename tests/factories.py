@@ -348,13 +348,17 @@ class AttendanceRecordFactory:
     @staticmethod
     def create(session_id=None, member_id=None, **overrides):
         from services.attendance_service.models import AttendanceRecord
+        from services.attendance_service.models.enums import (
+            AttendanceRole,
+            AttendanceStatus,
+        )
 
         defaults = {
             "id": _uuid(),
             "session_id": session_id or _uuid(),
             "member_id": member_id or _uuid(),
-            "status": "PRESENT",
-            "role": "SWIMMER",
+            "status": AttendanceStatus.PRESENT.value,
+            "role": AttendanceRole.SWIMMER.value,
             "created_at": _now(),
             "updated_at": _now(),
         }

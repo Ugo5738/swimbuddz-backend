@@ -1,8 +1,12 @@
 """Payments Service schemas package."""
 
+from services.payments_service.schemas.enums import (
+    ClubBillingCycle,
+    SessionAttendanceRole,
+    SessionAttendanceStatus,
+)
 from services.payments_service.schemas.main import (
     AdminReviewRequest,
-    ClubBillingCycle,
     CompletePaymentRequest,
     CreatePaymentIntentRequest,
     DiscountCreate,
@@ -49,5 +53,7 @@ __all__ = [
     "PayoutResponse",
     "PayoutSummary",
     "PricingConfigResponse",
+    "SessionAttendanceRole",
+    "SessionAttendanceStatus",
     "SubmitProofRequest",
 ]

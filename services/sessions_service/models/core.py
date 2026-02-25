@@ -12,7 +12,7 @@ from services.sessions_service.models.enums import (
 )
 from sqlalchemy import Boolean, DateTime
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import Float, ForeignKey, Integer, String, Text, Time
+from sqlalchemy import ForeignKey, Integer, String, Text, Time
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -79,12 +79,10 @@ class Session(Base):
     location_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     location_address: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
-    # === Capacity & Fees ===
+    # === Capacity & Fees (stored in kobo — divide by 100 for naira display) ===
     capacity: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
-    pool_fee: Mapped[float] = mapped_column(Float, default=0.0, server_default="0.0")
-    ride_share_fee: Mapped[float] = mapped_column(
-        Float, default=0.0, server_default="0.0"
-    )
+    pool_fee: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    ride_share_fee: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     # === Context Links (nullable based on session_type) ===
     # For COHORT_CLASS sessions

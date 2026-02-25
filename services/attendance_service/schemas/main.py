@@ -1,22 +1,15 @@
-import enum
 import uuid
 from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
-
-
-class RideShareOption(str, enum.Enum):
-    """Local copy — avoids cross-service import from transport_service."""
-
-    NONE = "none"
-    LEAD = "lead"
-    JOIN = "join"
+from services.attendance_service.models.enums import AttendanceRole, AttendanceStatus
+from services.attendance_service.schemas.enums import RideShareOption
 
 
 class AttendanceBase(BaseModel):
-    status: str = "PRESENT"
-    role: str = "SWIMMER"
+    status: AttendanceStatus = AttendanceStatus.PRESENT
+    role: AttendanceRole = AttendanceRole.SWIMMER
     notes: Optional[str] = None
     ride_share_option: RideShareOption = RideShareOption.NONE
     needs_ride: bool = False
@@ -25,8 +18,7 @@ class AttendanceBase(BaseModel):
 
 
 class AttendanceCreate(AttendanceBase):
-    status: str = "PRESENT"
-    role: str = "SWIMMER"
+    pay_with_bubbles: bool = False  # If True, debit wallet for the session pool fee
 
 
 class PublicAttendanceCreate(AttendanceBase):
@@ -39,6 +31,7 @@ class AttendanceResponse(AttendanceBase):
     member_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    wallet_transaction_id: Optional[uuid.UUID] = None  # Set when paid with Bubbles
 
     # Optional fields populated by joins
     member_name: Optional[str] = None

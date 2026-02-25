@@ -2,6 +2,7 @@
 
 from services.media_service.schemas.main import (
     AlbumBase,
+    AlbumCoverPhoto,
     AlbumCreate,
     AlbumResponse,
     AlbumUpdate,
@@ -20,6 +21,7 @@ from services.media_service.schemas.main import (
 
 __all__ = [
     "AlbumBase",
+    "AlbumCoverPhoto",
     "AlbumCreate",
     "AlbumResponse",
     "AlbumUpdate",

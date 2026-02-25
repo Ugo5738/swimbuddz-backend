@@ -18,6 +18,8 @@ class EventBase(BaseModel):
     end_time: Optional[datetime] = None
     max_capacity: Optional[int] = None
     tier_access: str = "community"  # community/club/academy
+    # Optional entry fee — API accepts/returns naira (float). DB stores kobo (int).
+    cost_naira: Optional[float] = None  # null = free
 
 
 class EventCreate(EventBase):
@@ -37,12 +39,22 @@ class EventUpdate(BaseModel):
     end_time: Optional[datetime] = None
     max_capacity: Optional[int] = None
     tier_access: Optional[str] = None
+    cost_naira: Optional[float] = None  # null = free
 
 
-class EventResponse(EventBase):
-    """Event response schema."""
+class EventResponse(BaseModel):
+    """Event response schema — cost_naira converted from cost_kobo on read."""
 
     id: uuid.UUID
+    title: str
+    description: Optional[str] = None
+    event_type: str
+    location: Optional[str] = None
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    max_capacity: Optional[int] = None
+    tier_access: str
+    cost_naira: Optional[float] = None  # null = free
     created_by: uuid.UUID
     created_at: datetime
     updated_at: datetime
@@ -55,6 +67,7 @@ class RSVPCreate(BaseModel):
     """Schema for creating/updating an RSVP."""
 
     status: str  # going/maybe/not_going
+    pay_with_bubbles: bool = False  # If True, debit wallet for the event fee on "going"
 
 
 class RSVPResponse(BaseModel):

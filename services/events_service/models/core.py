@@ -19,6 +19,9 @@ class MemberRef(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    auth_id: Mapped[str] = mapped_column(
+        String, unique=True, index=True, nullable=False
+    )
 
 
 class Event(Base):
@@ -42,6 +45,8 @@ class Event(Base):
     )
     end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     max_capacity: Mapped[int] = mapped_column(Integer, nullable=True)
+    # Optional entry fee in kobo (null = free). API accepts/returns naira (float).
+    cost_kobo: Mapped[int] = mapped_column(Integer, nullable=True)
     tier_access: Mapped[str] = mapped_column(
         String, default="community"
     )  # minimum tier required: community/club/academy
