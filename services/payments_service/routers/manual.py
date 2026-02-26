@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings

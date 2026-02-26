@@ -3,7 +3,6 @@
 import hashlib
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from services.media_service.models import MediaItem, MediaTag, SiteAsset
 from services.media_service.schemas import MediaItemResponse, SiteAssetResponse

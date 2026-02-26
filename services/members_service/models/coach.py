@@ -2,13 +2,16 @@
 
 import uuid
 from datetime import date, datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+if TYPE_CHECKING:
+    from .member import Member
 
 
 class CoachProfile(Base):

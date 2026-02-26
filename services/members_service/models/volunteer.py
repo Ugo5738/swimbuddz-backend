@@ -6,7 +6,7 @@ from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 

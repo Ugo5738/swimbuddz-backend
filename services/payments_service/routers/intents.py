@@ -2,7 +2,6 @@
 
 import hashlib
 import hmac
-import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit

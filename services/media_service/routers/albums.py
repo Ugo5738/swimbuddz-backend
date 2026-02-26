@@ -19,7 +19,6 @@ from services.media_service.schemas import (
     AlbumResponse,
     AlbumUpdate,
     AlbumWithMedia,
-    MediaItemResponse,
 )
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession

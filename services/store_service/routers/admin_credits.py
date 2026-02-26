@@ -11,7 +11,6 @@ from services.store_service.models import (
     AuditEntityType,
     PickupLocation,
     StoreCredit,
-    StoreCreditSourceType,
 )
 from services.store_service.routers._helpers import log_audit
 from services.store_service.schemas import (

@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger

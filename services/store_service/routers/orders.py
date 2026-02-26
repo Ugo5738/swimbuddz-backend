@@ -2,7 +2,6 @@
 
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
