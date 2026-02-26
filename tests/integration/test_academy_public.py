@@ -161,17 +161,7 @@ async def test_get_cohort_by_id(academy_client, db_session):
     db_session.add(cohort)
     await db_session.commit()
 
-    with patch(
-        "services.academy_service.routers.member.get_members_bulk",
-        new_callable=AsyncMock,
-        return_value=[],
-    ):
-        with patch(
-            "services.academy_service.routers.member.get_next_session_for_cohort",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            response = await academy_client.get(f"/academy/cohorts/{cohort.id}")
+    response = await academy_client.get(f"/academy/cohorts/{cohort.id}")
 
     assert response.status_code == 200
     data = response.json()
@@ -218,22 +208,7 @@ async def test_create_enrollment(academy_client, db_session):
         "member_id": str(member.id),
     }
 
-    with patch(
-        "services.academy_service.routers.member.get_member_by_id",
-        new_callable=AsyncMock,
-        return_value={
-            "id": str(member.id),
-            "first_name": "Test",
-            "last_name": "User",
-            "email": member.email,
-        },
-    ):
-        with patch(
-            "services.academy_service.routers.member.internal_post",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            response = await academy_client.post("/academy/enrollments", json=payload)
+    response = await academy_client.post("/academy/enrollments", json=payload)
 
     assert response.status_code in (200, 201), response.text
     data = response.json()
@@ -316,7 +291,7 @@ async def test_mark_paid_updates_non_installment_enrollment(academy_client, db_s
     enrollment_id = create_response.json()["id"]
 
     with patch(
-        "services.academy_service.routers.member.get_member_by_id",
+        "services.academy_service.routers.enrollments.get_member_by_id",
         new_callable=AsyncMock,
         return_value={
             "id": str(member.id),
@@ -384,7 +359,7 @@ async def test_preview_cohort_timeline_shift(academy_client, db_session):
     ]
 
     with patch(
-        "services.academy_service.routers.member.internal_get",
+        "services.academy_service.routers._shared.internal_get",
         new_callable=AsyncMock,
         return_value=_FakeResponse(payload=session_payload),
     ):
@@ -482,12 +457,12 @@ async def test_apply_cohort_timeline_shift_updates_related_records(
 
     with (
         patch(
-            "services.academy_service.routers.member.internal_get",
+            "services.academy_service.routers._shared.internal_get",
             new_callable=AsyncMock,
             return_value=_FakeResponse(payload=session_payload),
         ),
         patch(
-            "services.academy_service.routers.member.internal_patch",
+            "services.academy_service.routers._shared.internal_patch",
             new_callable=AsyncMock,
             return_value=_FakeResponse(payload={}),
         ),
@@ -576,12 +551,12 @@ async def test_apply_cohort_timeline_shift_idempotency_replays_logged_result(
 
     with (
         patch(
-            "services.academy_service.routers.member.internal_get",
+            "services.academy_service.routers._shared.internal_get",
             new_callable=AsyncMock,
             return_value=_FakeResponse(payload=session_payload),
         ),
         patch(
-            "services.academy_service.routers.member.internal_patch",
+            "services.academy_service.routers._shared.internal_patch",
             new_callable=AsyncMock,
             return_value=_FakeResponse(payload={}),
         ) as patch_mock,
