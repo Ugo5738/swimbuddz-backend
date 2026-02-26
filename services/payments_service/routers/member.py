@@ -16,6 +16,7 @@ from libs.auth.dependencies import (
 )
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
+from libs.common.currency import KOBO_PER_NAIRA
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.common.service_client import internal_post
@@ -56,7 +57,6 @@ logger = get_logger(__name__)
 FULFILLMENT_META_KEY = "fulfillment"
 MAX_FULFILLMENT_RETRIES = 8
 BASE_FULFILLMENT_RETRY_MINUTES = 2
-KOBO_PER_NAIRA = 100
 
 
 @router.get("/pricing", response_model=PricingConfigResponse)

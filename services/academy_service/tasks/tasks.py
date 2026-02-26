@@ -4,6 +4,12 @@ import asyncio
 from datetime import timedelta
 
 from libs.common.config import get_settings
+from libs.common.currency import (
+    KOBO_PER_BUBBLE,
+    KOBO_PER_NAIRA,
+    NAIRA_PER_BUBBLE,
+    kobo_to_bubbles,
+)
 from libs.common.datetime_utils import utc_now
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
@@ -12,6 +18,7 @@ from libs.common.service_client import (
     debit_member_wallet,
     get_member_by_id,
     get_members_bulk,
+    get_wallet_balance,
     internal_get,
     internal_post,
 )
@@ -32,9 +39,6 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 logger = get_logger(__name__)
-KOBO_PER_NAIRA = 100
-NAIRA_PER_BUBBLE = 100
-KOBO_PER_BUBBLE = KOBO_PER_NAIRA * NAIRA_PER_BUBBLE
 
 
 async def send_enrollment_reminders():
@@ -481,6 +485,31 @@ async def send_installment_payment_reminders():
                 if not member:
                     continue
 
+                # Fetch wallet balance to calculate shortfall for one-tap top-up link
+                amount_bubbles = kobo_to_bubbles(installment.amount)
+                wallet_balance_bubbles = 0
+                shortfall_bubbles = amount_bubbles
+                try:
+                    wallet = await get_wallet_balance(
+                        member["auth_id"], calling_service="academy"
+                    )
+                    if wallet:
+                        wallet_balance_bubbles = wallet.get("balance", 0)
+                        shortfall_bubbles = max(
+                            0, amount_bubbles - wallet_balance_bubbles
+                        )
+                except Exception as wallet_err:
+                    logger.warning(
+                        f"Could not fetch wallet balance for member {enrollment.member_id}: {wallet_err}"
+                    )
+
+                settings = get_settings()
+                enrollment_url = f"{settings.FRONTEND_URL}/account/academy/enrollments/{enrollment.id}"
+                topup_url = (
+                    f"{settings.FRONTEND_URL}/account/wallet/topup"
+                    f"?prefill={shortfall_bubbles}&return_to=/account/academy/enrollments/{enrollment.id}"
+                )
+
                 email_client = get_email_client()
                 success = await email_client.send_template(
                     template_type="installment_payment_reminder",
@@ -492,9 +521,15 @@ async def send_installment_payment_reminders():
                         "installment_number": installment.installment_number,
                         "total_installments": enrollment.total_installments,
                         "amount": installment.amount,
+                        "amount_bubbles": amount_bubbles,
                         "currency": enrollment.currency_snapshot or "NGN",
                         "due_date": installment.due_at.strftime("%A, %B %d, %Y"),
                         "days_until": days_until,
+                        "wallet_balance_bubbles": wallet_balance_bubbles,
+                        "shortfall_bubbles": shortfall_bubbles,
+                        "has_sufficient_balance": shortfall_bubbles == 0,
+                        "topup_url": topup_url,
+                        "enrollment_url": enrollment_url,
                     },
                 )
 

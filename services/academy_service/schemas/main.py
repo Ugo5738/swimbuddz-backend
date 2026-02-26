@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
+from libs.common.currency import kobo_to_naira, naira_to_kobo
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from services.academy_service.models import (
     BillingType,
@@ -17,21 +18,6 @@ from services.academy_service.models import (
     ProgressStatus,
     RequiredEvidence,
 )
-
-KOBO_PER_NAIRA = 100
-
-
-def _naira_to_kobo(value: int | None) -> int | None:
-    if value is None:
-        return None
-    return int(value) * KOBO_PER_NAIRA
-
-
-def _kobo_to_naira(value: int | None) -> int | None:
-    if value is None:
-        return None
-    return int(value) // KOBO_PER_NAIRA
-
 
 # --- Program Schemas ---
 
@@ -58,7 +44,7 @@ class ProgramCreate(ProgramBase):
     @field_validator("price_amount", mode="before")
     @classmethod
     def convert_price_amount_to_kobo(cls, value: int) -> int:
-        return _naira_to_kobo(value) or 0
+        return naira_to_kobo(value) or 0
 
 
 class ProgramUpdate(BaseModel):
@@ -78,7 +64,7 @@ class ProgramUpdate(BaseModel):
     @field_validator("price_amount", mode="before")
     @classmethod
     def convert_price_amount_to_kobo(cls, value: Optional[int]) -> Optional[int]:
-        return _naira_to_kobo(value)
+        return naira_to_kobo(value) if value is not None else None
 
 
 class ProgramResponse(ProgramBase):
@@ -91,7 +77,7 @@ class ProgramResponse(ProgramBase):
     @field_validator("price_amount", mode="before")
     @classmethod
     def convert_price_amount_to_naira(cls, value: int) -> int:
-        return _kobo_to_naira(value) or 0
+        return int(kobo_to_naira(value)) if value is not None else 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -178,13 +164,12 @@ class CoachAssignmentInput(BaseModel):
 
 class CohortCreate(CohortBase):
     program_id: UUID
-    coach_id: Optional[UUID] = None  # Legacy field, still supported
     coach_assignments: Optional[list[CoachAssignmentInput]] = None
 
     @field_validator("price_override", "installment_deposit_amount", mode="before")
     @classmethod
     def convert_amounts_to_kobo(cls, value: Optional[int]) -> Optional[int]:
-        return _naira_to_kobo(value)
+        return naira_to_kobo(value) if value is not None else None
 
 
 class CohortUpdate(BaseModel):
@@ -193,7 +178,6 @@ class CohortUpdate(BaseModel):
     end_date: Optional[datetime] = None
     capacity: Optional[int] = None
     status: Optional[CohortStatus] = None
-    coach_id: Optional[UUID] = None
     allow_mid_entry: Optional[bool] = None
     mid_entry_cutoff_week: Optional[int] = None
     require_approval: Optional[bool] = None
@@ -214,7 +198,7 @@ class CohortUpdate(BaseModel):
     @field_validator("price_override", "installment_deposit_amount", mode="before")
     @classmethod
     def convert_amounts_to_kobo(cls, value: Optional[int]) -> Optional[int]:
-        return _naira_to_kobo(value)
+        return naira_to_kobo(value) if value is not None else None
 
 
 class CohortTimelineShiftRequest(BaseModel):
@@ -309,7 +293,7 @@ class CohortResponse(CohortBase):
     @field_validator("price_override", "installment_deposit_amount", mode="before")
     @classmethod
     def convert_amounts_to_naira(cls, value: Optional[int]) -> Optional[int]:
-        return _kobo_to_naira(value)
+        return int(kobo_to_naira(value)) if value is not None else None
 
     model_config = ConfigDict(from_attributes=True)
 
