@@ -1,1 +1,1 @@
-"""Routers package."""
+"""Academy service routers."""
