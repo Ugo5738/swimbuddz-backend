@@ -1,14 +1,14 @@
 """FastAPI application for the Communications Service."""
 
 from fastapi import FastAPI
-from services.communications_service.routers.announcements import (
-    admin_router,
+from services.communications_service.routers.announcement_categories import (
     category_router,
-    content_router,
 )
+from services.communications_service.routers.announcements import admin_router
 from services.communications_service.routers.announcements import (
     router as communications_router,
 )
+from services.communications_service.routers.content import content_router
 from services.communications_service.routers.email import router as email_router
 from services.communications_service.routers.messaging import router as messaging_router
 from services.communications_service.routers.preferences import (

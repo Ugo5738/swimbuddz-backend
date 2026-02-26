@@ -3,7 +3,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from libs.common.config import get_settings
-from services.media_service.routers.member import router
+from services.media_service.routers.albums import router as albums_router
+from services.media_service.routers.assets import router as assets_router
+from services.media_service.routers.media import router as media_router
 
 settings = get_settings()
 
@@ -22,8 +24,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include router
-app.include_router(router)
+# Include routers
+app.include_router(albums_router)
+app.include_router(media_router)
+app.include_router(assets_router)
 
 
 @app.get("/health")
