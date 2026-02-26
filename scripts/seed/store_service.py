@@ -11,10 +11,6 @@ Usage:
 import asyncio
 from decimal import Decimal
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-
 from libs.common.config import get_settings
 from services.store_service.models import (
     Category,
@@ -28,6 +24,9 @@ from services.store_service.models import (
     ProductVariant,
     SourcingType,
 )
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
 settings = get_settings()
 

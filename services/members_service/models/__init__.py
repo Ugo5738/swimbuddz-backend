@@ -5,28 +5,35 @@ Re-exports all models and enums so that:
   - Alembic env.py imports continue to work without modification
   - SQLAlchemy's mapper registry sees every model class on import
 
-All model definitions live in models/core.py.
+Model definitions are split across:
+  - models/member.py   — Member and related sub-tables
+  - models/coach.py    — Coach profile, agreements, handbook, bank accounts
+  - models/volunteer.py — Legacy volunteer roles and club challenges
 """
 
-from services.members_service.models.core import (  # noqa: F401
+from services.members_service.models.coach import (  # noqa: F401
     AgreementVersion,
-    ClubChallenge,
     CoachAgreement,
     CoachBankAccount,
     CoachProfile,
     HandbookVersion,
+)
+from services.members_service.models.enums import CoachGrade  # noqa: F401
+from services.members_service.models.member import (  # noqa: F401
     Member,
     MemberAvailability,
-    MemberChallengeCompletion,
     MemberEmergencyContact,
     MemberMembership,
     MemberPreferences,
     MemberProfile,
     PendingRegistration,
+)
+from services.members_service.models.volunteer import (  # noqa: F401
+    ClubChallenge,
+    MemberChallengeCompletion,
     VolunteerInterest,
     VolunteerRole,
 )
-from services.members_service.models.enums import CoachGrade  # noqa: F401
 
 __all__ = [
     "CoachGrade",
