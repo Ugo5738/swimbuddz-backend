@@ -57,3 +57,14 @@ extend-exclude = [
 
 [tool.ruff.lint]
 ignore = ["E402"]
+
+[tool.ruff.lint.per-file-ignores]
+"services/academy_service/routers/admin_tasks.py" = ["F405"]
+"services/academy_service/routers/coach_dashboard.py" = ["F405"]
+"services/academy_service/routers/cohorts.py" = ["F405"]
+"services/academy_service/routers/enrollments.py" = ["F405"]
+"services/academy_service/routers/internal.py" = ["F405"]
+"services/academy_service/routers/programs.py" = ["F405"]
+"services/academy_service/routers/progress.py" = ["F405"]
+"services/academy_service/routers/reports.py" = ["F405"]
+"services/academy_service/routers/scoring.py" = ["F405"]

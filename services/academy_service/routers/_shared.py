@@ -3,7 +3,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from libs.auth.dependencies import (

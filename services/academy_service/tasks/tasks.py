@@ -7,7 +7,6 @@ from libs.common.config import get_settings
 from libs.common.currency import (
     KOBO_PER_BUBBLE,
     KOBO_PER_NAIRA,
-    NAIRA_PER_BUBBLE,
     kobo_to_bubbles,
 )
 from libs.common.datetime_utils import utc_now
