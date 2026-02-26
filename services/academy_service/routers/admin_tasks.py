@@ -1,5 +1,18 @@
 from fastapi import APIRouter
-from services.academy_service.routers._shared import *  # noqa: F401, F403
+from services.academy_service.routers._shared import (
+    AsyncSession,
+    AuthUser,
+    Depends,
+    Enrollment,
+    StudentProgress,
+    delete,
+    get_async_db,
+    get_logger,
+    require_admin,
+    select,
+    transition_cohort_statuses,
+    uuid,
+)
 
 router = APIRouter(tags=["academy"])
 logger = get_logger(__name__)
