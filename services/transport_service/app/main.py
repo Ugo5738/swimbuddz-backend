@@ -2,7 +2,9 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from services.transport_service.routers.member import router as transport_router
+from services.transport_service.routers.areas import router as areas_router
+from services.transport_service.routers.bookings import router as bookings_router
+from services.transport_service.routers.routes import router as routes_router
 
 
 def create_app() -> FastAPI:
@@ -30,7 +32,9 @@ def create_app() -> FastAPI:
         """Health check endpoint."""
         return {"status": "ok", "service": "transport"}
 
-    app.include_router(transport_router)
+    app.include_router(areas_router)
+    app.include_router(routes_router)
+    app.include_router(bookings_router)
 
     return app
 

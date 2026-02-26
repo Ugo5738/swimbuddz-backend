@@ -1,7 +1,13 @@
 """FastAPI application for the Payments Service."""
 
 from fastapi import FastAPI
-from services.payments_service.routers.member import router as payments_router
+from services.payments_service.routers import (
+    discounts_router,
+    intents_router,
+    internal_router,
+    manual_router,
+    webhooks_router,
+)
 from services.payments_service.routers.payout import admin_router as payout_admin_router
 from services.payments_service.routers.payout import coach_router as payout_coach_router
 
@@ -19,8 +25,12 @@ def create_app() -> FastAPI:
         """Health check endpoint."""
         return {"status": "ok", "service": "payments"}
 
-    # Include payments router
-    app.include_router(payments_router)
+    # Include split payments routers
+    app.include_router(intents_router)
+    app.include_router(webhooks_router)
+    app.include_router(discounts_router)
+    app.include_router(internal_router)
+    app.include_router(manual_router)
 
     # Include payout routers for coach payout management
     # Mount under /payments prefix to match gateway routing (/api/v1/payments/{path} → /payments/{path})

@@ -1,44 +1,47 @@
 """Academy Service models package."""
 
-from services.academy_service.models.core import (
-    BillingType,
-    CoachAssignment,
+from services.academy_service.models.cohort import (
     Cohort,
-    CohortComplexityScore,
     CohortResource,
-    CohortStatus,
     CohortTimelineShiftLog,
-    CurriculumLesson,
-    CurriculumWeek,
-    Enrollment,
-    EnrollmentInstallment,
+)
+from services.academy_service.models.enrollment import Enrollment, EnrollmentInstallment
+from services.academy_service.models.enums import (
+    BillingType,
+    CoachAssignmentRole,
+    CoachAssignmentStatus,
+    CoachGrade,
+    CohortStatus,
     EnrollmentSource,
     EnrollmentStatus,
     InstallmentStatus,
-    LessonSkill,
     LocationType,
-    MemberRef,
-    Milestone,
     MilestoneType,
     PaymentStatus,
-    Program,
-    ProgramCurriculum,
-    ProgramInterest,
+    ProgramCategory,
     ProgramLevel,
     ProgressStatus,
     RequiredEvidence,
     ResourceSourceType,
     ResourceVisibility,
-    ShadowEvaluation,
-    Skill,
-    StudentProgress,
-)
-from services.academy_service.models.enums import (
-    CoachAssignmentRole,
-    CoachAssignmentStatus,
-    CoachGrade,
-    ProgramCategory,
     ShadowEvaluationRecommendation,
+)
+from services.academy_service.models.program import (
+    CurriculumLesson,
+    CurriculumWeek,
+    LessonSkill,
+    MemberRef,
+    Program,
+    ProgramCurriculum,
+    Skill,
+)
+from services.academy_service.models.progress import (
+    CoachAssignment,
+    CohortComplexityScore,
+    Milestone,
+    ProgramInterest,
+    ShadowEvaluation,
+    StudentProgress,
 )
 
 __all__ = [

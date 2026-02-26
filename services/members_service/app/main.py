@@ -4,8 +4,13 @@ from fastapi import FastAPI
 from services.members_service.routers import (
     admin_router,
     challenge_router,
-    coach_admin_router,
-    coach_router,
+    coach_agreements_admin_router,
+    coach_agreements_router,
+    coach_application_admin_router,
+    coach_application_router,
+    coach_banking_router,
+    coach_grades_admin_router,
+    coach_grades_router,
     coaches_router,
     internal_router,
     members_router,
@@ -37,8 +42,13 @@ def create_app() -> FastAPI:
     app.include_router(volunteer_router)
 
     # Coach routers (profile management, not public listing)
-    app.include_router(coach_router)
-    app.include_router(coach_admin_router)
+    app.include_router(coach_application_router)
+    app.include_router(coach_application_admin_router)
+    app.include_router(coach_banking_router)
+    app.include_router(coach_grades_router)
+    app.include_router(coach_grades_admin_router)
+    app.include_router(coach_agreements_router)
+    app.include_router(coach_agreements_admin_router)
 
     # Internal service-to-service endpoints (not exposed via gateway)
     app.include_router(internal_router)

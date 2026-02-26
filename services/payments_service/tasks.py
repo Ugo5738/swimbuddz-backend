@@ -32,7 +32,7 @@ def _payment_next_retry_at(payment: Payment) -> datetime | None:
 
 async def reconcile_pending_paystack_payments() -> None:
     """Verify stale pending Paystack payments and advance state."""
-    from services.payments_service.routers.member import (
+    from services.payments_service.routers.intents import (
         _mark_paid_and_apply,
         _verify_paystack_transaction,
     )
@@ -103,7 +103,7 @@ async def reconcile_pending_paystack_payments() -> None:
 
 async def retry_failed_entitlement_fulfillment() -> None:
     """Retry entitlement fulfillment for paid payments pending application."""
-    from services.payments_service.routers.member import (
+    from services.payments_service.routers.intents import (
         _apply_entitlement_with_tracking,
     )
 

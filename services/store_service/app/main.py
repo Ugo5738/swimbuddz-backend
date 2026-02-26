@@ -1,8 +1,14 @@
 """FastAPI application for the Store Service."""
 
 from fastapi import FastAPI
-from services.store_service.routers.admin import router as admin_router
-from services.store_service.routers.member import router as store_router
+from services.store_service.routers import (
+    admin_catalog_router,
+    admin_credits_router,
+    admin_inventory_router,
+    cart_router,
+    catalog_router,
+    orders_router,
+)
 
 
 def create_app() -> FastAPI:
@@ -19,10 +25,14 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "store"}
 
     # Public store routes (catalog, cart, checkout, orders)
-    app.include_router(store_router, prefix="/store")
+    app.include_router(catalog_router, prefix="/store")
+    app.include_router(cart_router, prefix="/store")
+    app.include_router(orders_router, prefix="/store")
 
     # Admin routes (product management, inventory, order management)
-    app.include_router(admin_router, prefix="/admin/store")
+    app.include_router(admin_catalog_router, prefix="/admin/store")
+    app.include_router(admin_inventory_router, prefix="/admin/store")
+    app.include_router(admin_credits_router, prefix="/admin/store")
 
     return app
 
