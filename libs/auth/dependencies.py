@@ -11,7 +11,6 @@ from sqlalchemy import text
 
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
-from libs.common.service_client import get_member_by_auth_id
 
 settings = get_settings()
 
@@ -234,6 +233,9 @@ async def require_coach_for_cohort(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Coach privileges required"
         )
+
+    # Import lazily to avoid circular import at module load time.
+    from libs.common.service_client import get_member_by_auth_id
 
     # Resolve member_id from auth_id via members service HTTP API
     member = await get_member_by_auth_id(user.user_id, calling_service="academy")
