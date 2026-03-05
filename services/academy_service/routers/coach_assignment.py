@@ -2,7 +2,6 @@
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin, require_coach
@@ -94,7 +93,9 @@ async def create_assignment(
         raise HTTPException(status_code=404, detail="Cohort not found")
 
     # Get admin member ID
-    _admin = await get_member_by_auth_id(current_user.user_id, calling_service="academy")
+    _admin = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
+    )
     if not _admin:
         raise HTTPException(status_code=400, detail="Admin member not found")
     admin_id = uuid.UUID(_admin["id"])
@@ -156,7 +157,9 @@ async def list_my_assignments(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List my coach assignments."""
-    _member = await get_member_by_auth_id(current_user.user_id, calling_service="academy")
+    _member = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
+    )
     if not _member:
         raise HTTPException(status_code=404, detail="Member not found")
     member_id = uuid.UUID(_member["id"])
@@ -289,7 +292,9 @@ async def create_shadow_evaluation(
             detail="Evaluations can only be created for shadow assignments",
         )
 
-    _evaluator = await get_member_by_auth_id(current_user.user_id, calling_service="academy")
+    _evaluator = await get_member_by_auth_id(
+        current_user.user_id, calling_service="academy"
+    )
     if not _evaluator:
         raise HTTPException(status_code=404, detail="Evaluator member not found")
     evaluator_id = uuid.UUID(_evaluator["id"])

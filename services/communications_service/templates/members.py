@@ -226,9 +226,7 @@ async def send_tier_activated_email(
     )
 
     # HTML
-    highlights_html = "".join(
-        f"<li>{h}</li>" for h in config["highlights"]
-    )
+    highlights_html = "".join(f"<li>{h}</li>" for h in config["highlights"])
     body_html = (
         f"<p>Hi {member_name},</p>"
         f"<p>Your <strong>{tier.capitalize()}</strong> membership is now active!</p>"

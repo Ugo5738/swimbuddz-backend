@@ -201,7 +201,6 @@ async def _verify_paystack_transaction(
 
     url = f"{settings.PAYSTACK_API_BASE_URL.rstrip('/')}/transaction/verify/{reference}"
     headers = _paystack_headers()
-    last_exc: Exception | None = None
 
     for attempt in range(1, _max_retries + 1):
         try:
@@ -209,7 +208,6 @@ async def _verify_paystack_transaction(
                 resp = await client.get(url, headers=headers)
             break  # success — exit retry loop
         except (_ssl.SSLError, httpx.ConnectError, httpx.ReadError) as exc:
-            last_exc = exc
             if attempt < _max_retries:
                 logger.warning(
                     "Paystack verify attempt %d/%d failed (%s: %s), retrying...",
