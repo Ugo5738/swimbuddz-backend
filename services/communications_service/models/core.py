@@ -4,6 +4,11 @@ from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
+from sqlalchemy import Boolean, DateTime, String, Text
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
 from services.communications_service.models.enums import (
     AnnouncementAudience,
     AnnouncementCategory,
@@ -13,11 +18,6 @@ from services.communications_service.models.enums import (
     SessionNotificationType,
     enum_values,
 )
-from sqlalchemy import Boolean, DateTime
-from sqlalchemy import Enum as SAEnum
-from sqlalchemy import String, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
 
 
 class Announcement(Base):
@@ -184,6 +184,10 @@ class ContentPost(Base):
         DateTime(timezone=True), nullable=True
     )
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Scheduled publishing: if set, post will auto-publish at this time
+    scheduled_for: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     tier_access: Mapped[str] = mapped_column(
         String, default="community"
     )  # community/club/academy

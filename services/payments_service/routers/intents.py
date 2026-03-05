@@ -14,8 +14,11 @@ from libs.common.config import get_settings
 from libs.common.currency import KOBO_PER_NAIRA
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
-from libs.common.service_client import internal_post
+from libs.common.service_client import emit_rewards_event, internal_post
 from libs.db.session import get_async_db
+from sqlalchemy import delete, desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.payments_service.models import (
     Discount,
     DiscountType,
@@ -33,8 +36,6 @@ from services.payments_service.schemas import (
     SessionAttendanceRole,
     SessionAttendanceStatus,
 )
-from sqlalchemy import delete, desc, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 settings = get_settings()
@@ -186,18 +187,48 @@ async def _initialize_paystack(
     return data.get("authorization_url"), data.get("access_code")
 
 
-async def _verify_paystack_transaction(reference: str) -> dict:
+async def _verify_paystack_transaction(
+    reference: str, *, _max_retries: int = 3
+) -> dict:
     if not _paystack_enabled():
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail="Paystack is not configured.",
         )
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(
-            f"{settings.PAYSTACK_API_BASE_URL.rstrip('/')}/transaction/verify/{reference}",
-            headers=_paystack_headers(),
-        )
+    import asyncio
+    import ssl as _ssl
+
+    url = f"{settings.PAYSTACK_API_BASE_URL.rstrip('/')}/transaction/verify/{reference}"
+    headers = _paystack_headers()
+    last_exc: Exception | None = None
+
+    for attempt in range(1, _max_retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(url, headers=headers)
+            break  # success — exit retry loop
+        except (_ssl.SSLError, httpx.ConnectError, httpx.ReadError) as exc:
+            last_exc = exc
+            if attempt < _max_retries:
+                logger.warning(
+                    "Paystack verify attempt %d/%d failed (%s: %s), retrying...",
+                    attempt,
+                    _max_retries,
+                    type(exc).__name__,
+                    exc,
+                )
+                await asyncio.sleep(1.0 * attempt)  # 1s, 2s backoff
+            else:
+                logger.error(
+                    "Paystack verify failed after %d attempts: %s",
+                    _max_retries,
+                    exc,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Paystack connection error after {_max_retries} retries: {exc}",
+                ) from exc
 
     if resp.status_code >= 400:
         raise HTTPException(
@@ -233,6 +264,44 @@ def _set_fulfillment_meta(payment: Payment, **fields) -> None:
     payment.payment_metadata = metadata
 
 
+async def _try_qualify_referral(member_auth_id: str, payment_reference: str) -> None:
+    """Best-effort: notify wallet service to qualify referral after membership payment."""
+    try:
+        resp = await internal_post(
+            service_url=settings.WALLET_SERVICE_URL,
+            path="/internal/wallet/referral-qualify",
+            calling_service="payments",
+            json={
+                "member_auth_id": member_auth_id,
+                "trigger": f"membership_payment:{payment_reference}",
+            },
+        )
+        if resp.status_code >= 400:
+            logger.warning(
+                "Referral qualification HTTP failure for %s after payment %s (status=%d): %s",
+                member_auth_id,
+                payment_reference,
+                resp.status_code,
+                resp.text,
+            )
+            return
+
+        body = resp.json() if resp.content else {}
+        if body.get("qualified"):
+            logger.info(
+                "Referral qualified for %s after payment %s",
+                member_auth_id,
+                payment_reference,
+            )
+    except Exception as e:
+        # Never fail the payment flow for referral issues
+        logger.warning(
+            "Referral qualification call failed for %s: %s",
+            member_auth_id,
+            e,
+        )
+
+
 async def _apply_entitlement_with_tracking(payment: Payment) -> None:
     now = datetime.now(timezone.utc)
     existing = _fulfillment_meta(payment)
@@ -255,6 +324,14 @@ async def _apply_entitlement_with_tracking(payment: Payment) -> None:
             next_retry_at=None,
             last_error=None,
         )
+
+        # Best-effort referral qualification after successful membership payment.
+        # If this member was referred, their referral moves from "registered" → "rewarded"
+        # and both referrer + referee get Bubbles.
+        await _try_qualify_referral(payment.member_auth_id, payment.reference)
+
+        # Best-effort reward events for membership payments
+        await _emit_membership_reward_events(payment)
     except Exception as exc:
         error_message = str(exc)
         payment.entitlement_error = error_message
@@ -284,9 +361,121 @@ async def _apply_entitlement_with_tracking(payment: Payment) -> None:
         )
 
 
+async def _send_tier_activated_email(
+    payment: Payment, tier: str, duration: str
+) -> None:
+    """Best-effort tier activation email after successful payment."""
+    try:
+        from libs.common.service_client import get_member_by_auth_id
+
+        member = await get_member_by_auth_id(
+            payment.member_auth_id, calling_service="payments"
+        )
+        member_email = (member or {}).get("email") or payment.payer_email
+        member_name = (member or {}).get("first_name") or "there"
+
+        if member_email:
+            email_client = get_email_client()
+            await email_client.send_template(
+                template_type="tier_activated",
+                to_email=member_email,
+                template_data={
+                    "member_name": member_name,
+                    "tier": tier,
+                    "amount": float(payment.amount),
+                    "currency": payment.currency,
+                    "duration": duration,
+                },
+            )
+            logger.info(
+                "Tier activation email sent for %s tier to %s", tier, member_email
+            )
+    except Exception as e:
+        # Non-fatal — payment was successful; email failure must not raise
+        logger.warning("Failed to send tier activation email (non-fatal): %s", e)
+
+
+async def _emit_membership_reward_events(payment: Payment) -> None:
+    """Best-effort: emit reward events for membership-related payments.
+
+    Maps payment purposes to reward event types:
+    - COMMUNITY → membership.activated (first paid activation) or membership.renewed
+    - CLUB/CLUB_BUNDLE → membership.upgraded
+    - ACADEMY_COHORT → handled separately by academy graduation
+    - SESSION_FEE, STORE_ORDER, WALLET_TOPUP → handled by their respective services
+    """
+    payment_metadata = payment.payment_metadata or {}
+    community_event_type = payment_metadata.get(
+        "community_reward_event_type", "membership.renewed"
+    )
+    purpose_to_event = {
+        PaymentPurpose.COMMUNITY: (community_event_type, "community"),
+        PaymentPurpose.CLUB: ("membership.upgraded", "club"),
+        PaymentPurpose.CLUB_BUNDLE: ("membership.upgraded", "club"),
+    }
+
+    mapping = purpose_to_event.get(payment.purpose)
+    if not mapping:
+        return
+
+    event_type, new_tier = mapping
+    try:
+        await emit_rewards_event(
+            event_type=event_type,
+            member_auth_id=payment.member_auth_id,
+            service_source="payments",
+            event_data={
+                "new_tier": new_tier,
+                "payment_reference": payment.reference,
+                "amount_ngn": float(payment.amount),
+                "membership_event_type": event_type,
+            },
+            idempotency_key=f"membership-{payment.reference}",
+            calling_service="payments",
+        )
+    except Exception:
+        logger.warning(
+            "Failed to emit membership reward event for %s (best-effort)",
+            payment.reference,
+            exc_info=True,
+        )
+
+
 async def _apply_entitlement(payment: Payment) -> None:
     # Handle Community activation
     if payment.purpose == PaymentPurpose.COMMUNITY:
+        # Determine whether this is a first paid activation vs renewal before mutation.
+        community_event_type = "membership.renewed"
+        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                member_resp = await client.get(
+                    f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{payment.member_auth_id}",
+                    headers=headers,
+                )
+                if member_resp.status_code == 200:
+                    member_data = member_resp.json() or {}
+                    membership = member_data.get("membership") or {}
+                    previous_paid_until = membership.get("community_paid_until")
+                    if not previous_paid_until:
+                        community_event_type = "membership.activated"
+                else:
+                    logger.warning(
+                        "Could not determine community activation type for %s (status=%d)",
+                        payment.reference,
+                        member_resp.status_code,
+                    )
+        except Exception as exc:
+            logger.warning(
+                "Failed to determine community activation type for %s: %s",
+                payment.reference,
+                exc,
+            )
+
+        payment.payment_metadata = {
+            **(payment.payment_metadata or {}),
+            "community_reward_event_type": community_event_type,
+        }
         path = f"/admin/members/by-auth/{payment.member_auth_id}/community/activate"
         years = int((payment.payment_metadata or {}).get("years") or 1)
         payload = {"years": years}
@@ -323,6 +512,8 @@ async def _apply_entitlement(payment: Payment) -> None:
                 )
         # Clear pending payment reference on success
         await _update_pending_payment_reference(payment.member_auth_id, None)
+        duration = f"{months} month{'s' if months != 1 else ''}"
+        await _send_tier_activated_email(payment, tier="club", duration=duration)
         return
 
     # Handle Club bundle (Community + Club)
@@ -353,6 +544,9 @@ async def _apply_entitlement(payment: Payment) -> None:
                 )
         # Clear pending payment reference on success
         await _update_pending_payment_reference(payment.member_auth_id, None)
+        # Send club tier email (bundle pays for both community + club)
+        duration = f"{months} month{'s' if months != 1 else ''} Club + {years} year{'s' if years != 1 else ''} Community"
+        await _send_tier_activated_email(payment, tier="club", duration=duration)
         return
 
     # Handle Academy cohort enrollment
@@ -715,6 +909,12 @@ async def _apply_entitlement(payment: Payment) -> None:
             )
     # Clear pending payment reference on success
     await _update_pending_payment_reference(payment.member_auth_id, None)
+
+    # Send tier activation email (only reaches here for COMMUNITY)
+    if payment.purpose == PaymentPurpose.COMMUNITY:
+        years = int((payment.payment_metadata or {}).get("years") or 1)
+        duration = f"{years} year{'s' if years != 1 else ''}"
+        await _send_tier_activated_email(payment, tier="community", duration=duration)
 
 
 def _resolve_club_amount(

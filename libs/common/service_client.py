@@ -6,9 +6,12 @@ models or querying tables from other services directly.
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
+
 from libs.auth.dependencies import _service_role_jwt
 from libs.common.config import get_settings
 from libs.common.logging import get_logger, get_request_id
@@ -434,3 +437,50 @@ async def check_wallet_balance(
         return None
     resp.raise_for_status()
     return resp.json()
+
+
+async def emit_rewards_event(
+    *,
+    event_type: str,
+    member_auth_id: str,
+    service_source: str,
+    event_data: dict,
+    idempotency_key: str,
+    calling_service: str,
+    member_id: Optional[str] = None,
+    occurred_at: Optional[str] = None,
+) -> Optional[dict]:
+    """Emit an event to the rewards engine for automatic Bubble rewards.
+
+    Best-effort: catches all exceptions and returns None on failure so the
+    calling operation is never blocked by rewards processing.
+
+    Returns dict with {event_id, accepted, rewards_granted, rewards} on success.
+    """
+    settings = get_settings()
+    try:
+        resp = await internal_post(
+            service_url=settings.WALLET_SERVICE_URL,
+            path="/internal/wallet/events",
+            calling_service=calling_service,
+            json={
+                "event_id": str(uuid.uuid4()),
+                "event_type": event_type,
+                "member_auth_id": member_auth_id,
+                "member_id": member_id,
+                "service_source": service_source,
+                "occurred_at": occurred_at or datetime.now(timezone.utc).isoformat(),
+                "event_data": event_data,
+                "idempotency_key": idempotency_key,
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        logger.warning(
+            "Failed to emit rewards event %s for %s (best-effort, continuing)",
+            event_type,
+            member_auth_id,
+            exc_info=True,
+        )
+        return None

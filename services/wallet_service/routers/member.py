@@ -8,17 +8,23 @@ from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
+from sqlalchemy import desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.wallet_service.models import (
     TransactionType,
     WalletTopup,
     WalletTransaction,
 )
+from services.wallet_service.models.rewards import RewardNotificationPreference
 from services.wallet_service.schemas import (
     BalanceCheckRequest,
     BalanceCheckResponse,
     CreditRequest,
     DebitRequest,
     InternalDebitCreditResponse,
+    NotificationPreferenceResponse,
+    NotificationPreferenceUpdateRequest,
     TopupInitiateRequest,
     TopupListResponse,
     TopupResponse,
@@ -38,8 +44,6 @@ from services.wallet_service.services.wallet_ops import (
     debit_wallet,
     get_wallet_by_auth_id,
 )
-from sqlalchemy import desc, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/wallet", tags=["wallet"])
@@ -289,3 +293,71 @@ async def member_check_balance(
         required_amount=body.required_amount,
         wallet_status=wallet_status,
     )
+
+
+# ---------------------------------------------------------------------------
+# Notification Preferences (Phase 3d)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/notifications/preferences",
+    response_model=NotificationPreferenceResponse,
+)
+async def get_notification_preferences(
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get reward notification preferences (lazy-creates defaults on first access)."""
+    result = await db.execute(
+        select(RewardNotificationPreference).where(
+            RewardNotificationPreference.member_auth_id == current_user.user_id
+        )
+    )
+    pref = result.scalar_one_or_none()
+
+    if not pref:
+        pref = RewardNotificationPreference(
+            member_auth_id=current_user.user_id,
+        )
+        db.add(pref)
+        await db.flush()
+        await db.commit()
+        await db.refresh(pref)
+
+    return NotificationPreferenceResponse.model_validate(pref)
+
+
+@router.patch(
+    "/notifications/preferences",
+    response_model=NotificationPreferenceResponse,
+)
+async def update_notification_preferences(
+    body: NotificationPreferenceUpdateRequest,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Update reward notification preferences."""
+    result = await db.execute(
+        select(RewardNotificationPreference).where(
+            RewardNotificationPreference.member_auth_id == current_user.user_id
+        )
+    )
+    pref = result.scalar_one_or_none()
+
+    if not pref:
+        pref = RewardNotificationPreference(
+            member_auth_id=current_user.user_id,
+        )
+        db.add(pref)
+        await db.flush()
+
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(pref, field, value)
+
+    await db.flush()
+    await db.commit()
+    await db.refresh(pref)
+
+    return NotificationPreferenceResponse.model_validate(pref)

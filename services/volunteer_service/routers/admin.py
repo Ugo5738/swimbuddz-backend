@@ -1,5 +1,6 @@
 """Admin volunteer management endpoints."""
 
+import logging
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Optional
@@ -7,8 +8,17 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-from libs.common.member_utils import resolve_members_basic
+from libs.common.member_utils import resolve_member_basic, resolve_members_basic
+from libs.common.service_client import (
+    emit_rewards_event,
+    get_member_by_auth_id,
+    get_member_by_id,
+)
 from libs.db.session import get_async_db
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from services.volunteer_service.models import (
     OpportunityStatus,
     SlotStatus,
@@ -17,6 +27,7 @@ from services.volunteer_service.models import (
     VolunteerProfile,
     VolunteerReward,
     VolunteerRole,
+    VolunteerRoleCategory,
     VolunteerSlot,
     VolunteerTier,
 )
@@ -46,9 +57,8 @@ from services.volunteer_service.services import (
     compute_reliability_score,
     update_profile_aggregates,
 )
-from sqlalchemy import func, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/volunteers", tags=["admin-volunteers"])
 
@@ -56,13 +66,51 @@ router = APIRouter(prefix="/admin/volunteers", tags=["admin-volunteers"])
 # ── Helpers ─────────────────────────────────────────────────────────
 
 
-async def _get_admin_member_id(user: AuthUser, db: AsyncSession) -> uuid.UUID | None:
-    """Resolve admin auth_id → member UUID (may be None for service roles)."""
-    row = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": user.user_id},
-    )
-    return row.scalar_one_or_none()
+def _is_peer_coaching(opp: VolunteerOpportunity | None) -> bool:
+    """Check if an opportunity is a peer coaching session."""
+    if opp and opp.role:
+        return opp.role.category == VolunteerRoleCategory.MENTOR
+    return False
+
+
+async def _emit_volunteer_reward(
+    slot: VolunteerSlot,
+    opp: VolunteerOpportunity | None,
+) -> None:
+    """Best-effort: emit a rewards event for a completed volunteer slot."""
+    try:
+        member = await get_member_by_id(
+            str(slot.member_id), calling_service="volunteer"
+        )
+        if not member:
+            logger.warning(
+                "Could not look up member %s for rewards event", slot.member_id
+            )
+            return
+
+        event_type = (
+            "volunteer.peer_coaching"
+            if _is_peer_coaching(opp)
+            else "volunteer.completed"
+        )
+        await emit_rewards_event(
+            event_type=event_type,
+            member_auth_id=member["auth_id"],
+            member_id=str(slot.member_id),
+            service_source="volunteer",
+            event_data={
+                "hours": slot.hours_logged,
+                "role": opp.title if opp else "unknown",
+                "event_name": opp.title if opp else "Volunteer session",
+                "admin_confirmed": True,
+            },
+            idempotency_key=f"vol-checkout-{slot.id}",
+            calling_service="volunteer",
+        )
+    except Exception:
+        logger.warning(
+            "Failed to emit rewards event for slot %s", slot.id, exc_info=True
+        )
 
 
 async def _enrich_opportunity(opp: VolunteerOpportunity) -> dict:
@@ -72,14 +120,10 @@ async def _enrich_opportunity(opp: VolunteerOpportunity) -> dict:
     return data
 
 
-async def _enrich_slot(slot: VolunteerSlot, db: AsyncSession) -> dict:
+async def _enrich_slot(slot: VolunteerSlot) -> dict:
     data = {c.key: getattr(slot, c.key) for c in slot.__table__.columns}
-    name_row = await db.execute(
-        text("SELECT first_name, last_name FROM members WHERE id = :id"),
-        {"id": slot.member_id},
-    )
-    name = name_row.first()
-    data["member_name"] = f"{name[0] or ''} {name[1] or ''}".strip() if name else None
+    info = await resolve_member_basic(slot.member_id)
+    data["member_name"] = info.full_name if info else None
     return data
 
 
@@ -157,18 +201,17 @@ async def list_profiles(
     q = q.order_by(VolunteerProfile.total_hours.desc())
 
     profiles = (await db.execute(q)).scalars().all()
+
+    # Batch-resolve member names via HTTP
+    member_ids = [p.member_id for p in profiles]
+    member_map = await resolve_members_basic(member_ids) if member_ids else {}
+
     results = []
     for p in profiles:
         data = {c.key: getattr(p, c.key) for c in p.__table__.columns}
-        name_row = await db.execute(
-            text("SELECT first_name, last_name, email FROM members WHERE id = :id"),
-            {"id": p.member_id},
-        )
-        name = name_row.first()
-        data["member_name"] = (
-            f"{name[0] or ''} {name[1] or ''}".strip() if name else None
-        )
-        data["member_email"] = name[2] if name else None
+        info = member_map.get(str(p.member_id))
+        data["member_name"] = info.full_name if info else None
+        data["member_email"] = info.email if info else None
         results.append(data)
     return results
 
@@ -187,13 +230,9 @@ async def get_profile(
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
     data = {c.key: getattr(profile, c.key) for c in profile.__table__.columns}
-    name_row = await db.execute(
-        text("SELECT first_name, last_name, email FROM members WHERE id = :id"),
-        {"id": member_id},
-    )
-    name = name_row.first()
-    data["member_name"] = f"{name[0] or ''} {name[1] or ''}".strip() if name else None
-    data["member_email"] = name[2] if name else None
+    info = await resolve_member_basic(member_id)
+    data["member_name"] = info.full_name if info else None
+    data["member_email"] = info.email if info else None
     return data
 
 
@@ -297,7 +336,8 @@ async def create_opportunity(
     admin: Annotated[AuthUser, Depends(require_admin)],
     db: AsyncSession = Depends(get_async_db),
 ):
-    admin_member_id = await _get_admin_member_id(admin, db)
+    _admin = await get_member_by_auth_id(admin.user_id, calling_service="volunteer")
+    admin_member_id = uuid.UUID(_admin["id"]) if _admin else None
     opp = VolunteerOpportunity(**data.model_dump(), created_by=admin_member_id)
     db.add(opp)
     await db.commit()
@@ -323,7 +363,8 @@ async def bulk_create_opportunities(
     admin: Annotated[AuthUser, Depends(require_admin)],
     db: AsyncSession = Depends(get_async_db),
 ):
-    admin_member_id = await _get_admin_member_id(admin, db)
+    _admin = await get_member_by_auth_id(admin.user_id, calling_service="volunteer")
+    admin_member_id = uuid.UUID(_admin["id"]) if _admin else None
     opps = []
     for item in data.opportunities:
         opp = VolunteerOpportunity(**item.model_dump(), created_by=admin_member_id)
@@ -459,7 +500,7 @@ async def list_slots(
         .scalars()
         .all()
     )
-    return [await _enrich_slot(s, db) for s in rows]
+    return [await _enrich_slot(s) for s in rows]
 
 
 @router.patch("/slots/{slot_id}", response_model=VolunteerSlotResponse)
@@ -478,7 +519,8 @@ async def update_slot(
     if data.status == SlotStatus.APPROVED:
         slot.status = SlotStatus.APPROVED
         slot.approved_at = datetime.now(timezone.utc)
-        admin_member_id = await _get_admin_member_id(admin, db)
+        _admin = await get_member_by_auth_id(admin.user_id, calling_service="volunteer")
+        admin_member_id = uuid.UUID(_admin["id"]) if _admin else None
         slot.approved_by = admin_member_id
     elif data.status == SlotStatus.REJECTED:
         slot.status = SlotStatus.REJECTED
@@ -500,7 +542,7 @@ async def update_slot(
 
     await db.commit()
     await db.refresh(slot)
-    return await _enrich_slot(slot, db)
+    return await _enrich_slot(slot)
 
 
 @router.post("/slots/{slot_id}/checkin", response_model=VolunteerSlotResponse)
@@ -521,7 +563,7 @@ async def checkin_slot(
     slot.checked_in_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(slot)
-    return await _enrich_slot(slot, db)
+    return await _enrich_slot(slot)
 
 
 @router.post("/slots/{slot_id}/checkout", response_model=VolunteerSlotResponse)
@@ -556,12 +598,17 @@ async def checkout_slot(
     # Create hours log entry
     opp = (
         await db.execute(
-            select(VolunteerOpportunity).where(
-                VolunteerOpportunity.id == slot.opportunity_id
-            )
+            select(VolunteerOpportunity)
+            .options(selectinload(VolunteerOpportunity.role))
+            .where(VolunteerOpportunity.id == slot.opportunity_id)
         )
     ).scalar_one_or_none()
 
+    _admin = (
+        await get_member_by_auth_id(admin.user_id, calling_service="volunteer")
+        if admin
+        else None
+    )
     hours_log = VolunteerHoursLog(
         member_id=slot.member_id,
         slot_id=slot.id,
@@ -570,7 +617,7 @@ async def checkout_slot(
         date=opp.date if opp else date.today(),
         role_id=opp.role_id if opp else None,
         source="slot_completion",
-        logged_by=await _get_admin_member_id(admin, db) if admin else None,
+        logged_by=uuid.UUID(_admin["id"]) if _admin else None,
     )
     db.add(hours_log)
 
@@ -580,8 +627,11 @@ async def checkout_slot(
     await update_profile_aggregates(db, slot.member_id)
     await db.commit()
 
+    # Best-effort: emit rewards event
+    await _emit_volunteer_reward(slot, opp)
+
     await db.refresh(slot)
-    return await _enrich_slot(slot, db)
+    return await _enrich_slot(slot)
 
 
 @router.post("/slots/{slot_id}/no-show", response_model=VolunteerSlotResponse)
@@ -612,7 +662,7 @@ async def mark_no_show(
 
     await db.commit()
     await db.refresh(slot)
-    return await _enrich_slot(slot, db)
+    return await _enrich_slot(slot)
 
 
 @router.post("/slots/bulk-complete", response_model=list[VolunteerSlotResponse])
@@ -621,8 +671,9 @@ async def bulk_complete(
     admin: Annotated[AuthUser, Depends(require_admin)],
     db: AsyncSession = Depends(get_async_db),
 ):
-    results = []
-    admin_member_id = await _get_admin_member_id(admin, db)
+    results: list[tuple[VolunteerSlot, VolunteerOpportunity | None]] = []
+    _admin = await get_member_by_auth_id(admin.user_id, calling_service="volunteer")
+    admin_member_id = uuid.UUID(_admin["id"]) if _admin else None
     for slot_id in data.slot_ids:
         slot = (
             await db.execute(select(VolunteerSlot).where(VolunteerSlot.id == slot_id))
@@ -637,9 +688,9 @@ async def bulk_complete(
 
         opp = (
             await db.execute(
-                select(VolunteerOpportunity).where(
-                    VolunteerOpportunity.id == slot.opportunity_id
-                )
+                select(VolunteerOpportunity)
+                .options(selectinload(VolunteerOpportunity.role))
+                .where(VolunteerOpportunity.id == slot.opportunity_id)
             )
         ).scalar_one_or_none()
 
@@ -654,20 +705,24 @@ async def bulk_complete(
             logged_by=admin_member_id,
         )
         db.add(hours_log)
-        results.append(slot)
+        results.append((slot, opp))
 
     await db.commit()
 
     # Update aggregates for each member
-    member_ids = {s.member_id for s in results}
+    member_ids = {s.member_id for s, _ in results}
     for mid in member_ids:
         await update_profile_aggregates(db, mid)
     await db.commit()
 
+    # Best-effort: emit rewards events for each completed slot
+    for slot, opp in results:
+        await _emit_volunteer_reward(slot, opp)
+
     enriched = []
-    for slot in results:
+    for slot, _ in results:
         await db.refresh(slot)
-        enriched.append(await _enrich_slot(slot, db))
+        enriched.append(await _enrich_slot(slot))
     return enriched
 
 
@@ -680,7 +735,8 @@ async def add_manual_hours(
     admin: Annotated[AuthUser, Depends(require_admin)],
     db: AsyncSession = Depends(get_async_db),
 ):
-    admin_member_id = await _get_admin_member_id(admin, db)
+    _admin = await get_member_by_auth_id(admin.user_id, calling_service="volunteer")
+    admin_member_id = uuid.UUID(_admin["id"]) if _admin else None
     log = VolunteerHoursLog(
         member_id=data.member_id,
         hours=data.hours,
@@ -710,7 +766,8 @@ async def grant_reward(
     admin: Annotated[AuthUser, Depends(require_admin)],
     db: AsyncSession = Depends(get_async_db),
 ):
-    admin_member_id = await _get_admin_member_id(admin, db)
+    _admin = await get_member_by_auth_id(admin.user_id, calling_service="volunteer")
+    admin_member_id = uuid.UUID(_admin["id"]) if _admin else None
     reward = VolunteerReward(
         **data.model_dump(),
         granted_by=admin_member_id,
@@ -838,20 +895,18 @@ async def admin_dashboard(
         .all()
     )
 
+    # Batch-resolve member names via HTTP
+    top_member_ids = [p.member_id for p in top_rows]
+    member_map = await resolve_members_basic(top_member_ids) if top_member_ids else {}
+
     top_volunteers = []
     for rank, p in enumerate(top_rows, 1):
-        name_row = await db.execute(
-            text("SELECT first_name, last_name FROM members WHERE id = :id"),
-            {"id": p.member_id},
-        )
-        name = name_row.first()
+        info = member_map.get(str(p.member_id))
         top_volunteers.append(
             LeaderboardEntry(
                 rank=rank,
                 member_id=p.member_id,
-                member_name=(
-                    f"{name[0] or ''} {name[1] or ''}".strip() if name else None
-                ),
+                member_name=info.full_name if info else None,
                 total_hours=p.total_hours,
                 total_sessions=p.total_sessions_volunteered,
                 recognition_tier=p.recognition_tier,
@@ -886,17 +941,15 @@ async def reliability_report(
         .all()
     )
 
+    # Batch-resolve member names via HTTP
+    member_ids = [p.member_id for p in profiles]
+    member_map = await resolve_members_basic(member_ids) if member_ids else {}
+
     results = []
     for p in profiles:
         data = {c.key: getattr(p, c.key) for c in p.__table__.columns}
-        name_row = await db.execute(
-            text("SELECT first_name, last_name, email FROM members WHERE id = :id"),
-            {"id": p.member_id},
-        )
-        name = name_row.first()
-        data["member_name"] = (
-            f"{name[0] or ''} {name[1] or ''}".strip() if name else None
-        )
-        data["member_email"] = name[2] if name else None
+        info = member_map.get(str(p.member_id))
+        data["member_name"] = info.full_name if info else None
+        data["member_email"] = info.email if info else None
         results.append(data)
     return results

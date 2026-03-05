@@ -8,7 +8,10 @@ from fastapi import HTTPException, status
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-from libs.common.service_client import internal_get, internal_post
+from libs.common.service_client import emit_rewards_event, internal_get, internal_post
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.wallet_service.models import (
     PaymentMethod,
     TopupStatus,
@@ -20,8 +23,6 @@ from services.wallet_service.services.wallet_ops import (
     credit_wallet,
     get_wallet_by_auth_id,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -207,6 +208,51 @@ async def confirm_topup(
         topup.bubbles_amount,
         topup.wallet_id,
     )
+
+    # Best-effort referral qualification check on first qualifying topup
+    from services.wallet_service.services.referral_service import (
+        MIN_TOPUP_FOR_QUALIFICATION,
+        check_and_qualify_referral,
+    )
+
+    if topup.bubbles_amount >= MIN_TOPUP_FOR_QUALIFICATION:
+        try:
+            await check_and_qualify_referral(topup.member_auth_id, "first_topup", db)
+        except Exception as e:
+            logger.warning(
+                "Referral qualification check failed for %s: %s",
+                topup.member_auth_id,
+                e,
+            )
+
+    # Best-effort reward events for topup completion
+    await emit_rewards_event(
+        event_type="topup.completed",
+        member_auth_id=topup.member_auth_id,
+        service_source="wallet",
+        event_data={"amount": topup.bubbles_amount},
+        idempotency_key=f"topup-completed-{topup.id}",
+        calling_service="wallet",
+    )
+
+    # Check if this is the member's first completed topup
+    first_check = await db.execute(
+        select(WalletTopup).where(
+            WalletTopup.member_auth_id == topup.member_auth_id,
+            WalletTopup.status == TopupStatus.COMPLETED,
+            WalletTopup.id != topup.id,
+        )
+    )
+    if first_check.scalar_one_or_none() is None:
+        await emit_rewards_event(
+            event_type="topup.first",
+            member_auth_id=topup.member_auth_id,
+            service_source="wallet",
+            event_data={"amount": topup.bubbles_amount},
+            idempotency_key=f"topup-first-{topup.member_auth_id}",
+            calling_service="wallet",
+        )
+
     return topup
 
 

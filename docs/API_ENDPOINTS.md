@@ -732,7 +732,7 @@ Announcements power the public noticeboard and admin share helpers.
 - Store (basic)
 - Coach Management (agreements, admin)
 - Volunteers
-- Wallet (26 endpoints)
+- Wallet (51 endpoints)
 
 **Service Details:** For complete service information including models, database schema, and use cases, see [SERVICE_REGISTRY.md](../../docs/reference/SERVICE_REGISTRY.md)
 
@@ -942,6 +942,61 @@ The Wallet Service manages the "Bubbles" closed-loop credit system. Members top 
 
 - **Response 200:** Balance check result
 
+### Referral Endpoints (Auth Required)
+
+#### `GET /api/v1/wallet/referral/code`
+
+- **Auth:** Required
+- **Description:** Get or create the current member's referral code. Returns share link and share text.
+- **Response 200:** `ReferralCodeResponse` — `{ code, share_link, share_text, is_active, uses_count, successful_referrals, max_uses, expires_at, created_at }`
+
+#### `GET /api/v1/wallet/referral/stats`
+
+- **Auth:** Required
+- **Description:** Get referral statistics for the current member
+- **Response 200:** `ReferralStatsResponse` — `{ total_referrals_sent, registered, qualified, rewarded, pending, total_bubbles_earned, is_ambassador, referrals_to_ambassador, max_referrals, remaining_referrals }`
+
+#### `GET /api/v1/wallet/referral/history`
+
+- **Auth:** Required
+- **Description:** Get paginated referral history for the current member
+- **Query Params:** `skip`, `limit`
+- **Response 200:** `ReferralHistoryItem[]`
+
+#### `POST /api/v1/wallet/referral/apply`
+
+- **Auth:** Required
+- **Description:** Apply a referral code for the current member (one-time, during/after registration)
+- **Body:** `{ "code": "SB-JOHN-A3K7" }`
+- **Response 200:** `{ success, message }`
+
+#### `GET /api/v1/wallet/referral/ambassador`
+
+- **Auth:** Required
+- **Description:** Get ambassador badge status (ambassador = 10+ successful referrals)
+- **Response 200:** `AmbassadorStatusResponse` — `{ is_ambassador, successful_referrals, referrals_to_ambassador, ambassador_since, total_referral_bubbles_earned }`
+
+#### `GET /api/v1/wallet/referral/leaderboard`
+
+- **Auth:** Required
+- **Description:** Public referral leaderboard (top 10, codes partially anonymized)
+- **Response 200:** `ReferralLeaderboardResponse` — `{ entries: [{ rank, referral_code, successful_referrals, total_bubbles_earned, conversion_rate }], period }`
+
+### Notification Preferences (Auth Required)
+
+#### `GET /api/v1/wallet/notifications/preferences`
+
+- **Auth:** Required
+- **Description:** Get reward notification preferences (auto-creates defaults on first access)
+- **Response 200:** `NotificationPreferenceResponse` — `{ notify_on_reward, notify_on_referral_qualified, notify_on_ambassador_milestone, notify_on_streak_milestone, notify_channel }`
+
+#### `PATCH /api/v1/wallet/notifications/preferences`
+
+- **Auth:** Required
+- **Description:** Update reward notification preferences (partial update)
+- **Body:** `NotificationPreferenceUpdateRequest` — all fields optional
+- **Response 200:** `NotificationPreferenceResponse`
+
 ### Admin Endpoints (Admin Auth Required)
 
 #### `GET /api/v1/admin/wallet/wallets`
@@ -1022,6 +1077,130 @@ The Wallet Service manages the "Bubbles" closed-loop credit system. Members top 
 - **Query Params:** `skip`, `limit`
 - **Response 200:** `AuditLogRead[]`
 
+#### `GET /api/v1/admin/wallet/referrals/`
+
+- **Auth:** Admin
+- **Description:** List all referral records with optional status filter
+- **Query Params:** `status` (pending|registered|qualified|rewarded|expired|cancelled), `skip`, `limit`
+- **Response 200:** `AdminReferralListResponse` — `{ items, total, skip, limit }`
+
+#### `GET /api/v1/admin/wallet/referrals/stats`
+
+- **Auth:** Admin
+- **Description:** Program-wide referral statistics
+- **Response 200:** `AdminReferralProgramStats` — `{ total_codes_generated, total_registrations, total_qualified, total_rewarded, conversion_rate, total_bubbles_distributed }`
+
+#### `PATCH /api/v1/admin/wallet/referrals/{referral_id}`
+
+- **Auth:** Admin
+- **Description:** Cancel or manually qualify a referral record
+- **Query Params:** `action` (cancel|qualify)
+- **Response 200:** `{ success, message }`
+
+#### `GET /api/v1/admin/wallet/referrals/leaderboard`
+
+- **Auth:** Admin
+- **Description:** Top referrers leaderboard sorted by successful referrals
+- **Query Params:** `period` (all_time|this_month|this_year), `limit` (default 20)
+- **Response 200:** `ReferralLeaderboardResponse` — `{ entries: [{ rank, member_auth_id, referral_code, successful_referrals, total_bubbles_earned, conversion_rate }], period }`
+
+### Admin Rewards Endpoints (Admin Auth Required)
+
+#### `GET /api/v1/admin/wallet/rewards/rules`
+
+- **Auth:** Admin
+- **Description:** List all reward rules with optional filters
+- **Query Params:** `category` (acquisition|retention|community|spending|academy), `is_active` (bool), `skip`, `limit`
+- **Response 200:** `RewardRuleListResponse` — `{ items, total }`
+
+#### `GET /api/v1/admin/wallet/rewards/rules/{rule_id}`
+
+- **Auth:** Admin
+- **Description:** Get reward rule details with usage stats
+- **Response 200:** `RewardRuleDetailResponse` — rule fields + `{ total_grants, total_bubbles_distributed }`
+
+#### `PATCH /api/v1/admin/wallet/rewards/rules/{rule_id}`
+
+- **Auth:** Admin
+- **Description:** Update a reward rule (amount, caps, active status, display name, description)
+- **Body:** `RewardRuleUpdateRequest` — partial update, all fields optional
+- **Response 200:** `RewardRuleResponse`
+
+#### `GET /api/v1/admin/wallet/rewards/events`
+
+- **Auth:** Admin
+- **Description:** List ingested events with optional filters
+- **Query Params:** `event_type`, `processed` (bool), `skip`, `limit`
+- **Response 200:** `RewardEventListResponse` — `{ items, total }`
+
+#### `GET /api/v1/admin/wallet/rewards/events/failed`
+
+- **Auth:** Admin
+- **Description:** List events that failed processing (non-null processing_error)
+- **Query Params:** `skip`, `limit`
+- **Response 200:** `RewardEventListResponse`
+
+#### `GET /api/v1/admin/wallet/rewards/stats`
+
+- **Auth:** Admin
+- **Description:** Rewards engine dashboard stats
+- **Response 200:** `RewardStatsResponse` — `{ total_rules_active, total_events_processed, total_events_pending, total_bubbles_distributed, events_by_type, top_rules_by_usage }`
+
+#### `POST /api/v1/admin/wallet/rewards/events/submit`
+
+- **Auth:** Admin
+- **Description:** Submit a reward event directly (for ad-hoc community rewards that don't have automated hooks yet, e.g. content creation, social shares, event volunteering). Automatically injects `admin_confirmed: true` and `submitted_by` into event data.
+- **Body:** `AdminEventSubmitRequest`
+
+```json
+{
+  "event_type": "content.blog_published",
+  "member_auth_id": "supabase-user-id",
+  "event_data": { "content_url": "https://example.com/blog/..." },
+  "description": "Published blog post about community event"
+}
+```
+
+- **Response 200:** `EventIngestResponse` — `{ event_id, accepted, rewards_granted, rewards: [{ rule_name, bubbles }] }`
+- **Note:** Returns 400 if no active rules exist for the given `event_type`.
+
+### Anti-Abuse Alerts (Admin Auth Required)
+
+#### `GET /api/v1/admin/wallet/rewards/alerts`
+
+- **Auth:** Admin
+- **Description:** List anti-abuse alerts with optional filters
+- **Query Params:** `status` (open|acknowledged|resolved|dismissed), `severity` (low|medium|high|critical), `skip`, `limit`
+- **Response 200:** `RewardAlertListResponse` — `{ items, total }`
+
+#### `GET /api/v1/admin/wallet/rewards/alerts/summary`
+
+- **Auth:** Admin
+- **Description:** Alert counts by status and severity
+- **Response 200:** `RewardAlertSummaryResponse` — `{ total_open, total_acknowledged, total_resolved, total_dismissed, by_severity }`
+
+#### `GET /api/v1/admin/wallet/rewards/alerts/{alert_id}`
+
+- **Auth:** Admin
+- **Description:** Get a single alert detail
+- **Response 200:** `RewardAlertResponse`
+
+#### `PATCH /api/v1/admin/wallet/rewards/alerts/{alert_id}`
+
+- **Auth:** Admin
+- **Description:** Update alert status (acknowledge, resolve, dismiss)
+- **Body:** `RewardAlertUpdateRequest` — `{ status, resolution_notes? }`
+- **Response 200:** `RewardAlertResponse`
+
+### Rewards Analytics (Admin Auth Required)
+
+#### `GET /api/v1/admin/wallet/rewards/analytics`
+
+- **Auth:** Admin
+- **Description:** Detailed rewards analytics with category breakdown
+- **Query Params:** `period_start`, `period_end` (defaults to last 30 days)
+- **Response 200:** `RewardAnalyticsResponse` — `{ period_start, period_end, total_events, total_rewards_granted, total_bubbles_distributed, unique_members_rewarded, by_category, avg_bubbles_per_member, top_event_types }`
+
 ### Internal Endpoints (Service-to-Service Only)
 
 These endpoints are **not proxied through the gateway**. They are called directly by other backend services using `require_service_role` authentication.
@@ -1059,4 +1238,12 @@ These endpoints are **not proxied through the gateway**. They are called directl
 #### `POST /internal/wallet/create`
 
 - **Auth:** Service Role
-- **Description:** Create a wallet for a new member (called by members service during registration)
+- **Description:** Create a wallet for a new member (called by members service during registration). Optionally applies a referral code.
+- **Body:** `{ "member_id": "uuid", "member_auth_id": "supabase-id", "referral_code": "SB-JOHN-A3K7" }` — `referral_code` is optional
+
+#### `POST /internal/wallet/events`
+
+- **Auth:** None (internal network only)
+- **Description:** Submit an event for rewards engine processing. Deduplicates by `event_id` and `idempotency_key`.
+- **Body:** `EventIngestRequest` — `{ event_id, event_type, member_auth_id, member_id?, service_source, occurred_at, event_data, idempotency_key }`
+- **Response 200:** `EventIngestResponse` — `{ event_id, accepted, rewards_granted, rewards: [{ rule_name, bubbles }] }`

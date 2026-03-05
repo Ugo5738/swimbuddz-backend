@@ -8,8 +8,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.currency import kobo_to_bubbles
-from libs.common.service_client import check_wallet_balance, debit_member_wallet
+from libs.common.service_client import (
+    check_wallet_balance,
+    debit_member_wallet,
+    emit_rewards_event,
+    get_member_by_auth_id,
+)
 from libs.db.session import get_async_db
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from services.store_service.models import (
     Cart,
     CartItem,
@@ -31,9 +40,6 @@ from services.store_service.schemas import (
     MemberStoreCreditSummary,
     OrderResponse,
 )
-from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 router = APIRouter(tags=["store"])
 
@@ -126,16 +132,8 @@ async def start_checkout(
         )
         db.add(movement)
 
-    # Get member info for order
-    member_row = await db.execute(
-        text(
-            "SELECT email, first_name, last_name, profile.phone FROM members "
-            "LEFT JOIN member_profiles profile ON profile.member_id = members.id "
-            "WHERE members.auth_id = :auth_id"
-        ),
-        {"auth_id": current_user.user_id},
-    )
-    member = member_row.mappings().first()
+    # Get member info for order via members service HTTP API
+    member = await get_member_by_auth_id(current_user.user_id, calling_service="store")
     if not member:
         raise HTTPException(status_code=400, detail="Member profile not found")
 
@@ -285,6 +283,27 @@ async def start_checkout(
     # Mark cart as converted
     cart.status = CartStatus.CONVERTED
     await db.commit()
+
+    # Best-effort: check if this is the member's first store purchase
+    first_order_check = await db.execute(
+        select(Order.id).where(
+            Order.member_auth_id == current_user.user_id,
+            Order.status.in_([OrderStatus.PAID, OrderStatus.PENDING_PAYMENT]),
+            Order.id != order.id,
+        )
+    )
+    if first_order_check.scalar_one_or_none() is None:
+        await emit_rewards_event(
+            event_type="store.first_purchase",
+            member_auth_id=current_user.user_id,
+            service_source="store",
+            event_data={
+                "order_number": order.order_number,
+                "total_ngn": float(order.total_ngn),
+            },
+            idempotency_key=f"store-first-purchase-{current_user.user_id}",
+            calling_service="store",
+        )
 
     return CheckoutStartResponse(
         order_id=order.id,

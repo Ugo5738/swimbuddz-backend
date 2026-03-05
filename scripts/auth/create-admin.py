@@ -5,8 +5,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-# Add parent directory to path to import libs
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add backend root to path to import libs (3 levels up: auth → scripts → backend root)
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 from dotenv import load_dotenv
 

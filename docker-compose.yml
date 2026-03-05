@@ -9,6 +9,8 @@ services:
     container_name: swimbuddz_members
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8001:8001"
     extra_hosts:
@@ -23,6 +25,8 @@ services:
     container_name: swimbuddz_sessions
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8002:8002"
     extra_hosts:
@@ -37,6 +41,8 @@ services:
     container_name: swimbuddz_attendance
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8003:8003"
     extra_hosts:
@@ -51,6 +57,8 @@ services:
     container_name: swimbuddz_communications
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8004:8004"
     extra_hosts:
@@ -65,6 +73,8 @@ services:
     container_name: swimbuddz_payments
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8005:8005"
     extra_hosts:
@@ -79,6 +89,8 @@ services:
     container_name: swimbuddz_academy
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8006:8006"
     extra_hosts:
@@ -93,6 +105,8 @@ services:
     container_name: swimbuddz_media
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8008:8008"
     extra_hosts:
@@ -107,6 +121,8 @@ services:
     container_name: swimbuddz_events
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8007:8007"
     extra_hosts:
@@ -121,6 +137,8 @@ services:
     container_name: swimbuddz_transport
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8009:8009"
     extra_hosts:
@@ -135,6 +153,8 @@ services:
     container_name: swimbuddz_store
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8010:8010"
     extra_hosts:
@@ -149,6 +169,8 @@ services:
     container_name: swimbuddz_ai
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8011:8011"
     extra_hosts:
@@ -163,6 +185,8 @@ services:
     container_name: swimbuddz_volunteer
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8012:8012"
     extra_hosts:
@@ -177,6 +201,8 @@ services:
     container_name: swimbuddz_wallet
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     ports:
       - "8013:8013"
     extra_hosts:
@@ -194,6 +220,8 @@ services:
     container_name: swimbuddz_gateway
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     depends_on:
       members-service:
         condition: service_started
@@ -243,6 +271,8 @@ services:
     container_name: swimbuddz_academy_worker
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     depends_on:
       redis:
         condition: service_healthy
@@ -261,6 +291,8 @@ services:
     container_name: swimbuddz_communications_worker
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     depends_on:
       redis:
         condition: service_healthy
@@ -279,6 +311,8 @@ services:
     container_name: swimbuddz_payments_worker
     env_file:
       - .env.dev
+    environment:
+      - PYTHONPATH=/app
     depends_on:
       redis:
         condition: service_healthy

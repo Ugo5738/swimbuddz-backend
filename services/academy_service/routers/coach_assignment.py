@@ -73,14 +73,6 @@ def _assignment_to_response(
     )
 
 
-async def _get_member_id_from_auth(auth_id: str) -> Optional[uuid.UUID]:
-    """Get member ID from Supabase auth_id via members-service."""
-    member = await get_member_by_auth_id(auth_id, calling_service="academy")
-    if not member:
-        return None
-    return uuid.UUID(member["id"])
-
-
 # ── Assignment Endpoints ──
 
 
@@ -102,9 +94,10 @@ async def create_assignment(
         raise HTTPException(status_code=404, detail="Cohort not found")
 
     # Get admin member ID
-    admin_id = await _get_member_id_from_auth(current_user.user_id)
-    if not admin_id:
+    _admin = await get_member_by_auth_id(current_user.user_id, calling_service="academy")
+    if not _admin:
         raise HTTPException(status_code=400, detail="Admin member not found")
+    admin_id = uuid.UUID(_admin["id"])
 
     assignment = CoachAssignment(
         cohort_id=data.cohort_id,
@@ -163,9 +156,10 @@ async def list_my_assignments(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List my coach assignments."""
-    member_id = await _get_member_id_from_auth(current_user.user_id)
-    if not member_id:
+    _member = await get_member_by_auth_id(current_user.user_id, calling_service="academy")
+    if not _member:
         raise HTTPException(status_code=404, detail="Member not found")
+    member_id = uuid.UUID(_member["id"])
 
     result = await db.execute(
         select(CoachAssignment)
@@ -295,9 +289,10 @@ async def create_shadow_evaluation(
             detail="Evaluations can only be created for shadow assignments",
         )
 
-    evaluator_id = await _get_member_id_from_auth(current_user.user_id)
-    if not evaluator_id:
+    _evaluator = await get_member_by_auth_id(current_user.user_id, calling_service="academy")
+    if not _evaluator:
         raise HTTPException(status_code=404, detail="Evaluator member not found")
+    evaluator_id = uuid.UUID(_evaluator["id"])
 
     evaluation = ShadowEvaluation(
         assignment_id=assignment_id,

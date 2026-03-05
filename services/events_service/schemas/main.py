@@ -77,6 +77,7 @@ class RSVPResponse(BaseModel):
     event_id: uuid.UUID
     member_id: uuid.UUID
     status: str
+    wallet_transaction_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
 
