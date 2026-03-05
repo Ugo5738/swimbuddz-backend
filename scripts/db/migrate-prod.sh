@@ -47,6 +47,14 @@ SERVICES=(
 )
 
 # -------------------------------------------------------------------------------
+# Migration-specific DB timeouts
+# -------------------------------------------------------------------------------
+# Use no statement timeout for schema changes (can legitimately run long),
+# but keep a lock timeout so we fail fast if a table lock cannot be acquired.
+MIGRATION_STATEMENT_TIMEOUT="${MIGRATION_STATEMENT_TIMEOUT:-0}"
+MIGRATION_LOCK_TIMEOUT="${MIGRATION_LOCK_TIMEOUT:-300000}" # 5 minutes (ms)
+
+# -------------------------------------------------------------------------------
 # SAFETY: Clear potentially polluted environment variables
 # -------------------------------------------------------------------------------
 unset DATABASE_URL
@@ -111,7 +119,8 @@ run_migration() {
   fi
 
   echo "Applying migrations for $svc..."
-  alembic -c "$alembic_ini" upgrade head
+  PGOPTIONS="-c statement_timeout=${MIGRATION_STATEMENT_TIMEOUT} -c lock_timeout=${MIGRATION_LOCK_TIMEOUT}" \
+    alembic -c "$alembic_ini" upgrade head
   echo "  ✓ Done"
   echo ""
 }
@@ -119,6 +128,7 @@ run_migration() {
 echo "========================================="
 echo "Apply Alembic Migrations"
 echo "========================================="
+echo "PG statement_timeout=${MIGRATION_STATEMENT_TIMEOUT}, lock_timeout=${MIGRATION_LOCK_TIMEOUT}"
 echo ""
 
 if [ "$SERVICE" = "--all" ]; then
