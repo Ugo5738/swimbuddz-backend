@@ -75,10 +75,40 @@ class GrantType(str, enum.Enum):
 
 class ReferralStatus(str, enum.Enum):
     PENDING = "pending"
+    REGISTERED = "registered"
     QUALIFIED = "qualified"
     REWARDED = "rewarded"
     EXPIRED = "expired"
     CANCELLED = "cancelled"
+
+
+class RewardCategory(str, enum.Enum):
+    ACQUISITION = "acquisition"
+    RETENTION = "retention"
+    COMMUNITY = "community"
+    SPENDING = "spending"
+    ACADEMY = "academy"
+
+
+class RewardPeriod(str, enum.Enum):
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+    YEAR = "year"
+
+
+class AlertSeverity(str, enum.Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class AlertStatus(str, enum.Enum):
+    OPEN = "open"
+    ACKNOWLEDGED = "acknowledged"
+    RESOLVED = "resolved"
+    DISMISSED = "dismissed"
 
 
 class AuditAction(str, enum.Enum):

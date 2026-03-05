@@ -8,7 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.member_utils import resolve_members_basic
+from libs.common.service_client import get_member_by_auth_id
 from libs.db.session import get_async_db
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from services.volunteer_service.models import (
     OpportunityStatus,
     RecognitionTier,
@@ -40,26 +45,11 @@ from services.volunteer_service.services import (
     is_late_cancellation,
     next_recognition_hours_needed,
 )
-from sqlalchemy import func, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/volunteers", tags=["volunteers"])
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
-
-
-async def _get_member_id(user: AuthUser, db: AsyncSession) -> uuid.UUID:
-    """Resolve auth_id → member UUID."""
-    row = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": user.user_id},
-    )
-    member = row.scalar_one_or_none()
-    if not member:
-        raise HTTPException(status_code=404, detail="Member profile not found")
-    return member
 
 
 async def _enrich_opportunity(opp: VolunteerOpportunity) -> dict:
@@ -237,7 +227,10 @@ async def get_my_profile(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get my volunteer profile."""
-    member_id = await _get_member_id(user, db)
+    member = await get_member_by_auth_id(user.user_id, calling_service="volunteer")
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+    member_id = uuid.UUID(member["id"])
     profile = (
         await db.execute(
             select(VolunteerProfile).where(VolunteerProfile.member_id == member_id)
@@ -257,7 +250,10 @@ async def register_as_volunteer(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Register as a volunteer."""
-    member_id = await _get_member_id(user, db)
+    member = await get_member_by_auth_id(user.user_id, calling_service="volunteer")
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+    member_id = uuid.UUID(member["id"])
 
     existing = (
         await db.execute(
@@ -286,7 +282,10 @@ async def update_my_profile(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Update my volunteer preferences."""
-    member_id = await _get_member_id(user, db)
+    member = await get_member_by_auth_id(user.user_id, calling_service="volunteer")
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+    member_id = uuid.UUID(member["id"])
     profile = (
         await db.execute(
             select(VolunteerProfile).where(VolunteerProfile.member_id == member_id)
@@ -408,7 +407,10 @@ async def claim_slot(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Claim a volunteer slot on an opportunity."""
-    member_id = await _get_member_id(user, db)
+    member = await get_member_by_auth_id(user.user_id, calling_service="volunteer")
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+    member_id = uuid.UUID(member["id"])
 
     opp = (
         await db.execute(
@@ -500,7 +502,10 @@ async def cancel_my_claim(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Cancel my claim on an opportunity."""
-    member_id = await _get_member_id(user, db)
+    member = await get_member_by_auth_id(user.user_id, calling_service="volunteer")
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+    member_id = uuid.UUID(member["id"])
 
     slot = (
         await db.execute(
@@ -555,7 +560,10 @@ async def my_hours(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get my hours history."""
-    member_id = await _get_member_id(user, db)
+    member = await get_member_by_auth_id(user.user_id, calling_service="volunteer")
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+    member_id = uuid.UUID(member["id"])
     rows = (
         (
             await db.execute(
@@ -578,7 +586,10 @@ async def my_hours_summary(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get my hours summary with tier info."""
-    member_id = await _get_member_id(user, db)
+    member = await get_member_by_auth_id(user.user_id, calling_service="volunteer")
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+    member_id = uuid.UUID(member["id"])
     profile = (
         await db.execute(
             select(VolunteerProfile).where(VolunteerProfile.member_id == member_id)
@@ -681,16 +692,15 @@ async def leaderboard(
         )
 
     rows = (await db.execute(q)).all()
+
+    # Batch-resolve member names via HTTP
+    all_member_ids = [row[0] for row in rows]
+    member_map = await resolve_members_basic(all_member_ids) if all_member_ids else {}
+
     results = []
     for rank, row in enumerate(rows, 1):
         member_id = row[0]
-        # Get member name
-        name_row = await db.execute(
-            text("SELECT first_name, last_name FROM members WHERE id = :id"),
-            {"id": member_id},
-        )
-        name = name_row.first()
-        member_name = f"{name[0] or ''} {name[1] or ''}".strip() if name else None
+        info = member_map.get(str(member_id))
 
         # Get recognition tier
         profile = (
@@ -705,7 +715,7 @@ async def leaderboard(
             LeaderboardEntry(
                 rank=rank,
                 member_id=member_id,
-                member_name=member_name,
+                member_name=info.full_name if info else None,
                 total_hours=float(row[1]),
                 total_sessions=int(row[2]),
                 recognition_tier=profile,
@@ -723,7 +733,10 @@ async def my_rewards(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get my rewards."""
-    member_id = await _get_member_id(user, db)
+    member = await get_member_by_auth_id(user.user_id, calling_service="volunteer")
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+    member_id = uuid.UUID(member["id"])
     rows = (
         (
             await db.execute(
@@ -745,7 +758,10 @@ async def redeem_reward(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Redeem a reward."""
-    member_id = await _get_member_id(user, db)
+    member = await get_member_by_auth_id(user.user_id, calling_service="volunteer")
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+    member_id = uuid.UUID(member["id"])
     reward = (
         await db.execute(
             select(VolunteerReward).where(

@@ -17,10 +17,14 @@ from services.wallet_service.models.corporate import (  # noqa: F401
 
 # Enums
 from services.wallet_service.models.enums import (  # noqa: F401
+    AlertSeverity,
+    AlertStatus,
     AuditAction,
     GrantType,
     PaymentMethod,
     ReferralStatus,
+    RewardCategory,
+    RewardPeriod,
     TopupStatus,
     TransactionDirection,
     TransactionStatus,
@@ -43,6 +47,8 @@ from services.wallet_service.models.referral import (  # noqa: F401
 )
 from services.wallet_service.models.rewards import (  # noqa: F401
     MemberRewardHistory,
+    RewardAlert,
+    RewardNotificationPreference,
     RewardRule,
     WalletEvent,
 )
@@ -54,10 +60,14 @@ from services.wallet_service.models.wallet import Wallet  # noqa: F401
 
 __all__ = [
     # Enums
+    "AlertSeverity",
+    "AlertStatus",
     "AuditAction",
     "GrantType",
     "PaymentMethod",
     "ReferralStatus",
+    "RewardCategory",
+    "RewardPeriod",
     "TopupStatus",
     "TransactionDirection",
     "TransactionStatus",
@@ -76,6 +86,9 @@ __all__ = [
     "RewardRule",
     "WalletEvent",
     "MemberRewardHistory",
+    # Phase 3d
+    "RewardAlert",
+    "RewardNotificationPreference",
     # Phase 4
     "FamilyWalletLink",
     # Phase 5

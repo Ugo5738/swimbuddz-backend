@@ -1,4 +1,4 @@
-"""Phase 3 — Referral models (tables created now, logic deferred)."""
+"""Phase 3 — Referral models."""
 
 import uuid
 from datetime import datetime
@@ -6,12 +6,12 @@ from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
-from services.wallet_service.models.enums import ReferralStatus, enum_values
-from sqlalchemy import Boolean, DateTime
+from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
+
+from services.wallet_service.models.enums import ReferralStatus, enum_values
 
 
 class ReferralCode(Base):
@@ -31,6 +31,15 @@ class ReferralCode(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     max_uses: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=50)
     uses_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    successful_referrals: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )
@@ -82,6 +91,11 @@ class ReferralRecord(Base):
     rewarded_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    referee_registered_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    qualification_trigger: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    referral_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )

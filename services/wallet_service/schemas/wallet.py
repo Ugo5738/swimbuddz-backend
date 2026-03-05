@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
+
 from services.wallet_service.models.enums import WalletStatus, WalletTier
 
 
@@ -31,3 +32,4 @@ class WalletCreateRequest(BaseModel):
 
     member_id: uuid.UUID
     member_auth_id: str
+    referral_code: Optional[str] = None

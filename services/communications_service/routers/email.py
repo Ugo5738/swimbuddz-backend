@@ -16,8 +16,9 @@ from libs.common.emails.core import send_email
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from pydantic import BaseModel, EmailStr
-from services.communications_service.models import MessageLog, MessageRecipientType
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from services.communications_service.models import MessageLog, MessageRecipientType
 
 logger = get_logger(__name__)
 
@@ -268,40 +269,46 @@ async def send_templated_email(
             attendance_rate=d.get("attendance_rate", 0),
             suggestions=d.get("suggestions", []),
         ),
-        "installment_payment_reminder": lambda d: academy.send_installment_payment_reminder_email(
-            to_email=request.to_email,
-            member_name=d.get("member_name", ""),
-            program_name=d.get("program_name", ""),
-            cohort_name=d.get("cohort_name", ""),
-            installment_number=d.get("installment_number", 1),
-            total_installments=d.get("total_installments"),
-            amount=d.get("amount", 0),
-            currency=d.get("currency", "NGN"),
-            due_date=d.get("due_date", ""),
-            days_until=d.get("days_until", 7),
-            checkout_url=d.get("checkout_url"),
-            insufficient_wallet=d.get("insufficient_wallet", False),
+        "installment_payment_reminder": lambda d: (
+            academy.send_installment_payment_reminder_email(
+                to_email=request.to_email,
+                member_name=d.get("member_name", ""),
+                program_name=d.get("program_name", ""),
+                cohort_name=d.get("cohort_name", ""),
+                installment_number=d.get("installment_number", 1),
+                total_installments=d.get("total_installments"),
+                amount=d.get("amount", 0),
+                currency=d.get("currency", "NGN"),
+                due_date=d.get("due_date", ""),
+                days_until=d.get("days_until", 7),
+                checkout_url=d.get("checkout_url"),
+                insufficient_wallet=d.get("insufficient_wallet", False),
+            )
         ),
-        "installment_payment_confirmation": lambda d: academy.send_installment_payment_confirmation_email(
-            to_email=request.to_email,
-            member_name=d.get("member_name", ""),
-            installment_number=d.get("installment_number", 1),
-            total_installments=d.get("total_installments"),
-            amount=d.get("amount", 0),
-            currency=d.get("currency", "NGN"),
-            payment_reference=d.get("payment_reference", ""),
-            paid_at=d.get("paid_at", ""),
-            payment_method=d.get("payment_method", "paystack"),
+        "installment_payment_confirmation": lambda d: (
+            academy.send_installment_payment_confirmation_email(
+                to_email=request.to_email,
+                member_name=d.get("member_name", ""),
+                installment_number=d.get("installment_number", 1),
+                total_installments=d.get("total_installments"),
+                amount=d.get("amount", 0),
+                currency=d.get("currency", "NGN"),
+                payment_reference=d.get("payment_reference", ""),
+                paid_at=d.get("paid_at", ""),
+                payment_method=d.get("payment_method", "paystack"),
+            )
         ),
-        "academy_access_suspended": lambda d: academy.send_academy_access_suspended_email(
-            to_email=request.to_email,
-            member_name=d.get("member_name", ""),
-            installment_number=d.get("installment_number"),
-            total_installments=d.get("total_installments"),
-            amount=d.get("amount", 0),
-            currency=d.get("currency", "NGN"),
-            payment_reference=d.get("payment_reference", ""),
-            enrollment_id=d.get("enrollment_id"),
+        "academy_access_suspended": lambda d: (
+            academy.send_academy_access_suspended_email(
+                to_email=request.to_email,
+                member_name=d.get("member_name", ""),
+                installment_number=d.get("installment_number"),
+                total_installments=d.get("total_installments"),
+                amount=d.get("amount", 0),
+                currency=d.get("currency", "NGN"),
+                payment_reference=d.get("payment_reference", ""),
+                enrollment_id=d.get("enrollment_id"),
+            )
         ),
         "admin_dropout_pending": lambda d: academy.send_admin_dropout_pending_email(
             to_email=request.to_email,
@@ -368,6 +375,20 @@ async def send_templated_email(
             )
         ),
         # --- Member templates ---
+        "welcome": lambda d: members.send_welcome_email(
+            to_email=request.to_email,
+            member_name=d.get("member_name", ""),
+            dashboard_url=d.get("dashboard_url", "https://swimbuddz.com/account"),
+        ),
+        "tier_activated": lambda d: members.send_tier_activated_email(
+            to_email=request.to_email,
+            member_name=d.get("member_name", ""),
+            tier=d.get("tier", "community"),
+            amount=d.get("amount", 0),
+            currency=d.get("currency", "NGN"),
+            duration=d.get("duration", ""),
+            dashboard_url=d.get("dashboard_url", "https://swimbuddz.com/account"),
+        ),
         "member_approved": lambda d: members.send_member_approved_email(
             to_email=request.to_email,
             member_name=d.get("member_name", ""),

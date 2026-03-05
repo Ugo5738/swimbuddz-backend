@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, computed_field
+
 from services.communications_service.models import (
     AnnouncementAudience,
     AnnouncementCategory,
@@ -148,6 +149,7 @@ class ContentPostUpdate(BaseModel):
     featured_image_media_id: Optional[uuid.UUID] = None
     tier_access: Optional[str] = None
     is_published: Optional[bool] = None
+    scheduled_for: Optional[datetime] = None
 
 
 class ContentPostResponse(ContentPostBase):
@@ -156,6 +158,7 @@ class ContentPostResponse(ContentPostBase):
     id: uuid.UUID
     is_published: bool
     published_at: Optional[datetime] = None
+    scheduled_for: Optional[datetime] = None
     created_by: uuid.UUID
     created_at: datetime
     updated_at: datetime
@@ -167,8 +170,12 @@ class ContentPostResponse(ContentPostBase):
     @computed_field
     @property
     def status(self) -> str:
-        """Return 'published' or 'draft' based on is_published flag."""
-        return "published" if self.is_published else "draft"
+        """Return 'published', 'scheduled', or 'draft' based on post state."""
+        if self.is_published:
+            return "published"
+        if self.scheduled_for:
+            return "scheduled"
+        return "draft"
 
 
 # ===== COMMENT SCHEMAS =====

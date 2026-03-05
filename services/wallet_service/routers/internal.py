@@ -9,6 +9,8 @@ from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.wallet_service.schemas import (
     AdminScholarshipCreditRequest,
     BalanceCheckRequest,
@@ -27,6 +29,10 @@ from services.wallet_service.schemas import (
 from services.wallet_service.services.promotional_service import (
     grant_promotional_bubbles,
 )
+from services.wallet_service.services.referral_service import (
+    apply_referral_code,
+    check_and_qualify_referral,
+)
 from services.wallet_service.services.topup_service import confirm_topup
 from services.wallet_service.services.wallet_ops import (
     WELCOME_BONUS_BUBBLES,
@@ -37,7 +43,6 @@ from services.wallet_service.services.wallet_ops import (
     get_wallet_by_auth_id,
     grant_welcome_bonus_if_eligible,
 )
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/internal/wallet", tags=["internal-wallet"])
@@ -156,6 +161,24 @@ async def internal_create_wallet(
         member_id=body.member_id,
         member_auth_id=str(body.member_auth_id),
     )
+
+    # Apply referral code if provided (best-effort; don't fail wallet creation)
+    if body.referral_code:
+        try:
+            await apply_referral_code(str(body.member_auth_id), body.referral_code, db)
+            logger.info(
+                "Applied referral code %s for new member %s",
+                body.referral_code,
+                body.member_auth_id,
+            )
+        except (ValueError, Exception) as e:
+            logger.warning(
+                "Failed to apply referral code %s for %s: %s",
+                body.referral_code,
+                body.member_auth_id,
+                e,
+            )
+
     return wallet
 
 
@@ -218,3 +241,44 @@ async def internal_scholarship_credit(
         body.enrollment_id,
     )
     return grant
+
+
+@router.post("/referral-qualify")
+async def internal_referral_qualify(
+    body: dict,
+    _service: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Check and qualify a referral after a qualifying event (e.g. membership payment).
+
+    Called by payments_service after successful membership payment.
+    Body: { "member_auth_id": str, "trigger": str }
+    """
+    member_auth_id = body.get("member_auth_id")
+    trigger = body.get("trigger", "membership_payment")
+
+    if not member_auth_id:
+        return {"success": False, "message": "member_auth_id is required"}
+
+    try:
+        record = await check_and_qualify_referral(member_auth_id, trigger, db)
+        if record:
+            logger.info(
+                "Referral qualified for %s via %s (status=%s)",
+                member_auth_id,
+                trigger,
+                record.status.value,
+            )
+            return {
+                "success": True,
+                "qualified": True,
+                "status": record.status.value,
+            }
+        return {
+            "success": True,
+            "qualified": False,
+            "message": "No pending referral found",
+        }
+    except Exception as e:
+        logger.warning("Referral qualification failed for %s: %s", member_auth_id, e)
+        return {"success": False, "message": str(e)}

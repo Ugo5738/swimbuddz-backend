@@ -1,4 +1,6 @@
 from fastapi import APIRouter
+from libs.common.service_client import emit_rewards_event
+
 from services.academy_service.routers._shared import (
     AsyncSession,
     AuthUser,
@@ -67,6 +69,21 @@ async def update_student_progress(
             detail="Enrollment not found",
         )
 
+    # Ensure milestone exists for reward metadata and program consistency.
+    milestone_query = select(Milestone).where(Milestone.id == milestone_id)
+    milestone_result = await db.execute(milestone_query)
+    milestone = milestone_result.scalar_one_or_none()
+    if not milestone:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Milestone not found",
+        )
+    if milestone.program_id != enrollment.program_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Milestone does not belong to enrollment program",
+        )
+
     # Verify coach has access to this cohort
     if enrollment.cohort_id:
         await require_coach_for_cohort(current_user, str(enrollment.cohort_id), db)
@@ -114,6 +131,21 @@ async def update_student_progress(
 
     await db.commit()
     await db.refresh(progress)
+
+    # Best-effort: emit academy milestone reward event
+    await emit_rewards_event(
+        event_type="academy.milestone_passed",
+        member_auth_id=current_user.user_id,
+        service_source="academy",
+        event_data={
+            "milestone_name": milestone.name,
+            "enrollment_id": str(enrollment_id),
+            "milestone_id": str(milestone_id),
+        },
+        idempotency_key=f"academy-milestone-{enrollment_id}-{milestone_id}",
+        calling_service="academy",
+    )
+
     return progress
 
 

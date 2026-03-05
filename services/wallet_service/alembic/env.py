@@ -17,24 +17,22 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.wallet_service.models import (  # noqa: F401
-    # Phase 1 — Active
-    Wallet,
-    WalletTransaction,
-    WalletTopup,
-    PromotionalBubbleGrant,
-    WalletAuditLog,
-    # Phase 3 — Referral & Rewards stubs
-    ReferralRecord,
-    ReferralCode,
-    RewardRule,
-    WalletEvent,
-    MemberRewardHistory,
-    # Phase 4 — Family wallet stub
-    FamilyWalletLink,
-    # Phase 5 — Corporate wallet stubs
+from services.wallet_service.models import (  # noqa: F401; Phase 1 — Active; Phase 3 — Referral & Rewards; Phase 3d — Alerts & Preferences; Phase 4 — Family wallet stub; Phase 5 — Corporate wallet stubs
     CorporateWallet,
     CorporateWalletMember,
+    FamilyWalletLink,
+    MemberRewardHistory,
+    PromotionalBubbleGrant,
+    ReferralCode,
+    ReferralRecord,
+    RewardAlert,
+    RewardNotificationPreference,
+    RewardRule,
+    Wallet,
+    WalletAuditLog,
+    WalletEvent,
+    WalletTopup,
+    WalletTransaction,
 )
 
 settings = get_settings()
@@ -58,6 +56,9 @@ SERVICE_TABLES = {
     "reward_rules",
     "wallet_events",
     "member_reward_history",
+    # Phase 3d
+    "reward_alerts",
+    "reward_notification_preferences",
     # Phase 4
     "family_wallet_links",
     # Phase 5
