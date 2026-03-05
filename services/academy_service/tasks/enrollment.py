@@ -5,16 +5,17 @@ from datetime import timedelta
 from libs.common.datetime_utils import utc_now
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
-from libs.common.service_client import get_members_bulk
+from libs.common.service_client import emit_rewards_event, get_members_bulk
 from libs.db.session import get_async_db
+from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
+
 from services.academy_service.models import (
     Cohort,
     CohortStatus,
     Enrollment,
     EnrollmentStatus,
 )
-from sqlalchemy import func, select
-from sqlalchemy.orm import selectinload
 
 logger = get_logger(__name__)
 
@@ -249,6 +250,9 @@ async def transition_cohort_statuses():
                     f"Transitioned cohort {cohort.id} ({cohort.name}) from ACTIVE to COMPLETED"
                 )
 
+                # Emit graduation reward events for enrolled students
+                await _emit_graduation_rewards(db, cohort)
+
             await db.commit()
 
             total_transitions = len(open_cohorts) + len(active_cohorts)
@@ -263,3 +267,58 @@ async def transition_cohort_statuses():
         finally:
             await db.close()
             break
+
+
+async def _emit_graduation_rewards(db, cohort: Cohort) -> None:
+    """Best-effort: emit graduation + perfect attendance rewards for enrolled students."""
+    try:
+        # Get enrolled students for this cohort
+        enrollment_query = select(Enrollment).where(
+            Enrollment.cohort_id == cohort.id,
+            Enrollment.status == EnrollmentStatus.ENROLLED,
+        )
+        result = await db.execute(enrollment_query)
+        enrollments = result.scalars().all()
+
+        if not enrollments:
+            return
+
+        # Bulk-lookup member details to get auth_ids
+        member_ids = list({str(e.member_id) for e in enrollments})
+        members_data = await get_members_bulk(member_ids, calling_service="academy")
+        members_map = {m["id"]: m for m in members_data}
+
+        program_name = cohort.program.name if cohort.program else "Swimming Course"
+
+        for enrollment in enrollments:
+            member = members_map.get(str(enrollment.member_id), {})
+            auth_id = member.get("auth_id")
+            if not auth_id:
+                continue
+
+            # Emit academy.graduated event
+            await emit_rewards_event(
+                event_type="academy.graduated",
+                member_auth_id=auth_id,
+                member_id=str(enrollment.member_id),
+                service_source="academy",
+                event_data={
+                    "program_name": program_name,
+                    "cohort_name": cohort.name,
+                    "cohort_id": str(cohort.id),
+                },
+                idempotency_key=f"academy-graduated-{enrollment.id}",
+                calling_service="academy",
+            )
+
+        logger.info(
+            "Emitted graduation reward events for %d students in cohort %s",
+            len(enrollments),
+            cohort.id,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to emit graduation rewards for cohort %s (best-effort)",
+            cohort.id,
+            exc_info=True,
+        )

@@ -6,9 +6,11 @@ import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+from pydantic import ValidationError
+from sqlalchemy import text
+
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
-from pydantic import ValidationError
 
 settings = get_settings()
 
@@ -214,13 +216,13 @@ async def require_coach_for_cohort(
     Args:
         user: The authenticated user
         cohort_id: UUID of the cohort to check
-        db: AsyncSession for database queries
+        db: AsyncSession for database queries (used for academy-owned tables
+            cohorts and coach_assignments, which are in the same DB context)
 
     Raises:
         HTTPException: 403 if user is not coach for this cohort
         HTTPException: 404 if cohort not found
     """
-    from sqlalchemy import text
 
     # Admins and service roles can access any cohort
     if is_admin_or_service(user):
@@ -232,19 +234,22 @@ async def require_coach_for_cohort(
             status_code=status.HTTP_403_FORBIDDEN, detail="Coach privileges required"
         )
 
-    # Resolve member_id from auth_id
-    member_row = await db.execute(
-        text("SELECT id FROM members WHERE auth_id = :auth_id"),
-        {"auth_id": user.user_id},
-    )
-    member = member_row.mappings().first()
+    # Import lazily to avoid circular import at module load time.
+    from libs.common.service_client import get_member_by_auth_id
 
+    # Resolve member_id from auth_id via members service HTTP API
+    member = await get_member_by_auth_id(user.user_id, calling_service="academy")
     if not member:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Member profile not found"
         )
 
+    member_id = member["id"]
+
     # Check if coach is assigned to this cohort via Cohort.coach_id (legacy)
+    # NOTE: cohorts and coach_assignments are academy-owned tables; this function
+    # is only called from within the academy service context so these queries
+    # are within service boundaries.
     cohort_row = await db.execute(
         text("SELECT coach_id FROM cohorts WHERE id = :cohort_id"),
         {"cohort_id": cohort_id},
@@ -255,8 +260,6 @@ async def require_coach_for_cohort(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Cohort not found"
         )
-
-    member_id = str(member["id"])
 
     # Legacy check: Cohort.coach_id
     if str(cohort["coach_id"]) == member_id:

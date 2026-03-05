@@ -8,10 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
+from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.common.service_client import internal_post
 from libs.common.supabase import get_supabase_admin_client
 from libs.db.session import get_async_db
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.members_service.models import (
     Member,
     MemberAvailability,
@@ -31,25 +35,29 @@ from services.members_service.schemas import (
     PendingRegistrationCreate,
     PendingRegistrationResponse,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/pending-registrations", tags=["pending-registrations"])
 settings = get_settings()
 
 
-async def _ensure_wallet_exists(member_id: str, member_auth_id: str) -> None:
+async def _ensure_wallet_exists(
+    member_id: str, member_auth_id: str, *, referral_code: str | None = None
+) -> None:
     """Best-effort wallet auto-provisioning on registration completion."""
     try:
+        payload: dict = {
+            "member_id": member_id,
+            "member_auth_id": member_auth_id,
+        }
+        if referral_code:
+            payload["referral_code"] = referral_code
+
         resp = await internal_post(
             service_url=settings.WALLET_SERVICE_URL,
             path="/internal/wallet/create",
             calling_service="members",
-            json={
-                "member_id": member_id,
-                "member_auth_id": member_auth_id,
-            },
+            json=payload,
             timeout=15.0,
         )
         if resp.status_code >= 400:
@@ -577,7 +585,11 @@ async def complete_pending_registration(
             )
         raise e
 
-    await _ensure_wallet_exists(str(member.id), member.auth_id)
+    await _ensure_wallet_exists(
+        str(member.id),
+        member.auth_id,
+        referral_code=profile_data.get("referral_code"),
+    )
 
     # Sync member roles to Supabase app_metadata so JWT reflects them
     # This ensures roles like "coach" set during registration are in the token
@@ -604,6 +616,27 @@ async def complete_pending_registration(
                 "Could not sync member roles to Supabase",
                 extra={"extra_fields": {"error": str(sync_err)}},
             )
+
+    # Send welcome email (best-effort, non-blocking)
+    try:
+        email_client = get_email_client()
+        await email_client.send_template(
+            template_type="welcome",
+            to_email=member.email,
+            template_data={
+                "member_name": member.first_name or "there",
+                "dashboard_url": f"{settings.FRONTEND_URL.rstrip('/')}/account",
+            },
+        )
+        logger.info(
+            "Welcome email sent",
+            extra={"extra_fields": {"email": member.email}},
+        )
+    except Exception as welcome_err:
+        logger.warning(
+            "Failed to send welcome email (non-fatal)",
+            extra={"extra_fields": {"error": str(welcome_err)}},
+        )
 
     # Reload with all relationships for response
     query = (

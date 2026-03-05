@@ -23,21 +23,23 @@ sys.path.insert(0, project_root)
 
 from libs.db.config import AsyncSessionLocal
 from services.wallet_service.models import (
+    AuditAction,
     GrantType,
+    PaymentMethod,
     PromotionalBubbleGrant,
     TopupStatus,
     TransactionDirection,
     TransactionStatus,
     TransactionType,
-    PaymentMethod,
     Wallet,
     WalletAuditLog,
     WalletStatus,
     WalletTier,
     WalletTopup,
     WalletTransaction,
-    AuditAction,
 )
+from services.wallet_service.models.enums import ReferralStatus
+from services.wallet_service.models.referral import ReferralCode, ReferralRecord
 from sqlalchemy.future import select
 
 # ---------------------------------------------------------------------------
@@ -249,6 +251,63 @@ async def seed_wallets():
                     )
                 )
                 print("  ✓ Added audit log for frozen wallet")
+
+            # --- Add sample referral code + records ---
+            active_auth_id = "seed-wallet-active-user"
+            stmt = select(ReferralCode).where(
+                ReferralCode.member_auth_id == active_auth_id
+            )
+            result = await session.execute(stmt)
+            if not result.scalar_one_or_none():
+                ref_code = ReferralCode(
+                    id=uuid.UUID("00000000-0000-0000-0000-000000000201"),
+                    member_auth_id=active_auth_id,
+                    code="SB-SEED-A3K7",
+                    is_active=True,
+                    max_uses=50,
+                    uses_count=2,
+                    successful_referrals=1,
+                    last_used_at=NOW - timedelta(days=5),
+                    expires_at=NOW + timedelta(days=85),
+                )
+                session.add(ref_code)
+                await session.flush()
+
+                # A rewarded referral
+                session.add(
+                    ReferralRecord(
+                        id=uuid.UUID("00000000-0000-0000-0000-000000000301"),
+                        referrer_auth_id=active_auth_id,
+                        referee_auth_id="seed-wallet-empty-user",
+                        referral_code_id=ref_code.id,
+                        referral_code=ref_code.code,
+                        status=ReferralStatus.REWARDED,
+                        referrer_reward_bubbles=15,
+                        referee_reward_bubbles=10,
+                        referee_registered_at=NOW - timedelta(days=10),
+                        qualified_at=NOW - timedelta(days=8),
+                        rewarded_at=NOW - timedelta(days=8),
+                        qualification_trigger="first_topup",
+                    )
+                )
+
+                # A registered (pending qualification) referral
+                session.add(
+                    ReferralRecord(
+                        id=uuid.UUID("00000000-0000-0000-0000-000000000302"),
+                        referrer_auth_id=active_auth_id,
+                        referee_auth_id="seed-referee-pending",
+                        referral_code_id=ref_code.id,
+                        referral_code=ref_code.code,
+                        status=ReferralStatus.REGISTERED,
+                        referee_registered_at=NOW - timedelta(days=5),
+                    )
+                )
+
+                print("  ✓ Added sample referral code + records")
+
+            # NOTE: Reward rules are now seeded by standalone reward_rules.py
+            # (runs before wallets.py in all.sh, and in production via deploy.yml)
 
             print("\n✓ Wallet seed data complete!")
 

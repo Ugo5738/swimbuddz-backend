@@ -13,14 +13,15 @@ from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from pydantic import BaseModel
+from sqlalchemy import case, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.members_service.models import (
     CoachAgreement,
     CoachBankAccount,
     CoachProfile,
     Member,
 )
-from sqlalchemy import case, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -35,6 +36,7 @@ class MemberBasic(BaseModel):
     first_name: str
     last_name: str
     email: str
+    phone: str | None = None
 
 
 class CoachProfileBasic(BaseModel):
@@ -102,6 +104,7 @@ async def get_member_by_auth_id(
         first_name=member.first_name,
         last_name=member.last_name,
         email=member.email,
+        phone=member.profile.phone if member.profile else None,
     )
 
 
@@ -119,6 +122,7 @@ async def get_active_members(
             first_name=m.first_name,
             last_name=m.last_name,
             email=m.email,
+            phone=m.profile.phone if m.profile else None,
         )
         for m in members
     ]
@@ -140,6 +144,7 @@ async def get_member_by_id(
         first_name=member.first_name,
         last_name=member.last_name,
         email=member.email,
+        phone=member.profile.phone if member.profile else None,
     )
 
 
@@ -161,6 +166,7 @@ async def get_members_bulk(
             first_name=m.first_name,
             last_name=m.last_name,
             email=m.email,
+            phone=m.profile.phone if m.profile else None,
         )
         for m in members
     ]

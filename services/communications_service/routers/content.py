@@ -7,7 +7,11 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.common.member_utils import resolve_members_basic
+from libs.common.service_client import emit_rewards_event
 from libs.db.session import get_async_db
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.communications_service.models import ContentComment, ContentPost
 from services.communications_service.schemas import (
     CommentCreate,
@@ -16,8 +20,6 @@ from services.communications_service.schemas import (
     ContentPostResponse,
     ContentPostUpdate,
 )
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 content_router = APIRouter(prefix="/content", tags=["content"])
 
@@ -119,6 +121,27 @@ async def create_content_post(
     await db.commit()
     await db.refresh(post)
 
+    # Best-effort: emit reward event if created as published
+    if post_data.is_published:
+        from libs.common.service_client import get_member_by_id
+
+        member = await get_member_by_id(
+            str(created_by), calling_service="communications"
+        )
+        if member and member.get("auth_id"):
+            await emit_rewards_event(
+                event_type="content.published",
+                member_auth_id=member["auth_id"],
+                member_id=str(created_by),
+                service_source="communications",
+                event_data={
+                    "post_title": post.title,
+                    "category": post.category,
+                },
+                idempotency_key=f"content-published-{post.id}",
+                calling_service="communications",
+            )
+
     # Resolve featured image URL
     post_dict = post.__dict__.copy()
     post_dict["comment_count"] = 0
@@ -147,6 +170,7 @@ async def update_content_post(
     update_data = post_data.model_dump(exclude_unset=True)
 
     # If publishing for the first time, set published_at
+    was_unpublished = not post.is_published
     if (
         "is_published" in update_data
         and update_data["is_published"]
@@ -159,6 +183,27 @@ async def update_content_post(
 
     await db.commit()
     await db.refresh(post)
+
+    # Best-effort: emit reward event if just published via PATCH
+    if was_unpublished and post.is_published:
+        from libs.common.service_client import get_member_by_id
+
+        member = await get_member_by_id(
+            str(post.created_by), calling_service="communications"
+        )
+        if member and member.get("auth_id"):
+            await emit_rewards_event(
+                event_type="content.published",
+                member_auth_id=member["auth_id"],
+                member_id=str(post.created_by),
+                service_source="communications",
+                event_data={
+                    "post_title": post.title,
+                    "category": post.category,
+                },
+                idempotency_key=f"content-published-{post.id}",
+                calling_service="communications",
+            )
 
     # Get comment count
     comment_query = select(func.count(ContentComment.id)).where(
@@ -201,6 +246,26 @@ async def publish_content_post(
 
     await db.commit()
     await db.refresh(post)
+
+    # Best-effort: emit content published reward event for the author
+    from libs.common.service_client import get_member_by_id
+
+    member = await get_member_by_id(
+        str(post.created_by), calling_service="communications"
+    )
+    if member and member.get("auth_id"):
+        await emit_rewards_event(
+            event_type="content.published",
+            member_auth_id=member["auth_id"],
+            member_id=str(post.created_by),
+            service_source="communications",
+            event_data={
+                "post_title": post.title,
+                "category": post.category,
+            },
+            idempotency_key=f"content-published-{post.id}",
+            calling_service="communications",
+        )
 
     # Get comment count
     comment_query = select(func.count(ContentComment.id)).where(

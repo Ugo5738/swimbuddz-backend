@@ -30,6 +30,14 @@ async def task_send_weekly_session_digest(ctx: dict):
     await send_weekly_session_digest()
 
 
+async def task_publish_scheduled_content(ctx: dict):
+    """Publish content posts whose scheduled_for time has arrived."""
+    from services.communications_service.tasks import publish_scheduled_content
+
+    logger.info("Running: publish_scheduled_content")
+    await publish_scheduled_content()
+
+
 # ── Worker configuration ──
 
 
@@ -43,6 +51,7 @@ class WorkerSettings:
     functions = [
         task_process_pending_notifications,
         task_send_weekly_session_digest,
+        task_publish_scheduled_content,
     ]
 
     cron_jobs = [
@@ -58,6 +67,14 @@ class WorkerSettings:
             weekday=6,  # Sunday
             hour=7,
             minute=0,
+            run_at_startup=False,
+        ),
+        # Publish scheduled content posts (hourly check)
+        # Posts are typically scheduled for Wednesday 7 AM WAT (6 AM UTC)
+        # but we check hourly to catch any scheduled time
+        cron(
+            task_publish_scheduled_content,
+            minute=0,  # Every hour at :00
             run_at_startup=False,
         ),
     ]

@@ -11,6 +11,9 @@ from libs.auth.models import AuthUser
 from libs.common.currency import kobo_to_bubbles, naira_to_kobo
 from libs.common.service_client import debit_member_wallet
 from libs.db.session import get_async_db
+from sqlalchemy import and_, delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.events_service.models import Event, EventRSVP, MemberRef
 from services.events_service.schemas import (
     EventCreate,
@@ -19,8 +22,6 @@ from services.events_service.schemas import (
     RSVPCreate,
     RSVPResponse,
 )
-from sqlalchemy import and_, delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -146,11 +147,8 @@ async def get_event(
 @router.post("/", response_model=EventResponse, status_code=201)
 async def create_event(
     event_data: EventCreate,
-    # TODO: Add authentication to get current user ID
-    # For now, we'll require created_by to be passed in the request body
-    created_by: uuid.UUID = Query(
-        ..., description="Admin member ID creating the event"
-    ),
+    current_member: MemberRef = Depends(get_current_member),
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Create a new event (admin only)."""
@@ -160,7 +158,7 @@ async def create_event(
     event_dict_in["cost_kobo"] = (
         naira_to_kobo(cost_naira) if cost_naira is not None else None
     )
-    event = Event(**event_dict_in, created_by=created_by)
+    event = Event(**event_dict_in, created_by=current_member.id)
 
     db.add(event)
     await db.commit()
@@ -173,6 +171,7 @@ async def create_event(
 async def update_event(
     event_id: uuid.UUID,
     event_data: EventUpdate,
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Update an event (admin only)."""
@@ -212,6 +211,7 @@ async def update_event(
 @router.delete("/{event_id}", status_code=204)
 async def delete_event(
     event_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Delete an event (admin only)."""
@@ -223,7 +223,7 @@ async def delete_event(
         raise HTTPException(status_code=404, detail="Event not found")
 
     # Delete associated RSVPs first
-    await db.execute(select(EventRSVP).where(EventRSVP.event_id == event_id))
+    await db.execute(delete(EventRSVP).where(EventRSVP.event_id == event_id))
     await db.delete(event)
     await db.commit()
 
@@ -260,6 +260,7 @@ async def create_or_update_rsvp(
     existing_rsvp = rsvp_result.scalar_one_or_none()
 
     # Debit wallet on first "going" RSVP when requested and event has a cost
+    wallet_txn_id = None
     is_new_going = existing_rsvp is None and rsvp_data.status == "going"
     if (
         is_new_going
@@ -270,7 +271,7 @@ async def create_or_update_rsvp(
         fee_bubbles = kobo_to_bubbles(event.cost_kobo)
         idempotency_key = f"event-{event_id}-{member_id}"
         try:
-            await debit_member_wallet(
+            result_txn = await debit_member_wallet(
                 current_member.auth_id,
                 amount=fee_bubbles,
                 idempotency_key=idempotency_key,
@@ -280,6 +281,7 @@ async def create_or_update_rsvp(
                 reference_type="event",
                 reference_id=str(event_id),
             )
+            wallet_txn_id = result_txn.get("transaction_id")
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 400:
                 detail = e.response.json().get("detail", "")
@@ -305,7 +307,10 @@ async def create_or_update_rsvp(
     else:
         # Create new RSVP
         rsvp = EventRSVP(
-            event_id=event_id, member_id=member_id, status=rsvp_data.status
+            event_id=event_id,
+            member_id=member_id,
+            status=rsvp_data.status,
+            wallet_transaction_id=wallet_txn_id,
         )
         db.add(rsvp)
         await db.commit()
@@ -317,6 +322,7 @@ async def create_or_update_rsvp(
 async def list_event_rsvps(
     event_id: uuid.UUID,
     status: Optional[str] = Query(None, description="Filter by RSVP status"),
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all RSVPs for an event (admin only)."""
