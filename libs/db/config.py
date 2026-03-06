@@ -24,6 +24,12 @@ if db_host.endswith(".supabase.com") or use_null_pool:
     connect_args["keepalives_interval"] = 10
     connect_args["keepalives_count"] = 5
 
+if use_null_pool:
+    # Supabase pooler runs through PgBouncer. Disable psycopg server-side
+    # prepared statements so transaction-pooled connections don't trip over
+    # reused "_pg3_*" statement names.
+    connect_args["prepare_threshold"] = None
+
 # Create async engine
 # echo=True for local dev to see SQL queries
 engine_kwargs: dict = {
