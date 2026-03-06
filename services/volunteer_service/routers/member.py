@@ -7,7 +7,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
-from libs.common.member_utils import resolve_members_basic
+from libs.common.member_utils import resolve_members_basic, resolve_members_with_photos
 from libs.common.service_client import get_member_by_auth_id
 from libs.db.session import get_async_db
 from sqlalchemy import func, select
@@ -129,7 +129,9 @@ async def get_spotlight(db: AsyncSession = Depends(get_async_db)):
             featured_profile.featured_until is None
             or featured_profile.featured_until > now
         ):
-            member_info = await resolve_members_basic([featured_profile.member_id])
+            member_info = await resolve_members_with_photos(
+                [featured_profile.member_id]
+            )
             info = member_info.get(str(featured_profile.member_id))
             if info:
                 featured = SpotlightFeaturedVolunteer(
