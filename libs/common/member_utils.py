@@ -8,8 +8,10 @@ import uuid
 from typing import Optional
 
 import httpx
+
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
+from libs.common.service_client import get_members_bulk as get_members_bulk_internal
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -62,7 +64,54 @@ async def resolve_members_basic(
     member_ids: list[uuid.UUID | str],
 ) -> dict[str, MemberBasicInfo]:
     """
-    Resolve multiple member_ids to basic info via HTTP call to members service.
+    Resolve multiple member_ids to basic info via the internal members service
+    endpoint. This is the primary path for backend-to-backend enrichment.
+
+    Returns id, first_name, last_name, email. Does NOT include profile_photo_url.
+    Use resolve_members_with_photos() if you need photos.
+
+    Args:
+        member_ids: List of member UUIDs to resolve
+
+    Returns:
+        Dictionary mapping member_id (string) -> MemberBasicInfo
+    """
+    valid_ids = [mid for mid in member_ids if mid is not None]
+    if not valid_ids:
+        return {}
+
+    try:
+        data = await get_members_bulk_internal(
+            [str(mid) for mid in valid_ids], calling_service="member_utils"
+        )
+        result: dict[str, MemberBasicInfo] = {}
+        for info in data:
+            member_id = str(info.get("id"))
+            result[member_id] = MemberBasicInfo(
+                id=member_id,
+                first_name=info.get("first_name"),
+                last_name=info.get("last_name"),
+                email=info.get("email"),
+                profile_photo_url=None,
+            )
+        return result
+    except Exception as e:
+        logger.warning("Failed to resolve member info via internal bulk lookup: %r", e)
+        return {}
+
+
+async def resolve_members_with_photos(
+    member_ids: list[uuid.UUID | str],
+) -> dict[str, MemberBasicInfo]:
+    """
+    Resolve multiple member_ids to info INCLUDING profile_photo_url.
+
+    Uses the public /members/bulk-basic endpoint which returns photo URLs.
+    Falls back to resolve_members_basic() (without photos) on timeout or
+    HTTP errors.
+
+    Use this only where profile_photo_url is actually needed (e.g. spotlight).
+    For name/email enrichment, prefer resolve_members_basic().
 
     Args:
         member_ids: List of member UUIDs to resolve
@@ -93,6 +142,9 @@ async def resolve_members_basic(
                     profile_photo_url=info.get("profile_photo_url"),
                 )
             return result
-    except Exception as e:
-        logger.warning(f"Failed to resolve member info: {e}")
-        return {}
+    except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+        logger.warning(
+            "Public bulk-basic lookup failed (%s), falling back to internal endpoint",
+            type(e).__name__,
+        )
+        return await resolve_members_basic(valid_ids)
