@@ -328,6 +328,41 @@ async def unfeature_volunteer(
 # ── Opportunities ───────────────────────────────────────────────────
 
 
+@router.get("/opportunities", response_model=list[VolunteerOpportunityResponse])
+async def list_opportunities(
+    status_filter: Optional[OpportunityStatus] = None,
+    role_id: Optional[uuid.UUID] = None,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+    skip: int = 0,
+    limit: int = 50,
+    admin: Annotated[AuthUser, Depends(require_admin)] = None,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List volunteer opportunities for admin, including drafts by default."""
+    q = (
+        select(VolunteerOpportunity)
+        .options(selectinload(VolunteerOpportunity.role))
+        .order_by(
+            VolunteerOpportunity.date.asc(), VolunteerOpportunity.created_at.desc()
+        )
+        .offset(skip)
+        .limit(limit)
+    )
+
+    if status_filter:
+        q = q.where(VolunteerOpportunity.status == status_filter)
+    if role_id:
+        q = q.where(VolunteerOpportunity.role_id == role_id)
+    if from_date:
+        q = q.where(VolunteerOpportunity.date >= from_date)
+    if to_date:
+        q = q.where(VolunteerOpportunity.date <= to_date)
+
+    rows = (await db.execute(q)).scalars().all()
+    return [await _enrich_opportunity(opp) for opp in rows]
+
+
 @router.post(
     "/opportunities", response_model=VolunteerOpportunityResponse, status_code=201
 )
