@@ -25,11 +25,14 @@ from services.store_service.models.enums import (
     FulfillmentType,
     InventoryMovementType,
     OrderStatus,
+    PayoutStatus,
     ProductStatus,
     SourcingType,
     StoreCreditSourceType,
+    SupplierStatus,
 )
 from services.store_service.models.inventory import InventoryItem, InventoryMovement
+from services.store_service.models.supplier import Supplier, SupplierPayout
 
 __all__ = [
     "AuditEntityType",
@@ -47,6 +50,7 @@ __all__ = [
     "Order",
     "OrderItem",
     "OrderStatus",
+    "PayoutStatus",
     "PickupLocation",
     "Product",
     "ProductImage",
@@ -57,4 +61,7 @@ __all__ = [
     "StoreCredit",
     "StoreCreditSourceType",
     "StoreCreditTransaction",
+    "Supplier",
+    "SupplierPayout",
+    "SupplierStatus",
 ]

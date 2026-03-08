@@ -55,6 +55,10 @@ SERVICES=(
   "sessions_service"
   "transport_service"
   "store_service"
+  "ai_service"
+  "volunteer_service"
+  "wallet_service"
+  "pools_service"
 )
 
 PRE_MIGRATION_TASKS=(

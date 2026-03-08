@@ -1,17 +1,25 @@
+#!/usr/bin/env python3
 """Seed script for store test data.
 
 Creates sample categories, products with variants, inventory, and pickup locations
 so you can test the checkout flow end-to-end.
 
 Usage:
-    cd swimbuddz-backend
-    python -m services.store_service.seed_store_data
+    python scripts/seed/store_service.py
 """
 
 import asyncio
+import os
+import sys
 from decimal import Decimal
 
-from libs.common.config import get_settings
+# Add project root to path
+project_root = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
+sys.path.insert(0, project_root)
+
+from libs.db.config import AsyncSessionLocal
 from services.store_service.models import (
     Category,
     Collection,
@@ -23,18 +31,10 @@ from services.store_service.models import (
     ProductStatus,
     ProductVariant,
     SourcingType,
+    Supplier,
+    SupplierStatus,
 )
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-
-settings = get_settings()
-
-# Use the same DB URL as the app
-DATABASE_URL = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
-
-engine = create_async_engine(DATABASE_URL, echo=True)
-AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 async def seed_store_data():
@@ -47,6 +47,23 @@ async def seed_store_data():
         if count and count > 0:
             print(f"Store data already exists ({count} categories). Skipping seed.")
             return
+
+        # =========================================================================
+        # 0. SWIMBUDDZ SUPPLIER (#001)
+        # =========================================================================
+        swimbuddz_supplier = Supplier(
+            name="SwimBuddz",
+            slug="swimbuddz",
+            contact_name="SwimBuddz Team",
+            contact_email="store@swimbuddz.com",
+            description="SwimBuddz internal supplier. All first-party products.",
+            commission_percent=Decimal("0"),
+            is_verified=True,
+            status=SupplierStatus.ACTIVE,
+            is_active=True,
+        )
+        db.add(swimbuddz_supplier)
+        await db.flush()
 
         # =========================================================================
         # 1. CATEGORIES
@@ -231,6 +248,10 @@ async def seed_store_data():
             sourcing_type=SourcingType.STOCKED,
         )
         products.append(towel)
+
+        # Link all products to SwimBuddz supplier
+        for product in products:
+            product.supplier_id = swimbuddz_supplier.id
 
         db.add_all(products)
         await db.flush()
@@ -427,6 +448,7 @@ async def seed_store_data():
         print("=" * 60)
         print("Store data seeded successfully!")
         print("=" * 60)
+        print("  Supplier: SwimBuddz (#001)")
         print(f"  Categories: {len(categories)}")
         print(f"  Products: {len(products)}")
         print(f"  Variants: {len(variants)}")

@@ -9,13 +9,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
+from libs.common.service_client import credit_member_wallet, emit_rewards_event
 from libs.db.session import get_async_db
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from services.store_service.models import (
     AuditEntityType,
     InventoryItem,
     InventoryMovement,
     InventoryMovementType,
     Order,
+    OrderItem,
     OrderStatus,
     ProductVariant,
     StoreCredit,
@@ -31,12 +37,59 @@ from services.store_service.schemas import (
     OrderStatusUpdate,
     StoreCreditResponse,
 )
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 router = APIRouter(tags=["admin-store"])
 logger = get_logger(__name__)
+
+
+# ============================================================================
+# HELPERS
+# ============================================================================
+
+
+async def _release_order_inventory(
+    db: AsyncSession, order: Order, performed_by: str
+) -> None:
+    """Release reserved inventory for each item in a cancelled/failed order."""
+    # Eager-load items with their variant's inventory
+    items_query = (
+        select(OrderItem)
+        .where(OrderItem.order_id == order.id)
+        .options(
+            selectinload(OrderItem.variant).selectinload(ProductVariant.inventory_item)
+        )
+    )
+    items_result = await db.execute(items_query)
+    order_items = items_result.scalars().all()
+
+    for item in order_items:
+        variant = item.variant
+        if not variant or not variant.inventory_item:
+            continue
+        inv = variant.inventory_item
+        release_qty = min(item.quantity, inv.quantity_reserved)
+        if release_qty <= 0:
+            continue
+
+        inv.quantity_reserved -= release_qty
+
+        # Log inventory release movement
+        movement = InventoryMovement(
+            inventory_item_id=inv.id,
+            movement_type=InventoryMovementType.RELEASE,
+            quantity=-release_qty,
+            reference_type="order",
+            reference_id=order.id,
+            notes=f"Released for {order.status.value} order {order.order_number}",
+            performed_by=performed_by,
+        )
+        db.add(movement)
+
+    logger.info(
+        "Released inventory for order %s (%d items)",
+        order.order_number,
+        len(order_items),
+    )
 
 
 # ============================================================================
@@ -169,6 +222,24 @@ async def adjust_inventory(
     await db.commit()
     await db.refresh(item)
 
+    # Emit low stock event if stock fell below threshold
+    if (
+        new_quantity <= item.low_stock_threshold
+        and old_quantity > item.low_stock_threshold
+    ):
+        await emit_rewards_event(
+            event_type="store.inventory_low",
+            member_auth_id=current_user.user_id,  # Admin who triggered
+            service_source="store",
+            event_data={
+                "variant_id": str(item.variant_id),
+                "quantity_on_hand": new_quantity,
+                "low_stock_threshold": item.low_stock_threshold,
+            },
+            idempotency_key=f"store-low-stock-{item.id}-{new_quantity}",
+            calling_service="store",
+        )
+
     return InventoryItemResponse(
         id=item.id,
         variant_id=item.variant_id,
@@ -272,9 +343,34 @@ async def update_order_status(
     # Set timestamps based on status
     if status_update.status in [OrderStatus.PICKED_UP, OrderStatus.DELIVERED]:
         order.fulfilled_at = datetime.utcnow()
-    elif status_update.status == OrderStatus.CANCELLED:
-        order.cancelled_at = datetime.utcnow()
-        # TODO: Release inventory reservations
+    elif status_update.status in (OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED):
+        if status_update.status == OrderStatus.CANCELLED:
+            order.cancelled_at = datetime.utcnow()
+
+        # Release inventory reservations for each order item
+        await _release_order_inventory(db, order, current_user.user_id)
+
+        # Refund Bubbles if any were applied (covers split-payment Paystack failures too)
+        if order.bubbles_applied and order.bubbles_applied > 0:
+            try:
+                await credit_member_wallet(
+                    order.member_auth_id,
+                    amount=order.bubbles_applied,
+                    idempotency_key=f"refund-order-{order.id}",
+                    description=f"Refund for {status_update.status.value} order {order.order_number}",
+                    calling_service="store",
+                    transaction_type="refund",
+                    reference_type="order",
+                    reference_id=str(order.id),
+                )
+                logger.info(
+                    f"Refunded {order.bubbles_applied} Bubbles for order {order.order_number}"
+                )
+            except Exception as e:
+                # Log but don't block cancellation on wallet service failure
+                logger.error(
+                    f"Failed to refund Bubbles for order {order.order_number}: {e}"
+                )
 
     await log_audit(
         db,
@@ -313,6 +409,46 @@ async def update_order_status(
             )
         except Exception as e:
             logger.error(f"Failed to send order status email: {e}")
+
+    # Emit events based on status transitions
+    if order.member_auth_id:
+        if status_update.status == OrderStatus.SHIPPED:
+            await emit_rewards_event(
+                event_type="store.order_shipped",
+                member_auth_id=order.member_auth_id,
+                service_source="store",
+                event_data={
+                    "order_number": order.order_number,
+                    "fulfillment_type": order.fulfillment_type.value,
+                },
+                idempotency_key=f"store-order-shipped-{order.id}",
+                calling_service="store",
+            )
+        elif status_update.status in (OrderStatus.PICKED_UP, OrderStatus.DELIVERED):
+            await emit_rewards_event(
+                event_type="store.order_fulfilled",
+                member_auth_id=order.member_auth_id,
+                service_source="store",
+                event_data={
+                    "order_number": order.order_number,
+                    "total_ngn": float(order.total_ngn),
+                    "fulfillment_type": order.fulfillment_type.value,
+                },
+                idempotency_key=f"store-order-fulfilled-{order.id}",
+                calling_service="store",
+            )
+        elif status_update.status == OrderStatus.CANCELLED:
+            await emit_rewards_event(
+                event_type="store.order_cancelled",
+                member_auth_id=order.member_auth_id,
+                service_source="store",
+                event_data={
+                    "order_number": order.order_number,
+                    "total_ngn": float(order.total_ngn),
+                },
+                idempotency_key=f"store-order-cancelled-{order.id}",
+                calling_service="store",
+            )
 
     return order
 
@@ -403,6 +539,22 @@ async def mark_order_paid(
     except Exception as e:
         # Log but don't fail the order
         logger.error(f"Failed to send order confirmation email: {e}")
+
+    # Emit store.order_paid event for rewards/analytics
+    if order.member_auth_id:
+        await emit_rewards_event(
+            event_type="store.order_paid",
+            member_auth_id=order.member_auth_id,
+            service_source="store",
+            event_data={
+                "order_number": order.order_number,
+                "total_ngn": float(order.total_ngn),
+                "items_count": len(order.items),
+                "fulfillment_type": order.fulfillment_type.value,
+            },
+            idempotency_key=f"store-order-paid-{order.id}",
+            calling_service="store",
+        )
 
     return order
 
