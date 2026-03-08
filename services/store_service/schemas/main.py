@@ -1,18 +1,21 @@
 """Pydantic schemas for store service."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
 from services.store_service.models import (
     CartStatus,
     FulfillmentType,
     OrderStatus,
+    PayoutStatus,
     ProductStatus,
     SourcingType,
     StoreCreditSourceType,
+    SupplierStatus,
 )
 
 # ============================================================================
@@ -80,6 +83,8 @@ class ProductBase(BaseModel):
     preorder_lead_days: Optional[int] = Field(None, ge=1)
     requires_size_chart_ack: bool = False
     size_chart_media_id: Optional[uuid.UUID] = None
+    supplier_id: Optional[uuid.UUID] = None
+    cost_price_ngn: Optional[Decimal] = Field(None, ge=0)
 
 
 class ProductCreate(ProductBase):
@@ -104,6 +109,8 @@ class ProductUpdate(BaseModel):
     preorder_lead_days: Optional[int] = Field(None, ge=1)
     requires_size_chart_ack: Optional[bool] = None
     size_chart_media_id: Optional[uuid.UUID] = None
+    supplier_id: Optional[uuid.UUID] = None
+    cost_price_ngn: Optional[Decimal] = Field(None, ge=0)
 
 
 class ProductVariantBase(BaseModel):
@@ -162,14 +169,24 @@ class ProductImageResponse(ProductImageBase):
     created_at: datetime
 
 
+class DefaultVariantResponse(BaseModel):
+    """Minimal variant info for quick-add on product cards."""
+
+    id: uuid.UUID
+    sku: str
+
+
 class ProductResponse(ProductBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     size_chart_url: Optional[str] = None  # Resolved from media_id
+    supplier_id: Optional[uuid.UUID] = None
+    cost_price_ngn: Optional[Decimal] = None
     created_at: datetime
     updated_at: datetime
     images: list[ProductImageResponse] = []  # Include images for list views
+    default_variant: Optional[DefaultVariantResponse] = None  # For quick-add on cards
 
 
 class ProductDetail(ProductResponse):
@@ -178,6 +195,7 @@ class ProductDetail(ProductResponse):
     variants: list[ProductVariantWithInventory] = []
     images: list[ProductImageResponse] = []
     category: Optional[CategoryResponse] = None
+    supplier_name: Optional[str] = None  # Resolved from supplier relationship
 
 
 class ProductListResponse(BaseModel):
@@ -330,6 +348,7 @@ class PickupLocationBase(BaseModel):
     description: Optional[str] = None
     contact_phone: Optional[str] = Field(None, max_length=50)
     contact_email: Optional[str] = Field(None, max_length=255)
+    pool_id: Optional[uuid.UUID] = None  # Soft reference to pools_service
     is_active: bool = True
     sort_order: int = 0
 
@@ -344,6 +363,7 @@ class PickupLocationUpdate(BaseModel):
     description: Optional[str] = None
     contact_phone: Optional[str] = Field(None, max_length=50)
     contact_email: Optional[str] = Field(None, max_length=255)
+    pool_id: Optional[uuid.UUID] = None
     is_active: Optional[bool] = None
     sort_order: Optional[int] = None
 
@@ -380,8 +400,14 @@ class CheckoutStartRequest(BaseModel):
     customer_notes: Optional[str] = None
     size_chart_acknowledged: bool = False  # Required if any product needs it
     apply_store_credit: bool = False  # Apply available store credit to reduce total
-    pay_with_bubbles: bool = (
-        False  # Debit Bubbles wallet instead of (or after) store credit
+    bubbles_to_apply: Optional[int] = Field(
+        None,
+        ge=0,
+        description=(
+            "Number of Bubbles to apply toward payment. "
+            "If omitted or 0, no Bubbles are used. "
+            "If Bubbles cover the full amount, no Paystack payment is required."
+        ),
     )
 
 
@@ -394,6 +420,8 @@ class CheckoutStartResponse(BaseModel):
     delivery_fee_ngn: Decimal
     requires_payment: bool  # False if total is 0 (all store credit / bubbles)
     bubbles_applied: Optional[int] = None  # Bubbles debited from wallet (if any)
+    bubbles_amount_ngn: Optional[Decimal] = None  # NGN value of applied Bubbles
+    paystack_amount_ngn: Optional[Decimal] = None  # Remaining for Paystack (if any)
 
 
 class PaymentInitRequest(BaseModel):
@@ -428,6 +456,8 @@ class OrderItemResponse(BaseModel):
     line_total_ngn: Decimal
     is_preorder: bool
     estimated_ship_date: Optional[datetime]
+    supplier_id: Optional[uuid.UUID] = None
+    supplier_name: Optional[str] = None
 
 
 class OrderResponse(BaseModel):
@@ -521,3 +551,115 @@ class MemberStoreCreditSummary(BaseModel):
 
     total_balance_ngn: Decimal
     credits: list[StoreCreditResponse]
+
+
+# ============================================================================
+# SUPPLIER SCHEMAS
+# ============================================================================
+
+
+class SupplierBase(BaseModel):
+    name: str = Field(..., max_length=255)
+    slug: str = Field(..., max_length=255)
+    contact_name: Optional[str] = Field(None, max_length=255)
+    contact_email: Optional[str] = Field(None, max_length=255)
+    contact_phone: Optional[str] = Field(None, max_length=50)
+    description: Optional[str] = None
+    commission_percent: Optional[Decimal] = Field(None, ge=0, le=100)
+    payout_bank_name: Optional[str] = Field(None, max_length=255)
+    payout_account_number: Optional[str] = Field(None, max_length=50)
+    payout_account_name: Optional[str] = Field(None, max_length=255)
+    is_verified: bool = False
+    status: SupplierStatus = SupplierStatus.ACTIVE
+    is_active: bool = True
+
+
+class SupplierCreate(SupplierBase):
+    pass
+
+
+class SupplierUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=255)
+    slug: Optional[str] = Field(None, max_length=255)
+    contact_name: Optional[str] = Field(None, max_length=255)
+    contact_email: Optional[str] = Field(None, max_length=255)
+    contact_phone: Optional[str] = Field(None, max_length=50)
+    description: Optional[str] = None
+    commission_percent: Optional[Decimal] = Field(None, ge=0, le=100)
+    payout_bank_name: Optional[str] = Field(None, max_length=255)
+    payout_account_number: Optional[str] = Field(None, max_length=50)
+    payout_account_name: Optional[str] = Field(None, max_length=255)
+    is_verified: Optional[bool] = None
+    status: Optional[SupplierStatus] = None
+    is_active: Optional[bool] = None
+
+
+class SupplierResponse(SupplierBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    probation_ends_at: Optional[datetime] = None
+    total_products: int = 0
+    total_orders: int = 0
+    average_fulfillment_hours: Optional[Decimal] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SupplierListResponse(BaseModel):
+    """Paginated supplier list."""
+
+    items: list[SupplierResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+# ============================================================================
+# SUPPLIER PAYOUT SCHEMAS
+# ============================================================================
+
+
+class SupplierPayoutCreate(BaseModel):
+    """Create a payout record for a supplier."""
+
+    payout_period_start: date
+    payout_period_end: date
+    total_sales_ngn: Decimal = Field(..., ge=0)
+    commission_ngn: Decimal = Field(..., ge=0)
+    payout_amount_ngn: Decimal = Field(..., ge=0)
+    notes: Optional[str] = None
+
+
+class SupplierPayoutStatusUpdate(BaseModel):
+    """Update payout status (e.g., pending → processing → paid)."""
+
+    status: PayoutStatus
+    payment_reference: Optional[str] = Field(None, max_length=255)
+    notes: Optional[str] = None
+
+
+class SupplierPayoutResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    supplier_id: uuid.UUID
+    payout_period_start: date
+    payout_period_end: date
+    total_sales_ngn: Decimal
+    commission_ngn: Decimal
+    payout_amount_ngn: Decimal
+    status: PayoutStatus
+    paid_at: Optional[datetime] = None
+    payment_reference: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+
+class SupplierPayoutListResponse(BaseModel):
+    """Paginated payout list."""
+
+    items: list[SupplierPayoutResponse]
+    total: int
+    page: int
+    page_size: int

@@ -7,12 +7,12 @@ from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
-from services.store_service.models.enums import ProductStatus, SourcingType, enum_values
-from sqlalchemy import Boolean, DateTime
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from services.store_service.models.enums import ProductStatus, SourcingType, enum_values
 
 # ============================================================================
 # REFERENCE MODELS (cross-service references without imports)
@@ -152,6 +152,17 @@ class Product(Base):
         UUID(as_uuid=True), nullable=True
     )  # FK to media_service.media_items
 
+    # Supplier (Phase 1+)
+    supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("store_suppliers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    cost_price_ngn: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )  # COGS: what we paid for it
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
@@ -170,6 +181,7 @@ class Product(Base):
     collection_products = relationship(
         "CollectionProduct", back_populates="product", cascade="all, delete-orphan"
     )
+    supplier = relationship("Supplier", back_populates="products")
 
     def __repr__(self):
         return f"<Product {self.name}>"

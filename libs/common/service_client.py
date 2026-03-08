@@ -439,6 +439,98 @@ async def check_wallet_balance(
     return resp.json()
 
 
+async def initialize_store_payment(
+    order_id: str,
+    *,
+    amount_ngn: float,
+    member_auth_id: str,
+    member_email: str,
+    order_number: str,
+    callback_url: str | None = None,
+    calling_service: str,
+) -> dict:
+    """Initialize a Paystack transaction for a store order via payments_service.
+
+    Returns dict with {reference, authorization_url, access_code}.
+    Raises httpx errors on failure.
+    """
+    settings = get_settings()
+    reference = f"store-order-{order_id}"
+    resp = await internal_post(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path="/payments/internal/initialize",
+        calling_service=calling_service,
+        json={
+            "purpose": "store_order",
+            "amount": amount_ngn,
+            "currency": "NGN",
+            "reference": reference,
+            "member_auth_id": member_auth_id,
+            "callback_url": callback_url,
+            "metadata": {
+                "payer_email": member_email,
+                "order_id": order_id,
+                "order_number": order_number,
+            },
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def verify_store_payment(
+    reference: str,
+    *,
+    calling_service: str,
+) -> dict:
+    """Verify a Paystack payment reference via payments_service.
+
+    Returns dict with {reference, status, provider_status, paid_at, amount_kobo, currency}.
+    """
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path=f"/payments/internal/paystack/verify/{reference}",
+        calling_service=calling_service,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def validate_discount_code(
+    code: str,
+    *,
+    purpose: str = "store_order",
+    amount: float = 0,
+    member_auth_id: str | None = None,
+    calling_service: str,
+) -> Optional[dict]:
+    """Validate a discount code via payments_service.
+
+    Returns dict with {valid, discount_type, value, discount_amount, code, message}
+    or None if the payments service is unreachable.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path="/payments/internal/discounts/validate",
+        calling_service=calling_service,
+        json={
+            "code": code,
+            "purpose": purpose,
+            "amount": amount,
+            "member_auth_id": member_auth_id,
+        },
+    )
+    if resp.status_code == 400:
+        return {
+            "valid": False,
+            "message": resp.json().get("detail", "Invalid discount code"),
+        }
+    resp.raise_for_status()
+    return resp.json()
+
+
 async def emit_rewards_event(
     *,
     event_type: str,

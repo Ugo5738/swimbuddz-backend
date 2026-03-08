@@ -1,14 +1,26 @@
 """Service-to-service internal endpoints for payment initialization and verification."""
 
 from datetime import datetime
+from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import require_service_role
 from libs.common.config import get_settings
+from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
-from services.payments_service.models import Payment, PaymentPurpose, PaymentStatus
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from services.payments_service.models import (
+    Discount,
+    DiscountType,
+    Payment,
+    PaymentPurpose,
+    PaymentStatus,
+)
 from services.payments_service.routers.intents import (
     _callback_url,
     _paystack_enabled,
@@ -21,8 +33,6 @@ from services.payments_service.schemas import (
     InternalInitializeResponse,
     InternalPaystackVerifyResponse,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 settings = get_settings()
@@ -192,4 +202,98 @@ async def internal_verify_paystack_reference(reference: str):
         amount_kobo=data.get("amount"),
         currency=data.get("currency"),
         raw=data,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Discount validation for cross-service use
+# ---------------------------------------------------------------------------
+
+
+class InternalDiscountValidateRequest(BaseModel):
+    code: str
+    purpose: str = "store_order"
+    amount: float = 0
+    member_auth_id: Optional[str] = None
+
+
+class InternalDiscountValidateResponse(BaseModel):
+    valid: bool
+    code: str
+    discount_type: Optional[str] = None  # "percentage" or "fixed"
+    value: Optional[float] = None  # Percentage (0-100) or fixed amount
+    discount_amount: Optional[float] = None  # Calculated discount for given amount
+    message: Optional[str] = None
+
+
+@router.post(
+    "/internal/discounts/validate",
+    response_model=InternalDiscountValidateResponse,
+    dependencies=[Depends(require_service_role)],
+    tags=["internal-payments"],
+)
+async def internal_validate_discount(
+    req: InternalDiscountValidateRequest,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Validate a discount code for another service (e.g., store).
+
+    Returns discount details and calculated discount amount if valid.
+    Raises 400 if the code is invalid, expired, or exhausted.
+    """
+    query = select(Discount).where(
+        Discount.code == req.code.upper().strip(),
+        Discount.is_active.is_(True),
+    )
+    result = await db.execute(query)
+    discount = result.scalar_one_or_none()
+
+    if not discount:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid discount code: {req.code}",
+        )
+
+    now = utc_now()
+
+    if discount.valid_from and discount.valid_from > now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Discount code is not yet active",
+        )
+    if discount.valid_until and discount.valid_until < now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Discount code has expired",
+        )
+
+    if discount.max_uses and discount.current_uses >= discount.max_uses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Discount code has reached its usage limit",
+        )
+
+    # Check purpose applicability
+    applicable_purposes = [p.upper() for p in (discount.applies_to or [])]
+    if applicable_purposes and req.purpose.upper() not in applicable_purposes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Discount code does not apply to {req.purpose}",
+        )
+
+    # Calculate discount amount
+    discount_amount = 0.0
+    if req.amount > 0:
+        if discount.discount_type == DiscountType.PERCENTAGE:
+            discount_amount = round(req.amount * (discount.value / 100), 2)
+        elif discount.discount_type == DiscountType.FIXED:
+            discount_amount = min(discount.value, req.amount)
+
+    return InternalDiscountValidateResponse(
+        valid=True,
+        code=discount.code,
+        discount_type=discount.discount_type.value,
+        value=discount.value,
+        discount_amount=discount_amount,
+        message=None,
     )

@@ -41,6 +41,7 @@ SEED_TASKS=(
   "volunteers.py|:Seed Volunteer Roles"
   "reward_rules.py|:Seed Reward Rules"
   "wallets.py|:Seed Wallet Data"
+  "store_service.py|:Seed Store Data"
 )
 
 # -------------------------------------------------------------------------------

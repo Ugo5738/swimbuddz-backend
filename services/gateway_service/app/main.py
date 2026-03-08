@@ -14,8 +14,9 @@ from libs.common.error_handler import add_exception_handlers
 from libs.common.logging import get_request_id
 from libs.common.middleware import add_observability_middleware
 from libs.common.rate_limit import limiter, rate_limit_exceeded_handler
-from services.gateway_service.app import clients
 from slowapi.errors import RateLimitExceeded
+
+from services.gateway_service.app import clients
 
 
 def create_app() -> FastAPI:
@@ -374,6 +375,26 @@ def create_app() -> FastAPI:
         """Proxy all /api/v1/admin/wallet/* requests to wallet service."""
         return await proxy_request(
             clients.wallet_client, f"/admin/wallet/{path}", request
+        )
+
+    # ==================================================================
+    # POOLS SERVICE PROXY
+    # ==================================================================
+    @app.api_route(
+        "/api/v1/pools/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
+    )
+    async def proxy_pools(path: str, request: Request):
+        """Proxy all /api/v1/pools/* requests to pools service."""
+        return await proxy_request(clients.pools_client, f"/pools/{path}", request)
+
+    @app.api_route(
+        "/api/v1/admin/pools/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_admin_pools(path: str, request: Request):
+        """Proxy all /api/v1/admin/pools/* requests to pools service."""
+        return await proxy_request(
+            clients.pools_client, f"/admin/pools/{path}", request
         )
 
     # ==================================================================

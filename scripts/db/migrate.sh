@@ -51,6 +51,7 @@ SERVICES=(
   "ai_service"
   "volunteer_service"
   "wallet_service"
+  "pools_service"
 )
 
 # -------------------------------------------------------------------------------

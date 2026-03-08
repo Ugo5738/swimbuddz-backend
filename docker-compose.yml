@@ -210,6 +210,22 @@ services:
     volumes:
       - .:/app
 
+  pools-service:
+    build:
+      context: .
+      dockerfile: services/pools_service/Dockerfile
+    container_name: swimbuddz_pools
+    env_file:
+      - .env.dev
+    environment:
+      - PYTHONPATH=/app
+    ports:
+      - "8014:8014"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
   # ==================================================================
   # API GATEWAY
   # ==================================================================
@@ -248,6 +264,8 @@ services:
       volunteer-service:
         condition: service_started
       wallet-service:
+        condition: service_started
+      pools-service:
         condition: service_started
     ports:
       - "8000:8000"
