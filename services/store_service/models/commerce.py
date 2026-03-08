@@ -9,17 +9,10 @@ from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
-from services.store_service.models.enums import (
-    AuditEntityType,
-    CartStatus,
-    FulfillmentType,
-    OrderStatus,
-    StoreCreditSourceType,
-    enum_values,
-)
-from sqlalchemy import Boolean, CheckConstraint, DateTime
-from sqlalchemy import Enum as SAEnum
 from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -28,8 +21,18 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from services.store_service.models.enums import (
+    AuditEntityType,
+    CartStatus,
+    FulfillmentType,
+    OrderStatus,
+    StoreCreditSourceType,
+    enum_values,
+)
 
 # ============================================================================
 # CART MODELS
@@ -312,6 +315,12 @@ class OrderItem(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Supplier snapshot (Phase 2 -- captured at order time)
+    supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    supplier_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
@@ -344,6 +353,11 @@ class PickupLocation(Base):
     # Contact for pickup coordination
     contact_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     contact_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    # Optional link to pools_service (soft reference, no FK constraint across services)
+    pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
 
     # Availability
     is_active: Mapped[bool] = mapped_column(

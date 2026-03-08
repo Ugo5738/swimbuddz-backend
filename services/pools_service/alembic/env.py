@@ -1,4 +1,4 @@
-"""Alembic configuration entrypoint for store service."""
+"""Alembic configuration entrypoint for pools service."""
 
 # ruff: noqa: F401
 
@@ -17,26 +17,7 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.store_service.models import (  # noqa: F401
-    Cart,
-    CartItem,
-    Category,
-    Collection,
-    CollectionProduct,
-    InventoryItem,
-    InventoryMovement,
-    Order,
-    OrderItem,
-    PickupLocation,
-    Product,
-    ProductImage,
-    ProductVariant,
-    StoreAuditLog,
-    StoreCredit,
-    StoreCreditTransaction,
-    Supplier,
-    SupplierPayout,
-)
+from services.pools_service.models import Pool  # noqa: F401
 
 settings = get_settings()
 config = context.config
@@ -48,24 +29,7 @@ target_metadata = Base.metadata
 
 # Only migrate tables owned by this service
 SERVICE_TABLES = {
-    "store_categories",
-    "store_products",
-    "store_product_variants",
-    "store_product_images",
-    "store_collections",
-    "store_collection_products",
-    "store_inventory_items",
-    "store_inventory_movements",
-    "store_carts",
-    "store_cart_items",
-    "store_orders",
-    "store_order_items",
-    "store_credits",
-    "store_credit_transactions",
-    "store_audit_logs",
-    "store_pickup_locations",
-    "store_suppliers",
-    "store_supplier_payouts",
+    "pools",
 }
 
 url = settings.DATABASE_URL.replace("%", "%%")
@@ -87,7 +51,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        version_table="alembic_version_store",
+        version_table="alembic_version_pools",
         include_object=include_object,
     )
 
@@ -99,7 +63,7 @@ def do_run_migrations(connection):
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        version_table="alembic_version_store",
+        version_table="alembic_version_pools",
         include_object=include_object,
     )
     with context.begin_transaction():

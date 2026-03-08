@@ -17,6 +17,8 @@ class ProductStatus(str, enum.Enum):
 class SourcingType(str, enum.Enum):
     STOCKED = "stocked"
     PREORDER = "preorder"
+    DROPSHIP = "dropship"
+    CONSIGNMENT = "consignment"
 
 
 class InventoryMovementType(str, enum.Enum):
@@ -60,6 +62,20 @@ class StoreCreditSourceType(str, enum.Enum):
     ADMIN = "admin"
 
 
+class SupplierStatus(str, enum.Enum):
+    ACTIVE = "active"
+    PROBATION = "probation"
+    SUSPENDED = "suspended"
+    INACTIVE = "inactive"
+
+
+class PayoutStatus(str, enum.Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    PAID = "paid"
+    FAILED = "failed"
+
+
 class AuditEntityType(str, enum.Enum):
     PRODUCT = "product"
     INVENTORY = "inventory"
@@ -67,3 +83,5 @@ class AuditEntityType(str, enum.Enum):
     STORE_CREDIT = "store_credit"
     CATEGORY = "category"
     PICKUP_LOCATION = "pickup_location"
+    SUPPLIER = "supplier"
+    SUPPLIER_PAYOUT = "supplier_payout"

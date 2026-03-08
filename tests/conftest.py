@@ -426,3 +426,31 @@ async def wallet_client(db_session):
     ) as client:
         yield client
     wallet_app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def pools_client(db_session):
+    """AsyncClient for the pools service with admin auth."""
+    from services.pools_service.app.main import app as pools_app
+
+    _wire_app(pools_app, db_session)
+    async with AsyncClient(
+        transport=ASGITransport(app=pools_app),
+        base_url="http://test",
+    ) as client:
+        yield client
+    pools_app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def store_client(db_session):
+    """AsyncClient for the store service with admin auth."""
+    from services.store_service.app.main import app as store_app
+
+    _wire_app(store_app, db_session)
+    async with AsyncClient(
+        transport=ASGITransport(app=store_app),
+        base_url="http://test",
+    ) as client:
+        yield client
+    store_app.dependency_overrides.clear()

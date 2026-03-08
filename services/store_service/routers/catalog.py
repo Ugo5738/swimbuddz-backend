@@ -18,6 +18,7 @@ from services.store_service.schemas import (
     CategoryResponse,
     CollectionResponse,
     CollectionWithProducts,
+    DefaultVariantResponse,
     PickupLocationResponse,
     ProductDetail,
     ProductListResponse,
@@ -159,6 +160,7 @@ async def get_collection(
 
 @router.get("/products", response_model=ProductListResponse)
 async def list_products(
+    category: Optional[str] = Query(None, alias="category"),
     category_slug: Optional[str] = None,
     search: Optional[str] = None,
     featured: Optional[bool] = None,
@@ -167,11 +169,14 @@ async def list_products(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Browse products with filtering and pagination."""
+    # Support both ?category=slug (frontend) and ?category_slug=slug (legacy)
+    cat_slug = category or category_slug
+
     query = select(Product).where(Product.status == ProductStatus.ACTIVE)
 
     # Category filter
-    if category_slug:
-        query = query.join(Category).where(Category.slug == category_slug)
+    if cat_slug:
+        query = query.join(Category).where(Category.slug == cat_slug)
 
     # Search filter
     if search:
@@ -191,14 +196,30 @@ async def list_products(
 
     # Pagination
     query = query.order_by(Product.is_featured.desc(), Product.name)
-    query = query.options(selectinload(Product.images))  # Load images for cards
+    query = query.options(
+        selectinload(Product.images),
+        selectinload(Product.variants),  # Load variants for default_variant
+    )
     query = query.offset((page - 1) * page_size).limit(page_size)
 
     result = await db.execute(query)
     products = result.scalars().all()
 
+    # Build responses with default_variant for simple products
+    items = []
+    for p in products:
+        resp = ProductResponse.model_validate(p)
+        # Simple products (no size selection needed) get a default_variant for quick-add
+        if not p.has_variants and p.variants:
+            first_variant = next((v for v in p.variants if v.is_active), None)
+            if first_variant:
+                resp.default_variant = DefaultVariantResponse(
+                    id=first_variant.id, sku=first_variant.sku
+                )
+        items.append(resp)
+
     return ProductListResponse(
-        items=[ProductResponse.model_validate(p) for p in products],
+        items=items,
         total=total,
         page=page,
         page_size=page_size,

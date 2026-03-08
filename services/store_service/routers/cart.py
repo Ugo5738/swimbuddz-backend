@@ -8,7 +8,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import get_optional_user
 from libs.auth.models import AuthUser
+from libs.common.logging import get_logger
+from libs.common.service_client import get_member_by_auth_id, validate_discount_code
 from libs.db.session import get_async_db
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from services.store_service.models import (
     Cart,
     CartItem,
@@ -23,19 +29,37 @@ from services.store_service.schemas import (
     CartItemUpdate,
     CartResponse,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 router = APIRouter(tags=["store"])
+logger = get_logger(__name__)
 
 # Constants
 CART_EXPIRY_MINUTES = 30
+
+# Member tier discount mapping (membership_type → discount %)
+TIER_DISCOUNT_MAP = {
+    "club": Decimal("5"),  # Club members get 5% off store items
+    "community": Decimal("0"),  # Community members: no tier discount
+    "academy": Decimal("3"),  # Academy students get 3% off
+}
 
 
 # ============================================================================
 # CART HELPERS
 # ============================================================================
+
+
+async def _apply_member_tier_discount(cart: Cart, auth_id: str) -> None:
+    """Best-effort: look up member tier and apply store discount."""
+    try:
+        member = await get_member_by_auth_id(auth_id, calling_service="store")
+        if member:
+            membership_type = member.get("membership_type", "community")
+            discount_pct = TIER_DISCOUNT_MAP.get(membership_type, Decimal("0"))
+            cart.member_discount_percent = discount_pct
+    except Exception:
+        logger.warning("Could not fetch member tier for %s, skipping discount", auth_id)
+        cart.member_discount_percent = Decimal("0")
 
 
 async def get_or_create_cart(
@@ -119,6 +143,11 @@ async def get_or_create_cart(
 
         # Return existing member cart or create new one
         if member_cart:
+            # Auto-populate member tier discount if not set
+            if member_cart.member_discount_percent is None:
+                await _apply_member_tier_discount(member_cart, user.user_id)
+                await db.commit()
+                await db.refresh(member_cart)
             return member_cart
 
         # Create new cart for member
@@ -127,6 +156,11 @@ async def get_or_create_cart(
             expires_at=datetime.utcnow() + timedelta(minutes=CART_EXPIRY_MINUTES),
         )
         db.add(cart)
+        await db.flush()
+
+        # Auto-populate member tier discount
+        await _apply_member_tier_discount(cart, user.user_id)
+
         await db.commit()
         await db.refresh(cart)
         return cart
@@ -159,21 +193,55 @@ async def get_or_create_cart(
     raise HTTPException(status_code=400, detail="Session ID required for guest cart")
 
 
-async def calculate_cart_totals(cart: Cart) -> tuple[Decimal, Decimal, Decimal]:
-    """Calculate cart subtotal, discount, and total."""
+async def calculate_cart_totals(
+    cart: Cart,
+    coupon_discount_ngn: Decimal = Decimal("0"),
+) -> tuple[Decimal, Decimal, Decimal]:
+    """Calculate cart subtotal, discount, and total.
+
+    Args:
+        cart: The cart instance with items loaded.
+        coupon_discount_ngn: Pre-calculated coupon discount in NGN (from payments_service).
+
+    Returns:
+        (subtotal, total_discount, final_total)
+    """
     subtotal = Decimal("0")
     for item in cart.items:
         subtotal += item.unit_price_ngn * item.quantity
 
-    # Apply member discount
     discount_amount = Decimal("0")
-    if cart.member_discount_percent:
-        discount_amount = subtotal * (cart.member_discount_percent / 100)
 
-    # TODO: Apply coupon discount
+    # Apply member tier discount
+    if cart.member_discount_percent:
+        discount_amount += subtotal * (cart.member_discount_percent / 100)
+
+    # Apply coupon discount (validated externally and passed in)
+    discount_amount += coupon_discount_ngn
 
     total = subtotal - discount_amount
     return subtotal, discount_amount, max(total, Decimal("0"))
+
+
+async def _resolve_coupon_discount(cart: Cart, subtotal: Decimal) -> Decimal:
+    """Best-effort resolve coupon discount amount from payments_service.
+
+    Returns the NGN discount amount, or 0 if validation fails / no code.
+    """
+    if not cart.discount_code:
+        return Decimal("0")
+    try:
+        result = await validate_discount_code(
+            cart.discount_code,
+            purpose="store_order",
+            amount=float(subtotal),
+            calling_service="store",
+        )
+        if result and result.get("valid"):
+            return Decimal(str(result.get("discount_amount", 0)))
+    except Exception:
+        logger.warning("Failed to resolve coupon %s, skipping", cart.discount_code)
+    return Decimal("0")
 
 
 async def enrich_cart_response(cart: Cart, db: AsyncSession) -> CartResponse:
@@ -217,7 +285,12 @@ async def enrich_cart_response(cart: Cart, db: AsyncSession) -> CartResponse:
             )
         )
 
-    subtotal, discount_amount, total = await calculate_cart_totals(cart)
+    # Pre-calculate subtotal for coupon resolution
+    raw_subtotal = sum(item.unit_price_ngn * item.quantity for item in cart.items)
+    coupon_discount = await _resolve_coupon_discount(cart, raw_subtotal)
+    subtotal, discount_amount, total = await calculate_cart_totals(
+        cart, coupon_discount_ngn=coupon_discount
+    )
 
     return CartResponse(
         id=cart.id,
@@ -391,12 +464,35 @@ async def apply_discount_code(
     current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Apply discount code to cart."""
+    """Apply and validate discount code on cart."""
     cart = await get_or_create_cart(db, current_user, session_id)
 
-    # TODO: Validate discount code from payments_service discounts table
-    # For now, just store the code
-    cart.discount_code = request.code.upper()
+    # Validate discount code via payments_service
+    code = request.code.upper().strip()
+    try:
+        result = await validate_discount_code(
+            code,
+            purpose="store_order",
+            amount=0,  # Validation only — amount applied at total calculation
+            member_auth_id=(current_user.user_id if current_user else None),
+            calling_service="store",
+        )
+    except Exception:
+        logger.warning("Payments service unreachable for discount validation")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to validate discount code. Please try again.",
+        )
+
+    if not result or not result.get("valid"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("message", "Invalid discount code")
+            if result
+            else "Invalid discount code",
+        )
+
+    cart.discount_code = code
     await db.commit()
     return await enrich_cart_response(cart, db)
 
