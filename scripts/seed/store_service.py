@@ -69,35 +69,41 @@ async def seed_store_data():
         # 1. CATEGORIES
         # =========================================================================
         categories = {
-            "goggles": Category(
-                name="Goggles",
-                slug="goggles",
-                description="Swimming goggles for training and competition",
-                sort_order=1,
-            ),
-            "caps": Category(
-                name="Swim Caps",
-                slug="caps",
-                description="Silicone and latex swim caps",
-                sort_order=2,
-            ),
-            "training": Category(
-                name="Training Equipment",
-                slug="training",
-                description="Kickboards, pull buoys, fins, and paddles",
-                sort_order=3,
-            ),
             "swimwear": Category(
                 name="Swimwear",
                 slug="swimwear",
-                description="Swimsuits and jammers for men and women",
+                description="Swimsuits, rash guards, and swim shorts for all ages.",
+                sort_order=1,
+            ),
+            "swim_gears": Category(
+                name="Swim Gears",
+                slug="swim-gears",
+                description="Essential swimming gear for training and pool sessions, including goggles, caps, and ear plugs.",
+                sort_order=2,
+            ),
+            "training": Category(
+                name="Training Accessories",
+                slug="training",
+                description="Swim training accessories that help build strength, improve technique, and boost endurance.",
+                sort_order=3,
+            ),
+            "safety": Category(
+                name="Pool & Water Safety",
+                slug="pool-water-safety",
+                description="Safety products designed to support safe swimming and pool use, from floats to first-aid kits.",
                 sort_order=4,
             ),
-            "accessories": Category(
-                name="Accessories",
-                slug="accessories",
-                description="Towels, bags, and other swimming accessories",
+            "bags": Category(
+                name="Bags & Storage",
+                slug="bags-storage",
+                description="Swim bags, mesh sacks, and waterproof pouches to carry and protect your gear.",
                 sort_order=5,
+            ),
+            "eyewear": Category(
+                name="Eyewear & Sun Protection",
+                slug="eyewear-sun-protection",
+                description="Protective eyewear and sun protection products designed for swimmers and outdoor pool use.",
+                sort_order=6,
             ),
         }
         db.add_all(categories.values())
@@ -108,11 +114,42 @@ async def seed_store_data():
         # =========================================================================
         products = []
 
-        # --- Goggles ---
+        # --- Swimwear ---
+        mens_jammer = Product(
+            name="Men's Training Jammer",
+            slug="mens-training-jammer",
+            category_id=categories["swimwear"].id,
+            description="Chlorine-resistant training jammer with comfortable fit. Ideal for regular training sessions.",
+            short_description="Durable training jammer",
+            base_price_ngn=Decimal("12000"),
+            status=ProductStatus.ACTIVE,
+            has_variants=True,
+            variant_options={"Size": ["S", "M", "L", "XL", "XXL"]},
+            requires_size_chart_ack=True,
+            sourcing_type=SourcingType.STOCKED,
+        )
+        products.append(mens_jammer)
+
+        womens_suit = Product(
+            name="Women's One-Piece Swimsuit",
+            slug="womens-one-piece-swimsuit",
+            category_id=categories["swimwear"].id,
+            description="Stylish and comfortable one-piece swimsuit for training. Quick-dry fabric with UV protection.",
+            short_description="Comfortable training swimsuit",
+            base_price_ngn=Decimal("15000"),
+            status=ProductStatus.ACTIVE,
+            has_variants=True,
+            variant_options={"Size": ["XS", "S", "M", "L", "XL"]},
+            requires_size_chart_ack=True,
+            sourcing_type=SourcingType.STOCKED,
+        )
+        products.append(womens_suit)
+
+        # --- Swim Gears ---
         speedo_goggles = Product(
             name="Speedo Vanquisher 2.0",
             slug="speedo-vanquisher-2",
-            category_id=categories["goggles"].id,
+            category_id=categories["swim_gears"].id,
             description="The Speedo Vanquisher 2.0 offers crystal-clear vision and a comfortable, leak-free fit. Perfect for lap swimming and training.",
             short_description="Premium training goggles with anti-fog coating",
             base_price_ngn=Decimal("15000"),
@@ -126,7 +163,7 @@ async def seed_store_data():
         arena_goggles = Product(
             name="Arena Cobra Ultra Swipe",
             slug="arena-cobra-ultra-swipe",
-            category_id=categories["goggles"].id,
+            category_id=categories["swim_gears"].id,
             description="Racing goggles with innovative anti-fog technology. Swipe to restore anti-fog properties.",
             short_description="Competition racing goggles",
             base_price_ngn=Decimal("35000"),
@@ -136,11 +173,10 @@ async def seed_store_data():
         )
         products.append(arena_goggles)
 
-        # --- Caps ---
         silicone_cap = Product(
             name="SwimBuddz Silicone Cap",
             slug="swimbuddz-silicone-cap",
-            category_id=categories["caps"].id,
+            category_id=categories["swim_gears"].id,
             description="Premium silicone swim cap with SwimBuddz logo. Durable, comfortable, and long-lasting.",
             short_description="Official SwimBuddz swim cap",
             base_price_ngn=Decimal("5000"),
@@ -150,7 +186,7 @@ async def seed_store_data():
         )
         products.append(silicone_cap)
 
-        # --- Training Equipment ---
+        # --- Training Accessories ---
         kickboard = Product(
             name="Premium Kickboard",
             slug="premium-kickboard",
@@ -191,44 +227,11 @@ async def seed_store_data():
         )
         products.append(fins)
 
-        # --- Swimwear ---
-        mens_jammer = Product(
-            name="Men's Training Jammer",
-            slug="mens-training-jammer",
-            category_id=categories["swimwear"].id,
-            description="Chlorine-resistant training jammer with comfortable fit. Ideal for regular training sessions.",
-            short_description="Durable training jammer",
-            base_price_ngn=Decimal("12000"),
-            status=ProductStatus.ACTIVE,
-            has_variants=True,
-            variant_options={"Size": ["S", "M", "L", "XL", "XXL"]},
-            requires_size_chart_ack=True,
-            size_chart_url="https://example.com/size-chart-mens.png",
-            sourcing_type=SourcingType.STOCKED,
-        )
-        products.append(mens_jammer)
-
-        womens_suit = Product(
-            name="Women's One-Piece Swimsuit",
-            slug="womens-one-piece-swimsuit",
-            category_id=categories["swimwear"].id,
-            description="Stylish and comfortable one-piece swimsuit for training. Quick-dry fabric with UV protection.",
-            short_description="Comfortable training swimsuit",
-            base_price_ngn=Decimal("15000"),
-            status=ProductStatus.ACTIVE,
-            has_variants=True,
-            variant_options={"Size": ["XS", "S", "M", "L", "XL"]},
-            requires_size_chart_ack=True,
-            size_chart_url="https://example.com/size-chart-womens.png",
-            sourcing_type=SourcingType.STOCKED,
-        )
-        products.append(womens_suit)
-
-        # --- Accessories ---
+        # --- Bags & Storage ---
         mesh_bag = Product(
             name="Mesh Swim Bag",
             slug="mesh-swim-bag",
-            category_id=categories["accessories"].id,
+            category_id=categories["bags"].id,
             description="Ventilated mesh bag for wet gear. Large capacity with drawstring closure.",
             short_description="Breathable gear bag",
             base_price_ngn=Decimal("4500"),
@@ -240,7 +243,7 @@ async def seed_store_data():
         towel = Product(
             name="Microfiber Sports Towel",
             slug="microfiber-sports-towel",
-            category_id=categories["accessories"].id,
+            category_id=categories["bags"].id,
             description="Quick-dry microfiber towel. Compact and lightweight, perfect for swimming.",
             short_description="Quick-dry compact towel",
             base_price_ngn=Decimal("7000"),
@@ -257,24 +260,24 @@ async def seed_store_data():
         await db.flush()
 
         # =========================================================================
-        # 3. PRODUCT VARIANTS & INVENTORY
+        # 3. PRODUCT VARIANTS & INVENTORY  (SKU format: SB-CAT-NNN or SB-CAT-NNN-SZ)
         # =========================================================================
         variants = []
 
         # Simple products (no size variants) - one default variant each
-        simple_products = [
-            speedo_goggles,
-            arena_goggles,
-            silicone_cap,
-            kickboard,
-            pull_buoy,
-            mesh_bag,
-            towel,
+        simple_sku_map = [
+            (speedo_goggles, "SB-GER-001"),
+            (arena_goggles, "SB-GER-002"),
+            (silicone_cap, "SB-GER-003"),
+            (kickboard, "SB-TRN-001"),
+            (pull_buoy, "SB-TRN-002"),
+            (mesh_bag, "SB-BAG-001"),
+            (towel, "SB-BAG-002"),
         ]
-        for product in simple_products:
+        for product, sku in simple_sku_map:
             variant = ProductVariant(
                 product_id=product.id,
-                sku=f"{product.slug.upper().replace('-', '')}-DEFAULT",
+                sku=sku,
                 name="Default",
             )
             variants.append(variant)
@@ -285,7 +288,7 @@ async def seed_store_data():
             size_code = size.split()[0]
             variant = ProductVariant(
                 product_id=fins.id,
-                sku=f"TRAINFINS-{size_code}",
+                sku=f"SB-TRN-003-{size_code}",
                 name=size,
                 options={"Size": size},
             )
@@ -296,7 +299,7 @@ async def seed_store_data():
         for size in jammer_sizes:
             variant = ProductVariant(
                 product_id=mens_jammer.id,
-                sku=f"MENSJAMMER-{size}",
+                sku=f"SB-SWR-001-{size}",
                 name=size,
                 options={"Size": size},
             )
@@ -307,7 +310,7 @@ async def seed_store_data():
         for size in womens_sizes:
             variant = ProductVariant(
                 product_id=womens_suit.id,
-                sku=f"WOMENSSUIT-{size}",
+                sku=f"SB-SWR-002-{size}",
                 name=size,
                 options={"Size": size},
             )
@@ -328,66 +331,67 @@ async def seed_store_data():
         db.add_all(inventory_items)
 
         # =========================================================================
-        # 4. PRODUCT IMAGES (placeholder URLs)
+        # 4. PRODUCT IMAGES (picsum.photos — real images that Next.js can handle)
+        # Each seed=N gives a deterministic image so reseeds look the same.
         # =========================================================================
         images = [
             ProductImage(
                 product_id=speedo_goggles.id,
-                url="https://placehold.co/600x600/0066cc/white?text=Speedo+Goggles",
+                url="https://picsum.photos/seed/goggles1/600/600",
                 alt_text="Speedo Vanquisher 2.0 Goggles",
                 is_primary=True,
             ),
             ProductImage(
                 product_id=arena_goggles.id,
-                url="https://placehold.co/600x600/ff6600/white?text=Arena+Cobra",
+                url="https://picsum.photos/seed/goggles2/600/600",
                 alt_text="Arena Cobra Ultra Swipe",
                 is_primary=True,
             ),
             ProductImage(
                 product_id=silicone_cap.id,
-                url="https://placehold.co/600x600/00cc66/white?text=Swim+Cap",
+                url="https://picsum.photos/seed/cap1/600/600",
                 alt_text="SwimBuddz Silicone Cap",
                 is_primary=True,
             ),
             ProductImage(
                 product_id=kickboard.id,
-                url="https://placehold.co/600x600/ffcc00/black?text=Kickboard",
+                url="https://picsum.photos/seed/kickboard/600/600",
                 alt_text="Premium Kickboard",
                 is_primary=True,
             ),
             ProductImage(
                 product_id=pull_buoy.id,
-                url="https://placehold.co/600x600/cc0066/white?text=Pull+Buoy",
+                url="https://picsum.photos/seed/pullbuoy/600/600",
                 alt_text="Pull Buoy",
                 is_primary=True,
             ),
             ProductImage(
                 product_id=fins.id,
-                url="https://placehold.co/600x600/6600cc/white?text=Training+Fins",
+                url="https://picsum.photos/seed/fins1/600/600",
                 alt_text="Training Fins",
                 is_primary=True,
             ),
             ProductImage(
                 product_id=mens_jammer.id,
-                url="https://placehold.co/600x600/000066/white?text=Mens+Jammer",
+                url="https://picsum.photos/seed/jammer/600/600",
                 alt_text="Men's Training Jammer",
                 is_primary=True,
             ),
             ProductImage(
                 product_id=womens_suit.id,
-                url="https://placehold.co/600x600/cc0099/white?text=Womens+Suit",
+                url="https://picsum.photos/seed/swimsuit/600/600",
                 alt_text="Women's One-Piece Swimsuit",
                 is_primary=True,
             ),
             ProductImage(
                 product_id=mesh_bag.id,
-                url="https://placehold.co/600x600/666666/white?text=Mesh+Bag",
+                url="https://picsum.photos/seed/meshbag/600/600",
                 alt_text="Mesh Swim Bag",
                 is_primary=True,
             ),
             ProductImage(
                 product_id=towel.id,
-                url="https://placehold.co/600x600/00cccc/white?text=Towel",
+                url="https://picsum.photos/seed/towel1/600/600",
                 alt_text="Microfiber Sports Towel",
                 is_primary=True,
             ),
@@ -453,6 +457,7 @@ async def seed_store_data():
         print(f"  Products: {len(products)}")
         print(f"  Variants: {len(variants)}")
         print(f"  Pickup Locations: {len(pickup_locations)}")
+        print("  SKU format: SB-CAT-NNN[-SIZE]")
         print("=" * 60)
 
 

@@ -5,6 +5,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.db.session import get_async_db
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from services.store_service.models import (
     Category,
     Collection,
@@ -20,14 +24,11 @@ from services.store_service.schemas import (
     CollectionWithProducts,
     DefaultVariantResponse,
     PickupLocationResponse,
-    ProductDetail,
     ProductListResponse,
     ProductResponse,
-    ProductVariantWithInventory,
+    PublicProductDetail,
+    PublicProductVariantInfo,
 )
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 router = APIRouter(tags=["store"])
 
@@ -199,6 +200,7 @@ async def list_products(
     query = query.options(
         selectinload(Product.images),
         selectinload(Product.variants),  # Load variants for default_variant
+        selectinload(Product.category),  # Needed for ProductResponse.category
     )
     query = query.offset((page - 1) * page_size).limit(page_size)
 
@@ -227,12 +229,16 @@ async def list_products(
     )
 
 
-@router.get("/products/{slug}", response_model=ProductDetail)
+@router.get("/products/{slug}", response_model=PublicProductDetail)
 async def get_product(
     slug: str,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Get product detail with variants and images."""
+    """Get product detail with variants and images (public).
+
+    Returns PublicProductDetail which hides internal inventory data
+    (quantity_on_hand). Only exposes quantity_available and in_stock boolean.
+    """
     query = (
         select(Product)
         .where(Product.slug == slug, Product.status == ProductStatus.ACTIVE)
@@ -248,14 +254,15 @@ async def get_product(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    # Build variants with inventory
-    variants_with_inventory = []
+    # Build public variants (no quantity_on_hand exposed)
+    public_variants = []
     for v in product.variants:
         if not v.is_active:
             continue
         inv = v.inventory_item
-        variants_with_inventory.append(
-            ProductVariantWithInventory(
+        qty_available = inv.quantity_available if inv else 0
+        public_variants.append(
+            PublicProductVariantInfo(
                 id=v.id,
                 product_id=v.product_id,
                 sku=v.sku,
@@ -266,15 +273,15 @@ async def get_product(
                 is_active=v.is_active,
                 created_at=v.created_at,
                 updated_at=v.updated_at,
-                quantity_available=inv.quantity_available if inv else 0,
-                quantity_on_hand=inv.quantity_on_hand if inv else 0,
+                quantity_available=qty_available,
+                in_stock=qty_available > 0,
             )
         )
 
     # Resolve size chart URL
     size_chart_url = await resolve_media_url(product.size_chart_media_id)
 
-    return ProductDetail(
+    return PublicProductDetail(
         id=product.id,
         name=product.name,
         slug=product.slug,
@@ -296,7 +303,7 @@ async def get_product(
         size_chart_media_id=product.size_chart_media_id,
         created_at=product.created_at,
         updated_at=product.updated_at,
-        variants=variants_with_inventory,
+        variants=public_variants,
         images=[p for p in product.images],
         category=product.category,
     )

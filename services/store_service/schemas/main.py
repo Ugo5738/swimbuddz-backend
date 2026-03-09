@@ -122,8 +122,15 @@ class ProductVariantBase(BaseModel):
     is_active: bool = True
 
 
-class ProductVariantCreate(ProductVariantBase):
-    pass
+class ProductVariantCreate(BaseModel):
+    """SKU is optional — auto-generated from product slug if omitted."""
+
+    sku: Optional[str] = Field(None, max_length=100)
+    name: Optional[str] = Field(None, max_length=255)
+    options: dict = Field(default_factory=dict)
+    price_override_ngn: Optional[Decimal] = Field(None, ge=0)
+    weight_grams: Optional[int] = Field(None, ge=0)
+    is_active: bool = True
 
 
 class ProductVariantUpdate(BaseModel):
@@ -145,8 +152,17 @@ class ProductVariantResponse(ProductVariantBase):
 
 
 class ProductVariantWithInventory(ProductVariantResponse):
+    """Admin variant response - includes full inventory details."""
+
     quantity_available: int = 0
     quantity_on_hand: int = 0
+
+
+class PublicProductVariantInfo(ProductVariantResponse):
+    """Public variant response - hides internal inventory counts."""
+
+    in_stock: bool = True
+    quantity_available: int = 0
 
 
 class ProductImageBase(BaseModel):
@@ -187,15 +203,24 @@ class ProductResponse(ProductBase):
     updated_at: datetime
     images: list[ProductImageResponse] = []  # Include images for list views
     default_variant: Optional[DefaultVariantResponse] = None  # For quick-add on cards
+    category: Optional[CategoryResponse] = None  # Category info for list views
 
 
 class ProductDetail(ProductResponse):
-    """Full product detail with variants and images."""
+    """Full product detail with variants and images (admin)."""
 
     variants: list[ProductVariantWithInventory] = []
     images: list[ProductImageResponse] = []
     category: Optional[CategoryResponse] = None
     supplier_name: Optional[str] = None  # Resolved from supplier relationship
+
+
+class PublicProductDetail(ProductResponse):
+    """Public product detail - hides internal inventory data like quantity_on_hand."""
+
+    variants: list[PublicProductVariantInfo] = []
+    images: list[ProductImageResponse] = []
+    category: Optional[CategoryResponse] = None
 
 
 class ProductListResponse(BaseModel):
@@ -253,6 +278,27 @@ class CollectionWithProducts(CollectionResponse):
 # ============================================================================
 
 
+class InventoryVariantProduct(BaseModel):
+    """Minimal product info nested in inventory variant."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    slug: str
+
+
+class InventoryVariantInfo(BaseModel):
+    """Variant info included in inventory responses."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    sku: str
+    name: Optional[str] = None
+    product: Optional[InventoryVariantProduct] = None
+
+
 class InventoryItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -264,6 +310,7 @@ class InventoryItemResponse(BaseModel):
     low_stock_threshold: int
     last_restock_at: Optional[datetime]
     last_sold_at: Optional[datetime]
+    variant: Optional[InventoryVariantInfo] = None
 
 
 class InventoryAdjustment(BaseModel):
