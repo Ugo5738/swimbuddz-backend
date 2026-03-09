@@ -104,7 +104,9 @@ async def list_inventory(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List inventory items."""
-    query = select(InventoryItem).options(selectinload(InventoryItem.variant))
+    query = select(InventoryItem).options(
+        selectinload(InventoryItem.variant).selectinload(ProductVariant.product)
+    )
 
     if low_stock_only:
         query = query.where(
@@ -114,19 +116,7 @@ async def list_inventory(
     result = await db.execute(query)
     items = result.scalars().all()
 
-    return [
-        InventoryItemResponse(
-            id=item.id,
-            variant_id=item.variant_id,
-            quantity_on_hand=item.quantity_on_hand,
-            quantity_reserved=item.quantity_reserved,
-            quantity_available=item.quantity_available,
-            low_stock_threshold=item.low_stock_threshold,
-            last_restock_at=item.last_restock_at,
-            last_sold_at=item.last_sold_at,
-        )
-        for item in items
-    ]
+    return [InventoryItemResponse.model_validate(item) for item in items]
 
 
 @router.get("/inventory/low-stock", response_model=list[LowStockItem])
@@ -220,7 +210,6 @@ async def adjust_inventory(
     )
 
     await db.commit()
-    await db.refresh(item)
 
     # Emit low stock event if stock fell below threshold
     if (
@@ -240,16 +229,18 @@ async def adjust_inventory(
             calling_service="store",
         )
 
-    return InventoryItemResponse(
-        id=item.id,
-        variant_id=item.variant_id,
-        quantity_on_hand=item.quantity_on_hand,
-        quantity_reserved=item.quantity_reserved,
-        quantity_available=item.quantity_available,
-        low_stock_threshold=item.low_stock_threshold,
-        last_restock_at=item.last_restock_at,
-        last_sold_at=item.last_sold_at,
+    # Re-fetch with eager loading for nested variant/product response
+    detail_query = (
+        select(InventoryItem)
+        .where(InventoryItem.id == item.id)
+        .options(
+            selectinload(InventoryItem.variant).selectinload(ProductVariant.product)
+        )
     )
+    detail_result = await db.execute(detail_query)
+    refreshed_item = detail_result.scalar_one()
+
+    return InventoryItemResponse.model_validate(refreshed_item)
 
 
 # ============================================================================

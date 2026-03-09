@@ -8,8 +8,14 @@ Schema files:
   - schemas/member.py  — Member schemas (from schemas.py)
   - schemas/coach.py   — Coach schemas (from coach_schemas.py)
   - schemas/challenge.py — Volunteer/challenge schemas (from volunteer_schemas.py)
+  - schemas/assessment.py — Swim readiness assessment schemas
 """
 
+from services.members_service.schemas.assessment import (  # noqa: F401
+    AssessmentResponse,
+    AssessmentStatsResponse,
+    AssessmentSubmit,
+)
 from services.members_service.schemas.challenge import (  # noqa: F401
     ChallengeCompletionCreate,
     ChallengeCompletionResponse,

@@ -101,6 +101,22 @@ def create_app() -> FastAPI:
         )
 
     # ==================================================================
+    # ASSESSMENTS PROXY (routed to members service)
+    # ==================================================================
+    @app.api_route("/api/v1/assessments", methods=["GET", "POST"])
+    @app.api_route("/api/v1/assessments/", methods=["GET", "POST"])
+    async def proxy_assessments_root(request: Request):
+        """Proxy assessment root requests to members service."""
+        return await proxy_request(clients.members_client, "/assessments/", request)
+
+    @app.api_route("/api/v1/assessments/{path:path}", methods=["GET", "POST"])
+    async def proxy_assessments(path: str, request: Request):
+        """Proxy all /api/v1/assessments/* requests to members service."""
+        return await proxy_request(
+            clients.members_client, f"/assessments/{path}", request
+        )
+
+    # ==================================================================
     # COACHES SERVICE PROXY (routed to members service)
     # ==================================================================
     @app.api_route(
