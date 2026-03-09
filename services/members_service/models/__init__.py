@@ -8,9 +8,11 @@ Re-exports all models and enums so that:
 Model definitions are split across:
   - models/member.py   — Member and related sub-tables
   - models/coach.py    — Coach profile, agreements, handbook, bank accounts
-  - models/volunteer.py — Legacy volunteer roles and club challenges
+  - models/volunteer.py   — Legacy volunteer roles and club challenges
+  - models/assessment.py  — Swim readiness assessments
 """
 
+from services.members_service.models.assessment import SwimAssessment  # noqa: F401
 from services.members_service.models.coach import (  # noqa: F401
     AgreementVersion,
     CoachAgreement,
@@ -53,4 +55,5 @@ __all__ = [
     "AgreementVersion",
     "HandbookVersion",
     "CoachBankAccount",
+    "SwimAssessment",
 ]

@@ -7,6 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from services.store_service.models import (
     AuditEntityType,
     Category,
@@ -37,9 +41,6 @@ from services.store_service.schemas import (
     ProductVariantResponse,
     ProductVariantUpdate,
 )
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 router = APIRouter(tags=["admin-store"])
 
@@ -111,13 +112,28 @@ async def update_category(
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
+    update_data = category_in.model_dump(exclude_unset=True)
+
+    # Check slug uniqueness (exclude this category)
+    new_slug = update_data.get("slug")
+    if new_slug and new_slug != category.slug:
+        existing = await db.execute(
+            select(Category).where(
+                Category.slug == new_slug, Category.id != category_id
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=400,
+                detail="Another category with this slug already exists",
+            )
+
     old_values = {
         "name": category.name,
         "slug": category.slug,
         "is_active": category.is_active,
     }
 
-    update_data = category_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(category, field, value)
 
@@ -189,7 +205,11 @@ async def list_all_products(
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    # Paginate
+    # Paginate & eager-load relationships needed by ProductResponse
+    query = query.options(
+        selectinload(Product.images),
+        selectinload(Product.category),
+    )
     query = query.order_by(Product.created_at.desc())
     query = query.offset((page - 1) * page_size).limit(page_size)
 
@@ -264,14 +284,14 @@ async def get_product_admin(
     return product
 
 
-@router.patch("/products/{product_id}", response_model=ProductResponse)
+@router.patch("/products/{product_id}", response_model=ProductDetail)
 async def update_product(
     product_id: uuid.UUID,
     product_in: ProductUpdate,
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Update a product."""
+    """Update a product. Returns full nested detail."""
     query = select(Product).where(Product.id == product_id)
     result = await db.execute(query)
     product = result.scalar_one_or_none()
@@ -279,8 +299,21 @@ async def update_product(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    old_price = float(product.base_price_ngn)
     update_data = product_in.model_dump(exclude_unset=True)
+
+    # Check slug uniqueness (exclude this product)
+    new_slug = update_data.get("slug")
+    if new_slug and new_slug != product.slug:
+        existing = await db.execute(
+            select(Product).where(Product.slug == new_slug, Product.id != product_id)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=400,
+                detail="Another product with this slug already exists",
+            )
+
+    old_price = float(product.base_price_ngn)
 
     for field, value in update_data.items():
         setattr(product, field, value)
@@ -307,7 +340,19 @@ async def update_product(
         )
 
     await db.commit()
-    await db.refresh(product)
+
+    # Re-fetch with eager loading for full nested response
+    detail_query = (
+        select(Product)
+        .where(Product.id == product_id)
+        .options(
+            selectinload(Product.variants).selectinload(ProductVariant.inventory_item),
+            selectinload(Product.images),
+            selectinload(Product.category),
+        )
+    )
+    detail_result = await db.execute(detail_query)
+    product = detail_result.scalar_one()
     return product
 
 
@@ -349,22 +394,56 @@ async def create_variant(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Add a variant to a product."""
+    """Add a variant to a product. SKU is auto-generated if not provided."""
     # Check product exists
     product = await db.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    # Check SKU uniqueness
-    existing = await db.execute(
-        select(ProductVariant).where(ProductVariant.sku == variant_in.sku)
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400, detail="Variant with this SKU already exists"
-        )
+    # Auto-generate SKU if not provided
+    sku = variant_in.sku
+    if not sku:
+        # Build prefix from product slug: "mens-training-jammer" → "SB-MEN-TRA"
+        slug_parts = product.slug.split("-")
+        prefix = "SB-" + "".join(p[:3].upper() for p in slug_parts[:2])
 
-    variant = ProductVariant(product_id=product_id, **variant_in.model_dump())
+        # Count existing variants to determine the next sequence number
+        count_result = await db.execute(
+            select(func.count()).where(ProductVariant.product_id == product_id)
+        )
+        next_num = (count_result.scalar() or 0) + 1
+
+        # Append variant name/size suffix if present
+        suffix = ""
+        if variant_in.name:
+            # Use first meaningful part: "S (35-36)" → "S", "Default" → "DEF"
+            name_part = variant_in.name.split()[0].upper()[:3]
+            suffix = f"-{name_part}"
+
+        sku = f"{prefix}-{next_num:03d}{suffix}"
+
+        # Ensure uniqueness by appending sequence if collision
+        existing = await db.execute(
+            select(ProductVariant).where(ProductVariant.sku == sku)
+        )
+        while existing.scalar_one_or_none():
+            next_num += 1
+            sku = f"{prefix}-{next_num:03d}{suffix}"
+            existing = await db.execute(
+                select(ProductVariant).where(ProductVariant.sku == sku)
+            )
+    else:
+        # Check SKU uniqueness for user-provided SKU
+        existing = await db.execute(
+            select(ProductVariant).where(ProductVariant.sku == sku)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=400, detail="Variant with this SKU already exists"
+            )
+
+    variant_data = variant_in.model_dump(exclude={"sku"})
+    variant = ProductVariant(product_id=product_id, sku=sku, **variant_data)
     db.add(variant)
     await db.flush()
 

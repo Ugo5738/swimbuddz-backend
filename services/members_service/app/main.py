@@ -1,8 +1,10 @@
 """FastAPI application for the Members Service."""
 
 from fastapi import FastAPI
+
 from services.members_service.routers import (
     admin_router,
+    assessments_router,
     challenge_router,
     coach_agreements_admin_router,
     coach_agreements_router,
@@ -33,6 +35,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "members"}
 
     # Include routers
+    app.include_router(assessments_router)  # Public swim readiness assessment
     app.include_router(coaches_router)  # Public coaches listing endpoints
     app.include_router(members_router)
     app.include_router(registration_router)  # Registration flow endpoints

@@ -19,6 +19,8 @@ from services.store_service.models import (
     Order,
     OrderItem,
     OrderStatus,
+    Product,
+    ProductStatus,
     ProductVariant,
     Supplier,
     SupplierPayout,
@@ -80,6 +82,87 @@ class ReportsOverview(BaseModel):
     sales: SalesSummary
     top_products: list[TopSellingProduct]
     inventory: InventoryReport
+
+
+class DashboardStats(BaseModel):
+    """Quick stats for the admin store dashboard."""
+
+    total_products: int
+    active_products: int
+    total_orders: int
+    pending_orders: int
+    low_stock_count: int
+    total_revenue_ngn: Decimal
+    orders_today: int
+
+
+# ============================================================================
+# DASHBOARD STATS (quick overview for admin dashboard)
+# ============================================================================
+
+
+@router.get("/stats", response_model=DashboardStats)
+async def get_dashboard_stats(
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Quick aggregate stats for the admin store dashboard."""
+    from datetime import date
+
+    today_start = datetime.combine(date.today(), datetime.min.time())
+
+    # Product counts
+    product_query = select(
+        func.count(Product.id).label("total"),
+        func.count(case((Product.status == ProductStatus.ACTIVE, Product.id))).label(
+            "active"
+        ),
+    )
+    product_result = await db.execute(product_query)
+    product_row = product_result.one()
+
+    # Order counts
+    order_query = select(
+        func.count(Order.id).label("total"),
+        func.count(
+            case(
+                (
+                    Order.status.in_([OrderStatus.PAID, OrderStatus.PROCESSING]),
+                    Order.id,
+                )
+            )
+        ).label("pending"),
+        func.coalesce(
+            func.sum(
+                case(
+                    (Order.status == OrderStatus.PAID, Order.total_ngn),
+                    else_=Decimal("0"),
+                )
+            ),
+            Decimal("0"),
+        ).label("revenue"),
+        func.count(case((Order.created_at >= today_start, Order.id))).label("today"),
+    )
+    order_result = await db.execute(order_query)
+    order_row = order_result.one()
+
+    # Low stock count
+    low_stock_query = select(func.count(InventoryItem.id)).where(
+        InventoryItem.quantity_on_hand <= InventoryItem.low_stock_threshold,
+        InventoryItem.quantity_on_hand > 0,
+    )
+    low_stock_result = await db.execute(low_stock_query)
+    low_stock = low_stock_result.scalar() or 0
+
+    return DashboardStats(
+        total_products=product_row.total or 0,
+        active_products=product_row.active or 0,
+        total_orders=order_row.total or 0,
+        pending_orders=order_row.pending or 0,
+        low_stock_count=low_stock,
+        total_revenue_ngn=Decimal(str(order_row.revenue or 0)),
+        orders_today=order_row.today or 0,
+    )
 
 
 # ============================================================================

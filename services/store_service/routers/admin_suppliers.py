@@ -154,7 +154,10 @@ async def update_supplier(
     # Check slug uniqueness if changing
     if "slug" in update_data and update_data["slug"] != supplier.slug:
         existing = await db.execute(
-            select(Supplier).where(Supplier.slug == update_data["slug"])
+            select(Supplier).where(
+                Supplier.slug == update_data["slug"],
+                Supplier.id != supplier_id,
+            )
         )
         if existing.scalar_one_or_none():
             raise HTTPException(
