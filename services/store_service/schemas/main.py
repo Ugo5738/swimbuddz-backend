@@ -185,6 +185,27 @@ class ProductImageResponse(ProductImageBase):
     created_at: datetime
 
 
+class ProductVideoBase(BaseModel):
+    url: str = Field(..., max_length=512)
+    thumbnail_url: Optional[str] = Field(None, max_length=512)
+    title: Optional[str] = Field(None, max_length=255)
+    sort_order: int = 0
+    media_item_id: Optional[uuid.UUID] = None
+
+
+class ProductVideoCreate(ProductVideoBase):
+    pass
+
+
+class ProductVideoResponse(ProductVideoBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    product_id: uuid.UUID
+    is_processed: bool = True
+    created_at: datetime
+
+
 class DefaultVariantResponse(BaseModel):
     """Minimal variant info for quick-add on product cards."""
 
@@ -211,6 +232,7 @@ class ProductDetail(ProductResponse):
 
     variants: list[ProductVariantWithInventory] = []
     images: list[ProductImageResponse] = []
+    videos: list[ProductVideoResponse] = []
     category: Optional[CategoryResponse] = None
     supplier_name: Optional[str] = None  # Resolved from supplier relationship
 
@@ -220,6 +242,7 @@ class PublicProductDetail(ProductResponse):
 
     variants: list[PublicProductVariantInfo] = []
     images: list[ProductImageResponse] = []
+    videos: list[ProductVideoResponse] = []
     category: Optional[CategoryResponse] = None
 
 

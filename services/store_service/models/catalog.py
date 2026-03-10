@@ -178,6 +178,9 @@ class Product(Base):
     images = relationship(
         "ProductImage", back_populates="product", cascade="all, delete-orphan"
     )
+    videos = relationship(
+        "ProductVideo", back_populates="product", cascade="all, delete-orphan"
+    )
     collection_products = relationship(
         "CollectionProduct", back_populates="product", cascade="all, delete-orphan"
     )
@@ -279,6 +282,44 @@ class ProductImage(Base):
 
     def __repr__(self):
         return f"<ProductImage {self.id}>"
+
+
+class ProductVideo(Base):
+    """Product videos (e.g., model demos, product features)."""
+
+    __tablename__ = "store_product_videos"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("store_products.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    url: Mapped[str] = mapped_column(String(512), nullable=False)
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    is_processed: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
+
+    # Reference to the MediaItem in media_service for processing (audio overlay, etc.)
+    media_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+
+    # Relationships
+    product = relationship("Product", back_populates="videos")
+
+    def __repr__(self):
+        return f"<ProductVideo {self.id}>"
 
 
 class Collection(Base):

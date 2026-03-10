@@ -189,6 +189,22 @@ services:
     volumes:
       - .:/app
 
+  media-worker-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-media-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_media_worker_staging
+    env_file:
+      - .env.staging
+    depends_on:
+      redis-staging:
+        condition: service_healthy
+      media-service-staging:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.media_service.tasks.worker.WorkerSettings
+    volumes:
+      - .:/app
+
   # ==================================================================
   # INFRASTRUCTURE (STAGING)
   # ==================================================================

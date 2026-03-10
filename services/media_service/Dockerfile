@@ -20,10 +20,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Pillow needs libjpeg and zlib at runtime
+# Pillow needs libjpeg/zlib at runtime; ffmpeg for video transcoding
 RUN apt-get update && apt-get install -y \
     libjpeg62-turbo \
     zlib1g \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /install /usr/local

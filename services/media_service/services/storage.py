@@ -40,9 +40,11 @@ PURPOSE_BUCKET_MAP = {
     "category_image": BucketType.PUBLIC,
     "collection_image": BucketType.PUBLIC,
     "product_image": BucketType.PUBLIC,
+    "product_video": BucketType.PUBLIC,
     "size_chart": BucketType.PUBLIC,
     "general": BucketType.PUBLIC,
     "media": BucketType.PUBLIC,  # Gallery/album items
+    "audio_track": BucketType.PUBLIC,  # Audio overlay tracks
     # Private bucket - restricted access content
     "coach_document": BucketType.PRIVATE,
     "payment_proof": BucketType.PRIVATE,
