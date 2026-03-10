@@ -266,6 +266,21 @@ services:
     command: arq services.payments_service.worker.WorkerSettings
     restart: unless-stopped
 
+  media-worker:
+    image: ${DOCKER_USERNAME}/swimbuddz-media-service:latest
+    container_name: swimbuddz_media_worker
+    env_file:
+      - .env.prod
+    depends_on:
+      redis:
+        condition: service_healthy
+      media-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.media_service.tasks.worker.WorkerSettings
+    restart: unless-stopped
+
   # ==================================================================
   # INFRASTRUCTURE
   # ==================================================================

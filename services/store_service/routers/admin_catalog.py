@@ -21,6 +21,7 @@ from services.store_service.models import (
     ProductImage,
     ProductStatus,
     ProductVariant,
+    ProductVideo,
 )
 from services.store_service.routers._helpers import log_audit
 from services.store_service.schemas import (
@@ -30,6 +31,7 @@ from services.store_service.schemas import (
     CollectionCreate,
     CollectionResponse,
     CollectionUpdate,
+    CollectionWithProducts,
     ProductCreate,
     ProductDetail,
     ProductImageCreate,
@@ -40,6 +42,8 @@ from services.store_service.schemas import (
     ProductVariantCreate,
     ProductVariantResponse,
     ProductVariantUpdate,
+    ProductVideoCreate,
+    ProductVideoResponse,
 )
 
 router = APIRouter(tags=["admin-store"])
@@ -272,6 +276,7 @@ async def get_product_admin(
         .options(
             selectinload(Product.variants).selectinload(ProductVariant.inventory_item),
             selectinload(Product.images),
+            selectinload(Product.videos),
             selectinload(Product.category),
         )
     )
@@ -348,6 +353,7 @@ async def update_product(
         .options(
             selectinload(Product.variants).selectinload(ProductVariant.inventory_item),
             selectinload(Product.images),
+            selectinload(Product.videos),
             selectinload(Product.category),
         )
     )
@@ -567,6 +573,59 @@ async def delete_product_image(
 
 
 # ============================================================================
+# PRODUCT VIDEOS
+# ============================================================================
+
+
+@router.post(
+    "/products/{product_id}/videos",
+    response_model=ProductVideoResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_product_video(
+    product_id: uuid.UUID,
+    video_in: ProductVideoCreate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Add a video to a product."""
+    product = await db.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    video = ProductVideo(product_id=product_id, **video_in.model_dump())
+    db.add(video)
+    await db.commit()
+    await db.refresh(video)
+    return video
+
+
+@router.delete(
+    "/products/{product_id}/videos/{video_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_product_video(
+    product_id: uuid.UUID,
+    video_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Delete a product video."""
+    query = select(ProductVideo).where(
+        ProductVideo.id == video_id,
+        ProductVideo.product_id == product_id,
+    )
+    result = await db.execute(query)
+    video = result.scalar_one_or_none()
+
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    await db.delete(video)
+    await db.commit()
+    return None
+
+
+# ============================================================================
 # COLLECTIONS
 # ============================================================================
 
@@ -580,6 +639,46 @@ async def list_all_collections(
     query = select(Collection).order_by(Collection.sort_order, Collection.name)
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.get("/collections/{collection_id}", response_model=CollectionWithProducts)
+async def get_collection(
+    collection_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get a single collection with its products."""
+    query = (
+        select(Collection)
+        .where(Collection.id == collection_id)
+        .options(
+            selectinload(Collection.collection_products).selectinload(
+                CollectionProduct.product
+            )
+        )
+    )
+    result = await db.execute(query)
+    collection = result.scalar_one_or_none()
+    if not collection:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    products = [
+        cp.product
+        for cp in sorted(collection.collection_products, key=lambda x: x.sort_order)
+    ]
+
+    return CollectionWithProducts(
+        id=collection.id,
+        name=collection.name,
+        slug=collection.slug,
+        description=collection.description,
+        image_media_id=collection.image_media_id,
+        is_active=collection.is_active,
+        sort_order=collection.sort_order,
+        created_at=collection.created_at,
+        updated_at=collection.updated_at,
+        products=[ProductResponse.model_validate(p) for p in products],
+    )
 
 
 @router.post(

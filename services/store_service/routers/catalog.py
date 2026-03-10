@@ -245,6 +245,7 @@ async def get_product(
         .options(
             selectinload(Product.variants).selectinload(ProductVariant.inventory_item),
             selectinload(Product.images),
+            selectinload(Product.videos),
             selectinload(Product.category),
         )
     )
