@@ -286,7 +286,7 @@ class MemberResponse(BaseModel):
 
 
 class MemberListResponse(BaseModel):
-    """Lightweight member response for lists (no nested sub-records)."""
+    """Member response for admin lists with flattened profile/membership fields."""
 
     id: uuid.UUID
     auth_id: str
@@ -297,12 +297,42 @@ class MemberListResponse(BaseModel):
     registration_complete: bool
     roles: Optional[list[str]] = None
     approval_status: str = "pending"
+    approval_notes: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    approved_by: Optional[str] = None
     profile_photo_media_id: Optional[uuid.UUID] = None
     profile_photo_url: Optional[str] = None  # Resolved from media_id
     created_at: datetime
 
     # Convenience field
     is_coach: bool = False
+
+    # Flattened from profile
+    phone: Optional[str] = None
+    swim_level: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    gender: Optional[str] = None
+    date_of_birth: Optional[datetime] = None
+    occupation: Optional[str] = None
+    area_in_lagos: Optional[str] = None
+    how_found_us: Optional[str] = None
+    previous_communities: Optional[str] = None
+    hopes_from_swimbuddz: Optional[str] = None
+    goals_narrative: Optional[str] = None
+
+    # Flattened from membership
+    primary_tier: str = "community"
+    active_tiers: Optional[list[str]] = None
+    requested_tiers: Optional[list[str]] = None
+    community_paid_until: Optional[datetime] = None
+    club_paid_until: Optional[datetime] = None
+    academy_paid_until: Optional[datetime] = None
+
+    # Flattened from emergency contact
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    medical_info: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -343,6 +373,7 @@ class MemberBasicResponse(BaseModel):
     email: Optional[str] = None
     profile_photo_media_id: Optional[uuid.UUID] = None
     profile_photo_url: Optional[str] = None
+    community_paid_until: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 

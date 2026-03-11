@@ -20,7 +20,14 @@ logger = get_logger(__name__)
 class MemberBasicInfo:
     """Basic member info returned from bulk lookup."""
 
-    __slots__ = ("id", "first_name", "last_name", "email", "profile_photo_url")
+    __slots__ = (
+        "id",
+        "first_name",
+        "last_name",
+        "email",
+        "profile_photo_url",
+        "community_paid_until",
+    )
 
     def __init__(
         self,
@@ -29,12 +36,14 @@ class MemberBasicInfo:
         last_name: Optional[str] = None,
         email: Optional[str] = None,
         profile_photo_url: Optional[str] = None,
+        community_paid_until: Optional[str] = None,
     ):
         self.id = id
         self.first_name = first_name
         self.last_name = last_name
         self.email = email
         self.profile_photo_url = profile_photo_url
+        self.community_paid_until = community_paid_until
 
     @property
     def full_name(self) -> str:
@@ -93,6 +102,7 @@ async def resolve_members_basic(
                 last_name=info.get("last_name"),
                 email=info.get("email"),
                 profile_photo_url=None,
+                community_paid_until=info.get("community_paid_until"),
             )
         return result
     except Exception as e:
@@ -140,6 +150,7 @@ async def resolve_members_with_photos(
                     last_name=info.get("last_name"),
                     email=info.get("email"),
                     profile_photo_url=info.get("profile_photo_url"),
+                    community_paid_until=info.get("community_paid_until"),
                 )
             return result
     except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
