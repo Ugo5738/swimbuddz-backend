@@ -15,6 +15,7 @@ from libs.db.session import get_async_db
 from pydantic import BaseModel
 from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from services.members_service.models import (
     CoachAgreement,
@@ -37,6 +38,7 @@ class MemberBasic(BaseModel):
     last_name: str
     email: str
     phone: str | None = None
+    community_paid_until: str | None = None
 
 
 class CoachProfileBasic(BaseModel):
@@ -158,7 +160,12 @@ async def get_members_bulk(
     if not body.ids:
         return []
     uuids = [uuid.UUID(mid) for mid in body.ids]
-    result = await db.execute(select(Member).where(Member.id.in_(uuids)))
+
+    result = await db.execute(
+        select(Member)
+        .where(Member.id.in_(uuids))
+        .options(selectinload(Member.membership))
+    )
     members = result.scalars().all()
     return [
         MemberBasic(
@@ -167,6 +174,11 @@ async def get_members_bulk(
             last_name=m.last_name,
             email=m.email,
             phone=m.profile.phone if m.profile else None,
+            community_paid_until=(
+                m.membership.community_paid_until.isoformat()
+                if m.membership and m.membership.community_paid_until
+                else None
+            ),
         )
         for m in members
     ]
