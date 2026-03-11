@@ -3,10 +3,16 @@
 import uuid
 from typing import List, Optional
 
+from arq import create_pool
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
+from libs.common.arq_config import get_redis_settings
+from libs.common.logging import get_logger
 from libs.db.session import get_async_db
+from sqlalchemy import desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.media_service.models import (
     Album,
     AlbumItem,
@@ -28,10 +34,88 @@ from services.media_service.services.storage import (
     get_bucket_for_purpose,
     storage_service,
 )
-from sqlalchemy import desc, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/media", tags=["media"])
+
+# ── Lazy ARQ Redis pool for enqueuing video processing jobs ──
+_redis_pool = None
+
+
+async def _get_redis_pool():
+    """Get or create the ARQ Redis connection pool."""
+    global _redis_pool
+    if _redis_pool is None:
+        _redis_pool = await create_pool(get_redis_settings())
+    return _redis_pool
+
+
+async def _enqueue_video_processing(
+    media_item_id: str, file_url: str, bucket_type_value: str
+) -> None:
+    """Enqueue a video transcoding job. Fails silently so uploads still succeed."""
+    try:
+        pool = await _get_redis_pool()
+        await pool.enqueue_job(
+            "task_process_video",
+            media_item_id,
+            file_url,
+            bucket_type_value,
+            _queue_name="arq:media",
+        )
+        logger.info("Enqueued video processing for %s", media_item_id)
+    except Exception as e:
+        logger.warning(
+            "Failed to enqueue video processing for %s: %s", media_item_id, e
+        )
+
+
+# ── Upload size limits per purpose ──
+MAX_UPLOAD_SIZES: dict[str, int] = {
+    # Images: 25 MB
+    "profile_photo": 25 * 1024 * 1024,
+    "cover_image": 25 * 1024 * 1024,
+    "content_image": 25 * 1024 * 1024,
+    "category_image": 25 * 1024 * 1024,
+    "collection_image": 25 * 1024 * 1024,
+    "product_image": 25 * 1024 * 1024,
+    # Videos: 2 GB (iPhone ProRes/4K can exceed 500MB for short clips;
+    # the transcoding worker compresses to web-friendly H.264)
+    "milestone_video": 2 * 1024 * 1024 * 1024,
+    "milestone_evidence": 2 * 1024 * 1024 * 1024,
+    "product_video": 2 * 1024 * 1024 * 1024,
+    # Documents: 10 MB
+    "coach_document": 10 * 1024 * 1024,
+    "payment_proof": 10 * 1024 * 1024,
+    "size_chart": 10 * 1024 * 1024,
+    # General: 50 MB
+    "general": 50 * 1024 * 1024,
+    # Gallery media (admin uploads): 2 GB
+    "media": 2 * 1024 * 1024 * 1024,
+}
+
+_CHUNK_SIZE = 1024 * 1024  # 1 MB
+
+
+async def _read_file_with_limit(file: UploadFile, purpose: str) -> bytes:
+    """Read uploaded file in chunks, enforcing size limits per purpose."""
+    max_size = MAX_UPLOAD_SIZES.get(purpose, 50 * 1024 * 1024)
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(_CHUNK_SIZE)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_size:
+            max_mb = max_size / (1024 * 1024)
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File too large. Maximum size for {purpose} is {max_mb:.0f} MB.",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 @router.post("/media", response_model=MediaItemResponse)
@@ -52,8 +136,8 @@ async def upload_media(
     if media_type == "VIDEO" and not file.content_type.startswith("video/"):
         raise HTTPException(status_code=400, detail="File must be a video")
 
-    # Read file data
-    file_data = await file.read()
+    # Read file data (with size limit)
+    file_data = await _read_file_with_limit(file, "media")
 
     # Upload to storage (gallery uploads go to public bucket)
     # TODO: Handle video thumbnail generation or placeholder
@@ -64,6 +148,9 @@ async def upload_media(
         bucket_type=BucketType.PUBLIC,
     )
 
+    # Videos are processed asynchronously by the media worker
+    is_video_upload = media_type == "VIDEO"
+
     # Create media record
     db_media = MediaItem(
         media_type=MediaType(media_type),
@@ -73,7 +160,7 @@ async def upload_media(
         description=description,
         alt_text=alt_text,
         uploaded_by=current_user.user_id,
-        is_processed=True,  # Assume processed for now, for video might need async job
+        is_processed=not is_video_upload,  # Videos start as unprocessed
     )
     db.add(db_media)
     await db.flush()  # Get ID
@@ -100,6 +187,12 @@ async def upload_media(
 
     await db.commit()
     await db.refresh(db_media)
+
+    # Enqueue async video processing (transcode + thumbnail + metadata)
+    if is_video_upload:
+        await _enqueue_video_processing(
+            str(db_media.id), file_url, BucketType.PUBLIC.value
+        )
 
     return MediaItemResponse(
         id=db_media.id,
@@ -167,12 +260,13 @@ async def upload_file(
         "category_image",
         "collection_image",
         "product_image",
+        "product_video",
         "size_chart",
     }
     if purpose not in allowed_purposes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid purpose. Must be one of: {', '.join(allowed_purposes)}",
+            detail=f"Invalid purpose. Must be one of: {', '.join(sorted(allowed_purposes))}",
         )
 
     # Different purposes have different allowed file types
@@ -207,6 +301,12 @@ async def upload_file(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="File must be an image",
             )
+    elif purpose == "product_video":
+        if not is_video:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be a video",
+            )
     elif purpose == "size_chart":
         if not (is_image or is_pdf):
             raise HTTPException(
@@ -215,7 +315,7 @@ async def upload_file(
             )
     # "general" allows any file type
 
-    file_data = await file.read()
+    file_data = await _read_file_with_limit(file, purpose)
 
     # Determine storage path based on purpose
     original_name = file.filename or f"upload_{uuid.uuid4()}"
@@ -238,6 +338,7 @@ async def upload_file(
         "category_image": "category-images",
         "collection_image": "collection-images",
         "product_image": "product-images",
+        "product_video": "product-videos",
         "size_chart": "size-charts",
         "general": "uploads",
     }
@@ -285,11 +386,15 @@ async def upload_file(
         description=auto_description,
         alt_text=original_name,
         uploaded_by=current_user.user_id,
-        is_processed=True,
+        is_processed=not is_video,  # Videos start as unprocessed
     )
     db.add(db_media)
     await db.commit()
     await db.refresh(db_media)
+
+    # Enqueue async video processing (transcode + thumbnail + metadata)
+    if is_video:
+        await _enqueue_video_processing(str(db_media.id), file_url, bucket_type.value)
 
     return await _build_media_item_response(db, db_media)
 
@@ -334,12 +439,13 @@ async def register_external_url(
         "category_image",
         "collection_image",
         "product_image",
+        "product_video",
         "size_chart",
     }
     if purpose not in allowed_purposes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid purpose. Must be one of: {', '.join(allowed_purposes)}",
+            detail=f"Invalid purpose. Must be one of: {', '.join(sorted(allowed_purposes))}",
         )
 
     # Map media_type string to enum

@@ -111,6 +111,19 @@ async def get_spotlight(db: AsyncSession = Depends(get_async_db)):
     """Public volunteer spotlight: featured volunteer, stats, milestones."""
     now = datetime.now(timezone.utc)
 
+    def _is_paid(info) -> bool:
+        """Check if member has active community payment."""
+        if not info or not info.community_paid_until:
+            return False
+        try:
+            paid_str = info.community_paid_until
+            paid_until = datetime.fromisoformat(paid_str)
+            if paid_until.tzinfo is None:
+                paid_until = paid_until.replace(tzinfo=timezone.utc)
+            return paid_until > now
+        except (ValueError, TypeError):
+            return False
+
     # 1. Featured volunteer
     featured_query = (
         select(VolunteerProfile)
@@ -133,7 +146,7 @@ async def get_spotlight(db: AsyncSession = Depends(get_async_db)):
                 [featured_profile.member_id]
             )
             info = member_info.get(str(featured_profile.member_id))
-            if info:
+            if info and _is_paid(info):
                 featured = SpotlightFeaturedVolunteer(
                     member_id=featured_profile.member_id,
                     member_name=info.full_name or "Volunteer",
@@ -179,37 +192,42 @@ async def get_spotlight(db: AsyncSession = Depends(get_async_db)):
                 )
             )
 
-    # 4. Top 5 leaderboard
+    # 4. Top leaderboard (fetch extra to allow payment filtering)
     top_rows = (
         (
             await db.execute(
                 select(VolunteerProfile)
                 .where(VolunteerProfile.is_active.is_(True))
                 .order_by(VolunteerProfile.total_hours.desc())
-                .limit(5)
+                .limit(20)
             )
         )
         .scalars()
         .all()
     )
 
-    # Resolve all member names via HTTP
+    # Resolve all member names + payment status via HTTP
     top_member_ids = [p.member_id for p in top_rows]
     member_map = await resolve_members_basic(top_member_ids) if top_member_ids else {}
 
+    # Filter to only paid members
     top_volunteers = []
-    for rank, p in enumerate(top_rows, 1):
+    for p in top_rows:
         info = member_map.get(str(p.member_id))
+        if not _is_paid(info):
+            continue
         top_volunteers.append(
             LeaderboardEntry(
-                rank=rank,
+                rank=len(top_volunteers) + 1,
                 member_id=p.member_id,
-                member_name=info.full_name if info else None,
+                member_name=info.full_name,
                 total_hours=p.total_hours,
                 total_sessions=p.total_sessions_volunteered,
                 recognition_tier=p.recognition_tier,
             )
         )
+        if len(top_volunteers) >= 5:
+            break
 
     return SpotlightResponse(
         featured_volunteer=featured,
@@ -695,14 +713,29 @@ async def leaderboard(
 
     rows = (await db.execute(q)).all()
 
-    # Batch-resolve member names via HTTP
+    # Batch-resolve member names + payment status via HTTP
     all_member_ids = [row[0] for row in rows]
     member_map = await resolve_members_basic(all_member_ids) if all_member_ids else {}
 
+    now = datetime.now(timezone.utc)
+
+    def _is_paid(info) -> bool:
+        if not info or not info.community_paid_until:
+            return False
+        try:
+            paid_until = datetime.fromisoformat(info.community_paid_until)
+            if paid_until.tzinfo is None:
+                paid_until = paid_until.replace(tzinfo=timezone.utc)
+            return paid_until > now
+        except (ValueError, TypeError):
+            return False
+
     results = []
-    for rank, row in enumerate(rows, 1):
+    for row in rows:
         member_id = row[0]
         info = member_map.get(str(member_id))
+        if not _is_paid(info):
+            continue
 
         # Get recognition tier
         profile = (
@@ -715,7 +748,7 @@ async def leaderboard(
 
         results.append(
             LeaderboardEntry(
-                rank=rank,
+                rank=len(results) + 1,
                 member_id=member_id,
                 member_name=info.full_name if info else None,
                 total_hours=float(row[1]),

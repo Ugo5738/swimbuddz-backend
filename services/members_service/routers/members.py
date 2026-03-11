@@ -10,6 +10,10 @@ from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.common.supabase import get_supabase_admin_client
 from libs.db.session import get_async_db
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from services.members_service.models import (
     CoachProfile,
     Member,
@@ -35,8 +39,6 @@ from services.members_service.schemas import (
     MemberResponse,
     MemberUpdate,
 )
-from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/members", tags=["members"])
@@ -304,7 +306,11 @@ async def get_members_bulk_basic(
     if not member_ids:
         return {}
 
-    query = select(Member).where(Member.id.in_(member_ids))
+    query = (
+        select(Member)
+        .where(Member.id.in_(member_ids))
+        .options(selectinload(Member.membership))
+    )
     result = await db.execute(query)
     members = result.scalars().all()
 
@@ -319,6 +325,9 @@ async def get_members_bulk_basic(
             if m.profile_photo_media_id
             else None
         )
+        community_paid_until = (
+            m.membership.community_paid_until if m.membership else None
+        )
         response[str(m.id)] = MemberBasicResponse(
             id=m.id,
             first_name=m.first_name,
@@ -326,6 +335,7 @@ async def get_members_bulk_basic(
             email=m.email,
             profile_photo_media_id=m.profile_photo_media_id,
             profile_photo_url=photo_url,
+            community_paid_until=community_paid_until,
         )
     return response
 
@@ -415,11 +425,55 @@ async def list_members(
     responses: list[MemberListResponse] = []
     for member in members:
         base = MemberResponse.model_validate(member, from_attributes=True)
-        payload = base.model_dump(exclude={"coach_profile"})
+        payload = base.model_dump(
+            exclude={
+                "coach_profile",
+                "profile",
+                "membership",
+                "emergency_contact",
+                "availability",
+                "preferences",
+            }
+        )
         payload["is_coach"] = bool(member.coach_profile)
-        # Add resolved URL
+
+        # Flatten profile fields
+        if base.profile:
+            p = base.profile
+            payload["phone"] = p.phone
+            payload["swim_level"] = p.swim_level
+            payload["city"] = p.city
+            payload["country"] = p.country
+            payload["gender"] = p.gender
+            payload["date_of_birth"] = p.date_of_birth
+            payload["occupation"] = p.occupation
+            payload["area_in_lagos"] = p.area_in_lagos
+            payload["how_found_us"] = p.how_found_us
+            payload["previous_communities"] = p.previous_communities
+            payload["hopes_from_swimbuddz"] = p.hopes_from_swimbuddz
+            payload["goals_narrative"] = p.personal_goals
+
+        # Flatten membership fields
+        if base.membership:
+            m = base.membership
+            payload["primary_tier"] = m.primary_tier
+            payload["active_tiers"] = m.active_tiers
+            payload["requested_tiers"] = m.requested_tiers
+            payload["community_paid_until"] = m.community_paid_until
+            payload["club_paid_until"] = m.club_paid_until
+            payload["academy_paid_until"] = m.academy_paid_until
+
+        # Flatten emergency contact
+        if base.emergency_contact:
+            ec = base.emergency_contact
+            payload["emergency_contact_name"] = ec.name
+            payload["emergency_contact_phone"] = ec.phone
+            payload["medical_info"] = ec.medical_info
+
+        # Add resolved photo URL
         if member.profile_photo_media_id:
             payload["profile_photo_url"] = url_map.get(member.profile_photo_media_id)
+
         responses.append(MemberListResponse(**payload))
     return responses
 

@@ -168,3 +168,51 @@ class AlbumWithMedia(AlbumResponse):
     """Album with media items list."""
 
     media_items: List[MediaItemResponse] = []
+
+
+# ===== AUDIO TRACK SCHEMAS =====
+class AudioTrackBase(BaseModel):
+    """Base audio track schema."""
+
+    title: str
+    artist: Optional[str] = None
+    genre: Optional[str] = None
+    license_type: str = "ROYALTY_FREE"
+
+
+class AudioTrackCreate(AudioTrackBase):
+    """Schema for creating an audio track (file handled separately)."""
+
+    pass
+
+
+class AudioTrackResponse(AudioTrackBase):
+    """Audio track response schema."""
+
+    id: uuid.UUID
+    file_url: str
+    duration_seconds: Optional[float] = None
+    is_active: bool
+    uploaded_by: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AudioTrackUpdate(BaseModel):
+    """Schema for updating audio track metadata."""
+
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    genre: Optional[str] = None
+    license_type: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class ApplyAudioRequest(BaseModel):
+    """Request body for applying audio to a video."""
+
+    audio_track_id: uuid.UUID
+    volume_mix: float = 1.0  # 0.0 = mute original, 1.0 = full replacement
+    start_offset_seconds: float = 0.0  # Where in the audio track to start

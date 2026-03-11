@@ -8,6 +8,7 @@ from services.store_service.models.catalog import (
     Product,
     ProductImage,
     ProductVariant,
+    ProductVideo,
 )
 from services.store_service.models.commerce import (
     Cart,
@@ -56,6 +57,7 @@ __all__ = [
     "ProductImage",
     "ProductStatus",
     "ProductVariant",
+    "ProductVideo",
     "SourcingType",
     "StoreAuditLog",
     "StoreCredit",

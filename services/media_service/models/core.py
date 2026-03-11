@@ -240,3 +240,47 @@ class MediaTag(Base):
 
     def __repr__(self):
         return f"<MediaTag media={self.media_item_id} member={self.member_id}>"
+
+
+class LicenseType(str, Enum):
+    """License type for audio tracks."""
+
+    FREE = "FREE"
+    ROYALTY_FREE = "ROYALTY_FREE"
+    CREATIVE_COMMONS = "CREATIVE_COMMONS"
+    LICENSED = "LICENSED"
+
+
+class AudioTrack(Base):
+    """Audio tracks for overlaying on videos (Instagram-style audio replacement).
+
+    Admin-curated library of music and sound effects that can be applied
+    to uploaded videos via the media worker's ffmpeg pipeline.
+    """
+
+    __tablename__ = "audio_tracks"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    artist: Mapped[str] = mapped_column(String(255), nullable=True)
+    file_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    duration_seconds: Mapped[float] = mapped_column(Float, nullable=True)
+    genre: Mapped[str] = mapped_column(String(100), nullable=True)
+    license_type: Mapped[LicenseType] = mapped_column(
+        String(30), nullable=False, default=LicenseType.ROYALTY_FREE
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    def __repr__(self):
+        return f"<AudioTrack {self.title} by {self.artist}>"
