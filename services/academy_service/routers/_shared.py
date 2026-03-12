@@ -33,6 +33,11 @@ from libs.common.service_client import (
     internal_post,
 )
 from libs.db.session import get_async_db
+from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload, selectinload
+
 from services.academy_service.models import (
     CoachAssignment,
     CoachGrade,
@@ -51,6 +56,7 @@ from services.academy_service.models import (
     ProgramCategory,
     ProgramInterest,
     ProgressStatus,
+    RequiredEvidence,
     StudentProgress,
 )
 from services.academy_service.schemas import (
@@ -106,10 +112,6 @@ from services.academy_service.services.scoring import (
     get_dimension_labels,
 )
 from services.academy_service.tasks import transition_cohort_statuses
-from sqlalchemy import and_, delete, func, or_, select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
 
 # Explicitly export private helpers so `from _shared import *` includes them.
 # Python's import-star skips names starting with `_` unless listed in __all__.
@@ -171,6 +173,7 @@ __all__ = [
     "ProgramCategory",
     "ProgramInterest",
     "ProgressStatus",
+    "RequiredEvidence",
     "StudentProgress",
     # ── schemas ───────────────────────────────────────────────────────────
     "AdminDropoutActionRequest",

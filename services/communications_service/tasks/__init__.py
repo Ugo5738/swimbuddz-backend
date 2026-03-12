@@ -1,5 +1,6 @@
 """Communications service tasks package."""
 
+from services.communications_service.tasks.content_images import generate_content_images
 from services.communications_service.tasks.content_publishing import (
     publish_scheduled_content,
 )
@@ -13,6 +14,7 @@ from services.communications_service.tasks.session_notifications import (
 
 __all__ = [
     "cancel_session_notifications",
+    "generate_content_images",
     "process_pending_notifications",
     "publish_scheduled_content",
     "schedule_session_notifications",

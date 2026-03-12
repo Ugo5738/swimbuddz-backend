@@ -9,6 +9,7 @@ from libs.common.service_client import emit_rewards_event, get_members_bulk
 from libs.db.session import get_async_db
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from services.academy_service.models import (
     Cohort,
@@ -70,51 +71,69 @@ async def send_enrollment_reminders():
                 members_map = {m["id"]: m for m in members_data}
 
                 for enrollment in enrollment_list:
-                    member = members_map.get(str(enrollment.member_id), {})
-                    if not member:
-                        continue
+                    try:
+                        member = members_map.get(str(enrollment.member_id), {})
+                        if not member:
+                            logger.warning(
+                                "No member data for enrollment %s (member_id=%s)",
+                                enrollment.id,
+                                enrollment.member_id,
+                            )
+                            continue
 
-                    # Check if already sent
-                    reminders_sent = enrollment.reminders_sent or []
-                    if reminder_key in reminders_sent:
-                        continue
+                        # Check if already sent
+                        reminders_sent = enrollment.reminders_sent or []
+                        if reminder_key in reminders_sent:
+                            continue
 
-                    # Send email via centralized email service
-                    email_client = get_email_client()
-                    success = await email_client.send_template(
-                        template_type="enrollment_reminder",
-                        to_email=member["email"],
-                        template_data={
-                            "member_name": member["first_name"],
-                            "program_name": (
-                                cohort.program.name
-                                if cohort.program
-                                else "Swimming Course"
-                            ),
-                            "cohort_name": cohort.name,
-                            "start_date": cohort.start_date.strftime("%B %d, %Y"),
-                            "start_time": cohort.start_date.strftime("%I:%M %p"),
-                            "location": cohort.location_name or "TBD",
-                            "days_until": days_until,
-                        },
-                    )
-
-                    if success:
-                        # Update DB
-                        new_reminders = reminders_sent + [reminder_key]
-                        enrollment.reminders_sent = new_reminders
-                        logger.info(
-                            f"Sent {days_until}-day reminder to {member['email']} for cohort {cohort.id}"
+                        # Send email via centralized email service
+                        email_client = get_email_client()
+                        success = await email_client.send_template(
+                            template_type="enrollment_reminder",
+                            to_email=member["email"],
+                            template_data={
+                                "member_name": member["first_name"],
+                                "program_name": (
+                                    cohort.program.name
+                                    if cohort.program
+                                    else "Swimming Course"
+                                ),
+                                "cohort_name": cohort.name,
+                                "start_date": cohort.start_date.strftime("%B %d, %Y"),
+                                "start_time": cohort.start_date.strftime("%I:%M %p"),
+                                "location": cohort.location_name or "TBD",
+                                "days_until": days_until,
+                            },
                         )
-                    else:
+
+                        if success:
+                            new_reminders = reminders_sent + [reminder_key]
+                            enrollment.reminders_sent = new_reminders
+                            flag_modified(enrollment, "reminders_sent")
+                            logger.info(
+                                "Sent %d-day reminder to %s for cohort %s",
+                                days_until,
+                                member["email"],
+                                cohort.id,
+                            )
+                        else:
+                            logger.error(
+                                "Failed to send %d-day reminder to %s for cohort %s",
+                                days_until,
+                                member["email"],
+                                cohort.id,
+                            )
+                    except Exception:
                         logger.error(
-                            f"Failed to send {days_until}-day reminder to {member['email']}"
+                            "Error processing reminder for enrollment %s",
+                            enrollment.id,
+                            exc_info=True,
                         )
 
             await db.commit()
 
-        except Exception as e:
-            logger.error(f"Error sending enrollment reminders: {e}")
+        except Exception:
+            logger.error("Error sending enrollment reminders", exc_info=True)
             await db.rollback()
         finally:
             await db.close()
