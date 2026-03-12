@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
 from services.payments_service.models import PaymentPurpose, PaymentStatus
 from services.payments_service.schemas.enums import (
     ClubBillingCycle,
@@ -36,6 +37,7 @@ class CreatePaymentIntentRequest(BaseModel):
         default=SessionAttendanceStatus.PRESENT
     )
     direct_amount: Optional[float] = None  # Direct amount for session fees
+    num_seats: int = Field(default=1, ge=1, le=20)  # Seats for ride share booking
 
     # Accept "metadata" for backwards-compat, store internally as payment_metadata.
     payment_metadata: Optional[dict] = Field(default=None, alias="metadata")

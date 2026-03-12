@@ -185,7 +185,7 @@ async def generate_sessions(
                 )
             )
             conflict_result = await db.execute(conflict_query)
-            if conflict_result.scalar_one_or_none():
+            if conflict_result.scalars().first():
                 conflicts.append(
                     {
                         "date": session_date.isoformat(),

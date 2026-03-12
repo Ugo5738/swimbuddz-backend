@@ -3,7 +3,6 @@ services:
   # DOMAIN MICROSERVICES
   # ==================================================================
   members-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-members-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/members_service/Dockerfile
@@ -20,7 +19,6 @@ services:
       - .:/app
 
   sessions-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-sessions-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/sessions_service/Dockerfile
@@ -37,7 +35,6 @@ services:
       - .:/app
 
   attendance-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-attendance-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/attendance_service/Dockerfile
@@ -54,7 +51,6 @@ services:
       - .:/app
 
   communications-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-communications-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/communications_service/Dockerfile
@@ -71,7 +67,6 @@ services:
       - .:/app
 
   payments-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-payments-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/payments_service/Dockerfile
@@ -88,7 +83,6 @@ services:
       - .:/app
 
   academy-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-academy-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/academy_service/Dockerfile
@@ -105,7 +99,6 @@ services:
       - .:/app
 
   media-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-media-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/media_service/Dockerfile
@@ -122,7 +115,6 @@ services:
       - .:/app
 
   events-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-events-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/events_service/Dockerfile
@@ -139,7 +131,6 @@ services:
       - .:/app
 
   transport-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-transport-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/transport_service/Dockerfile
@@ -156,7 +147,6 @@ services:
       - .:/app
 
   store-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-store-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/store_service/Dockerfile
@@ -173,7 +163,6 @@ services:
       - .:/app
 
   ai-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-ai-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/ai_service/Dockerfile
@@ -190,7 +179,6 @@ services:
       - .:/app
 
   volunteer-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-volunteer-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/volunteer_service/Dockerfile
@@ -207,7 +195,6 @@ services:
       - .:/app
 
   wallet-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-wallet-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/wallet_service/Dockerfile
@@ -224,7 +211,6 @@ services:
       - .:/app
 
   pools-service:
-    image: ${DOCKER_USERNAME}/swimbuddz-pools-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/pools_service/Dockerfile
@@ -244,7 +230,6 @@ services:
   # API GATEWAY
   # ==================================================================
   gateway:
-    image: ${DOCKER_USERNAME}/swimbuddz-gateway-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/gateway_service/Dockerfile
@@ -298,7 +283,6 @@ services:
   # BACKGROUND WORKERS
   # ==================================================================
   academy-worker:
-    image: ${DOCKER_USERNAME}/swimbuddz-academy-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/academy_service/Dockerfile
@@ -319,7 +303,6 @@ services:
       - .:/app
 
   communications-worker:
-    image: ${DOCKER_USERNAME}/swimbuddz-communications-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/communications_service/Dockerfile
@@ -340,7 +323,6 @@ services:
       - .:/app
 
   payments-worker:
-    image: ${DOCKER_USERNAME}/swimbuddz-payments-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/payments_service/Dockerfile
@@ -361,7 +343,6 @@ services:
       - .:/app
 
   media-worker:
-    image: ${DOCKER_USERNAME}/swimbuddz-media-service:${DEV_TAG:-latest}
     build:
       context: .
       dockerfile: services/media_service/Dockerfile
