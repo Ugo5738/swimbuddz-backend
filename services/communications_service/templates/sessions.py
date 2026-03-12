@@ -6,6 +6,7 @@ from libs.common.config import get_settings
 from libs.common.emails.core import send_email
 from services.communications_service.templates.base import (
     GRADIENT_CYAN,
+    GRADIENT_GREEN,
     checklist_box,
     detail_box,
     info_box,
