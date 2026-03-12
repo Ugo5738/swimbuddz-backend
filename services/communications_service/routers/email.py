@@ -431,6 +431,23 @@ async def send_templated_email(
             ride_duration=d.get("ride_duration"),
             currency=d.get("currency", "NGN"),
         ),
+        "ride_share_confirmation": lambda d: (
+            sessions.send_ride_share_confirmation_email(
+                to_email=request.to_email,
+                member_name=d.get("member_name", ""),
+                session_title=d.get("session_title", ""),
+                session_date=d.get("session_date", ""),
+                session_time=d.get("session_time", ""),
+                session_location=d.get("session_location", ""),
+                amount_paid=d.get("amount_paid", 0),
+                ride_share_area=d.get("ride_share_area"),
+                pickup_location=d.get("pickup_location"),
+                pickup_description=d.get("pickup_description"),
+                departure_time=d.get("departure_time"),
+                num_seats=d.get("num_seats", 1),
+                currency=d.get("currency", "NGN"),
+            )
+        ),
         # --- Store templates ---
         "store_order_confirmation": lambda d: store.send_store_order_confirmation_email(
             to_email=request.to_email,

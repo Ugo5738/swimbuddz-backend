@@ -169,3 +169,103 @@ See you in the water! 🏊‍♂️
     )
 
     return await send_email(to_email, subject, body, html_body)
+
+
+async def send_ride_share_confirmation_email(
+    to_email: str,
+    member_name: str,
+    session_title: str,
+    session_date: str,
+    session_time: str,
+    session_location: str,
+    amount_paid: float = 0,
+    ride_share_area: str | None = None,
+    pickup_location: str | None = None,
+    pickup_description: str | None = None,
+    departure_time: str | None = None,
+    num_seats: int = 1,
+    currency: str = "NGN",
+) -> bool:
+    """
+    Send ride share confirmation email after a standalone ride share purchase.
+    Different from session_confirmation — focuses on ride details, not session booking.
+    """
+    amount_display = (
+        f"₦{amount_paid:,.0f}"
+        if currency == "NGN"
+        else f"{currency} {amount_paid:,.2f}"
+    )
+
+    seats_text = f" ({num_seats} seats)" if num_seats > 1 else ""
+
+    subject = f"Ride Share Confirmed: {session_title} on {session_date}"
+
+    body = f"""Hi {member_name},
+
+Your ride share has been confirmed! 🚗
+
+Ride Details:
+- Session: {session_title}
+- Date: {session_date}
+- Time: {session_time}
+- Pool: {session_location}
+- Area: {ride_share_area or "—"}
+- Pickup: {pickup_location or "—"}
+{f"- Pickup Info: {pickup_description}" if pickup_description else ""}
+- Departure: {departure_time or "TBD"}
+- Seats: {num_seats}
+- Amount Paid: {amount_display}
+
+Please be at the pickup location at least 5 minutes before departure.
+
+See you poolside! 🏊‍♂️
+
+— The SwimBuddz Team
+"""
+
+    ride_items = {
+        "📍 Area": ride_share_area or "—",
+        "🚏 Pickup": pickup_location or "—",
+        "🕐 Departure": departure_time or "TBD",
+        "💺 Seats": str(num_seats),
+        "💳 Amount Paid": amount_display,
+    }
+
+    session_items = {
+        "🏊 Session": session_title,
+        "📅 Date": session_date,
+        "⏰ Time": session_time,
+        "📍 Pool": session_location,
+    }
+
+    body_html = (
+        f"<p>Hi {member_name},</p>"
+        f"<p>Your ride share{seats_text} has been confirmed! Here are your details:</p>"
+        + '<h3 style="color: #166534;">🚗 Ride Details</h3>'
+        + detail_box(ride_items, accent_color="#22c55e")
+    )
+    if pickup_description:
+        body_html += (
+            f'<p style="font-size: 14px; color: #475569; margin-top: -12px;">'
+            f"{pickup_description}</p>"
+        )
+    body_html += (
+        info_box(
+            "⏰ Please arrive at the pickup location at least 5 minutes before departure.",
+            bg_color="#dcfce7",
+            border_color="#22c55e",
+        )
+        + '<h3 style="color: #0891b2;">📋 Session Info</h3>'
+        + detail_box(session_items)
+        + sign_off("See you poolside! 🏊\u200d♂️")
+    )
+
+    html_body = wrap_html(
+        title="🚗 Ride Share Confirmed!",
+        subtitle=f"{ride_share_area or 'Ride'} → {session_location}",
+        body_html=body_html,
+        header_gradient=GRADIENT_GREEN,
+        preheader=f"Your ride to {session_title} on {session_date} is confirmed",
+    )
+
+    return await send_email(to_email, subject, body, html_body)
