@@ -164,6 +164,7 @@ class RideBooking(Base):
         UUID(as_uuid=True), ForeignKey("pickup_locations.id"), nullable=False
     )
     assigned_ride_number: Mapped[int] = mapped_column(Integer, default=1)
+    num_seats: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now

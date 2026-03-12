@@ -29,6 +29,7 @@ class PaymentPurpose(str, enum.Enum):
     SESSION_FEE = "session_fee"
     STORE_ORDER = "store_order"
     WALLET_TOPUP = "wallet_topup"
+    RIDE_SHARE = "ride_share"
 
 
 class DiscountType(str, enum.Enum):
