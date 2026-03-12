@@ -420,7 +420,7 @@ async def get_my_attendance_history(
     db: AsyncSession = Depends(get_async_db),
 ):
     """
-    Get attendance history for the current member.
+    Get attendance history for the current member, enriched with session details.
     """
     query = (
         select(AttendanceRecord)
@@ -428,7 +428,41 @@ async def get_my_attendance_history(
         .order_by(AttendanceRecord.created_at.desc())
     )
     result = await db.execute(query)
-    return result.scalars().all()
+    records = result.scalars().all()
+
+    if not records:
+        return []
+
+    # Collect unique session IDs and fetch session details in parallel
+    unique_session_ids = list({str(r.session_id) for r in records})
+    session_map: dict[str, dict] = {}
+    for sid in unique_session_ids:
+        try:
+            session_data = await get_session_by_id(sid, calling_service="attendance")
+            if session_data:
+                session_map[sid] = session_data
+        except Exception:
+            pass  # Best-effort — if session lookup fails, skip enrichment
+
+    # Build enriched response objects
+    enriched: list[AttendanceResponse] = []
+    for record in records:
+        resp = AttendanceResponse.model_validate(record)
+        session_data = session_map.get(str(record.session_id))
+        if session_data:
+            from services.attendance_service.schemas.main import SessionSummary
+
+            resp.session = SessionSummary(
+                id=session_data.get("id", str(record.session_id)),
+                title=session_data.get("title", "Session"),
+                session_type=session_data.get("session_type", ""),
+                start_time=session_data.get("starts_at", ""),
+                location_name=session_data.get("location_name")
+                or session_data.get("location"),
+            )
+        enriched.append(resp)
+
+    return enriched
 
 
 @router.get("/sessions/{session_id}/pool-list")

@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
+
 from services.attendance_service.models.enums import AttendanceRole, AttendanceStatus
 from services.attendance_service.schemas.enums import RideShareOption
 
@@ -25,6 +26,16 @@ class PublicAttendanceCreate(AttendanceBase):
     member_id: uuid.UUID
 
 
+class SessionSummary(BaseModel):
+    """Lightweight session info embedded in attendance responses."""
+
+    id: str
+    title: str
+    session_type: str
+    start_time: str
+    location_name: Optional[str] = None
+
+
 class AttendanceResponse(AttendanceBase):
     id: uuid.UUID
     session_id: uuid.UUID
@@ -36,6 +47,9 @@ class AttendanceResponse(AttendanceBase):
     # Optional fields populated by joins
     member_name: Optional[str] = None
     member_email: Optional[str] = None
+
+    # Optional session details (populated by enrichment, not from_attributes)
+    session: Optional[SessionSummary] = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -769,13 +769,15 @@ async def _apply_entitlement(payment: Payment) -> None:
 
             # If ride share was selected, create the booking via transport service
             if ride_config_id and pickup_location_id:
+                num_seats = (payment.payment_metadata or {}).get("num_seats", 1)
                 transport_resp = await client.post(
                     f"{settings.TRANSPORT_SERVICE_URL}/transport/sessions/{session_id}/bookings",
                     json={
                         "session_ride_config_id": ride_config_id,
                         "pickup_location_id": pickup_location_id,
+                        "num_seats": num_seats,
                     },
-                    params={"member_id": member_id},
+                    params={"member_id": str(member_id)},
                     headers=headers,
                 )
                 # Log but don't fail if ride booking fails
@@ -884,6 +886,140 @@ async def _apply_entitlement(payment: Payment) -> None:
             except Exception as e:
                 # Log but don't fail if email fails
                 logger.error(f"Failed to send session confirmation email: {e}")
+
+        # Clear pending payment reference on success
+        await _update_pending_payment_reference(payment.member_auth_id, None)
+        return
+
+    # Handle standalone Ride Share payment — create ride booking only (attendance already exists)
+    elif payment.purpose == PaymentPurpose.RIDE_SHARE:
+        session_id = (payment.payment_metadata or {}).get("session_id")
+        ride_config_id = (payment.payment_metadata or {}).get("ride_config_id")
+        pickup_location_id = (payment.payment_metadata or {}).get("pickup_location_id")
+        num_seats = (payment.payment_metadata or {}).get("num_seats", 1)
+
+        if not session_id or not ride_config_id or not pickup_location_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing ride share metadata (session_id, ride_config_id, pickup_location_id)",
+            )
+
+        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Look up member_id from auth_id via members service
+            member_resp = await client.get(
+                f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{payment.member_auth_id}",
+                headers=headers,
+            )
+            if member_resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to look up member ({member_resp.status_code}): {member_resp.text}",
+                )
+            member_data = member_resp.json()
+            member_id = member_data.get("id")
+
+            # Create ride booking via transport service — MUST succeed (it's the whole point)
+            transport_resp = await client.post(
+                f"{settings.TRANSPORT_SERVICE_URL}/transport/sessions/{session_id}/bookings",
+                json={
+                    "session_ride_config_id": ride_config_id,
+                    "pickup_location_id": pickup_location_id,
+                    "num_seats": num_seats,
+                },
+                params={"member_id": str(member_id)},
+                headers=headers,
+            )
+            if transport_resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to create ride booking ({transport_resp.status_code}): {transport_resp.text}",
+                )
+
+            # Send ride share confirmation email (best-effort)
+            try:
+                session_resp = await client.get(
+                    f"{settings.SESSIONS_SERVICE_URL}/sessions/{session_id}",
+                    headers=headers,
+                )
+                session_data = (
+                    session_resp.json() if session_resp.status_code < 400 else {}
+                )
+
+                member_email = member_data.get("email", "")
+                member_name = f"{member_data.get('first_name', '')} {member_data.get('last_name', '')}".strip()
+
+                starts_at = session_data.get("starts_at", "")
+                session_date = ""
+                session_time = ""
+                if starts_at:
+                    try:
+                        dt = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
+                        session_date = dt.strftime("%A, %B %d, %Y")
+                        session_time = f"{dt.strftime('%I:%M %p')}"
+                        ends_at = session_data.get("ends_at", "")
+                        if ends_at:
+                            end_dt = datetime.fromisoformat(
+                                ends_at.replace("Z", "+00:00")
+                            )
+                            session_time += f" - {end_dt.strftime('%I:%M %p')}"
+                    except Exception:
+                        session_date = (
+                            starts_at[:10] if len(starts_at) >= 10 else starts_at
+                        )
+
+                # Find ride share details from session data
+                ride_share_area = None
+                pickup_name = None
+                pickup_description = None
+                departure_time = None
+                ride_areas = session_data.get("rideShareAreas", []) or session_data.get(
+                    "ride_share_areas", []
+                )
+                for area in ride_areas:
+                    if area.get("id") == ride_config_id:
+                        ride_share_area = area.get("ride_area_name", "") or area.get(
+                            "area_name", ""
+                        )
+                        for loc in area.get("pickup_locations", []):
+                            if loc.get("id") == pickup_location_id:
+                                pickup_name = loc.get("name", "")
+                                pickup_description = loc.get(
+                                    "description", ""
+                                ) or loc.get("address", "")
+                                departure_time = loc.get(
+                                    "departure_time_calculated", ""
+                                ) or loc.get("departure_time", "")
+                                break
+                        break
+
+                if member_email:
+                    email_client = get_email_client()
+                    await email_client.send_template(
+                        template_type="session_confirmation",
+                        to_email=member_email,
+                        template_data={
+                            "member_name": member_name or "Member",
+                            "member_id": member_id,
+                            "session_title": session_data.get(
+                                "title", "Swimming Session"
+                            ),
+                            "session_date": session_date,
+                            "session_time": session_time,
+                            "session_location": session_data.get("location_name", "")
+                            or session_data.get("location", ""),
+                            "amount_paid": float(payment.amount),
+                            "ride_share_area": ride_share_area,
+                            "pickup_location": pickup_name,
+                            "pickup_description": pickup_description,
+                            "departure_time": departure_time,
+                            "num_seats": num_seats,
+                            "currency": payment.currency,
+                        },
+                    )
+                    logger.info(f"Ride share confirmation email sent to {member_email}")
+            except Exception as e:
+                logger.error(f"Failed to send ride share confirmation email: {e}")
 
         # Clear pending payment reference on success
         await _update_pending_payment_reference(payment.member_auth_id, None)
@@ -1056,11 +1192,16 @@ async def _mark_paid_and_apply(
     )
     payment = result.scalar_one()
 
-    # IDEMPOTENCY CHECK: If payment is already fully processed, skip reprocessing
-    # This prevents double-crediting when webhook and manual verify race
-    if payment.status == PaymentStatus.PAID and payment.entitlement_applied_at:
+    # IDEMPOTENCY CHECK: If payment is already marked PAID, another caller
+    # (webhook, verify, or reconciliation worker) owns entitlement processing.
+    # We bail out unconditionally — the retry_failed_entitlement_fulfillment
+    # worker calls _apply_entitlement_with_tracking directly and handles
+    # retries for payments that were marked PAID but failed entitlement.
+    if payment.status == PaymentStatus.PAID:
         logger.info(
-            f"Payment {payment.reference} already processed (status=PAID, entitlement applied at {payment.entitlement_applied_at}), skipping",
+            f"Payment {payment.reference} already PAID "
+            f"(entitlement_applied_at={payment.entitlement_applied_at}), "
+            f"skipping duplicate _mark_paid_and_apply call",
             extra={
                 "extra_fields": {
                     "payment_id": str(payment.id),
@@ -1358,6 +1499,39 @@ async def create_payment_intent(
                 str(payload.pickup_location_id) if payload.pickup_location_id else None
             ),
             "attendance_status": attendance_status.value,
+            "num_seats": payload.num_seats or 1,
+        }
+
+    # Standalone ride share payment (after session already booked)
+    elif payload.purpose == PaymentPurpose.RIDE_SHARE:
+        if not payload.session_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="session_id is required for RIDE_SHARE payments",
+            )
+        if not payload.ride_config_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ride_config_id is required for RIDE_SHARE payments",
+            )
+        if not payload.pickup_location_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="pickup_location_id is required for RIDE_SHARE payments",
+            )
+        if not payload.direct_amount or payload.direct_amount <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="direct_amount is required and must be greater than zero for RIDE_SHARE payments",
+            )
+        amount = float(payload.direct_amount)
+        num_seats = payload.num_seats or 1
+        payment_metadata = {
+            **(payload.payment_metadata or {}),
+            "session_id": str(payload.session_id),
+            "ride_config_id": str(payload.ride_config_id),
+            "pickup_location_id": str(payload.pickup_location_id),
+            "num_seats": num_seats,
         }
 
     else:
