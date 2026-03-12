@@ -441,6 +441,7 @@ class MemberMembershipInput(BaseModel):
     requested_tiers: Optional[list[str]] = None
     # Billing fields are typically set by payments_service
     club_notes: Optional[str] = None
+    academy_skill_assessment: Optional[dict] = None
     academy_goals: Optional[str] = None
     academy_preferred_coach_gender: Optional[str] = None
     academy_lesson_preference: Optional[str] = None
