@@ -38,6 +38,14 @@ async def task_publish_scheduled_content(ctx: dict):
     await publish_scheduled_content()
 
 
+async def task_generate_content_images(ctx: dict):
+    """Generate featured images for content posts using DALL-E."""
+    from services.communications_service.tasks import generate_content_images
+
+    logger.info("Running: generate_content_images")
+    await generate_content_images()
+
+
 # ── Worker configuration ──
 
 
@@ -52,6 +60,7 @@ class WorkerSettings:
         task_process_pending_notifications,
         task_send_weekly_session_digest,
         task_publish_scheduled_content,
+        task_generate_content_images,
     ]
 
     cron_jobs = [
@@ -75,6 +84,15 @@ class WorkerSettings:
         cron(
             task_publish_scheduled_content,
             minute=0,  # Every hour at :00
+            run_at_startup=False,
+        ),
+        # Generate featured images for content posts (Tuesday 5 AM UTC / 6 AM WAT)
+        # Runs day before publish day so images are ready when posts go live Wednesday
+        cron(
+            task_generate_content_images,
+            weekday=1,  # Tuesday
+            hour=5,
+            minute=0,
             run_at_startup=False,
         ),
     ]

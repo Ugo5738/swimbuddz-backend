@@ -13,6 +13,7 @@ from services.academy_service.routers._shared import (
     MemberMilestoneClaimRequest,
     Milestone,
     ProgressStatus,
+    RequiredEvidence,
     StudentProgress,
     StudentProgressResponse,
     StudentProgressUpdate,
@@ -231,6 +232,17 @@ async def claim_milestone(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Milestone not found",
+        )
+
+    # Validate required evidence
+    if (
+        milestone.required_evidence
+        in (RequiredEvidence.VIDEO, RequiredEvidence.TIME_TRIAL)
+        and not claim_in.evidence_media_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"This milestone requires {milestone.required_evidence.value} evidence. Please upload your evidence before submitting.",
         )
 
     # Get or create progress record
