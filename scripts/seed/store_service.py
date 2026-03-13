@@ -63,6 +63,70 @@ SUPPLIER_DATA = {
     "commission_percent": "0",
 }
 
+# ---------------------------------------------------------------------------
+# ALIBABA SUPPLIER LINKS — Sourcing URLs for pre-order products
+#
+# Maps product slugs to their Alibaba product URL.
+# These are internal sourcing references, NOT customer-facing data.
+# ---------------------------------------------------------------------------
+SUPPLIER_LINKS = {
+    "swim-resistance-parachute": "https://www.alibaba.com/product-detail/Swimming-Training-Belts-Resistance-Parachute-Aquatic_1601712335024.html",
+    "finis-3m-swim-parachute": "https://www.alibaba.com/product-detail/3M-FINIS-Replacement-Parachute-for-Pool_1601045001371.html",
+    "adjustable-swimming-parachute": "https://www.alibaba.com/product-detail/Swimming-Parachute-Trainer-for-Children-and_1601227474500.html",
+    "eva-kickboard-standard": "https://www.alibaba.com/product-detail/Custom-Accept-Durable-EVA-Swimming-Kickboard_1601260709954.html",
+    "eva-kickboard-pro": "https://www.alibaba.com/product-detail/Customized-Logo-Kids-Adults-Swimming-Swim_1600991086813.html",
+    "childrens-eva-kickboard": "https://www.alibaba.com/product-detail/Children-s-Boys-Water-Floating-Board_1601591012818.html",
+    "eva-training-pull-buoy": "https://www.alibaba.com/product-detail/Customized-Design-Swimming-Legs-Floating-Training_1601047254870.html",
+    "silicone-training-fins": "https://www.alibaba.com/product-detail/Manufacturer-Price-Open-Heel-Design-Adult_1601458003885.html",
+    "rubber-dive-swim-fins": "https://www.alibaba.com/product-detail/OEM-Swimming-Fins-Dive-Free-Diving_1600132665137.html",
+    "short-blade-bodyboard-fins": "https://www.alibaba.com/product-detail/Wave-Sport-Fins-Water-Sports-Equipment_60676166503.html",
+    "tpr-training-flippers": "https://www.alibaba.com/product-detail/Custom-Logo-Adult-Diving-Training-Flippers_1601587055182.html",
+    "adjustable-mermaid-fins": "https://www.alibaba.com/product-detail/Wholesale-Mermaid-Fins-for-Adults-Kids_1601444089992.html",
+    "silicone-hand-training-paddles": "https://www.alibaba.com/product-detail/Swimming-Hand-Training-Paddles-Silicone-PC_1601563740123.html",
+    "classic-frontal-centre-snorkel": "https://www.alibaba.com/product-detail/Classic-Frontal-Snorkel-Waspo-Design_1601319993845.html",
+    "semi-dry-frontal-training-snorkel": "https://www.alibaba.com/product-detail/Silicone-Frontal-Snorkel-Semi-Dry_1601257238004.html",
+    "epe-foam-pool-noodle": "https://www.alibaba.com/product-detail/EPE-Pool-Noodle-Swimming_1601565261987.html",
+    "anti-fog-uv-swimming-goggles": "https://www.alibaba.com/product-detail/Hot-Selling-Custom-OEM-Factory-Wholesale_1601221349520.html",
+    "arena-racing-goggles": "https://www.alibaba.com/product-detail/Best-Quality-Swimming-Goggles-Arena-Racing_1601378313163.html",
+    "silver-mirrored-racing-goggles": "https://www.alibaba.com/product-detail/UV-Swimming-Goggles-Racing-Silver-Plated_1601254897770.html",
+    "marble-silicone-swim-cap": "https://www.alibaba.com/product-detail/OEM-Custom-Durable-Silicone-Swim-Cap_1601520869417.html",
+    "eva-hard-goggle-case": "https://www.alibaba.com/product-detail/Custom-Sunglasses-Box-Glasses-Bag-Portable_1600401895484.html",
+    "silicone-nose-clip": "https://www.alibaba.com/product-detail/Professional-Silicone-Nose-Clip_1601713089994.html",
+    "chlorine-resistant-jammer": "https://www.alibaba.com/product-detail/Wholesale-price-Chlorine-Resistant-Endurance-Swim_1600246434962.html",
+    "competition-racing-jammer": "https://www.alibaba.com/product-detail/Swimwear-men-s-swimming-trunks-beachwear_60810186461.html",
+    "quick-dry-performance-jammer": "https://www.alibaba.com/product-detail/Quick-Dry-Man-Swim-Swimsuit-Jammer_62169597652.html",
+    "yingfa-mid-leg-trunks": "https://www.alibaba.com/product-detail/Yingfa-9205-Men-s-Mid-leg_1600570203467.html",
+    "sharkskin-performance-jammers": "https://www.alibaba.com/product-detail/Big-Size-Sharkskin-Outdoor-Diving-Rashguard_60789327808.html",
+    "mens-custom-swim-briefs": "https://www.alibaba.com/product-detail/High-Quality-Customized-Men-s-Swim_11000013400069.html",
+    "mens-full-body-swimsuit": "https://www.alibaba.com/product-detail/Mens-Swim-Jammer-One-Piece-Short_10000039990519.html",
+    "fina-shark-skin-racing-jammer": "https://www.alibaba.com/product-detail/Fina-Approved-Mens-Professional-Shark-Skin_1600868345143.html",
+    "womens-short-sleeve-one-piece": "https://www.alibaba.com/product-detail/OEM-ODEM-Women-s-One-Piece_1601374965726.html",
+    "womens-two-piece-sports-swimsuit": "https://www.alibaba.com/product-detail/Factory-Direct-Sale-Women-s-Short_1601363313836.html",
+    "womens-long-sleeve-eco-swimsuit": "https://www.alibaba.com/product-detail/Eco-Friendly-Sportswear-Swimsuit-Bathing-Suit_1601027966858.html",
+    "womens-plus-size-fitness-swimwear": "https://www.alibaba.com/product-detail/2025-High-Quality-OEM-Design-Women_11000027852820.html",
+    "womens-printed-sports-swimsuit": "https://www.alibaba.com/product-detail/Women-s-Sports-Swimsuits-Animal-Letter_11000029158213.html",
+    "yingfa-womens-competitive-swimsuit": "https://www.alibaba.com/product-detail/YINGFA-Professional-Women-s-Competitive-Swim_1601623773892.html",
+    "full-coverage-two-piece-swim-set": "https://www.alibaba.com/product-detail/High-Quality-Men-Women-Swim-Jammer_10000035859334.html",
+    "fina-womens-racing-swimsuit": "https://www.alibaba.com/product-detail/Fina-Approved-One-Piece-White-Racing_1601623769867.html",
+    "oxford-fabric-life-jacket": "https://www.alibaba.com/product-detail/Professional-Oxford-Fabric-Thickened-Adult-Children_1601489484673.html",
+    "neoprene-performance-life-vest": "https://www.alibaba.com/product-detail/JIURAN-Neoprene-Adult-Life-Jacket-Vest_1601614678797.html",
+    "mesh-swim-drawstring-bag": "https://www.alibaba.com/product-detail/In-Stock-Outdoor-Sports-Fitness-Waterproof_1601428960652.html",
+    "waterproof-pu-gym-duffle": "https://www.alibaba.com/product-detail/Waterproof-Gym-Duffle-Bag_1601579526270.html",
+    "waterproof-canvas-sports-backpack": "https://www.alibaba.com/product-detail/Canvas-Sports-Backpack_1601496788503.html",
+    "multi-compartment-gym-duffle": "https://www.alibaba.com/product-detail/Gym-Duffle-Multiple-Compartments_1601570187639.html",
+    "pu-yoga-swim-duffel-tote": "https://www.alibaba.com/product-detail/Yoga-Duffel-Tote-Bag_1601411337411.html",
+    "outdoor-sport-duffle-backpack": "https://www.alibaba.com/product-detail/Outdoor-Sport-Duffle_1601396976569.html",
+    "pu-leather-travel-duffel": "https://www.alibaba.com/product-detail/PU-Leather-Travel-Duffel_1601572294202.html",
+    "multifunctional-travel-backpack": "https://www.alibaba.com/product-detail/Multifunctional-Travel-Backpack_1601429117824.html",
+    "uv400-sports-sunglasses": "https://www.alibaba.com/product-detail/Outdoor-Cycling-High-Quality-Polarized-Glasses_1601348182851.html",
+    "retro-polarised-sunglasses": "https://www.alibaba.com/product-detail/Partagas-Retro-Designer-Custom-Logo-Round_1601585110117.html",
+    "goggle-anti-fog-solution": "https://www.alibaba.com/product-detail/Nano-Goggles-Agent-Diving-Mask-Anti_1601666522292.html",
+    "chlorine-removal-shampoo-240ml": "https://www.alibaba.com/product-detail/2-in-1-Chlorine-Removal-Shampoo_1601634590098.html",
+    "post-swim-cleansing-gel-251ml": "https://www.alibaba.com/product-detail/MELAO-Post-Swim-Cleansing-Gel_1601016411119.html",
+    "chlorine-removal-body-wash": "https://www.alibaba.com/product-detail/KORMESIC-Chlorine-Body-Wash_1600778907963.html",
+}
+
+
 CATEGORIES_DATA = [
     {
         "key": "swimwear",
@@ -157,848 +221,1100 @@ CATEGORIES_DATA = [
 ]
 
 # ---------------------------------------------------------------------------
-# PRODUCTS — 46 products across 9 categories, all PREORDER
+# PRODUCTS — 54 real Alibaba-sourced products across 7 categories, all PREORDER
 # ---------------------------------------------------------------------------
 PRODUCTS_DATA = [
-    # ===== SWIMWEAR =====
-    {
-        "name": "Men's Training Jammer",
-        "slug": "mens-training-jammer",
-        "category_key": "swimwear",
-        "description": (
-            "Chlorine-resistant training jammer built for regular pool sessions. "
-            "Offers a comfortable, streamlined fit with durable fabric that "
-            "holds its shape through months of training."
-        ),
-        "short_description": "Durable chlorine-resistant training jammer",
-        "base_price_ngn": "17000",
-        "is_featured": False,
-        "has_variants": True,
-        "variant_options": {"Size": ["S", "M", "L", "XL", "XXL"]},
-        "requires_size_chart_ack": True,
-        "sku_prefix": "SB-SWR-001",
-        "preorder_lead_days": 14,
-        "image_seed": "jammer",
-    },
-    {
-        "name": "Women's One-Piece Swimsuit",
-        "slug": "womens-one-piece-swimsuit",
-        "category_key": "swimwear",
-        "description": (
-            "Stylish and comfortable one-piece swimsuit for training and "
-            "fitness swimming. Quick-dry fabric with built-in UV protection "
-            "and a flattering athletic cut."
-        ),
-        "short_description": "Comfortable training swimsuit with UV protection",
-        "base_price_ngn": "20000",
-        "is_featured": False,
-        "has_variants": True,
-        "variant_options": {"Size": ["XS", "S", "M", "L", "XL"]},
-        "requires_size_chart_ack": True,
-        "sku_prefix": "SB-SWR-002",
-        "preorder_lead_days": 14,
-        "image_seed": "swimsuit",
-    },
-    {
-        "name": "Men's Swim Briefs",
-        "slug": "mens-swim-briefs",
-        "category_key": "swimwear",
-        "description": (
-            "Classic competitive swim briefs for training and racing. "
-            "Lightweight, minimal drag design with a secure internal drawcord."
-        ),
-        "short_description": "Classic competitive swim briefs",
-        "base_price_ngn": "15000",
-        "is_featured": False,
-        "has_variants": True,
-        "variant_options": {"Size": ["S", "M", "L", "XL"]},
-        "requires_size_chart_ack": True,
-        "sku_prefix": "SB-SWR-003",
-        "preorder_lead_days": 14,
-        "image_seed": "briefs",
-    },
-    {
-        "name": "Women's Two-Piece Swimsuit",
-        "slug": "womens-two-piece-swimsuit",
-        "category_key": "swimwear",
-        "description": (
-            "Sporty two-piece swimsuit designed for training and leisure. "
-            "Secure fit with adjustable straps and chlorine-resistant fabric."
-        ),
-        "short_description": "Sporty two-piece for training and leisure",
-        "base_price_ngn": "18000",
-        "is_featured": False,
-        "has_variants": True,
-        "variant_options": {"Size": ["XS", "S", "M", "L", "XL"]},
-        "requires_size_chart_ack": True,
-        "sku_prefix": "SB-SWR-004",
-        "preorder_lead_days": 14,
-        "image_seed": "twopieceswim",
-    },
-    {
-        "name": "Men's Board Shorts",
-        "slug": "mens-board-shorts",
-        "category_key": "swimwear",
-        "description": (
-            "Versatile quick-dry board shorts for casual swimming and "
-            "poolside wear. Comfortable elastic waistband with mesh lining."
-        ),
-        "short_description": "Quick-dry swim shorts for casual swimming",
-        "base_price_ngn": "15000",
-        "is_featured": False,
-        "has_variants": True,
-        "variant_options": {"Size": ["S", "M", "L", "XL", "XXL"]},
-        "requires_size_chart_ack": True,
-        "sku_prefix": "SB-SWR-005",
-        "preorder_lead_days": 14,
-        "image_seed": "boardshorts",
-    },
-    {
-        "name": "Long Sleeve Rash Guard",
-        "slug": "long-sleeve-rash-guard",
-        "category_key": "swimwear",
-        "description": (
-            "UPF 50+ long sleeve rash guard for sun protection during outdoor "
-            "swimming. Flatlock seams prevent chafing. Quick-dry stretch fabric."
-        ),
-        "short_description": "UV-protective long sleeve swim shirt",
-        "base_price_ngn": "15000",
-        "is_featured": False,
-        "has_variants": True,
-        "variant_options": {"Size": ["S", "M", "L", "XL", "XXL"]},
-        "requires_size_chart_ack": True,
-        "sku_prefix": "SB-SWR-006",
-        "preorder_lead_days": 14,
-        "image_seed": "rashguard",
-    },
-    {
-        "name": "Kids' One-Piece Swimsuit",
-        "slug": "kids-one-piece-swimsuit",
-        "category_key": "swimwear",
-        "description": (
-            "Colourful and durable one-piece swimsuit for kids. "
-            "Chlorine-resistant fabric with a comfortable fit for "
-            "swim lessons and pool play."
-        ),
-        "short_description": "Durable kids' swimsuit for lessons and play",
-        "base_price_ngn": "10000",
-        "is_featured": False,
-        "has_variants": True,
-        "variant_options": {"Size": ["4", "6", "8", "10", "12"]},
-        "requires_size_chart_ack": True,
-        "sku_prefix": "SB-SWR-007",
-        "preorder_lead_days": 14,
-        "image_seed": "kidswimsuit",
-    },
-    # ===== SWIM GEAR =====
-    {
-        "name": "Speedo Vanquisher 2.0",
-        "slug": "speedo-vanquisher-2",
-        "category_key": "swim_gear",
-        "description": (
-            "Crystal-clear vision with a comfortable, leak-free fit. "
-            "Features anti-fog coating and UV protection, perfect for "
-            "lap swimming and training."
-        ),
-        "short_description": "Premium training goggles with anti-fog coating",
-        "base_price_ngn": "18000",
-        "compare_at_price_ngn": "20000",
-        "is_featured": True,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-GER-001",
-        "preorder_lead_days": 14,
-        "image_seed": "goggles1",
-    },
-    {
-        "name": "Swimming Goggles Anti-Fog UV Protection",
-        "slug": "swimming-goggles-anti-fog-uv-protection",
-        "category_key": "swim_gear",
-        "description": (
-            "Comfortable swimming goggles with anti-fog coated lenses and "
-            "UV protection. Wide-vision design with soft silicone gaskets "
-            "for a leak-free seal. Adjustable split strap fits all head sizes."
-        ),
-        "short_description": "Anti-fog UV protection swim goggles",
-        "base_price_ngn": "10000",
-        "compare_at_price_ngn": "12000",
-        "is_featured": True,
-        "has_variants": True,
-        "variant_options": {"Colour": ["Black", "Blue", "Clear", "Pink"]},
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-GER-002",
-        "preorder_lead_days": 14,
-        "image_seed": "goggles2",
-    },
-    {
-        "name": "Arena Cobra Ultra Swipe",
-        "slug": "arena-cobra-ultra-swipe",
-        "category_key": "swim_gear",
-        "description": (
-            "Competition racing goggles with innovative anti-fog technology. "
-            "Swipe the inner lens to restore anti-fog properties. Low-profile "
-            "hydrodynamic design for minimal drag."
-        ),
-        "short_description": "Competition racing goggles",
-        "base_price_ngn": "35000",
-        "is_featured": True,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-GER-003",
-        "preorder_lead_days": 21,
-        "image_seed": "goggles3",
-    },
-    {
-        "name": "SwimBuddz Silicone Cap",
-        "slug": "swimbuddz-silicone-cap",
-        "category_key": "swim_gear",
-        "description": (
-            "Premium silicone swim cap with the SwimBuddz logo. Durable, "
-            "comfortable, and designed to reduce drag. Fits all head sizes."
-        ),
-        "short_description": "Official SwimBuddz branded swim cap",
-        "base_price_ngn": "5000",
-        "is_featured": True,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-GER-004",
-        "preorder_lead_days": 14,
-        "image_seed": "cap1",
-    },
-    {
-        "name": "Latex Swim Cap",
-        "slug": "latex-swim-cap",
-        "category_key": "swim_gear",
-        "description": (
-            "Lightweight latex swim cap for everyday pool use. Thin, "
-            "stretchy, and affordable. Available in multiple colours."
-        ),
-        "short_description": "Lightweight latex pool cap",
-        "base_price_ngn": "4000",
-        "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-GER-005",
-        "preorder_lead_days": 14,
-        "image_seed": "latexcap",
-    },
-    {
-        "name": "Nose Clip & Ear Plug Set",
-        "slug": "nose-clip-ear-plug-set",
-        "category_key": "swim_gear",
-        "description": (
-            "Comfortable nose clip and soft silicone ear plugs in a "
-            "convenient carry case. Keeps water out during training "
-            "and recreational swimming."
-        ),
-        "short_description": "Essential comfort accessories set",
-        "base_price_ngn": "4000",
-        "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-GER-006",
-        "preorder_lead_days": 14,
-        "image_seed": "noseclip",
-    },
-    {
-        "name": "Junior Swimming Goggles",
-        "slug": "junior-swimming-goggles",
-        "category_key": "swim_gear",
-        "description": (
-            "Colourful, leak-free goggles sized for young swimmers aged "
-            "6-12. Anti-fog lenses with easy-adjust split strap for a "
-            "secure fit."
-        ),
-        "short_description": "Leak-free goggles for young swimmers",
-        "base_price_ngn": "8000",
-        "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-GER-007",
-        "preorder_lead_days": 14,
-        "image_seed": "jrgoggles",
-    },
     # ===== TRAINING EQUIPMENT =====
     {
-        "name": "Premium Kickboard",
-        "slug": "premium-kickboard",
+        "name": "Swim Training Resistance Parachute",
+        "slug": "swim-resistance-parachute",
         "category_key": "training",
         "description": (
-            "High-density EVA foam kickboard for focused leg training. "
-            "Ergonomic shape with comfortable grip edges. Excellent "
-            "buoyancy for swimmers of all levels."
+            "Neoprene and Oxford fabric resistance parachute for swim training. "
+            "Attaches to the waist to create drag, building power and endurance "
+            "during pool sessions. Ideal for sprint and interval training."
         ),
-        "short_description": "High-density EVA foam kickboard",
-        "base_price_ngn": "8000",
+        "short_description": "Resistance parachute for power and endurance training",
+        "base_price_ngn": "7500",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "3899",
         "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
+        "has_variants": True,
+        "variant_options": {"Size": ["Small (20cm)", "Large (30cm)"]},
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-TRN-001",
-        "preorder_lead_days": 14,
-        "image_seed": "kickboard",
+        "preorder_lead_days": 7,
+        "image_seed": "parachute1",
     },
     {
-        "name": "Pull Buoy",
-        "slug": "pull-buoy",
+        "name": "FINIS 3M Replacement Swim Parachute",
+        "slug": "finis-3m-swim-parachute",
         "category_key": "training",
         "description": (
-            "Ergonomic figure-eight pull buoy for upper body focused "
-            "training. Isolates the arms to build stroke power while "
-            "improving core stability."
+            "Premium 3-metre polyester swim parachute compatible with FINIS drag "
+            "belts. High-density 210D fabric provides consistent resistance at "
+            "any speed. Reinforced stitching for long-term durability."
         ),
-        "short_description": "Ergonomic upper body training tool",
-        "base_price_ngn": "6500",
+        "short_description": "Premium 3M replacement parachute for drag training",
+        "base_price_ngn": "15000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "8731",
         "is_featured": False,
         "has_variants": False,
         "variant_options": None,
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-TRN-002",
-        "preorder_lead_days": 14,
-        "image_seed": "pullbuoy",
+        "preorder_lead_days": 7,
+        "image_seed": "parachute2",
     },
     {
-        "name": "Training Fins",
-        "slug": "training-fins",
+        "name": "Adjustable Swimming Parachute",
+        "slug": "adjustable-swimming-parachute",
         "category_key": "training",
         "description": (
-            "Short blade training fins designed to improve kick technique "
-            "and ankle flexibility without over-relying on fin propulsion. "
-            "Closed-heel design with comfortable foot pocket."
+            "Versatile neoprene nylon swim parachute available in three sizes for "
+            "progressive resistance training. Suitable for children and adults "
+            "alike. Lightweight and easy to attach with adjustable belt."
         ),
-        "short_description": "Short blade fins for kick technique",
-        "base_price_ngn": "20000",
+        "short_description": "Adjustable parachute in 3 sizes for all swimmers",
+        "base_price_ngn": "12000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "6503",
         "is_featured": False,
         "has_variants": True,
-        "variant_options": {
-            "Size": ["S (35-36)", "M (37-38)", "L (39-40)", "XL (41-42)"]
-        },
-        "requires_size_chart_ack": True,
+        "variant_options": {"Size": ["Small (20cm)", "Medium (30cm)", "Large (40cm)"]},
+        "requires_size_chart_ack": False,
         "sku_prefix": "SB-TRN-003",
-        "preorder_lead_days": 21,
-        "image_seed": "fins1",
+        "preorder_lead_days": 7,
+        "image_seed": "parachute3",
     },
     {
-        "name": "Hand Paddles",
-        "slug": "hand-paddles",
+        "name": "EVA Training Kickboard – Standard",
+        "slug": "eva-kickboard-standard",
         "category_key": "training",
         "description": (
-            "Contoured hand paddles that increase resistance and build "
-            "upper body strength. Adjustable straps for a secure, "
-            "customisable fit. Reinforces proper catch technique."
+            "Durable EVA foam kickboard (44×29 cm) for leg-focused swim drills. "
+            "Lightweight with smooth rounded edges for a comfortable grip. "
+            "Available in five vibrant colours."
         ),
-        "short_description": "Contoured paddles for stroke power",
-        "base_price_ngn": "9000",
+        "short_description": "Standard EVA kickboard for leg training drills",
+        "base_price_ngn": "5000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "2258",
         "is_featured": False,
         "has_variants": True,
-        "variant_options": {"Size": ["S", "M", "L"]},
+        "variant_options": {"Color": ["Blue", "Yellow", "Orange", "Green", "Pink"]},
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-TRN-004",
-        "preorder_lead_days": 14,
-        "image_seed": "paddles",
+        "preorder_lead_days": 7,
+        "image_seed": "kickboard1",
     },
     {
-        "name": "Centre Snorkel",
-        "slug": "centre-snorkel",
+        "name": "EVA Training Kickboard – Pro",
+        "slug": "eva-kickboard-pro",
         "category_key": "training",
         "description": (
-            "Front-mount centre snorkel for focused stroke training. "
-            "Eliminates the need to turn for breath, allowing swimmers "
-            "to concentrate on body position and arm technique."
+            "Professional-grade EVA kickboard (45×29 cm) with enhanced buoyancy "
+            "for serious swim training. Firm foam construction supports proper "
+            "body alignment during kick sets and drill work."
         ),
-        "short_description": "Front-mount training snorkel",
-        "base_price_ngn": "15000",
+        "short_description": "Pro-grade EVA kickboard with enhanced buoyancy",
+        "base_price_ngn": "6500",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "3462",
         "is_featured": False,
         "has_variants": False,
         "variant_options": None,
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-TRN-005",
-        "preorder_lead_days": 14,
-        "image_seed": "snorkel",
+        "preorder_lead_days": 7,
+        "image_seed": "kickboard2",
     },
     {
-        "name": "Resistance Band Set",
-        "slug": "resistance-band-set",
+        "name": "Children’s EVA Kickboard",
+        "slug": "childrens-eva-kickboard",
         "category_key": "training",
         "description": (
-            "Set of three swim-specific resistance bands (light, medium, "
-            "heavy) for dryland training. Includes door anchor and exercise "
-            "guide. Builds swim-specific strength and flexibility."
+            "Fun, lightweight EVA kickboard sized for young swimmers. Bright "
+            "colours and easy-grip shape help kids build confidence and leg "
+            "strength during swim lessons."
         ),
-        "short_description": "Dryland swim-specific resistance bands",
-        "base_price_ngn": "9000",
+        "short_description": "Kid-sized EVA kickboard in bright colours",
+        "base_price_ngn": "2500",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "904",
         "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
+        "has_variants": True,
+        "variant_options": {"Color": ["Blue", "Pink", "Yellow", "Green", "Orange"]},
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-TRN-006",
-        "preorder_lead_days": 14,
-        "image_seed": "bands",
+        "preorder_lead_days": 7,
+        "image_seed": "kickboardkid",
     },
     {
-        "name": "Swim Parachute",
-        "slug": "swim-parachute",
+        "name": "EVA Training Pull Buoy",
+        "slug": "eva-training-pull-buoy",
         "category_key": "training",
         "description": (
-            "Drag resistance parachute that attaches to the waist for "
-            "sprint and power training. Adjustable belt with quick-release "
-            "buckle. Builds explosive speed when removed."
+            "Contoured EVA pull buoy that immobilises the legs for upper-body "
+            "focused swim drills. Ergonomic figure-eight shape stays in place "
+            "between the thighs during laps."
         ),
-        "short_description": "Drag resistance trainer for speed work",
-        "base_price_ngn": "25000",
+        "short_description": "Ergonomic EVA pull buoy for upper-body training",
+        "base_price_ngn": "7000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "3763",
         "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
+        "has_variants": True,
+        "variant_options": {"Size": ["Standard", "Large"]},
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-TRN-007",
-        "preorder_lead_days": 21,
-        "image_seed": "parachute",
+        "preorder_lead_days": 3,
+        "image_seed": "pullbuoy",
     },
     {
-        "name": "Tempo Trainer Pro",
-        "slug": "tempo-trainer-pro",
+        "name": "Open Heel Silicone Training Fins",
+        "slug": "silicone-training-fins",
         "category_key": "training",
         "description": (
-            "Waterproof audible pace trainer that clips under the swim cap. "
-            "Set your target stroke tempo and the device beeps at precise "
-            "intervals. Essential for pace discipline and stroke rate control."
+            "Premium 100% silicone training fins with open-heel design for a "
+            "secure, adjustable fit. Soft yet responsive blade improves ankle "
+            "flexibility and kick technique. Available in four sizes."
         ),
-        "short_description": "Audible pace trainer for stroke tempo",
-        "base_price_ngn": "22000",
+        "short_description": "100% silicone open-heel training fins",
+        "base_price_ngn": "25000",
+        "compare_at_price_ngn": "30000",
+        "cost_price_ngn": "15805",
+        "is_featured": True,
+        "has_variants": True,
+        "variant_options": {
+            "Size": ["S (36-38)", "M (39-41)", "L (42-44)", "XL (45-46)"]
+        },
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-TRN-008",
+        "preorder_lead_days": 7,
+        "image_seed": "siliconefins",
+    },
+    {
+        "name": "Rubber Dive & Swim Fins",
+        "slug": "rubber-dive-swim-fins",
+        "category_key": "training",
+        "description": (
+            "Versatile rubber fins suitable for both pool training and open-water "
+            "diving. Full-foot pocket provides a snug fit while the flexible "
+            "blade delivers efficient propulsion with minimal effort."
+        ),
+        "short_description": "Versatile rubber fins for pool and open-water use",
+        "base_price_ngn": "12000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "6021",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {
+            "Size": ["S (36-38)", "M (39-41)", "L (42-44)", "XL (45-46)"]
+        },
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-TRN-009",
+        "preorder_lead_days": 3,
+        "image_seed": "rubberfins",
+    },
+    {
+        "name": "Short Blade Bodyboard Fins",
+        "slug": "short-blade-bodyboard-fins",
+        "category_key": "training",
+        "description": (
+            "Compact TPR short-blade fins designed for kick training and "
+            "bodyboarding. Short blade forces a faster kick tempo, building leg "
+            "speed and ankle flexibility."
+        ),
+        "short_description": "Short-blade TPR fins for kick speed training",
+        "base_price_ngn": "15000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "9032",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {
+            "Size": ["S (35-37)", "M (38-40)", "L (41-43)", "XL (44-46)"]
+        },
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-TRN-010",
+        "preorder_lead_days": 15,
+        "image_seed": "shortfins",
+    },
+    {
+        "name": "TPR Training Flippers",
+        "slug": "tpr-training-flippers",
+        "category_key": "training",
+        "description": (
+            "Polypropylene and TPR training flippers with a medium-length blade "
+            "for balanced resistance. Available in three colour options with "
+            "sizes from XS to L to suit most swimmers."
+        ),
+        "short_description": "Medium-blade TPR training flippers in 4 sizes",
+        "base_price_ngn": "16000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "9483",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {
+            "Size": ["XS (34-36)", "S (37-39)", "M (40-42)", "L (43-45)"]
+        },
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-TRN-011",
+        "preorder_lead_days": 7,
+        "image_seed": "tprflippers",
+    },
+    {
+        "name": "Adjustable Mermaid Swim Fins",
+        "slug": "adjustable-mermaid-fins",
+        "category_key": "training",
+        "description": (
+            "Fun and functional mermaid-style monofin with adjustable straps. "
+            "PVC, EVA, and PE construction provides buoyancy and power. Great for "
+            "recreational swimming and dolphin kick training."
+        ),
+        "short_description": "Adjustable mermaid monofin for fun and training",
+        "base_price_ngn": "18000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "11064",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Size": ["S (34-38)", "M/L (39-43)", "XL (44-47)"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-TRN-012",
+        "preorder_lead_days": 7,
+        "image_seed": "mermaidfin",
+    },
+    {
+        "name": "Silicone Hand Training Paddles",
+        "slug": "silicone-hand-training-paddles",
+        "category_key": "training",
+        "description": (
+            "Silicone and polycarbonate hand paddles that increase surface area "
+            "for upper-body resistance training. Ergonomic design promotes proper "
+            "catch technique. Available in child and adult sizes."
+        ),
+        "short_description": "Silicone hand paddles for catch and pull training",
+        "base_price_ngn": "5500",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "2845",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Size": ["Child (S)", "Adult (M/L)"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-TRN-013",
+        "preorder_lead_days": 7,
+        "image_seed": "handpaddles",
+    },
+    {
+        "name": "Classic Frontal Centre Snorkel",
+        "slug": "classic-frontal-centre-snorkel",
+        "category_key": "training",
+        "description": (
+            "PVC, polycarbonate, and silicone centre-mount snorkel for focused "
+            "stroke technique training. Eliminates the need to turn for breath, "
+            "letting swimmers concentrate on body position and pull mechanics."
+        ),
+        "short_description": "Centre-mount snorkel for focused stroke technique",
+        "base_price_ngn": "9000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "4757",
         "is_featured": False,
         "has_variants": False,
         "variant_options": None,
         "requires_size_chart_ack": False,
-        "sku_prefix": "SB-TRN-008",
-        "preorder_lead_days": 21,
-        "image_seed": "tempotrainer",
+        "sku_prefix": "SB-TRN-014",
+        "preorder_lead_days": 7,
+        "image_seed": "snorkel1",
+    },
+    {
+        "name": "Semi-Dry Frontal Training Snorkel",
+        "slug": "semi-dry-frontal-training-snorkel",
+        "category_key": "training",
+        "description": (
+            "Silicone frontal snorkel with a semi-dry top valve that reduces "
+            "water entry during flip turns and surface chop. Comfortable "
+            "mouthpiece and adjustable head strap for extended training sets."
+        ),
+        "short_description": "Semi-dry silicone frontal snorkel for training",
+        "base_price_ngn": "9500",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "4907",
+        "is_featured": False,
+        "has_variants": False,
+        "variant_options": None,
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-TRN-016",
+        "preorder_lead_days": 6,
+        "image_seed": "snorkel2",
+    },
+    {
+        "name": "EPE Foam Pool Noodle",
+        "slug": "epe-foam-pool-noodle",
+        "category_key": "training",
+        "description": (
+            "Lightweight EPE foam noodle (6.5 cm × 150 cm) for aquatic exercises, "
+            "flotation support, and learn-to-swim sessions. Soft, buoyant foam is "
+            "safe for all ages and skill levels."
+        ),
+        "short_description": "EPE foam pool noodle for flotation and exercises",
+        "base_price_ngn": "4000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "1731",
+        "is_featured": False,
+        "has_variants": False,
+        "variant_options": None,
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-TRN-015",
+        "preorder_lead_days": 15,
+        "image_seed": "poolnoodle",
+    },
+    # ===== SWIM GEAR =====
+    {
+        "name": "Anti-Fog UV Swimming Goggles",
+        "slug": "anti-fog-uv-swimming-goggles",
+        "category_key": "swim_gear",
+        "description": (
+            "Polycarbonate lens goggles with anti-fog coating and UV protection. "
+            "Soft silicone gasket and adjustable nose bridge (S/M/L) ensure a "
+            "comfortable, leak-free fit for training and recreational swimming."
+        ),
+        "short_description": "Anti-fog UV goggles with adjustable nose bridge",
+        "base_price_ngn": "5500",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "2710",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Color": ["Black", "Blue", "Pink", "Clear"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-GER-001",
+        "preorder_lead_days": 10,
+        "image_seed": "goggles1",
+    },
+    {
+        "name": "Arena-Style Racing Goggles",
+        "slug": "arena-racing-goggles",
+        "category_key": "swim_gear",
+        "description": (
+            "Low-profile racing goggles inspired by arena competition designs. "
+            "Polycarbonate lenses with anti-fog treatment and interchangeable "
+            "nose bridges for a personalised, hydrodynamic fit."
+        ),
+        "short_description": "Low-profile anti-fog racing goggles",
+        "base_price_ngn": "5000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "2424",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Color": ["Black", "Blue", "Red"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-GER-002",
+        "preorder_lead_days": 10,
+        "image_seed": "goggles2",
+    },
+    {
+        "name": "Silver Mirrored Racing Goggles",
+        "slug": "silver-mirrored-racing-goggles",
+        "category_key": "swim_gear",
+        "description": (
+            "Mirrored silver-plated racing goggles with UV protection. Reduces "
+            "glare for outdoor and well-lit pool environments. Silicone strap and "
+            "cushion provide a secure, comfortable seal."
+        ),
+        "short_description": "Mirrored racing goggles with UV and glare protection",
+        "base_price_ngn": "6000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "2981",
+        "is_featured": True,
+        "has_variants": True,
+        "variant_options": {"Color": ["Silver", "Gold", "Blue"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-GER-003",
+        "preorder_lead_days": 10,
+        "image_seed": "goggles3",
+    },
+    {
+        "name": "Marble Design Silicone Swim Cap",
+        "slug": "marble-silicone-swim-cap",
+        "category_key": "swim_gear",
+        "description": (
+            "Premium silicone swim cap with a unique marble-swirl pattern. "
+            "Durable, tear-resistant silicone protects hair from chlorine while "
+            "providing a snug, comfortable fit for all head sizes."
+        ),
+        "short_description": "Stylish marble-pattern silicone swim cap",
+        "base_price_ngn": "3000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "1069",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {
+            "Color": [
+                "Black",
+                "White",
+                "Blue",
+                "Pink",
+                "Purple",
+                "Red",
+                "Green",
+                "Orange",
+            ]
+        },
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-GER-004",
+        "preorder_lead_days": 5,
+        "image_seed": "swimcap",
+    },
+    {
+        "name": "EVA Hard Goggle Case",
+        "slug": "eva-hard-goggle-case",
+        "category_key": "swim_gear",
+        "description": (
+            "Protective EVA hard-shell case that keeps goggles safe from "
+            "scratches and crushing in your swim bag. Zippered closure with mesh "
+            "interior lining. Compact and lightweight."
+        ),
+        "short_description": "Protective EVA hard-shell goggle case",
+        "base_price_ngn": "2500",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "828",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Color": ["Black", "Blue", "Pink", "Red", "White"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-GER-005",
+        "preorder_lead_days": 5,
+        "image_seed": "gogglecase",
+    },
+    {
+        "name": "Professional Silicone Nose Clip",
+        "slug": "silicone-nose-clip",
+        "category_key": "swim_gear",
+        "description": (
+            "Soft silicone nose clip with a secure spring mechanism to keep water "
+            "out during swimming, diving, and synchronised routines. Lightweight "
+            "and comfortable for extended wear."
+        ),
+        "short_description": "Soft silicone nose clip for swimming",
+        "base_price_ngn": "1500",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "211",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {
+            "Color": ["Black", "Blue", "Pink", "Yellow", "Orange", "Clear"]
+        },
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-GER-006",
+        "preorder_lead_days": 7,
+        "image_seed": "noseclip",
+    },
+    # ===== SWIMWEAR =====
+    {
+        "name": "Chlorine Resistant Training Jammer",
+        "slug": "chlorine-resistant-jammer",
+        "category_key": "swimwear",
+        "description": (
+            "Chlorine-resistant spandex/nylon jammer built for regular pool "
+            "sessions. Retains shape and colour after extended exposure to "
+            "chlorinated water. Comfortable compression fit from L to 5XL."
+        ),
+        "short_description": "Chlorine-resistant training jammer for daily use",
+        "base_price_ngn": "9500",
+        "compare_at_price_ngn": "12000",
+        "cost_price_ngn": "5208",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Size": ["L", "XL", "XXL", "3XL", "4XL", "5XL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-001",
+        "preorder_lead_days": 9,
+        "image_seed": "jammer1",
+    },
+    {
+        "name": "Competition Racing Jammer",
+        "slug": "competition-racing-jammer",
+        "category_key": "swimwear",
+        "description": (
+            "Polyamide and spandex racing jammer designed for competition. "
+            "Low-drag fabric with four-way stretch ensures freedom of movement "
+            "and a streamlined profile in the water."
+        ),
+        "short_description": "Polyamide racing jammer for competition swimmers",
+        "base_price_ngn": "15000",
+        "compare_at_price_ngn": "18000",
+        "cost_price_ngn": "8595",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Size": ["XS", "S", "M", "L", "XL", "XXL", "3XL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-002",
+        "preorder_lead_days": 25,
+        "image_seed": "jammer2",
+    },
+    {
+        "name": "Quick Dry Performance Jammer",
+        "slug": "quick-dry-performance-jammer",
+        "category_key": "swimwear",
+        "description": (
+            "Polyamide/spandex performance jammer with rapid-dry technology. "
+            "Lightweight compression fabric reduces drag and dries quickly "
+            "between heats. Ideal for training and race days."
+        ),
+        "short_description": "Quick-drying polyamide performance jammer",
+        "base_price_ngn": "19500",
+        "compare_at_price_ngn": "24000",
+        "cost_price_ngn": "11711",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Size": ["L", "XL", "XXL", "3XL", "4XL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-003",
+        "preorder_lead_days": 7,
+        "image_seed": "jammer3",
+    },
+    {
+        "name": "Yingfa Mid-Leg Training Trunks",
+        "slug": "yingfa-mid-leg-trunks",
+        "category_key": "swimwear",
+        "description": (
+            "Premium Yingfa 9205 mid-leg trunks in spandex/polyester blend. "
+            "Professional-grade construction used by competitive swimmers "
+            "worldwide. Excellent chlorine resistance and shape retention."
+        ),
+        "short_description": "Premium Yingfa mid-leg competitive trunks",
+        "base_price_ngn": "48000",
+        "compare_at_price_ngn": "55000",
+        "cost_price_ngn": "30104",
+        "is_featured": True,
+        "has_variants": True,
+        "variant_options": {"Size": ["S", "M", "L", "XL", "XXL", "3XL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-004",
+        "preorder_lead_days": 10,
+        "image_seed": "yingfatrunks",
+    },
+    {
+        "name": "Sharkskin Performance Jammers",
+        "slug": "sharkskin-performance-jammers",
+        "category_key": "swimwear",
+        "description": (
+            "Sharkskin-texture spandex/polyester jammers that mimic low-drag "
+            "aquatic surfaces. Extended size range (M–5XL) accommodates all body "
+            "types. Three colour options for personal style."
+        ),
+        "short_description": "Sharkskin-texture jammers in extended sizes",
+        "base_price_ngn": "14000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "7752",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Size": ["M", "L", "XL", "XXL", "3XL", "4XL", "5XL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-005",
+        "preorder_lead_days": 14,
+        "image_seed": "sharkskin",
+    },
+    {
+        "name": "Men’s Custom Swim Briefs",
+        "slug": "mens-custom-swim-briefs",
+        "category_key": "swimwear",
+        "description": (
+            "High-quality spandex/polyester swim briefs with a customisable "
+            "design. Comfortable V-cut silhouette with inner drawstring. Ideal "
+            "for training and competition in sizes S–XL."
+        ),
+        "short_description": "Custom-fit men’s swim briefs in spandex/polyester",
+        "base_price_ngn": "30000",
+        "compare_at_price_ngn": "35000",
+        "cost_price_ngn": "18966",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Size": ["S", "M", "L", "XL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-006",
+        "preorder_lead_days": 7,
+        "image_seed": "swimbriefs",
+    },
+    {
+        "name": "Men’s Short Sleeve Full Body Swimsuit",
+        "slug": "mens-full-body-swimsuit",
+        "category_key": "swimwear",
+        "description": (
+            "Full-body one-piece swimsuit with short sleeves and front zip. 100% "
+            "polyester construction provides full UV coverage and a streamlined "
+            "fit. Available in 17+ colourways from XS to XXL."
+        ),
+        "short_description": "Full-body short-sleeve swimsuit with front zip",
+        "base_price_ngn": "55000",
+        "compare_at_price_ngn": "65000",
+        "cost_price_ngn": "37615",
+        "is_featured": True,
+        "has_variants": True,
+        "variant_options": {"Size": ["XS", "S", "M", "L", "XL", "XXL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-007",
+        "preorder_lead_days": 7,
+        "image_seed": "fullbody",
+    },
+    {
+        "name": "FINA Approved Shark Skin Racing Jammer",
+        "slug": "fina-shark-skin-racing-jammer",
+        "category_key": "swimwear",
+        "description": (
+            "FINA-approved racing jammer in 92% polyester / 8% spandex. "
+            "Engineered shark-skin texture minimises drag for competitive events. "
+            "Trusted by professional swimmers worldwide."
+        ),
+        "short_description": "FINA-approved shark-skin racing jammer",
+        "base_price_ngn": "38000",
+        "compare_at_price_ngn": "45000",
+        "cost_price_ngn": "23933",
+        "is_featured": True,
+        "has_variants": True,
+        "variant_options": {"Size": ["XS", "S", "M", "L", "XL", "XXL", "3XL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-008",
+        "preorder_lead_days": 15,
+        "image_seed": "finaracing",
+    },
+    {
+        "name": "Women’s Short Sleeve One-Piece Swimsuit",
+        "slug": "womens-short-sleeve-one-piece",
+        "category_key": "swimwear",
+        "description": (
+            "Modest short-sleeve one-piece swimsuit in spandex/polyester blend. "
+            "Provides comfortable coverage for training and leisure swimming. "
+            "Soft, quick-drying fabric available in sizes S–XXL."
+        ),
+        "short_description": "Short-sleeve one-piece swimsuit for women",
+        "base_price_ngn": "18000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "10507",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Size": ["S", "M", "L", "XL", "XXL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-009",
+        "preorder_lead_days": 7,
+        "image_seed": "womens1piece1",
+    },
+    {
+        "name": "Women’s Two-Piece Sports Swimsuit",
+        "slug": "womens-two-piece-sports-swimsuit",
+        "category_key": "swimwear",
+        "description": (
+            "Sporty two-piece swimsuit with crop top and high-waist bottoms. "
+            "Spandex/polyester fabric offers four-way stretch and chlorine "
+            "resistance. Three colourway options in sizes S–XXL."
+        ),
+        "short_description": "Sporty two-piece swimsuit for active women",
+        "base_price_ngn": "20000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "11741",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Size": ["S", "M", "L", "XL", "XXL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-010",
+        "preorder_lead_days": 9,
+        "image_seed": "womens2piece",
+    },
+    {
+        "name": "Women’s Long Sleeve Eco Swimsuit",
+        "slug": "womens-long-sleeve-eco-swimsuit",
+        "category_key": "swimwear",
+        "description": (
+            "Eco-friendly long-sleeve one-piece in spandex/nylon blend. Full arm "
+            "coverage protects against UV and chlorine. Sustainable fabric "
+            "sourcing with the same performance qualities swimmers expect."
+        ),
+        "short_description": "Eco-friendly long-sleeve swimsuit with UV coverage",
+        "base_price_ngn": "21000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "12494",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Size": ["S", "M", "L", "XL", "XXL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-011",
+        "preorder_lead_days": 7,
+        "image_seed": "ecowomens",
+    },
+    {
+        "name": "Women’s Plus Size Fitness Swimwear",
+        "slug": "womens-plus-size-fitness-swimwear",
+        "category_key": "swimwear",
+        "description": (
+            "Inclusive plus-size fitness swimsuit in spandex/polyester with "
+            "flattering seam placement and supportive construction. Extended size "
+            "range (L–5XL) with five vibrant colour options."
+        ),
+        "short_description": "Plus-size fitness swimwear in sizes L–5XL",
+        "base_price_ngn": "18000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "10537",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Size": ["L", "XL", "XXL", "3XL", "4XL", "5XL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-012",
+        "preorder_lead_days": 6,
+        "image_seed": "plussize",
+    },
+    {
+        "name": "Women’s Printed Sports Swimsuit",
+        "slug": "womens-printed-sports-swimsuit",
+        "category_key": "swimwear",
+        "description": (
+            "Eye-catching animal and letter print sports swimsuit in "
+            "spandex/nylon. Bold designs with athletic cut for active swimmers. "
+            "Extended sizes from M to 5XL with multiple print options."
+        ),
+        "short_description": "Bold printed sports swimsuit in extended sizes",
+        "base_price_ngn": "34000",
+        "compare_at_price_ngn": "40000",
+        "cost_price_ngn": "21073",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Size": ["M", "L", "XL", "XXL", "3XL", "4XL", "5XL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-013",
+        "preorder_lead_days": 7,
+        "image_seed": "printswimsuit",
+    },
+    {
+        "name": "Yingfa Women’s Competitive Racing Swimsuit",
+        "slug": "yingfa-womens-competitive-swimsuit",
+        "category_key": "swimwear",
+        "description": (
+            "Professional Yingfa competitive swimsuit engineered for racing. "
+            "Spandex/polyester blend with compression fit reduces drag and muscle "
+            "vibration. Trusted by national-level swimmers."
+        ),
+        "short_description": "Professional Yingfa women’s racing swimsuit",
+        "base_price_ngn": "72000",
+        "compare_at_price_ngn": "85000",
+        "cost_price_ngn": "49522",
+        "is_featured": True,
+        "has_variants": True,
+        "variant_options": {"Size": ["S", "M", "L", "XL", "XXL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-014",
+        "preorder_lead_days": 15,
+        "image_seed": "yingfawomens",
+    },
+    {
+        "name": "Full Coverage 2-Piece Swim Set",
+        "slug": "full-coverage-two-piece-swim-set",
+        "category_key": "swimwear",
+        "description": (
+            "Modest full-coverage two-piece swim set in 100% polyester. Long "
+            "sleeves and full-length bottoms provide maximum UV protection and "
+            "coverage. Available in 13+ colours from M to L+."
+        ),
+        "short_description": "Full-coverage modest 2-piece swim set",
+        "base_price_ngn": "30000",
+        "compare_at_price_ngn": "36000",
+        "cost_price_ngn": "18815",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Size": ["M", "L", "XL", "XXL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-015",
+        "preorder_lead_days": 7,
+        "image_seed": "fullcoverage",
+    },
+    {
+        "name": "FINA Approved Women’s Racing Swimsuit",
+        "slug": "fina-womens-racing-swimsuit",
+        "category_key": "swimwear",
+        "description": (
+            "FINA-approved one-piece racing swimsuit by Yingfa. Engineered "
+            "spandex/polyester blend with competition-grade compression and "
+            "hydrodynamic seam placement. For serious competitive swimmers."
+        ),
+        "short_description": "FINA-approved women’s one-piece racing suit",
+        "base_price_ngn": "75000",
+        "compare_at_price_ngn": "89000",
+        "cost_price_ngn": "51027",
+        "is_featured": True,
+        "has_variants": True,
+        "variant_options": {"Size": ["S", "M", "L", "XL", "XXL"]},
+        "requires_size_chart_ack": True,
+        "sku_prefix": "SB-SWR-016",
+        "preorder_lead_days": 15,
+        "image_seed": "finaracingw",
     },
     # ===== POOL & WATER SAFETY =====
     {
-        "name": "Adult Life Jacket",
-        "slug": "adult-life-jacket",
+        "name": "Oxford Fabric Safety Life Jacket",
+        "slug": "oxford-fabric-life-jacket",
         "category_key": "safety",
         "description": (
-            "Coast-guard approved adult flotation vest for open water "
-            "safety. Adjustable straps, reflective panels, and whistle "
-            "included. Suitable for pool beginners and open water swimming."
+            "Thickened Oxford fabric life jacket with adjustable straps and "
+            "reflective strips. Multiple EPE foam panels provide reliable "
+            "buoyancy for beginners and recreational open-water swimmers."
         ),
-        "short_description": "Approved adult flotation vest",
-        "base_price_ngn": "20000",
+        "short_description": "Oxford fabric life jacket with reflective strips",
+        "base_price_ngn": "12000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "6021",
         "is_featured": False,
         "has_variants": True,
-        "variant_options": {"Size": ["S/M", "L/XL"]},
+        "variant_options": {"Size": ["S", "M", "L", "XL", "XXL", "3XL"]},
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-SAF-001",
-        "preorder_lead_days": 14,
-        "image_seed": "lifejacket",
+        "preorder_lead_days": 7,
+        "image_seed": "lifejacket1",
     },
     {
-        "name": "Kids Life Jacket",
-        "slug": "kids-life-jacket",
+        "name": "Neoprene Performance Life Vest",
+        "slug": "neoprene-performance-life-vest",
         "category_key": "safety",
         "description": (
-            "Bright-coloured kids safety jacket with secure buckle closures. "
-            "Designed for children learning to swim or playing near water. "
-            "Meets safety certification standards."
+            "Premium neoprene life vest designed for active water sports. "
+            "Flexible neoprene construction allows full range of motion while "
+            "maintaining buoyancy. Front-zip closure with secure buckle system."
         ),
-        "short_description": "Bright-coloured kids safety jacket",
-        "base_price_ngn": "15000",
-        "is_featured": False,
+        "short_description": "Premium neoprene life vest for active water sports",
+        "base_price_ngn": "24000",
+        "compare_at_price_ngn": "28000",
+        "cost_price_ngn": "14751",
+        "is_featured": True,
         "has_variants": True,
-        "variant_options": {"Size": ["S (15-25kg)", "M (25-35kg)", "L (35-50kg)"]},
+        "variant_options": {"Size": ["S", "M", "L"]},
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-SAF-002",
-        "preorder_lead_days": 14,
-        "image_seed": "kidslifejacket",
-    },
-    {
-        "name": "Swim Noodle",
-        "slug": "swim-noodle",
-        "category_key": "safety",
-        "description": (
-            "Flexible high-density foam pool noodle for flotation support "
-            "and fun. Can be used for swim training drills, water aerobics, "
-            "or recreational play."
-        ),
-        "short_description": "Flexible foam pool noodle",
-        "base_price_ngn": "3500",
-        "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-SAF-003",
-        "preorder_lead_days": 14,
-        "image_seed": "noodle",
-    },
-    {
-        "name": "Kids Arm Band Floats",
-        "slug": "kids-arm-band-floats",
-        "category_key": "safety",
-        "description": (
-            "Inflatable arm bands for beginner swimmers and children. "
-            "Double air chamber for safety with bright colours for "
-            "easy visibility."
-        ),
-        "short_description": "Inflatable arm bands for beginners",
-        "base_price_ngn": "7000",
-        "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-SAF-004",
-        "preorder_lead_days": 14,
-        "image_seed": "armbands",
-    },
-    {
-        "name": "Puddle Jumper Kids Float",
-        "slug": "puddle-jumper-kids-float",
-        "category_key": "safety",
-        "description": (
-            "Full-torso flotation device that combines arm bands and a "
-            "chest float in one piece. Secure buckle closure at the back. "
-            "Keeps young children upright and safe in the water."
-        ),
-        "short_description": "Full-torso flotation for toddlers",
-        "base_price_ngn": "8000",
-        "is_featured": False,
-        "has_variants": True,
-        "variant_options": {"Size": ["S (14-23kg)", "L (23-30kg)"]},
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-SAF-005",
-        "preorder_lead_days": 14,
-        "image_seed": "puddlejumper",
-    },
-    # ===== TOWELS & CHANGING =====
-    {
-        "name": "Microfiber Sports Towel",
-        "slug": "microfiber-sports-towel",
-        "category_key": "towels",
-        "description": (
-            "Ultra-absorbent, quick-dry microfiber towel that packs down "
-            "small. Lightweight and compact, perfect for fitting in any "
-            "swim bag."
-        ),
-        "short_description": "Quick-dry compact microfiber towel",
-        "base_price_ngn": "7000",
-        "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-TWL-001",
-        "preorder_lead_days": 14,
-        "image_seed": "towel1",
-    },
-    {
-        "name": "Shammy Towel",
-        "slug": "shammy-towel",
-        "category_key": "towels",
-        "description": (
-            "Super-absorbent PVA chamois towel used by competitive swimmers. "
-            "Wring it out and it's ready to absorb again. Comes in a "
-            "protective storage tube."
-        ),
-        "short_description": "Super absorbent PVA chamois towel",
-        "base_price_ngn": "5000",
-        "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-TWL-002",
-        "preorder_lead_days": 14,
-        "image_seed": "shammy",
-    },
-    {
-        "name": "Changing Robe",
-        "slug": "changing-robe",
-        "category_key": "towels",
-        "description": (
-            "Hooded towelling poncho for poolside changing. Provides "
-            "privacy and warmth after training. Oversized fit makes "
-            "changing easy."
-        ),
-        "short_description": "Hooded poncho for poolside changing",
-        "base_price_ngn": "25000",
-        "is_featured": False,
-        "has_variants": True,
-        "variant_options": {"Size": ["S/M", "L/XL"]},
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-TWL-003",
-        "preorder_lead_days": 21,
-        "image_seed": "changingrobe",
-    },
-    {
-        "name": "SwimBuddz Beach Towel",
-        "slug": "swimbuddz-beach-towel",
-        "category_key": "towels",
-        "description": (
-            "Oversized cotton beach towel with the SwimBuddz logo. "
-            "Soft, absorbent, and perfect for pool meets and beach days."
-        ),
-        "short_description": "Oversized branded cotton beach towel",
-        "base_price_ngn": "10000",
-        "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-TWL-004",
-        "preorder_lead_days": 14,
-        "image_seed": "beachtowel",
+        "preorder_lead_days": 7,
+        "image_seed": "lifevest",
     },
     # ===== BAGS & STORAGE =====
     {
-        "name": "Mesh Swim Bag",
-        "slug": "mesh-swim-bag",
+        "name": "Mesh Swim Drawstring Bag",
+        "slug": "mesh-swim-drawstring-bag",
         "category_key": "bags",
         "description": (
-            "Ventilated mesh bag for carrying wet swim gear. Large capacity "
-            "with drawstring closure and shoulder strap. Allows gear to "
-            "air-dry on the go."
+            "Breathable polyester mesh drawstring bag for carrying wet swim gear. "
+            "Allows air circulation to prevent odours. Available in two sizes and "
+            "a range of colours."
         ),
-        "short_description": "Ventilated drawstring gear bag",
-        "base_price_ngn": "4500",
+        "short_description": "Breathable mesh drawstring bag for swim gear",
+        "base_price_ngn": "4000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "1762",
         "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
+        "has_variants": True,
+        "variant_options": {"Size": ["Small (35x45cm)", "Large (45x55cm)"]},
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-BAG-001",
-        "preorder_lead_days": 14,
+        "preorder_lead_days": 15,
         "image_seed": "meshbag",
     },
     {
-        "name": "Waterproof Swim Backpack",
-        "slug": "waterproof-swim-backpack",
+        "name": "Waterproof PU Gym Duffle",
+        "slug": "waterproof-pu-gym-duffle",
         "category_key": "bags",
         "description": (
-            "35-litre waterproof backpack with a dedicated wet compartment, "
-            "padded laptop sleeve, and ventilated shoe pocket. Built for "
-            "swimmers who go straight from the pool to work or school."
+            "Stylish PU leather gym duffle with waterproof lining to keep wet and "
+            "dry items separate. Spacious main compartment with shoe pocket and "
+            "multiple organiser pockets."
         ),
-        "short_description": "35L backpack with wet compartment",
-        "base_price_ngn": "16000",
-        "is_featured": True,
+        "short_description": "Waterproof PU gym duffle with wet/dry compartments",
+        "base_price_ngn": "20000",
+        "compare_at_price_ngn": "24000",
+        "cost_price_ngn": "12418",
+        "is_featured": False,
         "has_variants": False,
         "variant_options": None,
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-BAG-002",
-        "preorder_lead_days": 21,
-        "image_seed": "swimbackpack",
+        "preorder_lead_days": 35,
+        "image_seed": "gymduffle1",
     },
     {
-        "name": "Wet/Dry Bag",
-        "slug": "wet-dry-bag",
+        "name": "Waterproof Canvas Sports Backpack",
+        "slug": "waterproof-canvas-sports-backpack",
         "category_key": "bags",
         "description": (
-            "Dual-compartment bag that separates wet swimwear from dry "
-            "items. Waterproof lining in the wet section prevents leaks."
+            "Durable canvas sports backpack (48×25×24 cm) with waterproof "
+            "coating. Padded laptop sleeve, multiple pockets, and adjustable "
+            "straps. Perfect for swimmers who go straight from pool to work."
         ),
-        "short_description": "Dual compartment wet and dry bag",
-        "base_price_ngn": "6000",
+        "short_description": "Waterproof canvas backpack for active lifestyles",
+        "base_price_ngn": "17500",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "10507",
         "is_featured": False,
         "has_variants": False,
         "variant_options": None,
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-BAG-003",
-        "preorder_lead_days": 14,
-        "image_seed": "wetdrybag",
+        "preorder_lead_days": 31,
+        "image_seed": "canvasbackpack",
     },
     {
-        "name": "SwimBuddz Drawstring Bag",
-        "slug": "swimbuddz-drawstring-bag",
+        "name": "Multi-Compartment Gym Duffle",
+        "slug": "multi-compartment-gym-duffle",
         "category_key": "bags",
         "description": (
-            "Lightweight branded drawstring bag with the SwimBuddz logo. "
-            "Perfect for carrying essentials to the pool. Water-resistant base."
+            "PU leather gym duffle (48×23×25 cm) with multiple dedicated "
+            "compartments for shoes, wet gear, and valuables. Detachable shoulder "
+            "strap and reinforced handles for comfortable carry."
         ),
-        "short_description": "Lightweight branded drawstring bag",
-        "base_price_ngn": "7500",
+        "short_description": "PU duffle with dedicated shoe and wet-gear compartments",
+        "base_price_ngn": "19000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "11666",
         "is_featured": False,
         "has_variants": False,
         "variant_options": None,
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-BAG-004",
-        "preorder_lead_days": 14,
-        "image_seed": "drawstringbag",
+        "preorder_lead_days": 35,
+        "image_seed": "gymduffle2",
+    },
+    {
+        "name": "PU Yoga & Swim Duffel Tote",
+        "slug": "pu-yoga-swim-duffel-tote",
+        "category_key": "bags",
+        "description": (
+            "Versatile PU duffel tote (57×10×29 cm) that converts between "
+            "shoulder bag and tote modes. Separate wet compartment with "
+            "waterproof lining ideal for post-swim gear."
+        ),
+        "short_description": "Convertible PU duffel tote with wet compartment",
+        "base_price_ngn": "25000",
+        "compare_at_price_ngn": "29000",
+        "cost_price_ngn": "15489",
+        "is_featured": False,
+        "has_variants": False,
+        "variant_options": None,
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-BAG-005",
+        "preorder_lead_days": 35,
+        "image_seed": "duffeltote",
+    },
+    {
+        "name": "Outdoor Sport Duffle Backpack",
+        "slug": "outdoor-sport-duffle-backpack",
+        "category_key": "bags",
+        "description": (
+            "Large PU duffle (60×28×30 cm) with backpack straps for hands-free "
+            "carry. Generous capacity fits all your swim and gym gear with room "
+            "to spare. Water-resistant exterior."
+        ),
+        "short_description": "Large PU duffle with backpack straps",
+        "base_price_ngn": "20000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "12524",
+        "is_featured": False,
+        "has_variants": False,
+        "variant_options": None,
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-BAG-006",
+        "preorder_lead_days": 31,
+        "image_seed": "sportduffle",
+    },
+    {
+        "name": "PU Leather Travel Duffel",
+        "slug": "pu-leather-travel-duffel",
+        "category_key": "bags",
+        "description": (
+            "Premium PU leather travel duffel (56×23×25 cm) with classic styling. "
+            "Multiple internal pockets and padded base keep your belongings "
+            "organised and protected during swim meets and travel."
+        ),
+        "short_description": "Premium PU leather travel duffel for swim meets",
+        "base_price_ngn": "27000",
+        "compare_at_price_ngn": "32000",
+        "cost_price_ngn": "17145",
+        "is_featured": False,
+        "has_variants": False,
+        "variant_options": None,
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-BAG-007",
+        "preorder_lead_days": 35,
+        "image_seed": "leatherduffel",
+    },
+    {
+        "name": "Multifunctional Travel Backpack",
+        "slug": "multifunctional-travel-backpack",
+        "category_key": "bags",
+        "description": (
+            "Versatile PU travel backpack (65×10×30 cm) with multiple access "
+            "points and organiser pockets. Anti-theft back panel and USB charging "
+            "port. Ideal for swim commuters and travellers."
+        ),
+        "short_description": "Multifunctional PU travel backpack with USB port",
+        "base_price_ngn": "19000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "11681",
+        "is_featured": False,
+        "has_variants": False,
+        "variant_options": None,
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-BAG-008",
+        "preorder_lead_days": 7,
+        "image_seed": "travelbackpack",
     },
     # ===== SUN PROTECTION =====
     {
-        "name": "Sport Sunscreen SPF 50",
-        "slug": "sport-sunscreen-spf-50",
+        "name": "UV400 Sports Sunglasses",
+        "slug": "uv400-sports-sunglasses",
         "category_key": "sun_protection",
         "description": (
-            "Water-resistant, reef-safe sport sunscreen with SPF 50 "
-            "broad-spectrum protection. Non-greasy formula that won't "
-            "sting eyes. Stays on through sweat and swimming."
+            "Lightweight PC frame sports sunglasses with UV400 protection. "
+            "Wrap-around design shields eyes from glare during poolside coaching, "
+            "outdoor meets, and open-water events."
         ),
-        "short_description": "Water-resistant reef-safe sunscreen",
-        "base_price_ngn": "8000",
+        "short_description": "UV400 wrap-around sports sunglasses",
+        "base_price_ngn": "4500",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "1822",
         "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
+        "has_variants": True,
+        "variant_options": {"Color": ["Black", "Blue", "Red", "White"]},
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-SUN-001",
-        "preorder_lead_days": 14,
-        "image_seed": "sunscreen",
+        "preorder_lead_days": 7,
+        "image_seed": "sportsunglasses",
     },
     {
-        "name": "UV Protective Swim Shirt",
-        "slug": "uv-protective-swim-shirt",
+        "name": "Retro Polarised Sunglasses",
+        "slug": "retro-polarised-sunglasses",
         "category_key": "sun_protection",
         "description": (
-            "UPF 50+ rated short-sleeve swim top for maximum sun protection. "
-            "Lightweight, quick-dry fabric that moves with you in the water."
+            "Stylish retro-round metal frame sunglasses with TAC polarised "
+            "lenses. Eliminates glare from water surfaces for clear poolside "
+            "vision. Premium hinges and comfortable nose pads."
         ),
-        "short_description": "UPF 50+ short sleeve swim top",
-        "base_price_ngn": "15000",
-        "is_featured": False,
-        "has_variants": True,
-        "variant_options": {"Size": ["S", "M", "L", "XL"]},
-        "requires_size_chart_ack": True,
-        "sku_prefix": "SB-SUN-002",
-        "preorder_lead_days": 14,
-        "image_seed": "uvshirt",
-    },
-    {
-        "name": "Poolside Sunglasses",
-        "slug": "poolside-sunglasses",
-        "category_key": "sun_protection",
-        "description": (
-            "Polarised UV400 sunglasses designed for poolside use. "
-            "Lightweight, rubberised nose pads and temples for a "
-            "secure, comfortable fit around water."
-        ),
-        "short_description": "Polarised UV400 poolside shades",
-        "base_price_ngn": "11000",
-        "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-SUN-003",
-        "preorder_lead_days": 14,
-        "image_seed": "sunglasses",
-    },
-    # ===== KIDS & LEARN-TO-SWIM =====
-    {
-        "name": "Kids Float Suit",
-        "slug": "kids-float-suit",
-        "category_key": "kids",
-        "description": (
-            "One-piece swimsuit with built-in removable foam floats. "
-            "Provides buoyancy support as children build water confidence. "
-            "Floats can be gradually removed as skills improve."
-        ),
-        "short_description": "Built-in flotation swimsuit for kids",
-        "base_price_ngn": "14000",
-        "is_featured": False,
-        "has_variants": True,
-        "variant_options": {
-            "Size": [
-                "2 (1-2yr)",
-                "3 (2-3yr)",
-                "4 (3-4yr)",
-                "5 (4-5yr)",
-                "6 (5-6yr)",
-            ]
-        },
-        "requires_size_chart_ack": True,
-        "sku_prefix": "SB-KID-001",
-        "preorder_lead_days": 21,
-        "image_seed": "floatsuit",
-    },
-    {
-        "name": "Reusable Swim Diapers",
-        "slug": "reusable-swim-diapers",
-        "category_key": "kids",
-        "description": (
-            "Washable, waterproof swim diapers with adjustable snaps. "
-            "Eco-friendly alternative to disposables. Secure fit prevents "
-            "leaks in the pool."
-        ),
-        "short_description": "Washable waterproof swim diapers",
-        "base_price_ngn": "5500",
-        "is_featured": False,
-        "has_variants": True,
-        "variant_options": {"Size": ["S (3-6m)", "M (6-12m)", "L (12-24m)"]},
-        "requires_size_chart_ack": True,
-        "sku_prefix": "SB-KID-002",
-        "preorder_lead_days": 14,
-        "image_seed": "swimdiaper",
-    },
-    {
-        "name": "Kids Swim Belt",
-        "slug": "kids-swim-belt",
-        "category_key": "kids",
-        "description": (
-            "Adjustable flotation belt with removable foam pieces. "
-            "Allows progressive reduction of buoyancy as the child "
-            "gains confidence and swimming ability."
-        ),
-        "short_description": "Adjustable flotation belt with removable floats",
-        "base_price_ngn": "7000",
-        "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-KID-003",
-        "preorder_lead_days": 14,
-        "image_seed": "swimbelt",
-    },
-    {
-        "name": "Back Float Trainer",
-        "slug": "back-float-trainer",
-        "category_key": "kids",
-        "description": (
-            "Clip-on back float that attaches to the swimsuit strap. "
-            "Provides gentle buoyancy support during swim lessons "
-            "while encouraging proper body position."
-        ),
-        "short_description": "Clip-on back float for swim lessons",
-        "base_price_ngn": "7500",
-        "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-KID-004",
-        "preorder_lead_days": 14,
-        "image_seed": "backfloat",
-    },
-    {
-        "name": "Kids Swim Starter Kit",
-        "slug": "kids-swim-starter-kit",
-        "category_key": "kids",
-        "description": (
-            "Everything a young swimmer needs to get started: junior "
-            "goggles, silicone swim cap, mini kickboard, and a mesh "
-            "carry bag. Perfect gift for new swimmers."
-        ),
-        "short_description": "Goggles, cap, kickboard and bag bundle",
-        "base_price_ngn": "20000",
+        "short_description": "Retro polarised sunglasses with metal frame",
+        "base_price_ngn": "10000",
+        "compare_at_price_ngn": "12000",
+        "cost_price_ngn": "5479",
         "is_featured": True,
         "has_variants": False,
         "variant_options": None,
         "requires_size_chart_ack": False,
-        "sku_prefix": "SB-KID-005",
-        "preorder_lead_days": 21,
-        "image_seed": "starterkit",
+        "sku_prefix": "SB-SUN-002",
+        "preorder_lead_days": 7,
+        "image_seed": "retrosunglasses",
     },
     # ===== MAINTENANCE & CARE =====
     {
-        "name": "Anti-Fog Spray",
-        "slug": "anti-fog-spray",
+        "name": "Goggle Anti-Fog Solution 15ml",
+        "slug": "goggle-anti-fog-solution",
         "category_key": "maintenance",
         "description": (
-            "Long-lasting anti-fog treatment for swim goggles. A few "
-            "drops keep lenses clear for multiple training sessions. "
-            "Safe for all lens types."
+            "Professional-grade anti-fog solution for swimming goggles and dive "
+            "masks. A single drop creates a clear, fog-free coating that lasts an "
+            "entire session. Compact 15 ml bottle fits in any swim bag."
         ),
-        "short_description": "Long-lasting goggle anti-fog treatment",
-        "base_price_ngn": "3500",
+        "short_description": "Professional anti-fog drops for goggles and masks",
+        "base_price_ngn": "2000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "500",
         "is_featured": False,
         "has_variants": False,
         "variant_options": None,
@@ -1008,63 +1324,70 @@ PRODUCTS_DATA = [
         "image_seed": "antifog",
     },
     {
-        "name": "Hard Goggle Case",
-        "slug": "hard-goggle-case",
+        "name": "2-in-1 Chlorine Removal Shampoo 240ml",
+        "slug": "chlorine-removal-shampoo-240ml",
         "category_key": "maintenance",
         "description": (
-            "Rigid protective case that keeps goggles safe from scratches "
-            "and crushing in your swim bag. Fits most goggle styles with "
-            "room for a spare set of lenses."
+            "Gentle 2-in-1 shampoo and conditioner formulated to remove chlorine "
+            "buildup from hair. Natural aloe vera and herbal extracts moisturise "
+            "and protect colour-treated hair. 240 ml bottle."
         ),
-        "short_description": "Protective hard case for goggles",
-        "base_price_ngn": "4000",
+        "short_description": "2-in-1 chlorine removal shampoo with aloe vera",
+        "base_price_ngn": "6500",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "3161",
         "is_featured": False,
         "has_variants": False,
         "variant_options": None,
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-MNT-002",
-        "preorder_lead_days": 14,
-        "image_seed": "gogglecase",
+        "preorder_lead_days": 25,
+        "image_seed": "chlorineshampoo",
+    },
+    {
+        "name": "Post-Swim Cleansing Gel 251ml",
+        "slug": "post-swim-cleansing-gel-251ml",
+        "category_key": "maintenance",
+        "description": (
+            "Organic cleansing gel designed to neutralise chlorine and restore "
+            "skin after swimming. Natural botanical extracts soothe irritation "
+            "and replenish moisture. 251 ml pump bottle."
+        ),
+        "short_description": "Organic post-swim cleansing gel for skin recovery",
+        "base_price_ngn": "5000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "2138",
+        "is_featured": False,
+        "has_variants": False,
+        "variant_options": None,
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-MNT-003",
+        "preorder_lead_days": 20,
+        "image_seed": "cleansinggel",
     },
     {
         "name": "Chlorine Removal Body Wash",
         "slug": "chlorine-removal-body-wash",
         "category_key": "maintenance",
         "description": (
-            "Gentle body wash and shampoo that neutralises chlorine and "
-            "removes that pool smell after swimming. Moisturising formula "
-            "prevents dry skin and hair."
+            "Natural chlorine-neutralising body wash that removes pool chemicals "
+            "while nourishing the skin. Cherry-scented organic formula is gentle "
+            "enough for daily use by frequent swimmers."
         ),
-        "short_description": "Post-swim shampoo and body wash",
-        "base_price_ngn": "6000",
-        "is_featured": False,
-        "has_variants": False,
-        "variant_options": None,
-        "requires_size_chart_ack": False,
-        "sku_prefix": "SB-MNT-003",
-        "preorder_lead_days": 14,
-        "image_seed": "bodywash",
-    },
-    {
-        "name": "Swimsuit Rinse & Care",
-        "slug": "swimsuit-rinse-care",
-        "category_key": "maintenance",
-        "description": (
-            "Specially formulated rinse that removes chlorine, salt, and "
-            "sunscreen from swimwear. Extends the life of your swimsuit "
-            "and keeps colours vibrant."
-        ),
-        "short_description": "Extends swimsuit life, removes chlorine",
-        "base_price_ngn": "5000",
+        "short_description": "Natural chlorine-neutralising body wash for swimmers",
+        "base_price_ngn": "7000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "3613",
         "is_featured": False,
         "has_variants": False,
         "variant_options": None,
         "requires_size_chart_ack": False,
         "sku_prefix": "SB-MNT-004",
-        "preorder_lead_days": 14,
-        "image_seed": "suitrinse",
+        "preorder_lead_days": 15,
+        "image_seed": "bodywash",
     },
 ]
+
 
 PICKUP_LOCATIONS_DATA = [
     {
@@ -1101,11 +1424,50 @@ COLLECTIONS_DATA = [
         "description": "Check out our latest swimming gear!",
         "sort_order": 1,
         "product_slugs": [
-            "speedo-vanquisher-2",
-            "arena-cobra-ultra-swipe",
-            "swimbuddz-silicone-cap",
-            "kids-swim-starter-kit",
-            "waterproof-swim-backpack",
+            "silver-mirrored-racing-goggles",
+            "marble-silicone-swim-cap",
+            "silicone-training-fins",
+            "fina-shark-skin-racing-jammer",
+            "yingfa-womens-competitive-swimsuit",
+        ],
+    },
+    {
+        "name": "Competition Essentials",
+        "slug": "competition-essentials",
+        "description": "FINA-approved and professional-grade gear for competitive swimmers.",
+        "sort_order": 2,
+        "product_slugs": [
+            "fina-shark-skin-racing-jammer",
+            "fina-womens-racing-swimsuit",
+            "yingfa-mid-leg-trunks",
+            "yingfa-womens-competitive-swimsuit",
+            "quick-dry-performance-jammer",
+        ],
+    },
+    {
+        "name": "Training Must-Haves",
+        "slug": "training-must-haves",
+        "description": "Essential equipment for structured swim training sessions.",
+        "sort_order": 3,
+        "product_slugs": [
+            "eva-kickboard-standard",
+            "eva-training-pull-buoy",
+            "silicone-hand-training-paddles",
+            "classic-frontal-centre-snorkel",
+            "silicone-training-fins",
+        ],
+    },
+    {
+        "name": "Poolside Favourites",
+        "slug": "poolside-favourites",
+        "description": "Most popular accessories and care products for regular swimmers.",
+        "sort_order": 4,
+        "product_slugs": [
+            "retro-polarised-sunglasses",
+            "neoprene-performance-life-vest",
+            "mens-full-body-swimsuit",
+            "goggle-anti-fog-solution",
+            "mesh-swim-drawstring-bag",
         ],
     },
 ]
@@ -1278,6 +1640,9 @@ async def seed_products(db, categories, supplier, verbose=False):
             sourcing_type=SourcingType.PREORDER,
             preorder_lead_days=p.get("preorder_lead_days", 14),
             supplier_id=supplier.id,
+            cost_price_ngn=(
+                Decimal(p["cost_price_ngn"]) if p.get("cost_price_ngn") else None
+            ),
         )
         db.add(product)
         await db.flush()
