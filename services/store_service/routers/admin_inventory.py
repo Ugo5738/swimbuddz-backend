@@ -286,6 +286,17 @@ async def list_all_orders(
     )
 
 
+@router.get("/orders/new-count")
+async def get_new_order_count(
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Count orders with status PAID that haven't been processed yet."""
+    query = select(func.count(Order.id)).where(Order.status == OrderStatus.PAID)
+    result = await db.execute(query)
+    return {"new_count": result.scalar_one() or 0}
+
+
 @router.get("/orders/{order_id}", response_model=OrderResponse)
 async def get_order_admin(
     order_id: uuid.UUID,
@@ -540,6 +551,11 @@ async def mark_order_paid(
     except Exception as e:
         # Log but don't fail the order
         logger.error(f"Failed to send order confirmation email: {e}")
+
+    # Notify admins of the new order
+    from services.store_service.routers.checkout import _notify_admins_new_order
+
+    await _notify_admins_new_order(order, db)
 
     # Emit store.order_paid event for rewards/analytics
     if order.member_auth_id:

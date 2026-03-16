@@ -91,7 +91,7 @@ class Settings(BaseSettings):
     CLOUDFRONT_URL: str = ""  # CDN URL for public bucket
 
     # Admin configuration
-    ADMIN_EMAILS: list[str] = ["admin@admin.com"]
+    ADMIN_EMAILS: list[str] = ["admin@admin.com", "contactugodaniels@gmail.com"]
     EMAIL_FROM_SUPPORT: str = ""
     EMAIL_FROM_BILLING: str = ""
     EMAIL_FROM_WELCOME: str = ""
