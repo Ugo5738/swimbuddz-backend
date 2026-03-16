@@ -14,11 +14,73 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from services.store_service.models import Order, OrderStatus
+from services.store_service.models import Order, OrderItem, OrderStatus
 from services.store_service.schemas import PaymentInitRequest, PaymentInitResponse
+
+# Paystack redirects back here after payment — the verify page reads ?reference=…
+_STORE_PAYMENT_CALLBACK = "/store/checkout/verify"
 
 router = APIRouter(tags=["store"])
 logger = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+async def _send_order_confirmation_email(order: Order, db) -> None:
+    """Best-effort: send order confirmation email to the customer.
+
+    Uses the same email template as the webhook path (mark_order_paid).
+    Failures are logged but never block the response.
+    """
+    try:
+        from libs.common.emails.client import get_email_client
+
+        # Ensure items are loaded
+        if not order.items:
+            result = await db.execute(
+                select(OrderItem).where(OrderItem.order_id == order.id)
+            )
+            items_objs = result.scalars().all()
+        else:
+            items_objs = order.items
+
+        items = [
+            {
+                "name": f"{item.product_name}"
+                + (f" - {item.variant_name}" if item.variant_name else ""),
+                "quantity": item.quantity,
+                "price": float(item.line_total_ngn),
+            }
+            for item in items_objs
+        ]
+
+        bubbles = order.bubbles_applied or 0
+        bubbles_ngn = float(bubbles * 100) if bubbles else 0
+
+        email_client = get_email_client()
+        await email_client.send_template(
+            template_type="store_order_confirmation",
+            to_email=order.customer_email,
+            template_data={
+                "customer_name": order.customer_name,
+                "order_number": order.order_number,
+                "items": items,
+                "subtotal": float(order.subtotal_ngn),
+                "discount": float(order.discount_amount_ngn),
+                "delivery_fee": float(order.delivery_fee_ngn),
+                "total": float(order.total_ngn),
+                "fulfillment_type": order.fulfillment_type.value,
+                "pickup_location": None,
+                "delivery_address": None,
+                "bubbles_applied": bubbles if bubbles else None,
+                "bubbles_amount_ngn": bubbles_ngn if bubbles else None,
+            },
+        )
+    except Exception as e:
+        logger.error("Failed to send order confirmation email: %s", e)
 
 
 # ============================================================================
@@ -73,6 +135,7 @@ async def initialize_payment(
                     member_auth_id=current_user.user_id,
                     member_email=order.customer_email,
                     order_number=order.order_number,
+                    callback_url=_STORE_PAYMENT_CALLBACK,
                     calling_service="store",
                 )
                 return PaymentInitResponse(
@@ -94,6 +157,7 @@ async def initialize_payment(
             member_auth_id=current_user.user_id,
             member_email=order.customer_email,
             order_number=order.order_number,
+            callback_url=_STORE_PAYMENT_CALLBACK,
             calling_service="store",
         )
     except Exception as e:
@@ -150,26 +214,35 @@ async def verify_payment(
             status_code=404, detail="Order not found for this reference"
         )
 
-    # If already paid (webhook beat us), return success
-    if order.status == OrderStatus.PAID:
+    def _verify_response(status: str, message: str) -> dict:
+        """Build verify response with full price breakdown."""
+        bubbles = order.bubbles_applied or 0
+        bubbles_ngn = float(bubbles * 100) if bubbles else 0
         return {
-            "status": "paid",
+            "status": status,
             "order_number": order.order_number,
             "order_id": str(order.id),
-            "message": "Payment confirmed",
+            "amount_ngn": float(order.total_ngn),
+            "subtotal_ngn": float(order.subtotal_ngn),
+            "discount_ngn": float(order.discount_amount_ngn),
+            "delivery_fee_ngn": float(order.delivery_fee_ngn),
+            "bubbles_applied": bubbles if bubbles else None,
+            "bubbles_amount_ngn": bubbles_ngn if bubbles else None,
+            "message": message,
         }
+
+    # If already paid (webhook beat us), return success
+    if order.status == OrderStatus.PAID:
+        return _verify_response("success", "Payment confirmed")
 
     # Verify with payments_service
     try:
         verification = await verify_store_payment(reference, calling_service="store")
     except Exception as e:
         logger.error("Failed to verify payment %s: %s", reference, e)
-        return {
-            "status": "pending",
-            "order_number": order.order_number,
-            "order_id": str(order.id),
-            "message": "Payment verification in progress. Please wait.",
-        }
+        return _verify_response(
+            "pending", "Payment verification in progress. Please wait."
+        )
 
     payment_status = verification.get("status", "unknown")
 
@@ -195,26 +268,14 @@ async def verify_payment(
             calling_service="store",
         )
 
-        return {
-            "status": "paid",
-            "order_number": order.order_number,
-            "order_id": str(order.id),
-            "message": "Payment confirmed",
-        }
+        # NOTE: Confirmation email is sent by the Paystack webhook
+        # (mark_order_paid in admin_inventory.py) to avoid duplicate emails
+        # when both verify and webhook fire for the same order.
+
+        return _verify_response("success", "Payment confirmed")
     elif payment_status == "failed":
         order.status = OrderStatus.PAYMENT_FAILED
         await db.commit()
-
-        return {
-            "status": "failed",
-            "order_number": order.order_number,
-            "order_id": str(order.id),
-            "message": "Payment failed. Please try again.",
-        }
+        return _verify_response("failed", "Payment failed. Please try again.")
     else:
-        return {
-            "status": "pending",
-            "order_number": order.order_number,
-            "order_id": str(order.id),
-            "message": "Payment is being processed. Please wait.",
-        }
+        return _verify_response("pending", "Payment is being processed. Please wait.")

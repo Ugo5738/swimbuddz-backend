@@ -177,6 +177,13 @@ class ProductImageCreate(ProductImageBase):
     pass
 
 
+class ProductImageUpdate(BaseModel):
+    alt_text: Optional[str] = Field(None, max_length=255)
+    sort_order: Optional[int] = None
+    is_primary: Optional[bool] = None
+    variant_id: Optional[uuid.UUID] = None
+
+
 class ProductImageResponse(ProductImageBase):
     model_config = ConfigDict(from_attributes=True)
 

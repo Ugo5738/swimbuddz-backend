@@ -996,11 +996,10 @@ async def _apply_entitlement(payment: Payment) -> None:
                 if member_email:
                     email_client = get_email_client()
                     await email_client.send_template(
-                        template_type="session_confirmation",
+                        template_type="ride_share_confirmation",
                         to_email=member_email,
                         template_data={
                             "member_name": member_name or "Member",
-                            "member_id": member_id,
                             "session_title": session_data.get(
                                 "title", "Swimming Session"
                             ),
