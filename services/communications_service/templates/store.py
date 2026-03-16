@@ -97,7 +97,7 @@ Thank you for shopping with SwimBuddz!
     if bubbles_applied and bubbles_amount_ngn:
         table_html += (
             f'<p style="margin: 5px 0; display: flex; justify-content: space-between; font-size: 14px;">'
-            f"<span>Bubbles Applied ({bubbles_applied} \U0001FAE7)</span>"
+            f"<span>Bubbles Applied ({bubbles_applied} \U0001fae7)</span>"
             f"<span>-₦{bubbles_amount_ngn:,.0f}</span></p>"
         )
     table_html += (

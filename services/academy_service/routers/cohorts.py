@@ -760,8 +760,7 @@ async def apply_cohort_timeline_shift(
                         warnings.append(f"Member notification error: {result}")
         except Exception as exc:
             warnings.append(
-                "Member notifications skipped due to member lookup/send failure: "
-                f"{exc}"
+                f"Member notifications skipped due to member lookup/send failure: {exc}"
             )
 
     actor_member_id = None
