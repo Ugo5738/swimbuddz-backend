@@ -41,6 +41,39 @@ router = APIRouter(prefix="/pending-registrations", tags=["pending-registrations
 settings = get_settings()
 
 
+async def _ensure_volunteer_profile(
+    member_id: str,
+    *,
+    volunteer_interests: list[str] | None = None,
+) -> None:
+    """Best-effort volunteer profile auto-provisioning on registration completion."""
+    try:
+        payload: dict = {"member_id": member_id}
+        if volunteer_interests:
+            payload["volunteer_interests"] = volunteer_interests
+
+        resp = await internal_post(
+            service_url=settings.VOLUNTEER_SERVICE_URL,
+            path="/internal/volunteer/ensure-profile",
+            calling_service="members",
+            json=payload,
+            timeout=15.0,
+        )
+        if resp.status_code >= 400:
+            logger.warning(
+                "Volunteer profile auto-create failed for member_id=%s (http %d): %s",
+                member_id,
+                resp.status_code,
+                resp.text,
+            )
+    except Exception as exc:
+        logger.warning(
+            "Volunteer profile auto-create request failed for member_id=%s: %s",
+            member_id,
+            exc,
+        )
+
+
 async def _ensure_wallet_exists(
     member_id: str, member_auth_id: str, *, referral_code: str | None = None
 ) -> None:
@@ -589,6 +622,11 @@ async def complete_pending_registration(
         str(member.id),
         member.auth_id,
         referral_code=profile_data.get("referral_code"),
+    )
+
+    await _ensure_volunteer_profile(
+        str(member.id),
+        volunteer_interests=profile_data.get("volunteer_interest"),
     )
 
     # Sync member roles to Supabase app_metadata so JWT reflects them

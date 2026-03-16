@@ -14,9 +14,10 @@ from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from pydantic import BaseModel
-from services.sessions_service.models import Session, SessionCoach, SessionStatus
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from services.sessions_service.models import Session, SessionCoach, SessionStatus
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -43,6 +44,7 @@ class SessionBasic(BaseModel):
     pool_fee: Optional[int] = None
     week_number: Optional[int] = None
     lesson_title: Optional[str] = None
+    timezone: str = "Africa/Lagos"
 
 
 class NextSessionResponse(BaseModel):
@@ -92,6 +94,7 @@ async def get_scheduled_sessions(
             pool_fee=s.pool_fee,
             week_number=s.week_number,
             lesson_title=s.lesson_title,
+            timezone=s.timezone,
         )
         for s in sessions
     ]
@@ -123,6 +126,7 @@ async def get_session_by_id(
         pool_fee=session.pool_fee,
         week_number=session.week_number,
         lesson_title=session.lesson_title,
+        timezone=session.timezone,
     )
 
 
