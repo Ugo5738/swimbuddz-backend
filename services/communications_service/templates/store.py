@@ -181,7 +181,7 @@ View in admin: /admin/store/orders
     fulfillment_icon = "📍 Pickup" if fulfillment_type == "pickup" else "🚚 Delivery"
 
     body_html = (
-        f"<p>A new order has been placed and paid.</p>"
+        "<p>A new order has been placed and paid.</p>"
         + info_box(
             f"<strong>Customer:</strong> {customer_name} ({customer_email})<br/>"
             f"<strong>Fulfillment:</strong> {fulfillment_icon}<br/>"
