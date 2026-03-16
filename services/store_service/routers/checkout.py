@@ -83,6 +83,63 @@ async def _send_order_confirmation_email(order: Order, db) -> None:
         logger.error("Failed to send order confirmation email: %s", e)
 
 
+async def _notify_admins_new_order(order: Order, db) -> None:
+    """Best-effort: send new-order notification email to all admins."""
+    try:
+        from libs.common.config import get_settings
+        from libs.common.emails.client import get_email_client
+
+        settings = get_settings()
+        admin_emails = settings.ADMIN_EMAILS or []
+        if not admin_emails:
+            return
+
+        # Ensure items are loaded
+        if not order.items:
+            result = await db.execute(
+                select(OrderItem).where(OrderItem.order_id == order.id)
+            )
+            items_objs = result.scalars().all()
+        else:
+            items_objs = order.items
+
+        items = [
+            {
+                "name": f"{item.product_name}"
+                + (
+                    f" - {item.variant_name}"
+                    if item.variant_name and item.variant_name != "Default"
+                    else ""
+                ),
+                "quantity": item.quantity,
+                "price": float(item.line_total_ngn),
+            }
+            for item in items_objs
+        ]
+
+        email_client = get_email_client()
+        for admin_email in admin_emails:
+            try:
+                await email_client.send_template(
+                    template_type="store_new_order_admin",
+                    to_email=admin_email,
+                    template_data={
+                        "order_number": order.order_number,
+                        "customer_name": order.customer_name,
+                        "customer_email": order.customer_email,
+                        "items": items,
+                        "total": float(order.total_ngn),
+                        "fulfillment_type": order.fulfillment_type.value,
+                    },
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to send admin notification to %s: %s", admin_email, e
+                )
+    except Exception as e:
+        logger.error("Failed to notify admins of new order: %s", e)
+
+
 # ============================================================================
 # PAYMENT INITIALIZATION
 # ============================================================================
@@ -271,6 +328,9 @@ async def verify_payment(
         # NOTE: Confirmation email is sent by the Paystack webhook
         # (mark_order_paid in admin_inventory.py) to avoid duplicate emails
         # when both verify and webhook fire for the same order.
+
+        # Notify admins of the new order
+        await _notify_admins_new_order(order, db)
 
         return _verify_response("success", "Payment confirmed")
     elif payment_status == "failed":

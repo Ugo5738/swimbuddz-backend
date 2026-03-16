@@ -470,6 +470,15 @@ async def send_templated_email(
             pickup_location=d.get("pickup_location"),
             tracking_number=d.get("tracking_number"),
         ),
+        "store_new_order_admin": lambda d: store.send_store_new_order_admin_email(
+            to_email=request.to_email,
+            order_number=d.get("order_number", ""),
+            customer_name=d.get("customer_name", ""),
+            customer_email=d.get("customer_email", ""),
+            items=d.get("items", []),
+            total=d.get("total", 0),
+            fulfillment_type=d.get("fulfillment_type", "pickup"),
+        ),
     }
 
     handler = template_handlers.get(request.template_type)

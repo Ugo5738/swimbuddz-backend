@@ -370,10 +370,12 @@ async def start_checkout(
 
         # Send order confirmation email (best-effort)
         from services.store_service.routers.checkout import (
+            _notify_admins_new_order,
             _send_order_confirmation_email,
         )
 
         await _send_order_confirmation_email(order, db)
+        await _notify_admins_new_order(order, db)
 
     return CheckoutStartResponse(
         order_id=order.id,

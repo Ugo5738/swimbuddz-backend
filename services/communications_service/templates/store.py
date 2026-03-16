@@ -6,6 +6,7 @@ from typing import Optional
 
 from libs.common.emails.core import send_email
 from services.communications_service.templates.base import (
+    GRADIENT_AMBER,
     GRADIENT_CYAN,
     GRADIENT_GREEN,
     info_box,
@@ -133,6 +134,79 @@ Thank you for shopping with SwimBuddz!
         body_html=body_html,
         header_gradient=GRADIENT_CYAN,
         preheader=f"Order #{order_number} confirmed - ₦{total:,.0f}",
+    )
+
+    return await send_email(to_email, subject, body, html_body)
+
+
+async def send_store_new_order_admin_email(
+    to_email: str,
+    order_number: str,
+    customer_name: str,
+    customer_email: str,
+    items: list[dict],  # [{"name": str, "quantity": int, "price": float}]
+    total: float,
+    fulfillment_type: str,  # "pickup" or "delivery"
+) -> bool:
+    """Send notification to admin when a new order is paid."""
+    subject = f"New Order #{order_number} - ₦{total:,.0f}"
+
+    items_text = "\n".join(
+        f"  - {item['name']} x{item['quantity']} - ₦{item['price']:,.0f}"
+        for item in items
+    )
+
+    body = f"""New store order received!
+
+Order #{order_number}
+Customer: {customer_name} ({customer_email})
+Fulfillment: {fulfillment_type.title()}
+Total: ₦{total:,.0f}
+
+Items:
+{items_text}
+
+View in admin: /admin/store/orders
+
+— SwimBuddz System
+"""
+
+    items_html = "".join(
+        f"<tr><td style='padding: 8px; border-bottom: 1px solid #e2e8f0;'>{item['name']}</td>"
+        f"<td style='padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: center;'>{item['quantity']}</td>"
+        f"<td style='padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: right;'>₦{item['price']:,.0f}</td></tr>"
+        for item in items
+    )
+
+    fulfillment_icon = "📍 Pickup" if fulfillment_type == "pickup" else "🚚 Delivery"
+
+    body_html = (
+        "<p>A new order has been placed and paid.</p>"
+        + info_box(
+            f"<strong>Customer:</strong> {customer_name} ({customer_email})<br/>"
+            f"<strong>Fulfillment:</strong> {fulfillment_icon}<br/>"
+            f"<strong>Total:</strong> ₦{total:,.0f}",
+            bg_color="#fffbeb",
+            border_color="#f59e0b",
+        )
+        + '<table style="width: 100%; border-collapse: collapse; margin: 16px 0;">'
+        + "<thead><tr>"
+        + '<th style="padding: 8px; text-align: left; color: #64748b; font-size: 12px; border-bottom: 2px solid #e2e8f0;">Item</th>'
+        + '<th style="padding: 8px; text-align: center; color: #64748b; font-size: 12px; border-bottom: 2px solid #e2e8f0;">Qty</th>'
+        + '<th style="padding: 8px; text-align: right; color: #64748b; font-size: 12px; border-bottom: 2px solid #e2e8f0;">Price</th>'
+        + "</tr></thead>"
+        + f"<tbody>{items_html}</tbody></table>"
+        + '<p style="text-align: center; margin-top: 20px;">'
+        + '<a href="/admin/store/orders" style="display: inline-block; padding: 10px 24px; background: #f59e0b; color: white; border-radius: 8px; text-decoration: none; font-weight: 600;">View Orders</a>'
+        + "</p>"
+    )
+
+    html_body = wrap_html(
+        title="📦 New Order Received",
+        subtitle=f"Order #{order_number}",
+        body_html=body_html,
+        header_gradient=GRADIENT_AMBER,
+        preheader=f"New order #{order_number} - ₦{total:,.0f} from {customer_name}",
     )
 
     return await send_email(to_email, subject, body, html_body)
