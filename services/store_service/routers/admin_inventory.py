@@ -492,7 +492,12 @@ async def mark_order_paid(
 
         items = [
             {
-                "name": f"{item.product_name} - {item.variant_name or 'Default'}",
+                "name": f"{item.product_name}"
+                + (
+                    f" - {item.variant_name}"
+                    if item.variant_name and item.variant_name != "Default"
+                    else ""
+                ),
                 "quantity": item.quantity,
                 "price": float(item.line_total_ngn),
             }
@@ -510,6 +515,9 @@ async def mark_order_paid(
             addr = order.delivery_address
             delivery_address_str = f"{addr.get('street', '')}, {addr.get('city', '')}, {addr.get('state', '')}"
 
+        bubbles = order.bubbles_applied or 0
+        bubbles_ngn = float(bubbles * 100) if bubbles else 0
+
         email_client = get_email_client()
         await email_client.send_template(
             template_type="store_order_confirmation",
@@ -525,6 +533,8 @@ async def mark_order_paid(
                 "fulfillment_type": order.fulfillment_type.value,
                 "pickup_location": pickup_location_str,
                 "delivery_address": delivery_address_str,
+                "bubbles_applied": bubbles if bubbles else None,
+                "bubbles_amount_ngn": bubbles_ngn if bubbles else None,
             },
         )
     except Exception as e:

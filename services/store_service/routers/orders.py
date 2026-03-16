@@ -32,6 +32,7 @@ from services.store_service.models import (
     PickupLocation,
     Product,
     ProductVariant,
+    SourcingType,
     StoreCredit,
 )
 from services.store_service.routers.cart import (
@@ -112,30 +113,37 @@ async def start_checkout(
             detail="Size chart acknowledgment required for swimwear products",
         )
 
-    # Validate inventory and reserve
+    # Validate inventory and reserve (skip stock checks for pre-order/dropship)
     for item in cart.items:
         inv = item.variant.inventory_item
-        if not inv:
+        product = item.variant.product
+        is_preorder = product and product.sourcing_type in (
+            SourcingType.PREORDER,
+            SourcingType.DROPSHIP,
+        )
+
+        if not inv and not is_preorder:
             raise HTTPException(
                 status_code=400,
                 detail=f"Inventory not available for {item.variant.sku}",
             )
-        if inv.quantity_available < item.quantity:
+        if inv and not is_preorder and inv.quantity_available < item.quantity:
             raise HTTPException(
                 status_code=400,
                 detail=f"Only {inv.quantity_available} available for {item.variant.sku}",
             )
-        # Reserve inventory
-        inv.quantity_reserved += item.quantity
-        # Log movement
-        movement = InventoryMovement(
-            inventory_item_id=inv.id,
-            movement_type=InventoryMovementType.RESERVATION,
-            quantity=item.quantity,
-            reference_type="cart",
-            reference_id=cart.id,
-        )
-        db.add(movement)
+        # Reserve inventory (only for stocked items, not pre-order/dropship)
+        if inv and not is_preorder:
+            inv.quantity_reserved += item.quantity
+            # Log movement
+            movement = InventoryMovement(
+                inventory_item_id=inv.id,
+                movement_type=InventoryMovementType.RESERVATION,
+                quantity=item.quantity,
+                reference_type="cart",
+                reference_id=cart.id,
+            )
+            db.add(movement)
 
     # Get member info for order via members service HTTP API
     member = await get_member_by_auth_id(current_user.user_id, calling_service="store")
@@ -344,6 +352,7 @@ async def start_checkout(
         )
 
     # If fully paid by Bubbles (no Paystack needed), emit purchase completed event
+    # and send order confirmation email
     if order.status == OrderStatus.PAID:
         await emit_rewards_event(
             event_type="store.purchase_completed",
@@ -358,6 +367,13 @@ async def start_checkout(
             idempotency_key=f"store-purchase-{order.id}",
             calling_service="store",
         )
+
+        # Send order confirmation email (best-effort)
+        from services.store_service.routers.checkout import (
+            _send_order_confirmation_email,
+        )
+
+        await _send_order_confirmation_email(order, db)
 
     return CheckoutStartResponse(
         order_id=order.id,

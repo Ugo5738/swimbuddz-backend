@@ -26,6 +26,8 @@ async def send_store_order_confirmation_email(
     fulfillment_type: str,  # "pickup" or "delivery"
     pickup_location: Optional[str] = None,
     delivery_address: Optional[str] = None,
+    bubbles_applied: Optional[int] = None,
+    bubbles_amount_ngn: Optional[float] = None,
 ) -> bool:
     """
     Send order confirmation email when payment is successful.
@@ -56,6 +58,7 @@ Items:
 Subtotal: ₦{subtotal:,.0f}
 {f"Discount: -₦{discount:,.0f}" if discount > 0 else ""}
 {f"Delivery Fee: ₦{delivery_fee:,.0f}" if delivery_fee > 0 else ""}
+{f"Bubbles Applied: -₦{bubbles_amount_ngn:,.0f} ({bubbles_applied} 🫧)" if bubbles_applied and bubbles_amount_ngn else ""}
 Total: ₦{total:,.0f}
 
 {fulfillment_text}
@@ -91,6 +94,12 @@ Thank you for shopping with SwimBuddz!
         table_html += f'<p style="margin: 5px 0; display: flex; justify-content: space-between; font-size: 14px;"><span>Discount</span><span>-₦{discount:,.0f}</span></p>'
     if delivery_fee > 0:
         table_html += f'<p style="margin: 5px 0; display: flex; justify-content: space-between; font-size: 14px;"><span>Delivery Fee</span><span>₦{delivery_fee:,.0f}</span></p>'
+    if bubbles_applied and bubbles_amount_ngn:
+        table_html += (
+            f'<p style="margin: 5px 0; display: flex; justify-content: space-between; font-size: 14px;">'
+            f"<span>Bubbles Applied ({bubbles_applied} \U0001fae7)</span>"
+            f"<span>-₦{bubbles_amount_ngn:,.0f}</span></p>"
+        )
     table_html += (
         f'<p style="margin: 10px 0 0; display: flex; justify-content: space-between; font-weight: 700; font-size: 18px; color: #1e293b;">'
         f"<span>Total</span><span>₦{total:,.0f}</span></p>"

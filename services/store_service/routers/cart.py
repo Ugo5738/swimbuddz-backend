@@ -19,8 +19,10 @@ from services.store_service.models import (
     Cart,
     CartItem,
     CartStatus,
+    Product,
     ProductStatus,
     ProductVariant,
+    SourcingType,
 )
 from services.store_service.schemas import (
     ApplyDiscountRequest,
@@ -106,6 +108,7 @@ async def get_or_create_cart(
         # If we have a guest cart with items, merge into member cart
         if guest_cart and guest_cart.items:
             # Create member cart if needed
+            member_cart_is_new = False
             if not member_cart:
                 member_cart = Cart(
                     member_auth_id=user.user_id,
@@ -114,18 +117,25 @@ async def get_or_create_cart(
                 )
                 db.add(member_cart)
                 await db.flush()
+                member_cart_is_new = True
 
-            # Merge items from guest cart
-            existing_variant_ids = {item.variant_id for item in member_cart.items}
+            # Merge items from guest cart into member cart.
+            # For a newly created cart, items is uninitialised — avoid lazy-load
+            # (triggers MissingGreenlet in async context).
+            existing_variant_ids: set = (
+                set()
+                if member_cart_is_new
+                else {item.variant_id for item in member_cart.items}
+            )
             for guest_item in guest_cart.items:
                 if guest_item.variant_id in existing_variant_ids:
-                    # Update quantity if item already in member cart
+                    # Update quantity if variant already in member cart
                     for member_item in member_cart.items:
                         if member_item.variant_id == guest_item.variant_id:
                             member_item.quantity += guest_item.quantity
                             break
                 else:
-                    # Transfer item to member cart
+                    # Copy item to member cart
                     new_item = CartItem(
                         cart_id=member_cart.id,
                         variant_id=guest_item.variant_id,
@@ -135,7 +145,7 @@ async def get_or_create_cart(
                     db.add(new_item)
                     existing_variant_ids.add(guest_item.variant_id)
 
-            # Mark guest cart as merged (change status to prevent reuse)
+            # Mark guest cart as consumed (prevent reuse)
             guest_cart.status = CartStatus.ABANDONED
             await db.commit()
             await db.refresh(member_cart)
@@ -244,16 +254,24 @@ async def _resolve_coupon_discount(cart: Cart, subtotal: Decimal) -> Decimal:
     return Decimal("0")
 
 
-async def enrich_cart_response(cart: Cart, db: AsyncSession) -> CartResponse:
-    """Enrich cart with item details and calculated totals."""
-    # Load items with variants
+async def enrich_cart_response(cart_or_id, db: AsyncSession) -> CartResponse:
+    """Enrich cart with item details and calculated totals.
+
+    Accepts either a Cart object or a cart UUID. Using a UUID avoids
+    MissingGreenlet errors from stale objects after commit/delete.
+    """
+    cart_id = cart_or_id if not isinstance(cart_or_id, Cart) else cart_or_id.id
+    # Clear identity map to avoid stale lazy-load references after commit/delete
+    db.expunge_all()
+    # Load items with variants, product, and images (variant + product level)
     query = (
         select(Cart)
-        .where(Cart.id == cart.id)
+        .where(Cart.id == cart_id)
         .options(
             selectinload(Cart.items)
             .selectinload(CartItem.variant)
-            .selectinload(ProductVariant.product),
+            .selectinload(ProductVariant.product)
+            .selectinload(Product.images),
             selectinload(Cart.items)
             .selectinload(CartItem.variant)
             .selectinload(ProductVariant.images),
@@ -267,9 +285,13 @@ async def enrich_cart_response(cart: Cart, db: AsyncSession) -> CartResponse:
     for item in cart.items:
         variant = item.variant
         product = variant.product if variant else None
+        # Try variant images first, fall back to product images
+        variant_imgs = variant.images or [] if variant else []
+        product_imgs = product.images or [] if product else []
+        all_imgs = variant_imgs or product_imgs
         primary_image = next(
-            (img for img in (variant.images or []) if img.is_primary),
-            (variant.images[0] if variant.images else None),
+            (img for img in all_imgs if img.is_primary),
+            (all_imgs[0] if all_imgs else None),
         )
 
         enriched_items.append(
@@ -279,7 +301,11 @@ async def enrich_cart_response(cart: Cart, db: AsyncSession) -> CartResponse:
                 quantity=item.quantity,
                 unit_price_ngn=item.unit_price_ngn,
                 product_name=product.name if product else None,
-                variant_name=variant.name if variant else None,
+                variant_name=(
+                    variant.name
+                    if variant and variant.name and variant.name != "Default"
+                    else None
+                ),
                 sku=variant.sku if variant else None,
                 image_url=primary_image.url if primary_image else None,
             )
@@ -353,9 +379,14 @@ async def add_to_cart(
     if variant.product.status != ProductStatus.ACTIVE:
         raise HTTPException(status_code=400, detail="Product is not available")
 
-    # Check inventory
+    # Check inventory (skip for pre-order / dropship products)
     inv = variant.inventory_item
-    if inv and inv.quantity_available < item_in.quantity:
+    if (
+        inv
+        and variant.product.sourcing_type
+        not in (SourcingType.PREORDER, SourcingType.DROPSHIP)
+        and inv.quantity_available < item_in.quantity
+    ):
         raise HTTPException(
             status_code=400,
             detail=f"Only {inv.quantity_available} available",
@@ -374,7 +405,12 @@ async def add_to_cart(
 
     if existing_item:
         new_quantity = existing_item.quantity + item_in.quantity
-        if inv and inv.quantity_available < new_quantity:
+        if (
+            inv
+            and variant.product.sourcing_type
+            not in (SourcingType.PREORDER, SourcingType.DROPSHIP)
+            and inv.quantity_available < new_quantity
+        ):
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot add more. Only {inv.quantity_available} available.",
@@ -412,7 +448,8 @@ async def update_cart_item(
         select(CartItem)
         .where(CartItem.id == item_id, CartItem.cart_id == cart.id)
         .options(
-            selectinload(CartItem.variant).selectinload(ProductVariant.inventory_item)
+            selectinload(CartItem.variant).selectinload(ProductVariant.inventory_item),
+            selectinload(CartItem.variant).selectinload(ProductVariant.product),
         )
     )
     result = await db.execute(query)
@@ -421,9 +458,15 @@ async def update_cart_item(
     if not cart_item:
         raise HTTPException(status_code=404, detail="Cart item not found")
 
-    # Check inventory
+    # Check inventory (skip for pre-order / dropship products)
     inv = cart_item.variant.inventory_item if cart_item.variant else None
-    if inv and inv.quantity_available < item_in.quantity:
+    product = cart_item.variant.product if cart_item.variant else None
+    if (
+        inv
+        and product
+        and product.sourcing_type not in (SourcingType.PREORDER, SourcingType.DROPSHIP)
+        and inv.quantity_available < item_in.quantity
+    ):
         raise HTTPException(
             status_code=400,
             detail=f"Only {inv.quantity_available} available",
@@ -431,7 +474,7 @@ async def update_cart_item(
 
     cart_item.quantity = item_in.quantity
     await db.commit()
-    return await enrich_cart_response(cart, db)
+    return await enrich_cart_response(cart.id, db)
 
 
 @router.delete("/cart/items/{item_id}", response_model=CartResponse)
@@ -452,9 +495,10 @@ async def remove_cart_item(
     if not cart_item:
         raise HTTPException(status_code=404, detail="Cart item not found")
 
+    cart_id = cart.id  # Save before delete invalidates references
     await db.delete(cart_item)
     await db.commit()
-    return await enrich_cart_response(cart, db)
+    return await enrich_cart_response(cart_id, db)
 
 
 @router.post("/cart/discount", response_model=CartResponse)
