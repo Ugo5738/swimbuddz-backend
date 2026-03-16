@@ -10,12 +10,16 @@ Handles:
 from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import get_members_bulk, get_session_by_id, internal_get
 from libs.db.session import get_async_db
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.communications_service.models import (
     NotificationPreferences,
     ScheduledNotification,
@@ -28,8 +32,6 @@ from services.communications_service.templates.session_notifications import (
     send_session_cancelled_email,
     send_session_reminder_email,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -339,6 +341,18 @@ async def _process_single_notification(
         notification.error_message = f"Session is {session['status']}"
         return
 
+    # Skip if session has already started (e.g. worker was down and is catching up)
+    session_start = datetime.fromisoformat(session["starts_at"])
+    now = utc_now()
+    if session_start <= now:
+        notification.status = ScheduledNotificationStatus.CANCELLED
+        notification.error_message = "Session already started — reminder too late"
+        logger.warning(
+            f"Skipping stale {notification.notification_type.value} for session "
+            f"{notification.session_id} (started {session_start.isoformat()})"
+        )
+        return
+
     # Determine recipients based on notification type
     if notification.notification_type == SessionNotificationType.REMINDER_1H:
         # 1h reminders go only to coaches
@@ -349,10 +363,11 @@ async def _process_single_notification(
 
     reminder_type = notification.notification_type.value.replace("reminder_", "")
 
-    # Format session details
-    session_start = datetime.fromisoformat(session["starts_at"])
-    session_date = session_start.strftime("%A, %B %d, %Y")
-    session_time = session_start.strftime("%I:%M %p")
+    # Format session details in the session's local timezone
+    local_tz = ZoneInfo(session.get("timezone", "Africa/Lagos"))
+    local_start = session_start.astimezone(local_tz)
+    session_date = local_start.strftime("%A, %B %d, %Y")
+    session_time = local_start.strftime("%I:%M %p")
 
     sent_count = 0
     for member in members:
@@ -448,8 +463,10 @@ async def cancel_session_notifications(
             members = await _get_session_attendees_and_coaches(db, session)
 
             session_start = datetime.fromisoformat(session["starts_at"])
-            session_date = session_start.strftime("%A, %B %d, %Y")
-            session_time = session_start.strftime("%I:%M %p")
+            local_tz = ZoneInfo(session.get("timezone", "Africa/Lagos"))
+            local_start = session_start.astimezone(local_tz)
+            session_date = local_start.strftime("%A, %B %d, %Y")
+            session_time = local_start.strftime("%I:%M %p")
 
             sent_count = 0
             for member in members:
@@ -626,19 +643,22 @@ async def send_weekly_session_digest() -> None:
                 logger.info("No sessions this week for digest")
                 return
 
-            # Format sessions for email
-            sessions_list = [
-                {
-                    "title": s["title"],
-                    "type": s["session_type"],
-                    "date": datetime.fromisoformat(s["starts_at"]).strftime(
-                        "%A, %B %d"
-                    ),
-                    "time": datetime.fromisoformat(s["starts_at"]).strftime("%I:%M %p"),
-                    "location": s.get("location_name") or s.get("location") or "TBD",
-                }
-                for s in sessions
-            ]
+            # Format sessions for email (convert to local timezone)
+            sessions_list = []
+            for s in sessions:
+                tz = ZoneInfo(s.get("timezone", "Africa/Lagos"))
+                local_dt = datetime.fromisoformat(s["starts_at"]).astimezone(tz)
+                sessions_list.append(
+                    {
+                        "title": s["title"],
+                        "type": s["session_type"],
+                        "date": local_dt.strftime("%A, %B %d"),
+                        "time": local_dt.strftime("%I:%M %p"),
+                        "location": s.get("location_name")
+                        or s.get("location")
+                        or "TBD",
+                    }
+                )
 
             week_label = (
                 f"{week_start.strftime('%B %d')} - {week_end.strftime('%d, %Y')}"
