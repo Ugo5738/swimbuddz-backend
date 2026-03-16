@@ -100,6 +100,6 @@ async def test_scheduled_sessions_contract(sessions_client, db_session):
     if data:
         required_fields = ["id", "title", "starts_at", "ends_at", "session_type"]
         for field in required_fields:
-            assert field in data[0], (
-                f"Missing contract field '{field}' in scheduled sessions response."
-            )
+            assert (
+                field in data[0]
+            ), f"Missing contract field '{field}' in scheduled sessions response."
