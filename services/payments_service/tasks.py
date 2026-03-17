@@ -123,6 +123,11 @@ async def retry_failed_entitlement_fulfillment() -> None:
         pending = list(result.scalars().all())
 
         for payment in pending:
+            # Skip dead-lettered payments (max retries exhausted)
+            fulfillment = (payment.payment_metadata or {}).get("fulfillment") or {}
+            if fulfillment.get("status") == "dead_letter":
+                continue
+
             next_retry_at = _payment_next_retry_at(payment)
             if next_retry_at and next_retry_at > now:
                 continue
