@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+
 from services.academy_service.routers._shared import (
     AsyncSession,
     AuthUser,
@@ -85,6 +86,7 @@ async def get_enrollment_internal(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
             selectinload(Enrollment.installments),
+            selectinload(Enrollment.progress_records),
         )
     )
     result = await db.execute(query)
