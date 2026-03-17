@@ -1,6 +1,7 @@
 """Admin volunteer management endpoints."""
 
 import logging
+import secrets
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Optional
@@ -125,6 +126,57 @@ async def _enrich_slot(slot: VolunteerSlot) -> dict:
     info = await resolve_member_basic(slot.member_id)
     data["member_name"] = info.full_name if info else None
     return data
+
+
+async def _auto_checkout_if_past(
+    db: AsyncSession, slot: VolunteerSlot, opp: VolunteerOpportunity
+) -> bool:
+    """Auto-checkout a slot if the opportunity end time has passed.
+
+    Called lazily when slots are read (e.g., admin listing, member hours).
+    Creates an immutable hours log entry and updates profile aggregates.
+    Returns True if a checkout was performed.
+    """
+    if not slot.checked_in_at or slot.checked_out_at:
+        return False
+    if not opp.end_time:
+        return False
+
+    end_dt = datetime.combine(opp.date, opp.end_time, tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) <= end_dt:
+        return False
+
+    slot.checked_out_at = end_dt
+    slot.status = SlotStatus.COMPLETED
+    delta = end_dt - slot.checked_in_at
+    slot.hours_logged = round(delta.total_seconds() / 3600, 2)
+
+    hours_log = VolunteerHoursLog(
+        member_id=slot.member_id,
+        slot_id=slot.id,
+        opportunity_id=slot.opportunity_id,
+        hours=slot.hours_logged,
+        date=opp.date,
+        role_id=opp.role_id,
+        source="auto_checkout",
+    )
+    db.add(hours_log)
+    await db.commit()
+
+    # Update profile aggregates
+    await update_profile_aggregates(db, slot.member_id)
+    await db.commit()
+
+    # Best-effort: emit rewards event
+    await _emit_volunteer_reward(slot, opp)
+
+    logger.info(
+        "Auto-checkout: slot %s for opportunity '%s' — %.2f hours",
+        slot.id,
+        opp.title,
+        slot.hours_logged,
+    )
+    return True
 
 
 # ── Roles CRUD ──────────────────────────────────────────────────────
@@ -374,6 +426,8 @@ async def create_opportunity(
     _admin = await get_member_by_auth_id(admin.user_id, calling_service="volunteer")
     admin_member_id = uuid.UUID(_admin["id"]) if _admin else None
     opp = VolunteerOpportunity(**data.model_dump(), created_by=admin_member_id)
+    if opp.qr_checkin_enabled:
+        opp.qr_token = secrets.token_hex(32)
     db.add(opp)
     await db.commit()
 
@@ -403,6 +457,8 @@ async def bulk_create_opportunities(
     opps = []
     for item in data.opportunities:
         opp = VolunteerOpportunity(**item.model_dump(), created_by=admin_member_id)
+        if opp.qr_checkin_enabled:
+            opp.qr_token = secrets.token_hex(32)
         db.add(opp)
         opps.append(opp)
     await db.commit()
@@ -439,6 +495,9 @@ async def update_opportunity(
         raise HTTPException(status_code=404, detail="Opportunity not found")
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(opp, field, value)
+    # Generate QR token if enabling QR check-in and no token exists yet
+    if opp.qr_checkin_enabled and not opp.qr_token:
+        opp.qr_token = secrets.token_hex(32)
     await db.commit()
     await db.refresh(opp)
     # Re-load with role
@@ -524,6 +583,15 @@ async def list_slots(
     admin: Annotated[AuthUser, Depends(require_admin)],
     db: AsyncSession = Depends(get_async_db),
 ):
+    # Load opportunity for auto-checkout evaluation
+    opp = (
+        await db.execute(
+            select(VolunteerOpportunity)
+            .options(selectinload(VolunteerOpportunity.role))
+            .where(VolunteerOpportunity.id == opp_id)
+        )
+    ).scalar_one_or_none()
+
     rows = (
         (
             await db.execute(
@@ -535,6 +603,12 @@ async def list_slots(
         .scalars()
         .all()
     )
+
+    # Lazy auto-checkout: complete slots past the opportunity end time
+    if opp:
+        for slot in rows:
+            await _auto_checkout_if_past(db, slot, opp)
+
     return [await _enrich_slot(s) for s in rows]
 
 

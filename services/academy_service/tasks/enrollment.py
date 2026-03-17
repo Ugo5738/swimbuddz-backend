@@ -5,7 +5,11 @@ from datetime import timedelta
 from libs.common.datetime_utils import utc_now
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
-from libs.common.service_client import emit_rewards_event, get_members_bulk
+from libs.common.service_client import (
+    dispatch_notification,
+    emit_rewards_event,
+    get_members_bulk,
+)
 from libs.db.session import get_async_db
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
@@ -203,6 +207,11 @@ async def process_waitlist():
                             )
 
                             if member:
+                                program_name = (
+                                    cohort.program.name
+                                    if cohort.program
+                                    else "Swimming Course"
+                                )
                                 # Send email via centralized email service
                                 email_client = get_email_client()
                                 await email_client.send_template(
@@ -210,13 +219,25 @@ async def process_waitlist():
                                     to_email=member["email"],
                                     template_data={
                                         "member_name": member["first_name"],
-                                        "program_name": (
-                                            cohort.program.name
-                                            if cohort.program
-                                            else "Swimming Course"
-                                        ),
+                                        "program_name": program_name,
                                         "cohort_name": cohort.name,
                                     },
+                                )
+
+                                # Dispatch in-app notification
+                                await dispatch_notification(
+                                    type="waitlist_promoted",
+                                    category="academy",
+                                    member_ids=[str(enrollment.member_id)],
+                                    title=f"Spot Available: {program_name}",
+                                    body=f"A spot has opened up in {cohort.name}! Complete your enrollment now.",
+                                    action_url="/account/academy",
+                                    icon="graduation-cap",
+                                    metadata={
+                                        "enrollment_id": str(enrollment.id),
+                                        "cohort_id": str(cohort.id),
+                                    },
+                                    calling_service="academy",
                                 )
 
             await db.commit()

@@ -4,6 +4,7 @@ from uuid import UUID
 
 from libs.common.currency import kobo_to_naira, naira_to_kobo
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from services.academy_service.models import (
     BillingType,
     CoachGrade,
@@ -393,11 +394,16 @@ class EnrollmentResponse(EnrollmentBase):
     program: Optional[ProgramResponse] = None
     installments: List[EnrollmentInstallmentResponse] = Field(default_factory=list)
 
+    # Progress records (ORM field is "progress_records", exposed as "progress" for frontend)
+    progress: List["StudentProgressResponse"] = Field(
+        default_factory=list, validation_alias="progress_records"
+    )
+
     # Member info (populated by endpoint, not from ORM)
     member_name: Optional[str] = None
     member_email: Optional[str] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 # --- Student Progress Schemas ---
@@ -443,8 +449,9 @@ class StudentProgressResponse(StudentProgressBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-# Resolve forward reference
+# Resolve forward references
 StudentProgressResponse.model_rebuild()
+EnrollmentResponse.model_rebuild()
 
 
 # --- Onboarding Schema ---

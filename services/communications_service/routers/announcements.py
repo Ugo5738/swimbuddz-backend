@@ -221,11 +221,18 @@ async def list_announcements(
     include_all: bool = Query(
         False, description="Include drafts/archived/expired (admin only)"
     ),
+    limit: Optional[int] = Query(None, ge=1, le=100, description="Max items to return"),
+    unread_only: bool = Query(
+        False, description="Only return unread (requires member_id)"
+    ),
+    member_id: Optional[uuid.UUID] = Query(
+        None, description="Member ID for unread filtering"
+    ),
     current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
-    List all announcements, newest first.
+    List announcements, newest first. Supports limit and unread-only filtering.
     """
     if include_all and not _is_admin(current_user):
         raise HTTPException(
@@ -244,9 +251,21 @@ async def list_announcements(
             Announcement.audience.in_(allowed_audiences),
         )
 
+    if unread_only and member_id:
+        read_ids = (
+            select(AnnouncementRead.announcement_id)
+            .where(AnnouncementRead.member_id == member_id)
+            .scalar_subquery()
+        )
+        query = query.where(Announcement.id.notin_(read_ids))
+
     query = query.order_by(
         Announcement.is_pinned.desc(), Announcement.published_at.desc()
     )
+
+    if limit:
+        query = query.limit(limit)
+
     result = await db.execute(query)
     return result.scalars().all()
 

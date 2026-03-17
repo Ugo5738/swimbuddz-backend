@@ -21,6 +21,7 @@ from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.common.pdf import generate_certificate_pdf, generate_progress_report_pdf
 from libs.common.service_client import (
     debit_member_wallet,
+    dispatch_notification,
     get_coach_profile,
     get_eligible_coaches,
     get_member_by_auth_id,
@@ -144,6 +145,7 @@ __all__ = [
     "generate_certificate_pdf",
     "generate_progress_report_pdf",
     "debit_member_wallet",
+    "dispatch_notification",
     "get_coach_profile",
     "get_eligible_coaches",
     "get_member_by_auth_id",

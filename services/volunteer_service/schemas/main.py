@@ -5,6 +5,7 @@ from datetime import date, datetime, time
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
 from services.volunteer_service.models import (
     OpportunityStatus,
     OpportunityType,
@@ -144,6 +145,7 @@ class VolunteerOpportunityBase(BaseModel):
 
 class VolunteerOpportunityCreate(VolunteerOpportunityBase):
     status: OpportunityStatus = OpportunityStatus.DRAFT
+    qr_checkin_enabled: bool = False
 
 
 class VolunteerOpportunityUpdate(BaseModel):
@@ -159,6 +161,7 @@ class VolunteerOpportunityUpdate(BaseModel):
     status: Optional[OpportunityStatus] = None
     min_tier: Optional[VolunteerTier] = None
     cancellation_deadline_hours: Optional[int] = None
+    qr_checkin_enabled: Optional[bool] = None
 
 
 class VolunteerOpportunityResponse(BaseModel):
@@ -181,6 +184,8 @@ class VolunteerOpportunityResponse(BaseModel):
     min_tier: VolunteerTier
     cancellation_deadline_hours: int
     created_by: Optional[uuid.UUID] = None
+    qr_checkin_enabled: bool = False
+    qr_token: Optional[str] = None  # Only populated for admin responses
     created_at: datetime
     updated_at: datetime
     # Enrichment
@@ -235,6 +240,16 @@ class CheckoutSlotRequest(BaseModel):
 class BulkCompleteRequest(BaseModel):
     slot_ids: list[uuid.UUID]
     hours: Optional[float] = None
+
+
+class QrCheckinRequest(BaseModel):
+    token: str = Field(..., max_length=64)
+
+
+class QrCheckinResponse(BaseModel):
+    slot: VolunteerSlotResponse
+    opportunity_title: str
+    message: str
 
 
 # ============================================================================

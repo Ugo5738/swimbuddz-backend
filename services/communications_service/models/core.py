@@ -4,9 +4,9 @@ from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
-from sqlalchemy import Boolean, DateTime, String, Text
+from sqlalchemy import Boolean, DateTime, Index, String, Text, text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from services.communications_service.models.enums import (
@@ -435,3 +435,71 @@ class SessionNotificationLog(Base):
 
     def __repr__(self):
         return f"<SessionNotificationLog {self.notification_type.value} to {self.member_id} via {self.channel}>"
+
+
+# ============================================================================
+# PERSONAL NOTIFICATIONS
+# ============================================================================
+
+
+class Notification(Base):
+    """System-generated personal notification for a member."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        Index(
+            "ix_notifications_member_unread",
+            "member_id",
+            "read_at",
+            "created_at",
+        ),
+        Index(
+            "ix_notifications_expires",
+            "expires_at",
+            postgresql_where=text("expires_at IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+
+    # Classification
+    type: Mapped[str] = mapped_column(
+        String(100), nullable=False, index=True
+    )  # e.g. "order_confirmed"
+    category: Mapped[str] = mapped_column(
+        String(50), nullable=False, index=True
+    )  # e.g. "store", "sessions"
+
+    # Display
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    icon: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True
+    )  # Lucide icon name
+
+    # Action
+    action_url: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True
+    )  # Where clicking navigates
+
+    # Extra context
+    metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSONB, nullable=True)
+
+    # State
+    read_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # null = unread
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # Auto-cleanup
+
+    def __repr__(self):
+        return f"<Notification {self.type} for {self.member_id}>"
