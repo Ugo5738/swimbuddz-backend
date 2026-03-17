@@ -201,9 +201,7 @@ async def list_all_products(
 
     if search:
         search_term = f"%{search}%"
-        query = query.where(
-            Product.name.ilike(search_term) | Product.sku.ilike(search_term)
-        )
+        query = query.where(Product.name.ilike(search_term))
 
     # Count total
     count_query = select(func.count()).select_from(query.subquery())
