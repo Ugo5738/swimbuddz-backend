@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    text,
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -252,7 +253,7 @@ class VolunteerOpportunity(Base):
     metadata_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # QR code self check-in
-    qr_checkin_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    qr_checkin_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     qr_token: Mapped[Optional[str]] = mapped_column(
         String(64), nullable=True, unique=True, index=True
     )
