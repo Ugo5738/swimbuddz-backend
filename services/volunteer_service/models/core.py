@@ -4,6 +4,22 @@ from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
+from sqlalchemy import (
+    ARRAY,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Time,
+)
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from services.volunteer_service.models.enums import (
     OpportunityStatus,
     OpportunityType,
@@ -14,11 +30,6 @@ from services.volunteer_service.models.enums import (
     VolunteerTier,
     enum_values,
 )
-from sqlalchemy import ARRAY, Boolean, Date, DateTime
-from sqlalchemy import Enum as SAEnum
-from sqlalchemy import Float, ForeignKey, Integer, String, Text, Time
-from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 # ============================================================================
 # MEMBER REFERENCE (soft reference — no cross-service imports)
@@ -239,6 +250,13 @@ class VolunteerOpportunity(Base):
         UUID(as_uuid=True), nullable=True
     )
     metadata_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
+    # QR code self check-in
+    qr_checkin_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    qr_token: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
