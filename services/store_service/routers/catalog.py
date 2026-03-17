@@ -306,6 +306,7 @@ async def get_product(
         updated_at=product.updated_at,
         variants=public_variants,
         images=[p for p in product.images],
+        videos=[v for v in product.videos],
         category=product.category,
     )
 
