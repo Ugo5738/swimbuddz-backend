@@ -266,8 +266,6 @@ async def get_notification_stats(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get notification volume statistics."""
-    now = datetime.now(timezone.utc)
-
     total_query = select(func.count(Notification.id))
     total_result = await db.execute(total_query)
 
