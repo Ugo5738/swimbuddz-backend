@@ -1,5 +1,6 @@
 import httpx
 from fastapi import APIRouter
+
 from services.academy_service.routers._shared import (
     AdminDropoutActionRequest,
     AsyncSession,
@@ -26,6 +27,7 @@ from services.academy_service.routers._shared import (
     _resolve_enrollment_total_fee,
     _sync_installment_state_for_enrollment,
     debit_member_wallet,
+    dispatch_notification,
     func,
     get_async_db,
     get_current_user,
@@ -115,7 +117,27 @@ async def enroll_student(
             selectinload(Enrollment.installments),
         )
     )
-    return refreshed.scalar_one()
+    enrolled = refreshed.scalar_one()
+
+    # Best-effort: dispatch in-app notification to the enrolled student
+    cohort_label = f" ({cohort.name})" if cohort else ""
+    await dispatch_notification(
+        type="enrollment_confirmed",
+        category="academy",
+        member_ids=[str(enrollment_in.member_id)],
+        title=f"Enrolled: {program.name}{cohort_label}",
+        body=f"You have been enrolled in {program.name}{cohort_label}.",
+        action_url="/account/academy",
+        icon="graduation-cap",
+        metadata={
+            "enrollment_id": str(enrollment.id),
+            "program_id": str(program.id),
+            "cohort_id": str(cohort.id) if cohort else None,
+        },
+        calling_service="academy",
+    )
+
+    return enrolled
 
 
 @router.get("/enrollments", response_model=List[EnrollmentResponse])
@@ -407,7 +429,41 @@ async def self_enroll(
         )
     )
     result = await db.execute(query)
-    return result.scalar_one()
+    enrolled = result.scalar_one()
+
+    # Best-effort: dispatch in-app notification
+    if enrollment_status == EnrollmentStatus.WAITLIST:
+        notif_title = f"Waitlisted: {program.name}" if program else "Waitlisted"
+        notif_body = (
+            "You've been added to the waitlist. We'll notify you when a spot opens."
+        )
+        notif_type = "enrollment_waitlisted"
+    else:
+        notif_title = (
+            f"Enrollment Pending: {program.name}" if program else "Enrollment Pending"
+        )
+        notif_body = (
+            "Your enrollment request has been submitted and is pending approval."
+        )
+        notif_type = "enrollment_pending"
+
+    await dispatch_notification(
+        type=notif_type,
+        category="academy",
+        member_ids=[str(member["id"])],
+        title=notif_title,
+        body=notif_body,
+        action_url="/account/academy",
+        icon="graduation-cap",
+        metadata={
+            "enrollment_id": str(enrollment.id),
+            "program_id": str(program_id) if program_id else None,
+            "cohort_id": str(cohort_id) if cohort_id else None,
+        },
+        calling_service="academy",
+    )
+
+    return enrolled
 
 
 @router.get("/my-enrollments", response_model=List[EnrollmentResponse])

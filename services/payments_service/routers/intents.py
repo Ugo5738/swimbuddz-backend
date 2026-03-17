@@ -14,7 +14,12 @@ from libs.common.config import get_settings
 from libs.common.currency import KOBO_PER_NAIRA
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
-from libs.common.service_client import emit_rewards_event, internal_post
+from libs.common.service_client import (
+    dispatch_notification,
+    emit_rewards_event,
+    get_member_by_auth_id,
+    internal_post,
+)
 from libs.db.session import get_async_db
 from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -330,6 +335,9 @@ async def _apply_entitlement_with_tracking(payment: Payment) -> None:
 
         # Best-effort reward events for membership payments
         await _emit_membership_reward_events(payment)
+
+        # Best-effort: dispatch in-app payment confirmation notification
+        await _dispatch_payment_notification(payment)
     except Exception as exc:
         error_message = str(exc)
         payment.entitlement_error = error_message
@@ -391,6 +399,69 @@ async def _send_tier_activated_email(
     except Exception as e:
         # Non-fatal — payment was successful; email failure must not raise
         logger.warning("Failed to send tier activation email (non-fatal): %s", e)
+
+
+async def _dispatch_payment_notification(payment: Payment) -> None:
+    """Best-effort: send in-app notification after successful payment."""
+    try:
+        member = await get_member_by_auth_id(
+            payment.member_auth_id, calling_service="payments"
+        )
+        if not member:
+            return
+
+        purpose_labels = {
+            PaymentPurpose.COMMUNITY: (
+                "Community Membership Activated",
+                "community",
+                "users",
+            ),
+            PaymentPurpose.CLUB: ("Club Membership Activated", "club", "users"),
+            PaymentPurpose.CLUB_BUNDLE: ("Club Membership Activated", "club", "users"),
+            PaymentPurpose.ACADEMY_COHORT: (
+                "Academy Enrollment Payment",
+                "academy",
+                "graduation-cap",
+            ),
+            PaymentPurpose.SESSION_FEE: ("Session Fee Paid", "sessions", "calendar"),
+            PaymentPurpose.RIDE_SHARE: ("Ride Share Payment", "transport", "car"),
+            PaymentPurpose.STORE_ORDER: (
+                "Store Order Payment",
+                "store",
+                "shopping-bag",
+            ),
+            PaymentPurpose.WALLET_TOPUP: (
+                "Wallet Top-Up Confirmed",
+                "payments",
+                "wallet",
+            ),
+        }
+
+        label = purpose_labels.get(payment.purpose)
+        if not label:
+            return
+
+        title, category, icon = label
+        amount_str = f"₦{float(payment.amount):,.0f}"
+
+        await dispatch_notification(
+            type="payment_confirmed",
+            category=category,
+            member_ids=[str(member["id"])],
+            title=title,
+            body=f"Payment of {amount_str} confirmed. Reference: {payment.reference}",
+            action_url="/account/billing",
+            icon=icon,
+            metadata={
+                "payment_id": str(payment.id),
+                "reference": payment.reference,
+                "amount": float(payment.amount),
+                "purpose": payment.purpose.value,
+            },
+            calling_service="payments",
+        )
+    except Exception as e:
+        logger.warning("Failed to dispatch payment notification (non-fatal): %s", e)
 
 
 async def _emit_membership_reward_events(payment: Payment) -> None:

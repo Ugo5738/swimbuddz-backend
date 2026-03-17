@@ -257,6 +257,56 @@ class MessageLogResponse(BaseModel):
 
 
 # ===== NOTIFICATION PREFERENCES SCHEMAS =====
+# ===== NOTIFICATION SCHEMAS =====
+class NotificationDispatchRequest(BaseModel):
+    """Request to create and deliver notification(s) via the dispatcher."""
+
+    type: str  # e.g. "order_confirmed"
+    category: str  # e.g. "store", "sessions"
+    member_ids: list[uuid.UUID]
+    title: str
+    body: Optional[str] = None
+    action_url: Optional[str] = None
+    icon: Optional[str] = None
+    metadata: Optional[dict] = None
+    channels: list[str] = ["in_app"]  # "in_app", "email"
+    email_template: Optional[str] = None
+    email_data: Optional[dict] = None
+    expires_at: Optional[datetime] = None
+
+
+class NotificationResponse(BaseModel):
+    """Response for a single notification."""
+
+    id: uuid.UUID
+    type: str
+    category: str
+    title: str
+    body: Optional[str] = None
+    icon: Optional[str] = None
+    action_url: Optional[str] = None
+    metadata: Optional[dict] = None
+    read_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationListResponse(BaseModel):
+    """Paginated notification list response."""
+
+    items: list[NotificationResponse]
+    total: int
+    unread_count: int
+
+
+class NotificationUnreadCountResponse(BaseModel):
+    """Unread notification count response."""
+
+    unread_count: int
+
+
+# ===== NOTIFICATION PREFERENCES SCHEMAS =====
 class NotificationPreferencesBase(BaseModel):
     """Base schema for notification preferences."""
 

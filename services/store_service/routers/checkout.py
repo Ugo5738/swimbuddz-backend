@@ -5,7 +5,9 @@ from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.common.service_client import (
+    dispatch_notification,
     emit_rewards_event,
+    get_member_by_auth_id,
     initialize_store_payment,
     verify_store_payment,
 )
@@ -331,6 +333,27 @@ async def verify_payment(
 
         # Notify admins of the new order
         await _notify_admins_new_order(order, db)
+
+        # Dispatch in-app notification to buyer
+        member = await get_member_by_auth_id(
+            current_user.user_id, calling_service="store"
+        )
+        if member:
+            await dispatch_notification(
+                type="order_confirmed",
+                category="store",
+                member_ids=[str(member["id"])],
+                title="Order Confirmed",
+                body=f"Your order #{order.order_number} has been confirmed and is being processed.",
+                action_url=f"/account/orders/{order.order_number}",
+                icon="shopping-bag",
+                metadata={
+                    "order_id": str(order.id),
+                    "order_number": order.order_number,
+                    "amount": float(order.total_ngn),
+                },
+                calling_service="store",
+            )
 
         return _verify_response("success", "Payment confirmed")
     elif payment_status == "failed":

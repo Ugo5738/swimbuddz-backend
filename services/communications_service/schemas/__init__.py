@@ -21,9 +21,13 @@ from services.communications_service.schemas.main import (
     MessageCreate,
     MessageLogResponse,
     MessageResponse,
+    NotificationDispatchRequest,
+    NotificationListResponse,
     NotificationPreferencesBase,
     NotificationPreferencesResponse,
     NotificationPreferencesUpdate,
+    NotificationResponse,
+    NotificationUnreadCountResponse,
     StudentMessageCreate,
 )
 
@@ -48,8 +52,12 @@ __all__ = [
     "MessageCreate",
     "MessageLogResponse",
     "MessageResponse",
+    "NotificationDispatchRequest",
+    "NotificationListResponse",
     "NotificationPreferencesBase",
     "NotificationPreferencesResponse",
     "NotificationPreferencesUpdate",
+    "NotificationResponse",
+    "NotificationUnreadCountResponse",
     "StudentMessageCreate",
 ]
