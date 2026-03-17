@@ -58,11 +58,10 @@ async def _find_members(
     with_interests_only: bool = False,
 ) -> list[TargetMember]:
     """Query members_service DB for members missing volunteer profiles."""
-    from libs.db.session import get_async_session_factory
+    from libs.db.config import AsyncSessionLocal
     from services.members_service.models import Member, MemberPreferences
 
-    async_session = get_async_session_factory()
-    async with async_session() as db:
+    async with AsyncSessionLocal() as db:
         q = (
             select(
                 Member.id,

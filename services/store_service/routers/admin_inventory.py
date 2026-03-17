@@ -9,7 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
-from libs.common.service_client import credit_member_wallet, emit_rewards_event
+from libs.common.service_client import (
+    credit_member_wallet,
+    dispatch_notification,
+    emit_rewards_event,
+    get_member_by_auth_id,
+)
 from libs.db.session import get_async_db
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -412,6 +417,61 @@ async def update_order_status(
         except Exception as e:
             logger.error(f"Failed to send order status email: {e}")
 
+    # Dispatch in-app notifications for customer-facing status changes
+    _STATUS_NOTIFICATION_MAP = {
+        OrderStatus.READY_FOR_PICKUP: (
+            "order_ready_pickup",
+            "Ready for Pickup",
+            f"Your order #{order.order_number} is ready for pickup!",
+            "package",
+        ),
+        OrderStatus.SHIPPED: (
+            "order_shipped",
+            "Order Shipped",
+            f"Your order #{order.order_number} has been shipped.",
+            "truck",
+        ),
+        OrderStatus.DELIVERED: (
+            "order_delivered",
+            "Order Delivered",
+            f"Your order #{order.order_number} has been delivered.",
+            "check-circle",
+        ),
+        OrderStatus.PICKED_UP: (
+            "order_picked_up",
+            "Order Picked Up",
+            f"Your order #{order.order_number} has been picked up. Enjoy!",
+            "check-circle",
+        ),
+        OrderStatus.CANCELLED: (
+            "order_cancelled",
+            "Order Cancelled",
+            f"Your order #{order.order_number} has been cancelled.",
+            "x-circle",
+        ),
+    }
+    notif_config = _STATUS_NOTIFICATION_MAP.get(status_update.status)
+    if notif_config and order.member_auth_id:
+        notif_type, notif_title, notif_body, notif_icon = notif_config
+        member = await get_member_by_auth_id(
+            order.member_auth_id, calling_service="store"
+        )
+        if member:
+            await dispatch_notification(
+                type=notif_type,
+                category="store",
+                member_ids=[str(member["id"])],
+                title=notif_title,
+                body=notif_body,
+                action_url=f"/account/orders/{order.order_number}",
+                icon=notif_icon,
+                metadata={
+                    "order_id": str(order.id),
+                    "order_number": order.order_number,
+                },
+                calling_service="store",
+            )
+
     # Emit events based on status transitions
     if order.member_auth_id:
         if status_update.status == OrderStatus.SHIPPED:
@@ -556,6 +616,28 @@ async def mark_order_paid(
     from services.store_service.routers.checkout import _notify_admins_new_order
 
     await _notify_admins_new_order(order, db)
+
+    # Dispatch in-app notification to buyer
+    if order.member_auth_id:
+        member = await get_member_by_auth_id(
+            order.member_auth_id, calling_service="store"
+        )
+        if member:
+            await dispatch_notification(
+                type="order_confirmed",
+                category="store",
+                member_ids=[str(member["id"])],
+                title="Order Confirmed",
+                body=f"Your order #{order.order_number} has been confirmed and is being processed.",
+                action_url=f"/account/orders/{order.order_number}",
+                icon="shopping-bag",
+                metadata={
+                    "order_id": str(order.id),
+                    "order_number": order.order_number,
+                    "amount": float(order.total_ngn),
+                },
+                calling_service="store",
+            )
 
     # Emit store.order_paid event for rewards/analytics
     if order.member_auth_id:

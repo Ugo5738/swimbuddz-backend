@@ -15,7 +15,12 @@ from zoneinfo import ZoneInfo
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-from libs.common.service_client import get_members_bulk, get_session_by_id, internal_get
+from libs.common.service_client import (
+    dispatch_notification,
+    get_members_bulk,
+    get_session_by_id,
+    internal_get,
+)
 from libs.db.session import get_async_db
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -262,6 +267,28 @@ async def send_session_announcement(
                         f"Failed to send announcement to {member['email']}: {e}"
                     )
 
+            # Dispatch in-app notifications for all eligible members
+            member_ids_for_notif = [m["id"] for m in eligible_members]
+            if member_ids_for_notif:
+                short_notice_prefix = "⚡ " if is_short_notice else ""
+                location_name = (
+                    session.get("location_name") or session.get("location") or "TBD"
+                )
+                await dispatch_notification(
+                    type="session_published",
+                    category="sessions",
+                    member_ids=member_ids_for_notif,
+                    title=f"{short_notice_prefix}New Session: {session['title']}",
+                    body=f"{session_date} at {session_time} — {location_name}",
+                    action_url=f"/sessions/{session['id']}",
+                    icon="calendar",
+                    metadata={
+                        "session_id": str(session_id),
+                        "session_type": session["session_type"],
+                    },
+                    calling_service="communications",
+                )
+
             await db.commit()
             logger.info(
                 f"Sent session announcement to {sent_count} members for session {session_id}"
@@ -417,6 +444,26 @@ async def _process_single_notification(
         except Exception as e:
             logger.error(f"Failed to send reminder to {member['email']}: {e}")
 
+    # Dispatch in-app notifications for reminders
+    reminder_member_ids = [m["id"] for m in members]
+    if reminder_member_ids:
+        reminder_labels = {"24h": "tomorrow", "3h": "in 3 hours", "1h": "in 1 hour"}
+        time_label = reminder_labels.get(reminder_type, f"in {reminder_type}")
+        await dispatch_notification(
+            type=f"session_reminder_{reminder_type}",
+            category="sessions",
+            member_ids=reminder_member_ids,
+            title=f"Reminder: {session['title']} {time_label}",
+            body=f"{session_date} at {session_time}",
+            action_url=f"/sessions/{session['id']}",
+            icon="clock",
+            metadata={
+                "session_id": str(notification.session_id),
+                "reminder_type": reminder_type,
+            },
+            calling_service="communications",
+        )
+
     notification.status = ScheduledNotificationStatus.SENT
     notification.sent_at = utc_now()
     logger.info(
@@ -495,6 +542,25 @@ async def cancel_session_notifications(
                     logger.error(
                         f"Failed to send cancellation to {member['email']}: {e}"
                     )
+
+            # Dispatch in-app notifications for cancellation
+            cancel_member_ids = [m["id"] for m in members]
+            if cancel_member_ids:
+                await dispatch_notification(
+                    type="session_cancelled",
+                    category="sessions",
+                    member_ids=cancel_member_ids,
+                    title=f"Session Cancelled: {session['title']}",
+                    body=f"{session_date} at {session_time}"
+                    + (f" — {cancellation_reason}" if cancellation_reason else ""),
+                    action_url="/sessions",
+                    icon="x-circle",
+                    metadata={
+                        "session_id": str(session_id),
+                        "cancellation_reason": cancellation_reason,
+                    },
+                    calling_service="communications",
+                )
 
             await db.commit()
             logger.info(
