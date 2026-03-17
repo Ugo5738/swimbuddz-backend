@@ -115,6 +115,7 @@ async def enroll_student(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
             selectinload(Enrollment.installments),
+            selectinload(Enrollment.progress_records),
         )
     )
     enrolled = refreshed.scalar_one()
@@ -154,6 +155,7 @@ async def list_enrollments(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
             selectinload(Enrollment.installments),
+            selectinload(Enrollment.progress_records),
         )
         .order_by(Enrollment.created_at.desc())
     )
@@ -184,6 +186,7 @@ async def get_enrollment(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
             selectinload(Enrollment.installments),
+            selectinload(Enrollment.progress_records),
         )
     )
     result = await db.execute(query)
@@ -228,6 +231,7 @@ async def update_enrollment(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
             selectinload(Enrollment.installments),
+            selectinload(Enrollment.progress_records),
         )
     )
     result = await db.execute(query)
@@ -426,6 +430,7 @@ async def self_enroll(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
             selectinload(Enrollment.installments),
+            selectinload(Enrollment.progress_records),
         )
     )
     result = await db.execute(query)
@@ -480,6 +485,7 @@ async def get_my_enrollments(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
             selectinload(Enrollment.installments),
+            selectinload(Enrollment.progress_records),
         )
     )
     result = await db.execute(query)
@@ -551,6 +557,7 @@ async def get_my_enrollment(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
             selectinload(Enrollment.installments),
+            selectinload(Enrollment.progress_records),
         )
     )
     result = await db.execute(query)
@@ -584,6 +591,7 @@ async def admin_mark_enrollment_paid(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
             selectinload(Enrollment.installments),
+            selectinload(Enrollment.progress_records),
         )
     )
     result = await db.execute(query)
@@ -818,6 +826,7 @@ async def admin_dropout_action(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
             selectinload(Enrollment.installments),
+            selectinload(Enrollment.progress_records),
         )
     )
     result = await db.execute(query)
@@ -907,6 +916,7 @@ async def list_cohort_enrollments(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
             selectinload(Enrollment.program),
             selectinload(Enrollment.installments),
+            selectinload(Enrollment.progress_records),
         )
     )
     result = await db.execute(query)
@@ -1044,7 +1054,12 @@ async def pay_installment_with_bubbles(
             Enrollment.id == enrollment_id,
             Enrollment.member_id == member_data["id"],
         )
-        .options(selectinload(Enrollment.program))
+        .options(
+            selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
+            selectinload(Enrollment.progress_records),
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+        )
     )
     enrollment = result.scalar_one_or_none()
     if not enrollment:
@@ -1076,7 +1091,19 @@ async def pay_installment_with_bubbles(
                 cohort_requires_approval=cohort.require_approval,
             )
         await db.commit()
-        await db.refresh(enrollment)
+        # Re-load with all relationships for serialization
+        enrollment = (
+            await db.execute(
+                select(Enrollment)
+                .where(Enrollment.id == enrollment.id)
+                .options(
+                    selectinload(Enrollment.cohort).selectinload(Cohort.program),
+                    selectinload(Enrollment.program),
+                    selectinload(Enrollment.installments),
+                    selectinload(Enrollment.progress_records),
+                )
+            )
+        ).scalar_one()
         return EnrollmentResponse.model_validate(enrollment)
 
     fee_bubbles = kobo_to_bubbles(installment.amount)
@@ -1134,5 +1161,17 @@ async def pay_installment_with_bubbles(
         )
 
     await db.commit()
-    await db.refresh(enrollment)
+    # Re-load with all relationships for serialization
+    enrollment = (
+        await db.execute(
+            select(Enrollment)
+            .where(Enrollment.id == enrollment.id)
+            .options(
+                selectinload(Enrollment.cohort).selectinload(Cohort.program),
+                selectinload(Enrollment.program),
+                selectinload(Enrollment.installments),
+                selectinload(Enrollment.progress_records),
+            )
+        )
+    ).scalar_one()
     return EnrollmentResponse.model_validate(enrollment)
