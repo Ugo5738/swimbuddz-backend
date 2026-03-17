@@ -178,6 +178,7 @@ class ProductImageCreate(ProductImageBase):
 
 
 class ProductImageUpdate(BaseModel):
+    url: Optional[str] = Field(None, max_length=512)
     alt_text: Optional[str] = Field(None, max_length=255)
     sort_order: Optional[int] = None
     is_primary: Optional[bool] = None
