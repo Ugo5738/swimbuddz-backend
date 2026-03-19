@@ -5,6 +5,10 @@ from decimal import Decimal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.currency import bubbles_to_naira, naira_to_bubbles
@@ -15,10 +19,6 @@ from libs.common.service_client import (
     get_member_by_auth_id,
 )
 from libs.db.session import get_async_db
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from services.store_service.models import (
     Cart,
     CartItem,
@@ -71,6 +71,7 @@ async def start_checkout(
             Cart.member_auth_id == current_user.user_id,
             Cart.status == CartStatus.ACTIVE,
         )
+        .order_by(Cart.updated_at.desc())
         .options(
             selectinload(Cart.items)
             .selectinload(CartItem.variant)
@@ -82,7 +83,7 @@ async def start_checkout(
         )
     )
     result = await db.execute(query)
-    cart = result.scalar_one_or_none()
+    cart = result.scalars().first()
 
     if not cart or not cart.items:
         raise HTTPException(status_code=400, detail="Cart is empty")

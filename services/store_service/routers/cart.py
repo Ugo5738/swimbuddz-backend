@@ -6,15 +6,15 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from libs.auth.dependencies import get_optional_user
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.common.service_client import get_member_by_auth_id, validate_discount_code
 from libs.db.session import get_async_db
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from services.store_service.models import (
     Cart,
     CartItem,
@@ -87,7 +87,14 @@ async def get_or_create_cart(
             .options(selectinload(Cart.items))
         )
         result = await db.execute(query)
-        member_cart = result.scalars().first()
+        member_carts = result.scalars().all()
+        member_cart = member_carts[0] if member_carts else None
+
+        # Deactivate any duplicate active carts (keep only the newest)
+        if len(member_carts) > 1:
+            for stale_cart in member_carts[1:]:
+                stale_cart.status = CartStatus.ABANDONED
+            await db.flush()
 
         # Check for guest cart to merge (if session_id provided)
         guest_cart = None
