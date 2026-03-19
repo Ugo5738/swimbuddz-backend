@@ -6,15 +6,15 @@ from typing import List, Optional, Set
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import delete, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import get_optional_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
 from libs.common.member_utils import resolve_members_basic
 from libs.db.session import get_async_db
-from sqlalchemy import delete, func, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.communications_service.models import (
     Announcement,
     AnnouncementAudience,
@@ -305,6 +305,35 @@ async def get_announcement_stats(
     return {"recent_announcements_count": recent_announcements_count}
 
 
+@router.get("/unread-count")
+async def get_unread_count(
+    request: Request,
+    member_id: uuid.UUID = Query(..., description="Member ID"),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return the number of published, non-expired announcements the member has not read."""
+    now = datetime.now(timezone.utc)
+    allowed_audiences = await _get_allowed_audiences(
+        request.headers.get("authorization")
+    )
+
+    # Subquery: announcement IDs this member has read
+    read_ids = (
+        select(AnnouncementRead.announcement_id)
+        .where(AnnouncementRead.member_id == member_id)
+        .scalar_subquery()
+    )
+
+    query = select(func.count(Announcement.id)).where(
+        Announcement.status == AnnouncementStatus.PUBLISHED,
+        or_(Announcement.expires_at.is_(None), Announcement.expires_at > now),
+        Announcement.audience.in_(allowed_audiences),
+        Announcement.id.notin_(read_ids),
+    )
+    result = await db.execute(query)
+    return {"unread_count": result.scalar_one() or 0}
+
+
 @router.get("/{announcement_id}", response_model=AnnouncementResponse)
 async def get_announcement(
     announcement_id: uuid.UUID,
@@ -481,35 +510,6 @@ async def delete_announcement(
 # ============================================================================
 # UNREAD COUNT
 # ============================================================================
-
-
-@router.get("/unread-count")
-async def get_unread_count(
-    request: Request,
-    member_id: uuid.UUID = Query(..., description="Member ID"),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Return the number of published, non-expired announcements the member has not read."""
-    now = datetime.now(timezone.utc)
-    allowed_audiences = await _get_allowed_audiences(
-        request.headers.get("authorization")
-    )
-
-    # Subquery: announcement IDs this member has read
-    read_ids = (
-        select(AnnouncementRead.announcement_id)
-        .where(AnnouncementRead.member_id == member_id)
-        .scalar_subquery()
-    )
-
-    query = select(func.count(Announcement.id)).where(
-        Announcement.status == AnnouncementStatus.PUBLISHED,
-        or_(Announcement.expires_at.is_(None), Announcement.expires_at > now),
-        Announcement.audience.in_(allowed_audiences),
-        Announcement.id.notin_(read_ids),
-    )
-    result = await db.execute(query)
-    return {"unread_count": result.scalar_one() or 0}
 
 
 # ============================================================================
