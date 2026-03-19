@@ -3,14 +3,27 @@
 import uuid
 from typing import Optional
 
+# Category slug → SKU code mapping (must match seed script conventions)
+CATEGORY_SKU_CODES = {
+    "training-equipment": "TRN",
+    "swim-gear": "GER",
+    "swimwear": "SWR",
+    "pool-water-safety": "SAF",
+    "bags-storage": "BAG",
+    "sun-protection": "SUN",
+    "maintenance-care": "MNT",
+    "towels-changing": "TWL",
+    "kids-learn-to-swim": "KID",
+}
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from libs.auth.dependencies import require_admin
-from libs.auth.models import AuthUser
-from libs.db.session import get_async_db
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from libs.auth.dependencies import require_admin
+from libs.auth.models import AuthUser
+from libs.db.session import get_async_db
 from services.store_service.models import (
     AuditEntityType,
     Category,
@@ -400,17 +413,28 @@ async def create_variant(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Add a variant to a product. SKU is auto-generated if not provided."""
-    # Check product exists
-    product = await db.get(Product, product_id)
+    # Check product exists (eager-load category for SKU generation)
+    result = await db.execute(
+        select(Product)
+        .where(Product.id == product_id)
+        .options(selectinload(Product.category))
+    )
+    product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
     # Auto-generate SKU if not provided
     sku = variant_in.sku
     if not sku:
-        # Build prefix from product slug: "mens-training-jammer" → "SB-MEN-TRA"
-        slug_parts = product.slug.split("-")
-        prefix = "SB-" + "".join(p[:3].upper() for p in slug_parts[:2])
+        # Use category-based prefix (matching seed convention)
+        cat_code = None
+        if product.category:
+            cat_code = CATEGORY_SKU_CODES.get(product.category.slug)
+        if not cat_code:
+            # Fallback to slug-based for uncategorized products
+            slug_parts = product.slug.split("-")
+            cat_code = "".join(p[:3].upper() for p in slug_parts[:2])
+        prefix = f"SB-{cat_code}"
 
         # Count existing variants to determine the next sequence number
         count_result = await db.execute(
