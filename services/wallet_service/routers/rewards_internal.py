@@ -7,10 +7,11 @@ automatic Bubble rewards (attendance milestones, topups, etc.).
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from libs.db.session import get_async_db
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from libs.db.session import get_async_db
 from services.wallet_service.models.rewards import WalletEvent
 from services.wallet_service.schemas.rewards import (
     EventIngestRequest,
@@ -77,7 +78,28 @@ async def ingest_event(
         idempotency_key=body.idempotency_key,
     )
     db.add(event)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Race condition: another concurrent request inserted first.
+        # Roll back and return the existing record.
+        await db.rollback()
+        logger.info(
+            "Concurrent duplicate for idempotency_key=%s, returning existing result",
+            body.idempotency_key,
+        )
+        result = await db.execute(
+            select(WalletEvent).where(
+                WalletEvent.idempotency_key == body.idempotency_key
+            )
+        )
+        existing = result.scalar_one_or_none()
+        return EventIngestResponse(
+            event_id=existing.event_id if existing else body.event_id,
+            accepted=True,
+            rewards_granted=existing.rewards_granted if existing else 0,
+            rewards=[],
+        )
 
     # Process through the rewards engine
     try:
