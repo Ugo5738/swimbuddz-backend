@@ -81,11 +81,11 @@ SUPPLIER_LINKS = {
     "swimbuddz-pro-kickboard": "https://www.alibaba.com/product-detail/EVA-Hand-Paddles-Adult-Kickboard-Plate_1601590587735.html",
     "swimbuddz-kids-kickboard": "https://www.alibaba.com/product-detail/Kick-Board-For-Swimming-Training-EVA_1601697854582.html",
     # "eva-training-pull-buoy": "https://www.alibaba.com/product-detail/Customized-Design-Swimming-Legs-Floating-Training_1601047254870.html",
-    # "silicone-training-fins": "https://www.alibaba.com/product-detail/Manufacturer-Price-Open-Heel-Design-Adult_1601458003885.html",
-    # "rubber-dive-swim-fins": "https://www.alibaba.com/product-detail/OEM-Swimming-Fins-Dive-Free-Diving_1600132665137.html",
-    # "short-blade-bodyboard-fins": "https://www.alibaba.com/product-detail/Wave-Sport-Fins-Water-Sports-Equipment_60676166503.html",
-    # "tpr-training-flippers": "https://www.alibaba.com/product-detail/Custom-Logo-Adult-Diving-Training-Flippers_1601587055182.html",
-    # "adjustable-mermaid-fins": "https://www.alibaba.com/product-detail/Wholesale-Mermaid-Fins-for-Adults-Kids_1601444089992.html",
+    "silicone-training-fins": "https://www.alibaba.com/product-detail/Manufacturer-Price-Open-Heel-Design-Adult_1601458003885.html",
+    "rubber-dive-swim-fins": "https://www.alibaba.com/product-detail/Professional-Training-Dive-Frog-Swimming-Shoes_1600982285009.html",
+    # "short-blade-bodyboard-fins": "https://www.alibaba.com/product-detail/Wave-Sport-Fins-Water-Sports-Equipment_60676166503.html",  not including yet
+    # "tpr-training-flippers": "https://www.alibaba.com/product-detail/Custom-Logo-Adult-Diving-Training-Flippers_1601587055182.html",  not including yet
+    # "adjustable-mermaid-fins": "https://www.alibaba.com/product-detail/Wholesale-Mermaid-Fins-for-Adults-Kids_1601444089992.html",  not including yet
     # "silicone-hand-training-paddles": "https://www.alibaba.com/product-detail/Swimming-Hand-Training-Paddles-Silicone-PC_1601563740123.html",
     # "classic-frontal-centre-snorkel": "https://www.alibaba.com/product-detail/Classic-Frontal-Snorkel-Waspo-Design_1601319993845.html",
     # "semi-dry-frontal-training-snorkel": "https://www.alibaba.com/product-detail/Silicone-Frontal-Snorkel-Semi-Dry_1601257238004.html",
@@ -227,27 +227,30 @@ PRODUCT_MEDIA = {
     #     ],
     #     "videos": [],
     # },
-    # "silicone-training-fins": {
-    #     "images": [
-    #         "https://sc04.alicdn.com/kf/H92b0c7f6f8eb45eba41d3f51215f8f96G.jpg",
-    #         "https://sc04.alicdn.com/kf/H8c7f0f80040d407bbe4451458bac899fz.jpg",
-    #         "https://sc04.alicdn.com/kf/Hc5a76993d9604d1e9393ee70d4963b3eU.jpg",
-    #         "https://sc04.alicdn.com/kf/Hc470c5e3d3f04b90b39093660d46d4a5m.jpg",
-    #         "https://sc04.alicdn.com/kf/H89f934c93311440d82f6107df602c3e0E.jpg",
-    #         "https://sc04.alicdn.com/kf/H914d560ffa0549a8aff7b30d464ba2b9P.jpg",
-    #     ],
-    #     "videos": [],
-    # },
-    # "rubber-dive-swim-fins": {
-    #     "images": [
-    #         "https://sc04.alicdn.com/kf/H92bbcd67de984c528d59461b8a3a853bv.png",
-    #         "https://sc04.alicdn.com/kf/H20c20eccea4148eab84f80dc2d31360aJ.png",
-    #         "https://sc04.alicdn.com/kf/Hed47905590714727b547020d4960507cY.png",
-    #         "https://sc04.alicdn.com/kf/H4fc17da9fc7f4b60addbbb1e94313f2a1.png",
-    #         "https://sc04.alicdn.com/kf/H796b0949e16a41389e9c35ae4d0a4c8cq.png",
-    #     ],
-    #     "videos": [],
-    # },
+    "silicone-training-fins": {
+        "images": [
+            "https://sc04.alicdn.com/kf/H92b0c7f6f8eb45eba41d3f51215f8f96G.jpg",
+            "https://sc04.alicdn.com/kf/H8c7f0f80040d407bbe4451458bac899fz.jpg",
+            "https://sc04.alicdn.com/kf/Hc5a76993d9604d1e9393ee70d4963b3eU.jpg",
+            "https://sc04.alicdn.com/kf/Hc470c5e3d3f04b90b39093660d46d4a5m.jpg",
+            "https://sc04.alicdn.com/kf/H89f934c93311440d82f6107df602c3e0E.jpg",
+            "https://sc04.alicdn.com/kf/H914d560ffa0549a8aff7b30d464ba2b9P.jpg",
+        ],
+        "videos": [],
+    },
+    "rubber-dive-swim-fins": {
+        "images": [
+            "https://sc04.alicdn.com/kf/H559b9b7cf35b4f699f1c286485c56df5R.png",
+            "https://sc04.alicdn.com/kf/Ha03f1571265f4cf9a727424a9714b6dcr.jpg",
+            "https://sc04.alicdn.com/kf/H96d7f770ed274596aaa8fe4732dca60cg.png",
+            "https://sc04.alicdn.com/kf/H589b2ceb87144878b61d5bfdecfa03bcq.png",
+            "https://sc04.alicdn.com/kf/Hc2ec1c9d9c9a459b9e69c28b81085418L.png",
+            "https://sc04.alicdn.com/kf/H07d87fa5a812431fa60107cff0100ad1Q.png",
+        ],
+        "videos": [
+            "https://gv.videocdn.alibaba.com/4f4e1c368ac918af/77a891ec4800b05b/20240628_a5c3a5b8a4438b91_469697477755_mp4_264_hd_unlimit_taobao.mp4?bizCode=icbu_vod_video",
+        ],
+    },
     # "short-blade-bodyboard-fins": {
     #     "images": [
     #         "https://sc04.alicdn.com/kf/Ha1f61c03a647448e85b5dcbde7ec2554Q.jpg",
@@ -1332,54 +1335,75 @@ PRODUCTS_DATA = [
     #     "preorder_lead_days": 3,
     #     "image_seed": "pullbuoy",
     # },
-    # {
-    #     "name": "Open Heel Silicone Training Fins",
-    #     "slug": "silicone-training-fins",
-    #     "category_key": "training",
-    #     "description": (
-    #         "Premium 100% silicone training fins with open-heel design for a "
-    #         "secure, adjustable fit. Soft yet responsive blade improves ankle "
-    #         "flexibility and kick technique. Available in four sizes."
-    #     ),
-    #     "short_description": "100% silicone open-heel training fins",
-    #     "base_price_ngn": "25000",
-    #     "compare_at_price_ngn": "30000",
-    #     "cost_price_ngn": "15805",
-    #     "is_featured": True,
-    #     "has_variants": True,
-    #     "variant_options": {
-    #         "Color": ["Black", "Green", "Blue", "Rose"],
-    #         "Size": ["S (36-38)", "M (39-41)", "L (42-44)", "XL (45-46)"],
-    #     },
-    #     "requires_size_chart_ack": False,
-    #     "sku_prefix": "SB-TRN-008",
-    #     "preorder_lead_days": 7,
-    #     "image_seed": "siliconefins",
-    # },
-    # {
-    #     "name": "Rubber Dive & Swim Fins",
-    #     "slug": "rubber-dive-swim-fins",
-    #     "category_key": "training",
-    #     "description": (
-    #         "Versatile rubber fins suitable for both pool training and open-water "
-    #         "diving. Full-foot pocket provides a snug fit while the flexible "
-    #         "blade delivers efficient propulsion with minimal effort."
-    #     ),
-    #     "short_description": "Versatile rubber fins for pool and open-water use",
-    #     "base_price_ngn": "12000",
-    #     "compare_at_price_ngn": None,
-    #     "cost_price_ngn": "6021",
-    #     "is_featured": False,
-    #     "has_variants": True,
-    #     "variant_options": {
-    #         "Color": ["Black", "Pink", "Red", "Yellow", "Sky Blue", "Green"],
-    #         "Size": ["S (36-38)", "M (39-41)", "L (42-44)", "XL (45-46)"],
-    #     },
-    #     "requires_size_chart_ack": False,
-    #     "sku_prefix": "SB-TRN-009",
-    #     "preorder_lead_days": 3,
-    #     "image_seed": "rubberfins",
-    # },
+    {
+        "name": "Open Heel Silicone Training Fins",
+        "slug": "silicone-training-fins",
+        "category_key": "training",
+        "description": (
+            "Premium 100% silicone training fins with open-heel design for a "
+            "secure, adjustable fit. Soft yet responsive blade improves ankle "
+            "flexibility and kick technique. Available in four sizes."
+        ),
+        "short_description": "100% silicone open-heel training fins",
+        "base_price_ngn": "25000",
+        "compare_at_price_ngn": "30000",
+        "cost_price_ngn": "15805",
+        "is_featured": True,
+        "has_variants": True,
+        "variant_options": {
+            "Color": ["Black", "Green", "Blue", "Rose"],
+            "Size": ["S (36-38)", "M (39-41)", "L (42-44)", "XL (45-46)"],
+        },
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-TRN-008",
+        "preorder_lead_days": 7,
+        "image_seed": "siliconefins",
+    },
+    {
+        "name": "Professional Training Dive Frog Swimming Fins",
+        "slug": "rubber-dive-swim-fins",
+        "category_key": "training",
+        "description": (
+            "Professional frog-style swimming fins designed for training and "
+            "recreational diving. Soft, flexible rubber blade with full-foot "
+            "pocket provides excellent propulsion and a comfortable fit. "
+            "Available in multiple sizes and colours to suit all swimmers."
+        ),
+        "short_description": "Professional frog-style dive & swim training fins",
+        "base_price_ngn": "12000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "3597",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {
+            "Color": ["Green", "Black", "Red", "Blue", "White", "Grass Green"],
+            "Size": [
+                "XXXS (28-31)",
+                "XXS (32-33)",
+                "XS (34-35)",
+                "S (36-38)",
+                "M (39-41)",
+                "L (42-44)",
+                "XL (45-46)",
+                "XXL (47-48)",
+            ],
+        },
+        "variant_prices": {
+            # Size → price_override_ngn (markup over Alibaba wholesale)
+            "XXXS (28-31)": "8000",
+            "XXS (32-33)": "9000",
+            "XS (34-35)": "10000",
+            "S (36-38)": "11000",
+            "M (39-41)": "12000",
+            "L (42-44)": "14000",
+            "XL (45-46)": "17000",
+            "XXL (47-48)": "19000",
+        },
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-TRN-009",
+        "preorder_lead_days": 3,
+        "image_seed": "rubberfins",
+    },
     # {
     #     "name": "Short Blade Bodyboard Fins",
     #     "slug": "short-blade-bodyboard-fins",
@@ -1589,8 +1613,8 @@ PRODUCTS_DATA = [
             "for wide-angle underwater vision. Waterproof professional-grade PC lenses with silicone "
             "straps for a secure, comfortable fit. Suitable for men and women."
         ),
-        "short_description": "Transparent large-frame anti-fog waterproof goggles with integrated earplugs for adults",
-        "base_price_ngn": "8500",
+        "short_description": "Transparent large-frame anti-fog waterproof goggles with earplugs",
+        "base_price_ngn": "9000",
         "compare_at_price_ngn": None,
         "cost_price_ngn": "2643",
         "is_featured": False,
@@ -1634,7 +1658,7 @@ PRODUCTS_DATA = [
             "Available in 5 colours. Suitable for swimming training and fitness."
         ),
         "short_description": "HD mirror coating anti-fog waterproof swim goggles for adults",
-        "base_price_ngn": "11000",
+        "base_price_ngn": "10000",
         "compare_at_price_ngn": None,
         "cost_price_ngn": "3421",
         "is_featured": False,
@@ -1655,7 +1679,7 @@ PRODUCTS_DATA = [
             "secure fit. Ideal for adult swimming, training and water sports."
         ),
         "short_description": "UV anti-fog waterproof swim goggles with earplugs for adults",
-        "base_price_ngn": "5500",
+        "base_price_ngn": "10000",
         "compare_at_price_ngn": None,
         "cost_price_ngn": "2746",
         "is_featured": False,
@@ -1708,7 +1732,7 @@ PRODUCTS_DATA = [
             "Zippered closure with customisable logo option. Lightweight and portable."
         ),
         "short_description": "Protective EVA silicone swim goggle travel case",
-        "base_price_ngn": "2500",
+        "base_price_ngn": "3500",
         "compare_at_price_ngn": None,
         "cost_price_ngn": "1248",
         "is_featured": False,
@@ -2407,7 +2431,7 @@ PRODUCTS_DATA = [
             "30 ml bottle fits in any swim bag."
         ),
         "short_description": "Portable anti-fog spray for goggles, masks, and lenses",
-        "base_price_ngn": "2000",
+        "base_price_ngn": "3000",
         "compare_at_price_ngn": None,
         "cost_price_ngn": "500",
         "is_featured": False,
@@ -2521,7 +2545,7 @@ COLLECTIONS_DATA = [
         "product_slugs": [
             "adult-hd-anti-fog-electroplated-swim-goggles",
             # "marble-silicone-swim-cap",
-            # "silicone-training-fins",
+            "silicone-training-fins",
             # "fina-shark-skin-racing-jammer",
             # "yingfa-womens-competitive-swimsuit",
         ],
@@ -2539,19 +2563,19 @@ COLLECTIONS_DATA = [
     #         "quick-dry-performance-jammer",
     #     ],
     # },
-    # {
-    #     "name": "Training Must-Haves",
-    #     "slug": "training-must-haves",
-    #     "description": "Essential equipment for structured swim training sessions.",
-    #     "sort_order": 3,
-    #     "product_slugs": [
-    #         "swimbuddz-training-kickboard",
-    #         "eva-training-pull-buoy",
-    #         "silicone-hand-training-paddles",
-    #         "classic-frontal-centre-snorkel",
-    #         "silicone-training-fins",
-    #     ],
-    # },
+    {
+        "name": "Training Must-Haves",
+        "slug": "training-must-haves",
+        "description": "Essential equipment for structured swim training sessions.",
+        "sort_order": 3,
+        "product_slugs": [
+            # "swimbuddz-training-kickboard",
+            # "eva-training-pull-buoy",
+            # "silicone-hand-training-paddles",
+            # "classic-frontal-centre-snorkel",
+            "silicone-training-fins",
+        ],
+    },
     # {
     #     "name": "Poolside Favourites",
     #     "slug": "poolside-favourites",
@@ -2783,11 +2807,21 @@ async def seed_products(db, categories, supplier, verbose=False):
                 codes = [_variant_code(v) for v in combo]
                 sku_suffix = "-".join(codes)
                 name = " / ".join(combo)
+                # Check for per-variant price overrides (keyed by any option value)
+                price_override = None
+                variant_prices = p.get("variant_prices", {})
+                if variant_prices:
+                    for opt_val in combo:
+                        if opt_val in variant_prices:
+                            price_override = Decimal(variant_prices[opt_val])
+                            break
+
                 variant = ProductVariant(
                     product_id=product.id,
                     sku=f"{p['sku_prefix']}-{sku_suffix}",
                     name=name,
                     options=options,
+                    price_override_ngn=price_override,
                 )
                 db.add(variant)
                 await db.flush()
