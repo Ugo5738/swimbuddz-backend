@@ -18,6 +18,7 @@ CATEGORY_SKU_CODES = {
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -608,6 +609,18 @@ async def update_product_image(
                 status_code=400,
                 detail="Variant not found for this product",
             )
+
+    # If setting as primary, unset the old primary first
+    if update_data.get("is_primary"):
+        await db.execute(
+            sa_update(ProductImage)
+            .where(
+                ProductImage.product_id == product_id,
+                ProductImage.is_primary == True,  # noqa: E712
+                ProductImage.id != image_id,
+            )
+            .values(is_primary=False)
+        )
 
     for field, value in update_data.items():
         setattr(image, field, value)
