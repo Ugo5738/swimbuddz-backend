@@ -80,9 +80,10 @@ SUPPLIER_LINKS = {
     "swimbuddz-training-kickboard": "https://www.alibaba.com/product-detail/Children-s-Adult-s-EVA-Foam_1601048480430.html",
     "swimbuddz-pro-kickboard": "https://www.alibaba.com/product-detail/EVA-Hand-Paddles-Adult-Kickboard-Plate_1601590587735.html",
     "swimbuddz-kids-kickboard": "https://www.alibaba.com/product-detail/Kick-Board-For-Swimming-Training-EVA_1601697854582.html",
-    # "eva-training-pull-buoy": "https://www.alibaba.com/product-detail/Customized-Design-Swimming-Legs-Floating-Training_1601047254870.html",
+    "eva-training-pull-buoy": "https://www.alibaba.com/product-detail/No-Slip-Ergonomic-Premium-Taper-8_1601259125186.html",
     "silicone-training-fins": "https://www.alibaba.com/product-detail/Manufacturer-Price-Open-Heel-Design-Adult_1601458003885.html",
     "rubber-dive-swim-fins": "https://www.alibaba.com/product-detail/Professional-Training-Dive-Frog-Swimming-Shoes_1600982285009.html",
+    "short-blade-swim-fins": "https://www.alibaba.com/product-detail/Factory-Training-Floating-Swim-Fins-Short_1601560744071.html",
     # "short-blade-bodyboard-fins": "https://www.alibaba.com/product-detail/Wave-Sport-Fins-Water-Sports-Equipment_60676166503.html",  not including yet
     # "tpr-training-flippers": "https://www.alibaba.com/product-detail/Custom-Logo-Adult-Diving-Training-Flippers_1601587055182.html",  not including yet
     # "adjustable-mermaid-fins": "https://www.alibaba.com/product-detail/Wholesale-Mermaid-Fins-for-Adults-Kids_1601444089992.html",  not including yet
@@ -95,7 +96,10 @@ SUPPLIER_LINKS = {
     "adult-hd-anti-fog-electroplated-swim-goggles": "https://www.alibaba.com/product-detail/UV-Swimming-Goggles-Racing-Silver-Plated_1601254897770.html",
     "hd-mirror-coating-swim-goggles": "https://www.alibaba.com/product-detail/Wholesale-Best-Selling-Swim-Goggles-with_1601105040753.html",
     "uv-anti-fog-swim-goggles-with-earplugs": "https://www.alibaba.com/product-detail/2025-Hot-Sale-Custom-Swim-Goggles_1600086744674.html",
-    # "marble-silicone-swim-cap": "https://www.alibaba.com/product-detail/OEM-Custom-Durable-Silicone-Swim-Cap_1601520869417.html",
+    "printed-silicone-swim-cap": "https://www.alibaba.com/product-detail/Comfortable-Printed-Silicone-Swim-Cap-for_1601296128116.html",
+    "high-stretch-silicone-swim-cap": "https://www.alibaba.com/product-detail/High-Stretch-Silicone-Swim-Cap-with_10000036092285.html",
+    "ear-protection-silicone-swim-cap": "https://www.alibaba.com/product-detail/Ear-Protection-Professional-Swim-Cap-Comfortable_1601245332435.html",
+    "plus-size-silicone-swim-cap": "https://www.alibaba.com/product-detail/Plus-Size-Silicone-Swim-Cap-Protective_1601245379438.html",
     "eva-silicone-swim-goggle-case": "https://www.alibaba.com/product-detail/Eva-Silicone-Swim-Goggle-Case-for_1601202790094.html",
     # "silicone-nose-clip": "https://www.alibaba.com/product-detail/Professional-Silicone-Nose-Clip_1601713089994.html",
     # "chlorine-resistant-jammer": "https://www.alibaba.com/product-detail/Wholesale-price-Chlorine-Resistant-Endurance-Swim_1600246434962.html",
@@ -117,13 +121,13 @@ SUPPLIER_LINKS = {
     # "oxford-fabric-life-jacket": "https://www.alibaba.com/product-detail/Professional-Oxford-Fabric-Thickened-Adult-Children_1601489484673.html",
     # "neoprene-performance-life-vest": "https://www.alibaba.com/product-detail/JIURAN-Neoprene-Adult-Life-Jacket-Vest_1601614678797.html",
     # "mesh-swim-drawstring-bag": "https://www.alibaba.com/product-detail/In-Stock-Outdoor-Sports-Fitness-Waterproof_1601428960652.html",
-    # "waterproof-pu-gym-duffle": "https://www.alibaba.com/product-detail/Waterproof-Gym-Duffle-Bag_1601579526270.html",
-    # "waterproof-canvas-sports-backpack": "https://www.alibaba.com/product-detail/Canvas-Sports-Backpack_1601496788503.html",
-    # "multi-compartment-gym-duffle": "https://www.alibaba.com/product-detail/Gym-Duffle-Multiple-Compartments_1601570187639.html",
-    # "pu-yoga-swim-duffel-tote": "https://www.alibaba.com/product-detail/Yoga-Duffel-Tote-Bag_1601411337411.html",
-    # "outdoor-sport-duffle-backpack": "https://www.alibaba.com/product-detail/Outdoor-Sport-Duffle_1601396976569.html",
-    # "pu-leather-travel-duffel": "https://www.alibaba.com/product-detail/PU-Leather-Travel-Duffel_1601572294202.html",
-    # "multifunctional-travel-backpack": "https://www.alibaba.com/product-detail/Multifunctional-Travel-Backpack_1601429117824.html",
+    "waterproof-pu-gym-duffle": "https://www.alibaba.com/product-detail/Waterproof-Gym-Duffle-Bag_1601579526270.html",
+    "waterproof-canvas-sports-backpack": "https://www.alibaba.com/product-detail/Canvas-Sports-Backpack_1601496788503.html",
+    "multi-compartment-gym-duffle": "https://www.alibaba.com/product-detail/Gym-Duffle-Multiple-Compartments_1601570187639.html",
+    "pu-yoga-swim-duffel-tote": "https://www.alibaba.com/product-detail/Yoga-Duffel-Tote-Bag_1601411337411.html",
+    "outdoor-sport-duffle-backpack": "https://www.alibaba.com/product-detail/Outdoor-Sport-Duffle_1601396976569.html",
+    "pu-leather-travel-duffel": "https://www.alibaba.com/product-detail/PU-Leather-Travel-Duffel_1601572294202.html",
+    "multifunctional-travel-backpack": "https://www.alibaba.com/product-detail/Multifunctional-Travel-Backpack_1601429117824.html",
     # "uv400-sports-sunglasses": "https://www.alibaba.com/product-detail/Outdoor-Cycling-High-Quality-Polarized-Glasses_1601348182851.html",
     # "retro-polarised-sunglasses": "https://www.alibaba.com/product-detail/Partagas-Retro-Designer-Custom-Logo-Round_1601585110117.html",
     "goggle-anti-fog-solution": "https://www.alibaba.com/product-detail/Jiehu-Anti-Fog-Spray-For-Goggles_1601695879464.html",
@@ -216,17 +220,21 @@ PRODUCT_MEDIA = {
             "https://cloud.video.taobao.com/play/u/null/p/1/e/6/t/1/387079422182.mp4",
         ],
     },
-    # "eva-training-pull-buoy": {
-    #     "images": [
-    #         "https://sc04.alicdn.com/kf/H0f412632c63f4316a8af4aa338d6c1dcO.jpg",
-    #         "https://sc04.alicdn.com/kf/Hbf160aa1958741a89ed7cb3125cf6bf3P.jpg",
-    #         "https://sc04.alicdn.com/kf/H49d2525d4c8540e28e824abc82a32a7ac.jpg",
-    #         "https://sc04.alicdn.com/kf/H9d2e1a959dee4952a5271218ef33e4671.jpg",
-    #         "https://sc04.alicdn.com/kf/H0bc4001259e84f48838af796adf9ba8a8.jpg",
-    #         "https://sc04.alicdn.com/kf/Hb7b2f9dc5aee494685b08df69dcc979e3.jpg",
-    #     ],
-    #     "videos": [],
-    # },
+    "eva-training-pull-buoy": {
+        "images": [
+            # Gallery images
+            "https://sc04.alicdn.com/kf/Hb6b7f9860a964ec7a1bb5f50e787ccaas.jpg",
+            "https://sc04.alicdn.com/kf/Hfc79cdff5126495483a046a12cd71d8bI.jpg",
+            "https://sc04.alicdn.com/kf/H2ef8e5307fee4193b51ed938d6363617O.jpg",
+            "https://sc04.alicdn.com/kf/H6ab243e37dbe422f84ea3163c802b409i.jpg",
+            "https://sc04.alicdn.com/kf/Ha4688860ea7b444eb451035a8a2de6e39.jpg",
+            "https://sc04.alicdn.com/kf/Hce35ff62e3f54d518b21369b7f0cf786v.jpg",
+            # Variant color images (index 6–7)
+            "https://sc04.alicdn.com/kf/He1e5163e869645b0b769845029a4e0adT.jpg",  # Pink
+            "https://sc04.alicdn.com/kf/Hb40880a379ad4053b18987bb9b055123U.jpg",  # Blue
+        ],
+        "videos": [],
+    },
     "silicone-training-fins": {
         "images": [
             "https://sc04.alicdn.com/kf/H92b0c7f6f8eb45eba41d3f51215f8f96G.jpg",
@@ -250,6 +258,17 @@ PRODUCT_MEDIA = {
         "videos": [
             "https://gv.videocdn.alibaba.com/4f4e1c368ac918af/77a891ec4800b05b/20240628_a5c3a5b8a4438b91_469697477755_mp4_264_hd_unlimit_taobao.mp4?bizCode=icbu_vod_video",
         ],
+    },
+    "short-blade-swim-fins": {
+        "images": [
+            "https://sc04.alicdn.com/kf/H3ca66c6a23f14f71ae1a302216860b05h.png",
+            "https://sc04.alicdn.com/kf/He57b8ff78c20446aa592677d78ee1abbj.png",
+            "https://sc04.alicdn.com/kf/H2107e75b1bc74b3f85be30a5727062b9z.png",
+            "https://sc04.alicdn.com/kf/H145cead6623b4f2d91466beb6e1d8eacw.png",
+            "https://sc04.alicdn.com/kf/H539beea4fd4c42b7b48f3deff8743f286.png",
+            "https://sc04.alicdn.com/kf/H1ac1dec2256044b6adb6c8812a611603R.png",
+        ],
+        "videos": [],
     },
     # "short-blade-bodyboard-fins": {
     #     "images": [
@@ -424,19 +443,82 @@ PRODUCT_MEDIA = {
             "https://gv.videocdn.alibaba.com/4f4e1c368ac918af/0ad089ac612909a6/20240802_c079495018f54f88_474883625500_mp4_264_hd_unlimit_taobao.mp4?bizCode=icbu_vod_video",
         ],
     },
-    # "marble-silicone-swim-cap": {
-    #     "images": [
-    #         "https://sc04.alicdn.com/kf/H810dbf3ce2de4b1aa26c65d7c2a6d2fbL.png",
-    #         "https://sc04.alicdn.com/kf/H54868e8b88c74fdf870911a159f144da3.jpg",
-    #         "https://sc04.alicdn.com/kf/Ha4a4047ab3de45ddbe236202245cfb67s.png",
-    #         "https://sc04.alicdn.com/kf/Hf5a5f61f6af4454f8f745ad1f2fa5bc7C.png",
-    #         "https://sc04.alicdn.com/kf/H06b8933b38b54e2fa4a1ad05ba508f26Q.png",
-    #         "https://sc04.alicdn.com/kf/Ha439f553801b489694323b86254ea2b6w.png",
-    #     ],
-    #     "videos": [
-    #         "https://cloud.video.alibaba.com/play/u/2153292369/p/1/e/6/t/1/d/hd/6000304962436.mp4",
-    #     ],
-    # },
+    "printed-silicone-swim-cap": {
+        "images": [
+            # Gallery images
+            "https://sc04.alicdn.com/kf/H5fb68abf92f24e41a24af540aed84ac7v.jpg",
+            "https://d3on2iqx8wzllm.cloudfront.net/product-images/02f0ea6a-7db9-43ad-a974-18d43c120cab.jpg",
+            "https://d3on2iqx8wzllm.cloudfront.net/product-images/b900866b-8c87-414a-b863-0d0dcfbf2710.jpg",
+            "https://d3on2iqx8wzllm.cloudfront.net/product-images/2ee8330d-a582-4bec-a727-940f18383e6f.jpg",
+            "https://d3on2iqx8wzllm.cloudfront.net/product-images/7cfd39ea-7357-458b-83db-5961243906ed.jpg",
+            # Variant color images (index 5–18)
+            "https://sc04.alicdn.com/kf/H9add476e46994a91b8fa93ef0008ef74n.jpg",  # Blue
+            "https://sc04.alicdn.com/kf/H65faf7bbe9c9483491209ed055a99947F.jpg",  # Black
+            "https://sc04.alicdn.com/kf/H8cc9cceb36e44c85b5635d1657fa3021i.jpg",  # Pink
+            "https://sc04.alicdn.com/kf/H6ee4510c6b1e43ca938ab2563808f819V.jpg",  # White
+            "https://sc04.alicdn.com/kf/H3df402a31fa54dc4af62a3d0956875959.jpg",  # Red
+            "https://sc04.alicdn.com/kf/Ha98f1339c0e84f0d9a2df47c817c8701p.jpg",  # Yellow
+            "https://sc04.alicdn.com/kf/Hf85dd613e6904f1088f3833cb50f2b61W.jpg",  # Orange
+            "https://sc04.alicdn.com/kf/H3b6543607532471fae687d6719d70919Y.jpg",  # Purple
+            "https://sc04.alicdn.com/kf/H4d51e02d11be491e85c016c763c60cc1F.jpg",  # Sky Blue
+            "https://sc04.alicdn.com/kf/H0aaba80261ff426d8b61b40e60b7e4057.jpg",  # Dark Grey
+            "https://sc04.alicdn.com/kf/H76257a8d5da44f8d9f5dbbf4b517f62e3.jpg",  # Navy Blue
+            "https://sc04.alicdn.com/kf/H1e6c0bdfe2d74d538fae08e9715c8746h.jpg",  # Green
+            "https://sc04.alicdn.com/kf/H2eac2a8cefa14320b2236208c52c6addH.jpg",  # Brown
+            "https://sc04.alicdn.com/kf/Hc257b63bdd7b498b83631d3d5a4865e4o.jpg",  # Silver
+        ],
+        "videos": [],
+    },
+    "high-stretch-silicone-swim-cap": {
+        "images": [
+            "https://sc04.alicdn.com/kf/Heb541980f3dc4ad9a553be9a3838fe36e.png",
+            "https://sc04.alicdn.com/kf/Sd64a6725356041e190f5831a95fd1ac1P.jpg",
+            "https://sc04.alicdn.com/kf/Sb7774c3324624ad49d08f5d04b03f644U.jpg",
+            "https://sc04.alicdn.com/kf/Sd87ef5ab7b64437687f1e259f89312de4.jpg",
+            "https://sc04.alicdn.com/kf/S8128d8618c5d418b9a5fa6712a6f26f75.jpg",
+            "https://sc04.alicdn.com/kf/Sacbdb7f887894ad9a8b2daf22b29ca26n.jpg",
+        ],
+        "videos": [
+            "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv99-3e3b2ec0-8bd1e1ce-993780c5-7e19/trans/aidc/qmebty-h264-sd.mp4?bizCode=icbu_vod_video",
+        ],
+    },
+    "ear-protection-silicone-swim-cap": {
+        "images": [
+            # Gallery images (CloudFront primary + Alibaba details)
+            "https://d3on2iqx8wzllm.cloudfront.net/product-images/a8aa03f0-c89a-40c2-948e-da70e25f4718.jpg",
+            "https://sc04.alicdn.com/kf/H0f3d34b9bfa54b7e9ab76007ef6e0c03r.jpg",
+            "https://sc04.alicdn.com/kf/Hf1f60552ff0b4f5d9c9b6380db1abd9dX.jpg",
+            "https://sc04.alicdn.com/kf/H774f86b76b384827b40bb2a872b43327j.jpg",
+            "https://sc04.alicdn.com/kf/Hfc91583e3e3b44cdb0f6db0cceabdef4x.jpg",
+            # Variant color images (index 5–11)
+            "https://sc04.alicdn.com/kf/Hdaa76a6d8c5442a6b5484cf91b7b3a09Q.jpg",  # Blue
+            "https://sc04.alicdn.com/kf/Ha9ecb14fa435420eb7fdce068daf6509x.jpg",  # Purple
+            "https://sc04.alicdn.com/kf/H2b1b4e49baf142a29d95b0f85fdc098eL.jpg",  # Black
+            "https://sc04.alicdn.com/kf/Hbc1b0583874845da9d7faf08410f7de6d.jpg",  # Pink
+            "https://sc04.alicdn.com/kf/H7bd771f3b15d43b88a4294caa16c07aeY.jpg",  # Yellow
+            "https://sc04.alicdn.com/kf/H5fbabde4470a484698600874d3daa1dc2.jpg",  # Gray
+            "https://sc04.alicdn.com/kf/H5cabb94b44354d248964df99e181a4c6q.jpg",  # Red
+        ],
+        "videos": [],
+    },
+    "plus-size-silicone-swim-cap": {
+        "images": [
+            # Gallery images
+            "https://sc04.alicdn.com/kf/H032447fbc7ba4d1bbaf98750614b4011D.jpg",
+            "https://sc04.alicdn.com/kf/Hab13e8ee3f524727926f38a9827c21534.jpg",
+            "https://sc04.alicdn.com/kf/H231adf8982ef450da8a4576f0928c5fb8.jpg",
+            "https://sc04.alicdn.com/kf/Hdbf3ee27b3044724b70c1ae33127c30e6.jpg",
+            "https://sc04.alicdn.com/kf/H93c93c910a5148b5bb8c142067c2c0dfk.jpg",
+            "https://sc04.alicdn.com/kf/H6aeb994933044baab05b80a0db778e6f2.jpg",
+            # Variant color images (index 6–10)
+            "https://sc04.alicdn.com/kf/Hd2a8ef84ab4d4b75b8b7e5a286a45ff1q.jpg",  # Blue
+            "https://sc04.alicdn.com/kf/Heea0a3b687f645c391a1db54527bdf6dW.jpg",  # Purple
+            "https://sc04.alicdn.com/kf/H1a0aa7338c0241809f75ade4c58dd76cE.jpg",  # Black
+            "https://sc04.alicdn.com/kf/H1d5228f9049246deab79bb28b64d3bcbR.jpg",  # Pink
+            "https://sc04.alicdn.com/kf/He522ff5487d643afaed5d1fcedcc3ae50.jpg",  # White
+        ],
+        "videos": [],
+    },
     "eva-silicone-swim-goggle-case": {
         "images": [
             "https://s.alicdn.com/@sc04/kf/Hbfe91a6061ee420489822236f5e808ef6.jpg",
@@ -710,119 +792,91 @@ PRODUCT_MEDIA = {
     #     ],
     #     "videos": [],
     # },
-    # "waterproof-pu-gym-duffle": {
-    #     "images": [
-    #         "https://sc04.alicdn.com/kf/Hebfcfede1a124b68b4458b6d34b0dc0c7.png",
-    #         "https://sc04.alicdn.com/kf/H5f0f1bbb3d024ea29875b5e181aaa713s.png",
-    #         "https://sc04.alicdn.com/kf/He0ae457b308546c290f392c76439b22c0.png",
-    #         "https://sc04.alicdn.com/kf/Hda79101aa1e6416e8f32a08663dddc835.png",
-    #         "https://sc04.alicdn.com/kf/H85ee49898b8d445db2f83ac2335537b3R.png",
-    #         "https://sc04.alicdn.com/kf/Hc163bd6de6424e55a329d2c40be508c43.png",
-    #         "https://sc04.alicdn.com/kf/H7a192c147e8247c8ad6050c287a2ac29o.jpg",
-    #         "https://sc04.alicdn.com/kf/Hf0f95c2c14db43d5b60bdd1e579d1f6fz.jpg",
-    #     ],
-    #     "videos": [
-    #         "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv99-192a023a-a18409ca-990eca4c-51e6/trans/aidc/4f8rlk-h264-hd.mp4?bizCode=icbu_vod_video",
-    #         "https://cloud.video.alibaba.com/play/u/2153292369/p/1/e/6/t/1/d/hd/6000310092114.mp4",
-    #         "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv99-192a023a-a18409ca-990eca4c-51e6/trans/aidc/cnarab-h264-sd.mp4",
-    #     ],
-    # },
-    # "waterproof-canvas-sports-backpack": {
-    #     "images": [
-    #         "https://sc04.alicdn.com/kf/Hebfcfede1a124b68b4458b6d34b0dc0c7.png",
-    #         "https://sc04.alicdn.com/kf/H5f0f1bbb3d024ea29875b5e181aaa713s.png",
-    #         "https://sc04.alicdn.com/kf/He0ae457b308546c290f392c76439b22c0.png",
-    #         "https://sc04.alicdn.com/kf/Hda79101aa1e6416e8f32a08663dddc835.png",
-    #         "https://sc04.alicdn.com/kf/H85ee49898b8d445db2f83ac2335537b3R.png",
-    #         "https://sc04.alicdn.com/kf/Hc163bd6de6424e55a329d2c40be508c43.png",
-    #         "https://sc04.alicdn.com/kf/H78a238bc94b445e998de8f4008720169x.jpg",
-    #         "https://sc04.alicdn.com/kf/H084069fe0c1c479bb3857c691d46163cT.jpg",
-    #     ],
-    #     "videos": [
-    #         "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv97-af4009a0-a18409ca-96eba1e5-40db/trans/aidc/dip9sv-h264-hd.mp4?bizCode=icbu_vod_video",
-    #         "https://cloud.video.alibaba.com/play/u/2153292369/p/1/e/6/t/1/d/hd/350964833034.mp4",
-    #         "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv97-af4009a0-a18409ca-96eba1e5-40db/trans/aidc/qjmfkz-h264-sd.mp4",
-    #     ],
-    # },
-    # "multi-compartment-gym-duffle": {
-    #     "images": [
-    #         "https://sc04.alicdn.com/kf/Hebfcfede1a124b68b4458b6d34b0dc0c7.png",
-    #         "https://sc04.alicdn.com/kf/H5f0f1bbb3d024ea29875b5e181aaa713s.png",
-    #         "https://sc04.alicdn.com/kf/He0ae457b308546c290f392c76439b22c0.png",
-    #         "https://sc04.alicdn.com/kf/Hda79101aa1e6416e8f32a08663dddc835.png",
-    #         "https://sc04.alicdn.com/kf/H85ee49898b8d445db2f83ac2335537b3R.png",
-    #         "https://sc04.alicdn.com/kf/Hc163bd6de6424e55a329d2c40be508c43.png",
-    #         "https://sc04.alicdn.com/kf/H955879d79be14d2bbb657e017f87b2d87.jpg",
-    #         "https://sc04.alicdn.com/kf/He227382a787540eeabe4b54b9024f34ea.jpg",
-    #     ],
-    #     "videos": [
-    #         "https://cloud.video.taobao.com/play/u/null/p/1/e/6/t/1/387079422182.mp4",
-    #     ],
-    # },
-    # "pu-yoga-swim-duffel-tote": {
-    #     "images": [
-    #         "https://sc04.alicdn.com/kf/Hebfcfede1a124b68b4458b6d34b0dc0c7.png",
-    #         "https://sc04.alicdn.com/kf/H5f0f1bbb3d024ea29875b5e181aaa713s.png",
-    #         "https://sc04.alicdn.com/kf/He0ae457b308546c290f392c76439b22c0.png",
-    #         "https://sc04.alicdn.com/kf/Hda79101aa1e6416e8f32a08663dddc835.png",
-    #         "https://sc04.alicdn.com/kf/H85ee49898b8d445db2f83ac2335537b3R.png",
-    #         "https://sc04.alicdn.com/kf/Hc163bd6de6424e55a329d2c40be508c43.png",
-    #         "https://sc04.alicdn.com/kf/Haf8b24b5fbe44c99a31a03c9c4ed806ey.jpg",
-    #         "https://sc04.alicdn.com/kf/H2915a00b02054fa6ae3d5eb075a6e4475.jpg",
-    #     ],
-    #     "videos": [
-    #         "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv95-eb78b43e-a1ace553-9545fec9-292b/trans/aidc/lppavq-h264-hd.mp4?bizCode=icbu_vod_video",
-    #         "https://cloud.video.alibaba.com/play/u/2153292369/p/1/e/6/t/1/d/hd/6000295418555.mp4",
-    #         "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv95-eb78b43e-a1ace553-9545fec9-292b/trans/aidc/h4ju5g-h264-sd.mp4",
-    #     ],
-    # },
-    # "outdoor-sport-duffle-backpack": {
-    #     "images": [
-    #         "https://sc04.alicdn.com/kf/Hebfcfede1a124b68b4458b6d34b0dc0c7.png",
-    #         "https://sc04.alicdn.com/kf/H5f0f1bbb3d024ea29875b5e181aaa713s.png",
-    #         "https://sc04.alicdn.com/kf/He0ae457b308546c290f392c76439b22c0.png",
-    #         "https://sc04.alicdn.com/kf/Hda79101aa1e6416e8f32a08663dddc835.png",
-    #         "https://sc04.alicdn.com/kf/H85ee49898b8d445db2f83ac2335537b3R.png",
-    #         "https://sc04.alicdn.com/kf/Hc163bd6de6424e55a329d2c40be508c43.png",
-    #         "https://sc04.alicdn.com/kf/Hd02a84f456574a60ac6eea9ff0ac15b1m.jpg",
-    #         "https://sc04.alicdn.com/kf/Hc75414436ae9497b9e20d7ca316c1077O.jpg",
-    #     ],
-    #     "videos": [
-    #         "https://cloud.video.taobao.com/play/u/null/p/1/e/6/t/1/387079422182.mp4",
-    #     ],
-    # },
-    # "pu-leather-travel-duffel": {
-    #     "images": [
-    #         "https://sc04.alicdn.com/kf/Hebfcfede1a124b68b4458b6d34b0dc0c7.png",
-    #         "https://sc04.alicdn.com/kf/H5f0f1bbb3d024ea29875b5e181aaa713s.png",
-    #         "https://sc04.alicdn.com/kf/He0ae457b308546c290f392c76439b22c0.png",
-    #         "https://sc04.alicdn.com/kf/Hda79101aa1e6416e8f32a08663dddc835.png",
-    #         "https://sc04.alicdn.com/kf/H85ee49898b8d445db2f83ac2335537b3R.png",
-    #         "https://sc04.alicdn.com/kf/Hc163bd6de6424e55a329d2c40be508c43.png",
-    #         "https://sc04.alicdn.com/kf/H4b1ed2df08e244ec8a2e408dc76d8b946.jpg",
-    #         "https://sc04.alicdn.com/kf/Hff98c1f24d6b48a29113184c6227cd13s.jpg",
-    #     ],
-    #     "videos": [
-    #         "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv98-e474b68a-a1ab2d16-98cbdec8-74b8/trans/aidc/k0wfjz-h264-hd.mp4?bizCode=icbu_vod_video",
-    #         "https://cloud.video.alibaba.com/play/u/2153292369/p/1/e/6/t/1/d/hd/6000308986452.mp4",
-    #         "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv98-e474b68a-a1ab2d16-98cbdec8-74b8/trans/aidc/p7unlh-h264-sd.mp4",
-    #     ],
-    # },
-    # "multifunctional-travel-backpack": {
-    #     "images": [
-    #         "https://sc04.alicdn.com/kf/Hc716dccdeeba49e39b5672f7bc0b4474p.png",
-    #         "https://sc04.alicdn.com/kf/H4bc2d0510bd74eddbee919d2366836a41.jpg",
-    #         "https://sc04.alicdn.com/kf/Hebfcfede1a124b68b4458b6d34b0dc0c7.png",
-    #         "https://sc04.alicdn.com/kf/H5f0f1bbb3d024ea29875b5e181aaa713s.png",
-    #         "https://sc04.alicdn.com/kf/He0ae457b308546c290f392c76439b22c0.png",
-    #         "https://sc04.alicdn.com/kf/Hda79101aa1e6416e8f32a08663dddc835.png",
-    #         "https://sc04.alicdn.com/kf/H85ee49898b8d445db2f83ac2335537b3R.png",
-    #         "https://sc04.alicdn.com/kf/Hc163bd6de6424e55a329d2c40be508c43.png",
-    #     ],
-    #     "videos": [
-    #         "https://cloud.video.taobao.com/play/u/null/p/1/e/6/t/1/387079422182.mp4",
-    #     ],
-    # },
+    "waterproof-pu-gym-duffle": {
+        "images": [
+            "https://sc04.alicdn.com/kf/H7a192c147e8247c8ad6050c287a2ac29o.jpg",
+            "https://sc04.alicdn.com/kf/Hf0f95c2c14db43d5b60bdd1e579d1f6fz.jpg",
+            "https://sc04.alicdn.com/kf/H77f1691a114a450f8bd90803e0465734J.jpg",
+            "https://sc04.alicdn.com/kf/Hedb58f1f3cbe428180ff4059f36da770D.png",
+            "https://sc04.alicdn.com/kf/H37cbdc93fb8a4270b46db32965bb3fb7t.png",
+            "https://sc04.alicdn.com/kf/Hd54cc8d569d34c1baa85ed02cf20a30cj.png",
+        ],
+        "videos": [
+            "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv99-192a023a-a18409ca-990eca4c-51e6/trans/aidc/4f8rlk-h264-hd.mp4?bizCode=icbu_vod_video",
+        ],
+    },
+    "waterproof-canvas-sports-backpack": {
+        "images": [
+            "https://sc04.alicdn.com/kf/H78a238bc94b445e998de8f4008720169x.jpg",
+            "https://sc04.alicdn.com/kf/H084069fe0c1c479bb3857c691d46163cT.jpg",
+            "https://sc04.alicdn.com/kf/H63e9aeb2dd264c20b2153c08fc94aab8A.jpg",
+            "https://sc04.alicdn.com/kf/Hebcd2c9c383c46429e226ac0f532d345E.jpg",
+            "https://sc04.alicdn.com/kf/He9d4afde55f748dfbecdd0bc60a7dfb9n.jpg",
+            "https://sc04.alicdn.com/kf/Hb85997322a3b47b198bd46fda884d22es.jpg",
+        ],
+        "videos": [
+            "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv97-af4009a0-a18409ca-96eba1e5-40db/trans/aidc/dip9sv-h264-hd.mp4?bizCode=icbu_vod_video",
+        ],
+    },
+    "multi-compartment-gym-duffle": {
+        "images": [
+            "https://sc04.alicdn.com/kf/H955879d79be14d2bbb657e017f87b2d87.jpg",
+            "https://sc04.alicdn.com/kf/He227382a787540eeabe4b54b9024f34ea.jpg",
+            "https://sc04.alicdn.com/kf/Hb2d60fc2ad0b4460bf076db6d1f1747au.jpg",
+            "https://sc04.alicdn.com/kf/Hc90d9101f955462abc013259d4546267J.jpg",
+            "https://sc04.alicdn.com/kf/H7437cf235d074913859897a60c36e0fd9.jpg",
+            "https://sc04.alicdn.com/kf/Hbc1a47d51aa048759f0f1da2e3352abad.jpg",
+        ],
+        "videos": [],
+    },
+    "pu-yoga-swim-duffel-tote": {
+        "images": [
+            "https://sc04.alicdn.com/kf/Haf8b24b5fbe44c99a31a03c9c4ed806ey.jpg",
+            "https://sc04.alicdn.com/kf/H2915a00b02054fa6ae3d5eb075a6e4475.jpg",
+            "https://sc04.alicdn.com/kf/H488cee6462384bef8c580f1c76185a73S.jpg",
+            "https://sc04.alicdn.com/kf/H2059a13b25a346aba119c5efa3184cedp.jpg",
+            "https://sc04.alicdn.com/kf/H84556cf7cccb49af9bbcad34a3a155dcT.jpg",
+            "https://sc04.alicdn.com/kf/H17dfdeccd82f4a72b7d7732d4cda33feE.jpg",
+        ],
+        "videos": [
+            "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv95-eb78b43e-a1ace553-9545fec9-292b/trans/aidc/lppavq-h264-hd.mp4?bizCode=icbu_vod_video",
+        ],
+    },
+    "outdoor-sport-duffle-backpack": {
+        "images": [
+            "https://sc04.alicdn.com/kf/Hd02a84f456574a60ac6eea9ff0ac15b1m.jpg",
+            "https://sc04.alicdn.com/kf/Hc75414436ae9497b9e20d7ca316c1077O.jpg",
+            "https://sc04.alicdn.com/kf/H98ae374cd670493ead93a5ca9dbc53a5Z.jpg",
+            "https://sc04.alicdn.com/kf/Ha728bb2d74b3439daf1c770597cfe9718.jpg",
+            "https://sc04.alicdn.com/kf/H697d5e4cd30a4438b5dcac4a33c9527cP.jpg",
+            "https://sc04.alicdn.com/kf/H5dfb5f4425e643919d10b9a71a6e8b7bJ.jpg",
+        ],
+        "videos": [],
+    },
+    "pu-leather-travel-duffel": {
+        "images": [
+            "https://sc04.alicdn.com/kf/H4b1ed2df08e244ec8a2e408dc76d8b946.jpg",
+            "https://sc04.alicdn.com/kf/Hff98c1f24d6b48a29113184c6227cd13s.jpg",
+            "https://sc04.alicdn.com/kf/H088fd3f9a6cd4c04b3a39d9d5f9800f1F.jpg",
+            "https://sc04.alicdn.com/kf/H9f7e2e0867ce4c5bbfa84a808f26b4a1Z.jpg",
+            "https://sc04.alicdn.com/kf/Hebab11a610624c4b9b14633031c49f9aU.jpg",
+            "https://sc04.alicdn.com/kf/Hae8de8922b7b4869a2cf04dd5973081eu.jpg",
+        ],
+        "videos": [
+            "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv98-e474b68a-a1ab2d16-98cbdec8-74b8/trans/aidc/k0wfjz-h264-hd.mp4?bizCode=icbu_vod_video",
+        ],
+    },
+    "multifunctional-travel-backpack": {
+        "images": [
+            "https://sc04.alicdn.com/kf/H0ceb892d305a49f2a6874251c92328d9S.jpg",
+            "https://sc04.alicdn.com/kf/H4369b88e07474a56ab42ed41e4e5dea1j.jpg",
+            "https://sc04.alicdn.com/kf/H8b86fe1d56c44ca9bcfecb9ac2804f82v.jpg",
+            "https://sc04.alicdn.com/kf/H33d1cba4349f4388b744f6ae31157818Q.jpg",
+            "https://sc04.alicdn.com/kf/H3e26952a12ad4092bcd72fb91d35f4d6E.jpg",
+            "https://sc04.alicdn.com/kf/Hd19867b6d48446dc8e485eab07d790deo.jpg",
+        ],
+        "videos": [],
+    },
     # "uv400-sports-sunglasses": {
     #     "images": [
     #         "https://sc04.alicdn.com/kf/H284f977d716942288a9d40a841d24af9w.jpg",
@@ -920,6 +974,53 @@ PRODUCT_SWATCHES = {
         "Gray": "https://s.alicdn.com/@sc04/kf/Hffea38e46a00490f84f967ac84fe95d9u.jpg",
         "Blue": "https://s.alicdn.com/@sc04/kf/Ha5dce2d5b76045f1b5c1bf11d03ca7b4F.jpg",
     },
+    "eva-training-pull-buoy": {
+        "Pink": "https://sc04.alicdn.com/kf/He1e5163e869645b0b769845029a4e0adT.jpg",
+        "Blue": "https://sc04.alicdn.com/kf/Hb40880a379ad4053b18987bb9b055123U.jpg",
+    },
+    "hd-mirror-coating-swim-goggles": {
+        "Gray": "https://sc04.alicdn.com/kf/H81c600cbc2a84235bd7087a3aa61bc276.jpg",
+        "Black": "https://sc04.alicdn.com/kf/H55f6bb62ef2644e986b55cbd90ec6dadW.jpg",
+        "Lake Blue": "https://sc04.alicdn.com/kf/Hea9b37d8d9a34e3783921e832bdca192c.jpg",
+        "Red": "https://sc04.alicdn.com/kf/H10178cb3516847aaa265540686fdadc0x.jpg",
+        "Blue": "https://sc04.alicdn.com/kf/H0ba790a6a7cf4e2a90337fb017497d6fg.jpg",
+    },
+    "uv-anti-fog-swim-goggles-with-earplugs": {
+        "Gray": "https://sc04.alicdn.com/kf/H3f6b4618bff644a6a5e838d957774e13U.jpg",
+        "Pink": "https://sc04.alicdn.com/kf/H4fe8aedfba484619a1ab337ddf4b7db9G.jpg",
+        "Light Blue": "https://sc04.alicdn.com/kf/Hc6ac1bf861f44c128389e8bc6aa08f15S.jpg",
+        "Black": "https://sc04.alicdn.com/kf/H37d5fd720c7442b688a95040324469c5v.jpg",
+    },
+    "printed-silicone-swim-cap": {
+        "Blue": "https://sc04.alicdn.com/kf/H9add476e46994a91b8fa93ef0008ef74n.jpg",
+        "Black": "https://sc04.alicdn.com/kf/H65faf7bbe9c9483491209ed055a99947F.jpg",
+        "Pink": "https://sc04.alicdn.com/kf/H8cc9cceb36e44c85b5635d1657fa3021i.jpg",
+        "White": "https://sc04.alicdn.com/kf/H6ee4510c6b1e43ca938ab2563808f819V.jpg",
+        "Red": "https://sc04.alicdn.com/kf/H3df402a31fa54dc4af62a3d0956875959.jpg",
+        "Yellow": "https://sc04.alicdn.com/kf/Ha98f1339c0e84f0d9a2df47c817c8701p.jpg",
+        "Orange": "https://sc04.alicdn.com/kf/Hf85dd613e6904f1088f3833cb50f2b61W.jpg",
+        "Purple": "https://sc04.alicdn.com/kf/H3b6543607532471fae687d6719d70919Y.jpg",
+        "Sky Blue": "https://sc04.alicdn.com/kf/H4d51e02d11be491e85c016c763c60cc1F.jpg",
+        "Dark Grey": "https://sc04.alicdn.com/kf/H0aaba80261ff426d8b61b40e60b7e4057.jpg",
+        "Navy Blue": "https://sc04.alicdn.com/kf/H76257a8d5da44f8d9f5dbbf4b517f62e3.jpg",
+        "Green": "https://sc04.alicdn.com/kf/H1e6c0bdfe2d74d538fae08e9715c8746h.jpg",
+    },
+    "ear-protection-silicone-swim-cap": {
+        "Blue": "https://sc04.alicdn.com/kf/Hdaa76a6d8c5442a6b5484cf91b7b3a09Q.jpg",
+        "Purple": "https://sc04.alicdn.com/kf/Ha9ecb14fa435420eb7fdce068daf6509x.jpg",
+        "Black": "https://sc04.alicdn.com/kf/H2b1b4e49baf142a29d95b0f85fdc098eL.jpg",
+        "Pink": "https://sc04.alicdn.com/kf/Hbc1b0583874845da9d7faf08410f7de6d.jpg",
+        "Yellow": "https://sc04.alicdn.com/kf/H7bd771f3b15d43b88a4294caa16c07aeY.jpg",
+        "Gray": "https://sc04.alicdn.com/kf/H5fbabde4470a484698600874d3daa1dc2.jpg",
+        "Red": "https://sc04.alicdn.com/kf/H5cabb94b44354d248964df99e181a4c6q.jpg",
+    },
+    "plus-size-silicone-swim-cap": {
+        "Blue": "https://sc04.alicdn.com/kf/Hd2a8ef84ab4d4b75b8b7e5a286a45ff1q.jpg",
+        "Purple": "https://sc04.alicdn.com/kf/Heea0a3b687f645c391a1db54527bdf6dW.jpg",
+        "Black": "https://sc04.alicdn.com/kf/H1a0aa7338c0241809f75ade4c58dd76cE.jpg",
+        "Pink": "https://sc04.alicdn.com/kf/H1d5228f9049246deab79bb28b64d3bcbR.jpg",
+        "White": "https://sc04.alicdn.com/kf/He522ff5487d643afaed5d1fcedcc3ae50.jpg",
+    },
     "swimbuddz-training-kickboard": {
         "Blue": "https://s.alicdn.com/@sc04/kf/H5c938d040a2b4d9391b375580cccfe95z.jpg",
         "Green": "https://s.alicdn.com/@sc04/kf/H5310f2dba2df4aab9d19f7625fdbb08dF.jpg",
@@ -954,29 +1055,29 @@ PRODUCT_SWATCHES = {
     #     "Orange Green Gradient": "https://sc04.alicdn.com/kf/H0b6542e589d04ac38d2ef6cd16d03cdcr.jpg",
     #     "Black Gray Gradient": "https://sc04.alicdn.com/kf/H536126446be244e796a584d6ba77f9f1f.jpg",
     # },
-    # "multi-compartment-gym-duffle": {
-    #     "Black": "https://sc04.alicdn.com/kf/H2a25a216f28a4b5ab2280f7de797782al.jpg",
-    #     "Gray": "https://sc04.alicdn.com/kf/Hb2f78b26aa1e4f47b5ef785118fbb867g.jpg",
-    #     "Green": "https://sc04.alicdn.com/kf/Haed8a4694ad04f2caac252ff29bdd1313.jpg",
-    # },
-    # "multifunctional-travel-backpack": {
-    #     "Black": "https://sc04.alicdn.com/kf/H3ab264fd485745ed9f9ca00f54f15e759.jpg",
-    #     "Gray": "https://sc04.alicdn.com/kf/He2626e490a8f499a8797049e6e1e597cx.png",
-    # },
+    "multi-compartment-gym-duffle": {
+        "Black": "https://sc04.alicdn.com/kf/H2a25a216f28a4b5ab2280f7de797782al.jpg",
+        "Gray": "https://sc04.alicdn.com/kf/Hb2f78b26aa1e4f47b5ef785118fbb867g.jpg",
+        "Green": "https://sc04.alicdn.com/kf/Haed8a4694ad04f2caac252ff29bdd1313.jpg",
+    },
+    "multifunctional-travel-backpack": {
+        "Black": "https://sc04.alicdn.com/kf/H3ab264fd485745ed9f9ca00f54f15e759.jpg",
+        "Gray": "https://sc04.alicdn.com/kf/He2626e490a8f499a8797049e6e1e597cx.png",
+    },
     # "neoprene-performance-life-vest": {
     #     "Black": "https://sc04.alicdn.com/kf/Hdb135757dd8b4b6d8f174faa8ff71299J.jpg",
     # },
-    # "outdoor-sport-duffle-backpack": {
-    #     "Gray": "https://sc04.alicdn.com/kf/H1cc6ad6b5b614aa8a27127ac928e8538G.jpg",
-    #     "Black": "https://sc04.alicdn.com/kf/Haa7ae2c73dd64a4090432ff2f4745b5eZ.jpg",
-    # },
-    # "pu-leather-travel-duffel": {
-    #     "Black": "https://sc04.alicdn.com/kf/H3be4ce6e12574c669270454c045e6a260.jpg",
-    #     "Gray": "https://sc04.alicdn.com/kf/H6e020dd1b41d460fba09a3df8e901106N.jpg",
-    #     "Deep Blue": "https://sc04.alicdn.com/kf/H2fa2e7eadf6446a281f37b88ea5864f1e.jpg",
-    #     "White": "https://sc04.alicdn.com/kf/H8857a586647143749e65e14d3a0155904.jpg",
-    #     "Green": "https://sc04.alicdn.com/kf/Hf256d258ffef4383beb8a824af6d41car.jpg",
-    # },
+    "outdoor-sport-duffle-backpack": {
+        "Gray": "https://sc04.alicdn.com/kf/H1cc6ad6b5b614aa8a27127ac928e8538G.jpg",
+        "Black": "https://sc04.alicdn.com/kf/Haa7ae2c73dd64a4090432ff2f4745b5eZ.jpg",
+    },
+    "pu-leather-travel-duffel": {
+        "Black": "https://sc04.alicdn.com/kf/H3be4ce6e12574c669270454c045e6a260.jpg",
+        "Gray": "https://sc04.alicdn.com/kf/H6e020dd1b41d460fba09a3df8e901106N.jpg",
+        "Deep Blue": "https://sc04.alicdn.com/kf/H2fa2e7eadf6446a281f37b88ea5864f1e.jpg",
+        "White": "https://sc04.alicdn.com/kf/H8857a586647143749e65e14d3a0155904.jpg",
+        "Green": "https://sc04.alicdn.com/kf/Hf256d258ffef4383beb8a824af6d41car.jpg",
+    },
     # "quick-dry-performance-jammer": {
     #     "Black": "https://sc04.alicdn.com/kf/HTB15PARdf1G3KVjSZFkq6yK4XXa7.jpg",
     #     "Navy": "https://sc04.alicdn.com/kf/HTB1kNp4aLBj_uVjSZFpq6A0SXXaP.jpg",
@@ -1023,23 +1124,10 @@ PRODUCT_SWATCHES = {
         "Grey": "https://d3on2iqx8wzllm.cloudfront.net/product-images/9602c17f-13fe-4eeb-a8a1-f5292ba2e942.avif",
         "Pink": "https://d3on2iqx8wzllm.cloudfront.net/product-images/48d2c46c-50be-4956-a2be-67d7daf977cc.avif",
     },
-    "hd-mirror-coating-swim-goggles": {
-        "Gray": "https://s.alicdn.com/@sc04/kf/H81c600cbc2a84235bd7087a3aa61bc276.jpg",
-        "Black": "https://s.alicdn.com/@sc04/kf/H55f6bb62ef2644e986b55cbd90ec6dadW.jpg",
-        "Lake Blue": "https://s.alicdn.com/@sc04/kf/Hea9b37d8d9a34e3783921e832bdca192c.jpg",
-        "Red": "https://s.alicdn.com/@sc04/kf/H10178cb3516847aaa265540686fdadc0x.jpg",
-        "Blue": "https://s.alicdn.com/@sc04/kf/H0ba790a6a7cf4e2a90337fb017497d6fg.jpg",
+    "waterproof-canvas-sports-backpack": {
+        "Black": "https://sc04.alicdn.com/kf/H79749b0581b1470088ad8717bb259a80x.jpg",
+        "Gray": "https://sc04.alicdn.com/kf/H682f30b3f8b741a88d400eb21ce483cb4.jpg",
     },
-    "uv-anti-fog-swim-goggles-with-earplugs": {
-        "Gray": "https://s.alicdn.com/@sc04/kf/H3f6b4618bff644a6a5e838d957774e13U.jpg",
-        "Pink": "https://s.alicdn.com/@sc04/kf/H4fe8aedfba484619a1ab337ddf4b7db9G.jpg",
-        "Light Blue": "https://s.alicdn.com/@sc04/kf/Hc6ac1bf861f44c128389e8bc6aa08f15S.jpg",
-        "Black": "https://s.alicdn.com/@sc04/kf/H37d5fd720c7442b688a95040324469c5v.jpg",
-    },
-    # "waterproof-canvas-sports-backpack": {
-    #     "Black": "https://sc04.alicdn.com/kf/H79749b0581b1470088ad8717bb259a80x.jpg",
-    #     "Gray": "https://sc04.alicdn.com/kf/H682f30b3f8b741a88d400eb21ce483cb4.jpg",
-    # },
     # "womens-long-sleeve-eco-swimsuit": {
     #     "Sky Blue": "https://sc04.alicdn.com/kf/H215a8a798db8490ab4b92a61c81667573.jpg",
     #     "Orange": "https://sc04.alicdn.com/kf/H6490af365d5f469fa3a8c7dcf6d49d589.jpg",
@@ -1076,6 +1164,42 @@ VARIANT_GALLERY_MAP: dict[str, dict[str, int]] = {
         "Gray": 8,
         "Fuchsia": 9,
         "Sapphire Blue": 10,
+    },
+    "printed-silicone-swim-cap": {
+        "Blue": 5,
+        "Black": 6,
+        "Pink": 7,
+        "White": 8,
+        "Red": 9,
+        "Yellow": 10,
+        "Orange": 11,
+        "Purple": 12,
+        "Sky Blue": 13,
+        "Dark Grey": 14,
+        "Navy Blue": 15,
+        "Green": 16,
+        "Brown": 17,
+        "Silver": 18,
+    },
+    "ear-protection-silicone-swim-cap": {
+        "Blue": 5,
+        "Purple": 6,
+        "Black": 7,
+        "Pink": 8,
+        "Yellow": 9,
+        "Gray": 10,
+        "Red": 11,
+    },
+    "plus-size-silicone-swim-cap": {
+        "Blue": 6,
+        "Purple": 7,
+        "Black": 8,
+        "Pink": 9,
+        "White": 10,
+    },
+    "eva-training-pull-buoy": {
+        "Pink": 6,
+        "Blue": 7,
     },
 }
 
@@ -1314,27 +1438,28 @@ PRODUCTS_DATA = [
         "preorder_lead_days": 7,
         "image_seed": "kickboardkid",
     },
-    # {
-    #     "name": "EVA Training Pull Buoy",
-    #     "slug": "eva-training-pull-buoy",
-    #     "category_key": "training",
-    #     "description": (
-    #         "Contoured EVA pull buoy that immobilises the legs for upper-body "
-    #         "focused swim drills. Ergonomic figure-eight shape stays in place "
-    #         "between the thighs during laps."
-    #     ),
-    #     "short_description": "Ergonomic EVA pull buoy for upper-body training",
-    #     "base_price_ngn": "7000",
-    #     "compare_at_price_ngn": None,
-    #     "cost_price_ngn": "3763",
-    #     "is_featured": False,
-    #     "has_variants": True,
-    #     "variant_options": {"Color": ["Light Blue"], "Size": ["Standard", "Large"]},
-    #     "requires_size_chart_ack": False,
-    #     "sku_prefix": "SB-TRN-007",
-    #     "preorder_lead_days": 3,
-    #     "image_seed": "pullbuoy",
-    # },
+    {
+        "name": "Ergonomic Swim Training Pull Buoy",
+        "slug": "eva-training-pull-buoy",
+        "category_key": "training",
+        "description": (
+            "No-slip ergonomic figure-8 pull buoy for pool training. "
+            "Immobilises the legs so you can focus on upper-body technique "
+            "and build arm strength. Lightweight EVA foam stays in place "
+            "between the thighs during laps."
+        ),
+        "short_description": "Ergonomic figure-8 pull buoy for upper-body training",
+        "base_price_ngn": "7000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "3377",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Color": ["Pink", "Blue"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-TRN-007",
+        "preorder_lead_days": 3,
+        "image_seed": "pullbuoy",
+    },
     {
         "name": "Open Heel Silicone Training Fins",
         "slug": "silicone-training-fins",
@@ -1403,6 +1528,48 @@ PRODUCTS_DATA = [
         "sku_prefix": "SB-TRN-009",
         "preorder_lead_days": 3,
         "image_seed": "rubberfins",
+    },
+    {
+        "name": "Short Blade Training Swim Fins",
+        "slug": "short-blade-swim-fins",
+        "category_key": "training",
+        "description": (
+            "Lightweight short-blade swim fins for training and recreational "
+            "swimming. The compact blade forces a faster kick tempo, building "
+            "leg speed and ankle flexibility. Suitable for adults and kids "
+            "with sizes from XXXS to XL."
+        ),
+        "short_description": "Short-blade training fins for kick speed",
+        "base_price_ngn": "17000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "7077",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {
+            "Color": [
+                "Green",
+                "Black",
+                "Sky Blue",
+                "Pink",
+                "Yellow",
+                "White",
+                "Orange",
+            ],
+            "Size": [
+                "XXXS (28-31)",
+                "XXS (32-33)",
+                "XS (34-35)",
+                "S (36-38)",
+                "M (39-41)",
+                "ML (42-43)",
+                "L (44-45)",
+                "XL (46-47)",
+            ],
+        },
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-TRN-010",
+        "preorder_lead_days": 3,
+        "image_seed": "shortfins",
     },
     # {
     #     "name": "Short Blade Bodyboard Fins",
@@ -1690,38 +1857,126 @@ PRODUCTS_DATA = [
         "preorder_lead_days": 10,
         "image_seed": "goggles5",
     },
-    # {
-    #     "name": "Marble Design Silicone Swim Cap",
-    #     "slug": "marble-silicone-swim-cap",
-    #     "category_key": "swim_gear",
-    #     "description": (
-    #         "Premium silicone swim cap with a unique marble-swirl pattern. "
-    #         "Durable, tear-resistant silicone protects hair from chlorine while "
-    #         "providing a snug, comfortable fit for all head sizes."
-    #     ),
-    #     "short_description": "Stylish marble-pattern silicone swim cap",
-    #     "base_price_ngn": "3000",
-    #     "compare_at_price_ngn": None,
-    #     "cost_price_ngn": "1069",
-    #     "is_featured": False,
-    #     "has_variants": True,
-    #     "variant_options": {
-    #         "Color": [
-    #             "Black",
-    #             "Pink",
-    #             "White",
-    #             "Red",
-    #             "Yellow",
-    #             "Orange",
-    #             "Purple",
-    #             "Green",
-    #         ]
-    #     },
-    #     "requires_size_chart_ack": False,
-    #     "sku_prefix": "SB-GER-004",
-    #     "preorder_lead_days": 5,
-    #     "image_seed": "swimcap",
-    # },
+    {
+        "name": "Printed Silicone Swim Cap",
+        "slug": "printed-silicone-swim-cap",
+        "category_key": "swim_gear",
+        "description": (
+            "Comfortable printed silicone swim cap for kids, women, and men. "
+            "Waterproof, non-slip design keeps hair dry and protected from "
+            "chlorine. Durable silicone construction stretches to fit all "
+            "head sizes."
+        ),
+        "short_description": "Waterproof printed silicone swim cap",
+        "base_price_ngn": "4000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "1069",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {
+            "Color": [
+                "Blue",
+                "Black",
+                "Pink",
+                "White",
+                "Red",
+                "Yellow",
+                "Orange",
+                "Purple",
+                "Sky Blue",
+                "Dark Grey",
+                "Navy Blue",
+                "Green",
+                "Brown",
+                "Silver",
+            ],
+            "Size": ["50G", "55G", "60G", "65G"],
+        },
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-GER-004",
+        "preorder_lead_days": 5,
+        "image_seed": "printedcap",
+    },
+    {
+        "name": "High Stretch Silicone Swim Cap",
+        "slug": "high-stretch-silicone-swim-cap",
+        "category_key": "swim_gear",
+        "description": (
+            "High-stretch silicone swim cap with ear protection. Soft, "
+            "durable material provides a comfortable snug fit while keeping "
+            "water out of the ears. Available in nine vibrant colours."
+        ),
+        "short_description": "High-stretch silicone cap with ear protection",
+        "base_price_ngn": "5000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "1200",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {
+            "Color": [
+                "Blue",
+                "Black",
+                "Pink",
+                "White",
+                "Red",
+                "Yellow",
+                "Orange",
+                "Purple",
+                "Green",
+            ],
+            "Size": ["80G"],
+        },
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-GER-009",
+        "preorder_lead_days": 5,
+        "image_seed": "stretchcap",
+    },
+    {
+        "name": "Ear Protection Professional Swim Cap",
+        "slug": "ear-protection-silicone-swim-cap",
+        "category_key": "swim_gear",
+        "description": (
+            "Professional silicone swim cap with built-in ear protection "
+            "pockets. Comfortable, uncut design fits snugly over the ears "
+            "to keep water out. Ideal for training and competition."
+        ),
+        "short_description": "Professional swim cap with ear protection",
+        "base_price_ngn": "5000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "1400",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {
+            "Color": ["Blue", "Purple", "Black", "Pink", "Yellow", "Gray", "Red"],
+        },
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-GER-010",
+        "preorder_lead_days": 5,
+        "image_seed": "earcap",
+    },
+    {
+        "name": "Plus Size Silicone Swim Cap",
+        "slug": "plus-size-silicone-swim-cap",
+        "category_key": "swim_gear",
+        "description": (
+            "Extra-large silicone swim cap designed for long hair, braids, "
+            "and dreadlocks. Protective, roomy fit keeps all hair types dry "
+            "and free from chlorine damage. Durable, tear-resistant silicone."
+        ),
+        "short_description": "Plus-size swim cap for long hair & braids",
+        "base_price_ngn": "7000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "1800",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {
+            "Color": ["Blue", "Purple", "Black", "Pink", "White"],
+        },
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-GER-011",
+        "preorder_lead_days": 5,
+        "image_seed": "pluscap",
+    },
     {
         "name": "EVA Silicone Swim Goggle Case",
         "slug": "eva-silicone-swim-goggle-case",
@@ -2228,153 +2483,153 @@ PRODUCTS_DATA = [
     #     "preorder_lead_days": 15,
     #     "image_seed": "meshbag",
     # },
-    # {
-    #     "name": "Waterproof PU Gym Duffle",
-    #     "slug": "waterproof-pu-gym-duffle",
-    #     "category_key": "bags",
-    #     "description": (
-    #         "Stylish PU leather gym duffle with waterproof lining to keep wet and "
-    #         "dry items separate. Spacious main compartment with shoe pocket and "
-    #         "multiple organiser pockets."
-    #     ),
-    #     "short_description": "Waterproof PU gym duffle with wet/dry compartments",
-    #     "base_price_ngn": "20000",
-    #     "compare_at_price_ngn": "24000",
-    #     "cost_price_ngn": "12418",
-    #     "is_featured": False,
-    #     "has_variants": True,
-    #     "variant_options": {"Color": ["Black"]},
-    #     "requires_size_chart_ack": False,
-    #     "sku_prefix": "SB-BAG-002",
-    #     "preorder_lead_days": 35,
-    #     "image_seed": "gymduffle1",
-    # },
-    # {
-    #     "name": "Waterproof Canvas Sports Backpack",
-    #     "slug": "waterproof-canvas-sports-backpack",
-    #     "category_key": "bags",
-    #     "description": (
-    #         "Durable canvas sports backpack (48×25×24 cm) with waterproof "
-    #         "coating. Padded laptop sleeve, multiple pockets, and adjustable "
-    #         "straps. Perfect for swimmers who go straight from pool to work."
-    #     ),
-    #     "short_description": "Waterproof canvas backpack for active lifestyles",
-    #     "base_price_ngn": "17500",
-    #     "compare_at_price_ngn": None,
-    #     "cost_price_ngn": "10507",
-    #     "is_featured": False,
-    #     "has_variants": True,
-    #     "variant_options": {"Color": ["Black", "Gray"]},
-    #     "requires_size_chart_ack": False,
-    #     "sku_prefix": "SB-BAG-003",
-    #     "preorder_lead_days": 31,
-    #     "image_seed": "canvasbackpack",
-    # },
-    # {
-    #     "name": "Multi-Compartment Gym Duffle",
-    #     "slug": "multi-compartment-gym-duffle",
-    #     "category_key": "bags",
-    #     "description": (
-    #         "PU leather gym duffle (48×23×25 cm) with multiple dedicated "
-    #         "compartments for shoes, wet gear, and valuables. Detachable shoulder "
-    #         "strap and reinforced handles for comfortable carry."
-    #     ),
-    #     "short_description": "PU duffle with dedicated shoe and wet-gear compartments",
-    #     "base_price_ngn": "19000",
-    #     "compare_at_price_ngn": None,
-    #     "cost_price_ngn": "11666",
-    #     "is_featured": False,
-    #     "has_variants": True,
-    #     "variant_options": {"Color": ["Black", "Gray", "Green"]},
-    #     "requires_size_chart_ack": False,
-    #     "sku_prefix": "SB-BAG-004",
-    #     "preorder_lead_days": 35,
-    #     "image_seed": "gymduffle2",
-    # },
-    # {
-    #     "name": "PU Yoga & Swim Duffel Tote",
-    #     "slug": "pu-yoga-swim-duffel-tote",
-    #     "category_key": "bags",
-    #     "description": (
-    #         "Versatile PU duffel tote (57×10×29 cm) that converts between "
-    #         "shoulder bag and tote modes. Separate wet compartment with "
-    #         "waterproof lining ideal for post-swim gear."
-    #     ),
-    #     "short_description": "Convertible PU duffel tote with wet compartment",
-    #     "base_price_ngn": "25000",
-    #     "compare_at_price_ngn": "29000",
-    #     "cost_price_ngn": "15489",
-    #     "is_featured": False,
-    #     "has_variants": True,
-    #     "variant_options": {"Color": ["Black"]},
-    #     "requires_size_chart_ack": False,
-    #     "sku_prefix": "SB-BAG-005",
-    #     "preorder_lead_days": 35,
-    #     "image_seed": "duffeltote",
-    # },
-    # {
-    #     "name": "Outdoor Sport Duffle Backpack",
-    #     "slug": "outdoor-sport-duffle-backpack",
-    #     "category_key": "bags",
-    #     "description": (
-    #         "Large PU duffle (60×28×30 cm) with backpack straps for hands-free "
-    #         "carry. Generous capacity fits all your swim and gym gear with room "
-    #         "to spare. Water-resistant exterior."
-    #     ),
-    #     "short_description": "Large PU duffle with backpack straps",
-    #     "base_price_ngn": "20000",
-    #     "compare_at_price_ngn": None,
-    #     "cost_price_ngn": "12524",
-    #     "is_featured": False,
-    #     "has_variants": True,
-    #     "variant_options": {"Color": ["Gray", "Black"]},
-    #     "requires_size_chart_ack": False,
-    #     "sku_prefix": "SB-BAG-006",
-    #     "preorder_lead_days": 31,
-    #     "image_seed": "sportduffle",
-    # },
-    # {
-    #     "name": "PU Leather Travel Duffel",
-    #     "slug": "pu-leather-travel-duffel",
-    #     "category_key": "bags",
-    #     "description": (
-    #         "Premium PU leather travel duffel (56×23×25 cm) with classic styling. "
-    #         "Multiple internal pockets and padded base keep your belongings "
-    #         "organised and protected during swim meets and travel."
-    #     ),
-    #     "short_description": "Premium PU leather travel duffel for swim meets",
-    #     "base_price_ngn": "27000",
-    #     "compare_at_price_ngn": "32000",
-    #     "cost_price_ngn": "17145",
-    #     "is_featured": False,
-    #     "has_variants": True,
-    #     "variant_options": {"Color": ["Black", "Gray", "Deep Blue", "White", "Green"]},
-    #     "requires_size_chart_ack": False,
-    #     "sku_prefix": "SB-BAG-007",
-    #     "preorder_lead_days": 35,
-    #     "image_seed": "leatherduffel",
-    # },
-    # {
-    #     "name": "Multifunctional Travel Backpack",
-    #     "slug": "multifunctional-travel-backpack",
-    #     "category_key": "bags",
-    #     "description": (
-    #         "Versatile PU travel backpack (65×10×30 cm) with multiple access "
-    #         "points and organiser pockets. Anti-theft back panel and USB charging "
-    #         "port. Ideal for swim commuters and travellers."
-    #     ),
-    #     "short_description": "Multifunctional PU travel backpack with USB port",
-    #     "base_price_ngn": "19000",
-    #     "compare_at_price_ngn": None,
-    #     "cost_price_ngn": "11681",
-    #     "is_featured": False,
-    #     "has_variants": True,
-    #     "variant_options": {"Color": ["Black", "Gray"]},
-    #     "requires_size_chart_ack": False,
-    #     "sku_prefix": "SB-BAG-008",
-    #     "preorder_lead_days": 7,
-    #     "image_seed": "travelbackpack",
-    # },
+    {
+        "name": "Waterproof PU Gym Duffle",
+        "slug": "waterproof-pu-gym-duffle",
+        "category_key": "bags",
+        "description": (
+            "Stylish PU leather gym duffle with waterproof lining to keep wet and "
+            "dry items separate. Spacious main compartment with shoe pocket and "
+            "multiple organiser pockets."
+        ),
+        "short_description": "Waterproof PU gym duffle with wet/dry compartments",
+        "base_price_ngn": "22000",
+        "compare_at_price_ngn": "25000",
+        "cost_price_ngn": "12418",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Color": ["Black"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-BAG-002",
+        "preorder_lead_days": 35,
+        "image_seed": "gymduffle1",
+    },
+    {
+        "name": "Waterproof Canvas Sports Backpack",
+        "slug": "waterproof-canvas-sports-backpack",
+        "category_key": "bags",
+        "description": (
+            "Durable canvas sports backpack (48×25×24 cm) with waterproof "
+            "coating. Padded laptop sleeve, multiple pockets, and adjustable "
+            "straps. Perfect for swimmers who go straight from pool to work."
+        ),
+        "short_description": "Waterproof canvas backpack for active lifestyles",
+        "base_price_ngn": "20000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "10507",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Color": ["Black", "Gray"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-BAG-003",
+        "preorder_lead_days": 31,
+        "image_seed": "canvasbackpack",
+    },
+    {
+        "name": "Multi-Compartment Gym Duffle",
+        "slug": "multi-compartment-gym-duffle",
+        "category_key": "bags",
+        "description": (
+            "PU leather gym duffle (48×23×25 cm) with multiple dedicated "
+            "compartments for shoes, wet gear, and valuables. Detachable shoulder "
+            "strap and reinforced handles for comfortable carry."
+        ),
+        "short_description": "PU duffle with dedicated shoe and wet-gear compartments",
+        "base_price_ngn": "21000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "11666",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Color": ["Black", "Gray", "Green"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-BAG-004",
+        "preorder_lead_days": 35,
+        "image_seed": "gymduffle2",
+    },
+    {
+        "name": "PU Yoga & Swim Duffel Tote",
+        "slug": "pu-yoga-swim-duffel-tote",
+        "category_key": "bags",
+        "description": (
+            "Versatile PU duffel tote (57×10×29 cm) that converts between "
+            "shoulder bag and tote modes. Separate wet compartment with "
+            "waterproof lining ideal for post-swim gear."
+        ),
+        "short_description": "Convertible PU duffel tote with wet compartment",
+        "base_price_ngn": "27000",
+        "compare_at_price_ngn": "31000",
+        "cost_price_ngn": "15489",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Color": ["Black"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-BAG-005",
+        "preorder_lead_days": 35,
+        "image_seed": "duffeltote",
+    },
+    {
+        "name": "Outdoor Sport Duffle Backpack",
+        "slug": "outdoor-sport-duffle-backpack",
+        "category_key": "bags",
+        "description": (
+            "Large PU duffle (60×28×30 cm) with backpack straps for hands-free "
+            "carry. Generous capacity fits all your swim and gym gear with room "
+            "to spare. Water-resistant exterior."
+        ),
+        "short_description": "Large PU duffle with backpack straps",
+        "base_price_ngn": "28000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "12524",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Color": ["Gray", "Black"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-BAG-006",
+        "preorder_lead_days": 31,
+        "image_seed": "sportduffle",
+    },
+    {
+        "name": "PU Leather Travel Duffel",
+        "slug": "pu-leather-travel-duffel",
+        "category_key": "bags",
+        "description": (
+            "Premium PU leather travel duffel (56×23×25 cm) with classic styling. "
+            "Multiple internal pockets and padded base keep your belongings "
+            "organised and protected during swim meets and travel."
+        ),
+        "short_description": "Premium PU leather travel duffel for swim meets",
+        "base_price_ngn": "26000",
+        "compare_at_price_ngn": "30000",
+        "cost_price_ngn": "17145",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Color": ["Black", "Gray", "Deep Blue", "White", "Green"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-BAG-007",
+        "preorder_lead_days": 35,
+        "image_seed": "leatherduffel",
+    },
+    {
+        "name": "Multifunctional Travel Backpack",
+        "slug": "multifunctional-travel-backpack",
+        "category_key": "bags",
+        "description": (
+            "Versatile PU travel backpack (65×10×30 cm) with multiple access "
+            "points and organiser pockets. Anti-theft back panel and USB charging "
+            "port. Ideal for swim commuters and travellers."
+        ),
+        "short_description": "Multifunctional PU travel backpack with USB port",
+        "base_price_ngn": "28000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "11681",
+        "is_featured": False,
+        "has_variants": True,
+        "variant_options": {"Color": ["Black", "Gray"]},
+        "requires_size_chart_ack": False,
+        "sku_prefix": "SB-BAG-008",
+        "preorder_lead_days": 7,
+        "image_seed": "travelbackpack",
+    },
     # ===== SUN PROTECTION =====
     # {
     #     "name": "UV400 Sports Sunglasses",
@@ -2544,7 +2799,7 @@ COLLECTIONS_DATA = [
         "sort_order": 1,
         "product_slugs": [
             "adult-hd-anti-fog-electroplated-swim-goggles",
-            # "marble-silicone-swim-cap",
+            "printed-silicone-swim-cap",
             "silicone-training-fins",
             # "fina-shark-skin-racing-jammer",
             # "yingfa-womens-competitive-swimsuit",
@@ -2569,26 +2824,27 @@ COLLECTIONS_DATA = [
         "description": "Essential equipment for structured swim training sessions.",
         "sort_order": 3,
         "product_slugs": [
-            # "swimbuddz-training-kickboard",
-            # "eva-training-pull-buoy",
+            "swimbuddz-training-kickboard",
+            "eva-training-pull-buoy",
             # "silicone-hand-training-paddles",
             # "classic-frontal-centre-snorkel",
             "silicone-training-fins",
+            "short-blade-swim-fins",
         ],
     },
-    # {
-    #     "name": "Poolside Favourites",
-    #     "slug": "poolside-favourites",
-    #     "description": "Most popular accessories and care products for regular swimmers.",
-    #     "sort_order": 4,
-    #     "product_slugs": [
-    #         "retro-polarised-sunglasses",
-    #         "neoprene-performance-life-vest",
-    #         "mens-full-body-swimsuit",
-    #         "goggle-anti-fog-solution",
-    #         "mesh-swim-drawstring-bag",
-    #     ],
-    # },
+    {
+        "name": "Poolside Favourites",
+        "slug": "poolside-favourites",
+        "description": "Most popular accessories and care products for regular swimmers.",
+        "sort_order": 4,
+        "product_slugs": [
+            # "retro-polarised-sunglasses",
+            # "neoprene-performance-life-vest",
+            # "mens-full-body-swimsuit",
+            "goggle-anti-fog-solution",
+            # "mesh-swim-drawstring-bag",
+        ],
+    },
 ]
 
 
