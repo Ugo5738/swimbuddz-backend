@@ -1124,19 +1124,6 @@ PRODUCT_SWATCHES = {
         "Grey": "https://d3on2iqx8wzllm.cloudfront.net/product-images/9602c17f-13fe-4eeb-a8a1-f5292ba2e942.avif",
         "Pink": "https://d3on2iqx8wzllm.cloudfront.net/product-images/48d2c46c-50be-4956-a2be-67d7daf977cc.avif",
     },
-    "hd-mirror-coating-swim-goggles": {
-        "Gray": "https://s.alicdn.com/@sc04/kf/H81c600cbc2a84235bd7087a3aa61bc276.jpg",
-        "Black": "https://s.alicdn.com/@sc04/kf/H55f6bb62ef2644e986b55cbd90ec6dadW.jpg",
-        "Lake Blue": "https://s.alicdn.com/@sc04/kf/Hea9b37d8d9a34e3783921e832bdca192c.jpg",
-        "Red": "https://s.alicdn.com/@sc04/kf/H10178cb3516847aaa265540686fdadc0x.jpg",
-        "Blue": "https://s.alicdn.com/@sc04/kf/H0ba790a6a7cf4e2a90337fb017497d6fg.jpg",
-    },
-    "uv-anti-fog-swim-goggles-with-earplugs": {
-        "Gray": "https://s.alicdn.com/@sc04/kf/H3f6b4618bff644a6a5e838d957774e13U.jpg",
-        "Pink": "https://s.alicdn.com/@sc04/kf/H4fe8aedfba484619a1ab337ddf4b7db9G.jpg",
-        "Light Blue": "https://s.alicdn.com/@sc04/kf/Hc6ac1bf861f44c128389e8bc6aa08f15S.jpg",
-        "Black": "https://s.alicdn.com/@sc04/kf/H37d5fd720c7442b688a95040324469c5v.jpg",
-    },
     "waterproof-canvas-sports-backpack": {
         "Black": "https://sc04.alicdn.com/kf/H79749b0581b1470088ad8717bb259a80x.jpg",
         "Gray": "https://sc04.alicdn.com/kf/H682f30b3f8b741a88d400eb21ce483cb4.jpg",
