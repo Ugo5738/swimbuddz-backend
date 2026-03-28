@@ -9,14 +9,15 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from libs.auth.dependencies import require_service_role
-from libs.auth.models import AuthUser
-from libs.db.session import get_async_db
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+
+from libs.auth.dependencies import require_service_role
+from libs.auth.models import AuthUser
+from libs.db.session import get_async_db
 from services.sessions_service.models import Session, SessionCoach, SessionStatus
 
 router = APIRouter(prefix="/internal", tags=["internal"])
@@ -98,6 +99,61 @@ async def get_scheduled_sessions(
         )
         for s in sessions
     ]
+
+
+# ---------------------------------------------------------------------------
+# Reporting aggregation
+# NOTE: Static path "/sessions/range-stats" must be registered before the
+# parameterized "/sessions/{session_id}" to avoid route collision.
+# ---------------------------------------------------------------------------
+
+
+class SessionRangeStats(BaseModel):
+    """Aggregated session stats for a date range."""
+
+    total_sessions: int = 0
+    by_type: dict | None = None
+    new_members: int = 0  # placeholder — computed elsewhere
+
+
+@router.get("/sessions/range-stats", response_model=SessionRangeStats)
+async def get_session_range_stats(
+    date_from: datetime = Query(..., alias="from"),
+    date_to: datetime = Query(..., alias="to"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get aggregated session stats within a date range.
+
+    Used by the reporting service for quarterly community stats.
+    """
+    from collections import Counter
+
+    result = await db.execute(
+        select(Session).where(
+            Session.starts_at >= date_from,
+            Session.starts_at <= date_to,
+            Session.status.in_(
+                [
+                    SessionStatus.SCHEDULED,
+                    SessionStatus.COMPLETED,
+                ]
+            ),
+        )
+    )
+    sessions = result.scalars().all()
+
+    type_counts = Counter(
+        s.session_type.value
+        if hasattr(s.session_type, "value")
+        else str(s.session_type)
+        for s in sessions
+    )
+
+    return SessionRangeStats(
+        total_sessions=len(sessions),
+        by_type=dict(type_counts) if type_counts else None,
+    )
 
 
 @router.get("/sessions/{session_id}", response_model=SessionBasic)
@@ -206,3 +262,113 @@ async def get_session_coach_ids(
         select(SessionCoach.coach_id).where(SessionCoach.session_id == session_id)
     )
     return [str(row[0]) for row in result.all()]
+
+
+# ── Detailed reporting stats ──
+
+
+class SessionDetailedStats(BaseModel):
+    """Extended session stats for quarterly reports."""
+
+    total_sessions: int = 0
+    total_pool_hours: float = 0.0
+    by_type: dict | None = None
+    most_active_location: str | None = None
+    busiest_session_title: str | None = None
+    busiest_session_attendance: int = 0
+    most_popular_day: str | None = None
+    most_popular_time_slot: str | None = None
+    session_details: list[dict] | None = None
+
+
+@router.get("/sessions/detailed-stats", response_model=SessionDetailedStats)
+async def get_session_detailed_stats(
+    date_from: datetime = Query(..., alias="from"),
+    date_to: datetime = Query(..., alias="to"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get detailed session stats for quarterly reports.
+
+    Returns pool hours, location rankings, busiest sessions, etc.
+    """
+    from collections import Counter
+
+    result = await db.execute(
+        select(Session).where(
+            Session.starts_at >= date_from,
+            Session.starts_at <= date_to,
+            Session.status.in_([SessionStatus.SCHEDULED, SessionStatus.COMPLETED]),
+        )
+    )
+    sessions = result.scalars().all()
+
+    if not sessions:
+        return SessionDetailedStats()
+
+    # Total pool hours (sum of session durations)
+    total_hours = sum(
+        (s.ends_at - s.starts_at).total_seconds() / 3600 for s in sessions
+    )
+
+    # Type breakdown
+    type_counts = Counter(
+        s.session_type.value
+        if hasattr(s.session_type, "value")
+        else str(s.session_type)
+        for s in sessions
+    )
+
+    # Location ranking
+    locations = [s.location_name for s in sessions if s.location_name]
+    location_counts = Counter(locations)
+    most_active = location_counts.most_common(1)[0][0] if location_counts else None
+
+    # Day of week popularity
+    DAYS = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
+    day_counts = Counter(DAYS[s.starts_at.weekday()] for s in sessions)
+    most_popular_day = day_counts.most_common(1)[0][0] if day_counts else None
+
+    # Time slot popularity
+    def time_slot(hour: int) -> str:
+        if hour < 12:
+            return "Morning (before noon)"
+        elif hour < 17:
+            return "Afternoon (noon-5pm)"
+        return "Evening (after 5pm)"
+
+    slot_counts = Counter(time_slot(s.starts_at.hour) for s in sessions)
+    most_popular_slot = slot_counts.most_common(1)[0][0] if slot_counts else None
+
+    # Session details for per-session info
+    details = [
+        {
+            "id": str(s.id),
+            "title": s.title,
+            "hours": round((s.ends_at - s.starts_at).total_seconds() / 3600, 2),
+            "location": s.location_name,
+            "type": s.session_type.value
+            if hasattr(s.session_type, "value")
+            else str(s.session_type),
+            "capacity": s.capacity,
+        }
+        for s in sessions
+    ]
+
+    return SessionDetailedStats(
+        total_sessions=len(sessions),
+        total_pool_hours=round(total_hours, 1),
+        by_type=dict(type_counts) if type_counts else None,
+        most_active_location=most_active,
+        most_popular_day=most_popular_day,
+        most_popular_time_slot=most_popular_slot,
+        session_details=details,
+    )

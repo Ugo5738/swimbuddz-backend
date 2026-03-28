@@ -93,6 +93,12 @@ class ResourceVisibility(str, enum.Enum):
     COACHES_ONLY = "coaches_only"
 
 
+class ExtensionRequestStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class ProgramCategory(str, enum.Enum):
     LEARN_TO_SWIM = "learn_to_swim"
     SPECIAL_POPULATIONS = "special_populations"

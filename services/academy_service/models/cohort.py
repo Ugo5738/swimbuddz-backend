@@ -2,20 +2,30 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from services.academy_service.models.enums import (
     CohortStatus,
+    ExtensionRequestStatus,
     LocationType,
     ResourceSourceType,
     ResourceVisibility,
     enum_values,
 )
-from sqlalchemy import JSON, Boolean, DateTime
-from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 # ============================================================================
 # COHORT MODELS
@@ -179,6 +189,68 @@ class CohortTimelineShiftLog(Base):
 
     def __repr__(self):
         return f"<CohortTimelineShiftLog Cohort={self.cohort_id} Created={self.created_at}>"
+
+
+# ============================================================================
+# EXTENSION REQUEST MODELS
+# ============================================================================
+
+
+class CohortExtensionRequest(Base):
+    """Coach-initiated request to extend a cohort's end date (max 4 weeks)."""
+
+    __tablename__ = "cohort_extension_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    cohort_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cohorts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    coach_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    # Number of weeks to extend (1-4)
+    weeks_requested: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    current_end_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    proposed_end_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    status: Mapped[ExtensionRequestStatus] = mapped_column(
+        SAEnum(
+            ExtensionRequestStatus,
+            name="extension_request_status_enum",
+            values_callable=enum_values,
+            validate_strings=True,
+        ),
+        default=ExtensionRequestStatus.PENDING,
+    )
+
+    # Admin review
+    reviewed_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    admin_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+
+    # Relationships
+    cohort = relationship("Cohort")
+
+    def __repr__(self):
+        return f"<CohortExtensionRequest Cohort={self.cohort_id} +{self.weeks_requested}w ({self.status})>"
 
 
 # ============================================================================

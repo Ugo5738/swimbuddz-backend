@@ -8,6 +8,11 @@ def enum_values(enum_cls):
     return [member.value for member in enum_cls]
 
 
+class ProductType(str, enum.Enum):
+    STANDARD = "standard"
+    BUNDLE = "bundle"
+
+
 class ProductStatus(str, enum.Enum):
     DRAFT = "draft"
     ACTIVE = "active"
