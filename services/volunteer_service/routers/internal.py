@@ -5,17 +5,18 @@ via service-role JWT, not by frontend clients.
 """
 
 import uuid
+from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
-from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.volunteer_service.models import VolunteerProfile, VolunteerRole
 
 logger = get_logger(__name__)
@@ -88,3 +89,58 @@ async def ensure_volunteer_profile(
         preferred_roles,
     )
     return EnsureProfileResponse(success=True, created=True, profile_id=str(profile.id))
+
+
+# ---------------------------------------------------------------------------
+# Reporting: member volunteer summary
+# ---------------------------------------------------------------------------
+
+
+class MemberVolunteerSummary(BaseModel):
+    total_hours: float = 0.0
+
+
+@router.get(
+    "/member-summary/{member_auth_id}",
+    response_model=MemberVolunteerSummary,
+)
+async def get_member_volunteer_summary(
+    member_auth_id: str,
+    date_from: datetime = Query(..., alias="from"),
+    date_to: datetime = Query(..., alias="to"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Aggregate volunteer hours for a member within a date range.
+
+    Used by the reporting service for quarterly reports.
+    Looks up member_id from auth_id via raw SQL on the members table,
+    then sums hours from VolunteerHoursLog.
+    """
+    from sqlalchemy import text
+
+    from services.volunteer_service.models.core import VolunteerHoursLog
+
+    # Look up member_id from auth_id via the shared members table
+    member_result = await db.execute(
+        text("SELECT id FROM members WHERE auth_id = :auth_id"),
+        {"auth_id": member_auth_id},
+    )
+    row = member_result.first()
+    if row is None:
+        return MemberVolunteerSummary()
+
+    member_uuid = row[0]
+
+    result = await db.execute(
+        select(
+            func.coalesce(func.sum(VolunteerHoursLog.hours), 0.0).label("total")
+        ).where(
+            VolunteerHoursLog.member_id == member_uuid,
+            VolunteerHoursLog.date >= date_from.date(),
+            VolunteerHoursLog.date <= date_to.date(),
+        )
+    )
+    total = result.scalar() or 0.0
+
+    return MemberVolunteerSummary(total_hours=float(total))

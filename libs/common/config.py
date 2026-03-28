@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     VOLUNTEER_SERVICE_URL: str = "http://volunteer-service:8012"
     WALLET_SERVICE_URL: str = "http://wallet-service:8013"
     POOLS_SERVICE_URL: str = "http://pools-service:8014"
+    REPORTING_SERVICE_URL: str = "http://reporting-service:8015"
 
     # AI Service
     AI_DEFAULT_MODEL: str = "gpt-4o-mini"

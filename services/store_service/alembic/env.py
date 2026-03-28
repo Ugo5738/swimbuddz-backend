@@ -18,6 +18,7 @@ sys.path.append(str(PROJECT_ROOT))
 from libs.common.config import get_settings
 from libs.db.base import Base
 from services.store_service.models import (  # noqa: F401
+    BundleItem,
     Cart,
     CartItem,
     Category,
@@ -49,6 +50,7 @@ target_metadata = Base.metadata
 
 # Only migrate tables owned by this service
 SERVICE_TABLES = {
+    "store_bundle_items",
     "store_categories",
     "store_products",
     "store_product_variants",

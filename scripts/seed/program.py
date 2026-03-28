@@ -8,6 +8,9 @@ from uuid import uuid4
 # Add backend root to path so we can import modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
+from sqlalchemy.future import select
+
+from libs.common.currency import naira_to_kobo
 from libs.db.config import AsyncSessionLocal
 
 # Import Models
@@ -24,7 +27,6 @@ from services.academy_service.models import (
     RequiredEvidence,
     Skill,
 )
-from sqlalchemy.future import select
 
 
 async def get_or_create_skill(session, skill_name, skills_library=None):
@@ -97,7 +99,7 @@ async def seed_program(json_file_path):
                 duration_weeks=program_data.get("duration_weeks", 12),
                 default_capacity=program_data.get("default_capacity", 10),
                 currency=program_data.get("currency", "NGN"),
-                price_amount=program_data.get("price_amount", 0),
+                price_amount=naira_to_kobo(program_data.get("price_amount", 0)),
                 billing_type=BillingType(program_data.get("billing_type", "one_time")),
                 prep_materials=program_data.get("prep_materials"),
                 # Populate curriculum_json for Admin UI display (UI expects 'week' key, seed has 'week_number')

@@ -10,14 +10,14 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.common.emails.core import send_email
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
-from pydantic import BaseModel, EmailStr
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.communications_service.models import MessageLog, MessageRecipientType
 
 logger = get_logger(__name__)
@@ -197,6 +197,7 @@ async def send_templated_email(
         coaching,
         members,
         payments,
+        reports,
         sessions,
         store,
     )
@@ -478,6 +479,21 @@ async def send_templated_email(
             items=d.get("items", []),
             total=d.get("total", 0),
             fulfillment_type=d.get("fulfillment_type", "pickup"),
+        ),
+        # --- Reports templates ---
+        "quarterly_report": lambda d: reports.send_quarterly_report_email(
+            to_email=request.to_email,
+            member_name=d.get("member_name", ""),
+            year=d.get("year", 2026),
+            quarter=d.get("quarter", 1),
+            sessions_attended=d.get("sessions_attended", 0),
+            attendance_rate=d.get("attendance_rate", 0.0),
+            streak_longest=d.get("streak_longest", 0),
+            milestones_achieved=d.get("milestones_achieved", 0),
+            bubbles_earned=d.get("bubbles_earned", 0),
+            volunteer_hours=d.get("volunteer_hours", 0.0),
+            total_spent_ngn=d.get("total_spent_ngn", 0),
+            report_url=d.get("report_url", ""),
         ),
     }
 

@@ -9,14 +9,14 @@ import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from libs.auth.dependencies import require_service_role
-from libs.auth.models import AuthUser
-from libs.db.session import get_async_db
 from pydantic import BaseModel
 from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from libs.auth.dependencies import require_service_role
+from libs.auth.models import AuthUser
+from libs.db.session import get_async_db
 from services.members_service.models import (
     CoachAgreement,
     CoachBankAccount,
@@ -125,6 +125,52 @@ async def get_active_members(
             last_name=m.last_name,
             email=m.email,
             phone=m.profile.phone if m.profile else None,
+        )
+        for m in members
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Reporting: approved members list
+# NOTE: This must be defined BEFORE /members/{member_id} to avoid route conflict.
+# ---------------------------------------------------------------------------
+
+
+class ApprovedMemberBasic(BaseModel):
+    id: str
+    auth_id: str
+    first_name: str
+    last_name: str
+    primary_tier: str | None = None
+
+
+@router.get("/members/approved-list", response_model=List[ApprovedMemberBasic])
+async def get_approved_members_list(
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get all approved members with basic info for reporting.
+
+    Used by the reporting service to iterate over all members for quarterly reports.
+    """
+
+    result = await db.execute(
+        select(Member)
+        .options(selectinload(Member.membership))
+        .where(
+            Member.approval_status == "approved",
+            Member.is_active.is_(True),
+        )
+    )
+    members = result.scalars().all()
+
+    return [
+        ApprovedMemberBasic(
+            id=str(m.id),
+            auth_id=m.auth_id,
+            first_name=m.first_name,
+            last_name=m.last_name,
+            primary_tier=(m.membership.primary_tier if m.membership else None),
         )
         for m in members
     ]

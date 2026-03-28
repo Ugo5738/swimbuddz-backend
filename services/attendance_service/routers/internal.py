@@ -6,16 +6,20 @@ call them directly via Docker network.
 """
 
 import uuid
+from collections import Counter
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
-from pydantic import BaseModel
 from services.attendance_service.models import AttendanceRecord
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from services.attendance_service.models.enums import AttendanceStatus
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -90,3 +94,110 @@ async def get_session_attendee_member_ids(
     )
     result = await db.execute(query)
     return [str(mid) for mid in result.scalars().all()]
+
+
+# ---------------------------------------------------------------------------
+# Reporting aggregation
+# ---------------------------------------------------------------------------
+
+
+class MemberAttendanceStats(BaseModel):
+    """Aggregated attendance stats for a member over a date range."""
+
+    total_present: int = 0
+    total_late: int = 0
+    total_absent: int = 0
+    total_excused: int = 0
+    total_sessions: int = 0
+    by_type: dict | None = None
+    by_day: dict | None = None
+    by_location: dict | None = None
+    favorite_day: str | None = None
+    favorite_location: str | None = None
+    weekly_attendance: list[bool] | None = None
+    events_attended: int = 0
+
+
+@router.get(
+    "/stats/member/{member_auth_id}",
+    response_model=MemberAttendanceStats,
+)
+async def get_member_attendance_stats(
+    member_auth_id: str,
+    date_from: datetime = Query(..., alias="from"),
+    date_to: datetime = Query(..., alias="to"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Aggregate attendance stats for a member within a date range.
+
+    Used by the reporting service for quarterly reports.
+    The member_auth_id is matched against members.auth_id via the member_id FK.
+    """
+    from services.attendance_service.models.core import MemberRef
+
+    # Look up member_id from auth_id
+    member_result = await db.execute(
+        select(MemberRef.id).where(MemberRef.auth_id == member_auth_id)
+    )
+    member_uuid = member_result.scalar_one_or_none()
+    if member_uuid is None:
+        return MemberAttendanceStats()
+
+    # Get all attendance records in the date range
+    result = await db.execute(
+        select(AttendanceRecord).where(
+            AttendanceRecord.member_id == member_uuid,
+            AttendanceRecord.created_at >= date_from,
+            AttendanceRecord.created_at <= date_to,
+        )
+    )
+    records = result.scalars().all()
+
+    if not records:
+        return MemberAttendanceStats()
+
+    # Count by status
+    status_counts = Counter(
+        r.status.value if hasattr(r.status, "value") else str(r.status) for r in records
+    )
+
+    total_present = status_counts.get("present", 0)
+    total_late = status_counts.get("late", 0)
+
+    # Count by day of week
+    day_counts: Counter = Counter()
+    for r in records:
+        if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE):
+            day_name = r.created_at.strftime("%A")
+            day_counts[day_name] += 1
+
+    favorite_day = day_counts.most_common(1)[0][0] if day_counts else None
+
+    # Compute weekly attendance (which weeks had at least one session)
+    from datetime import timedelta
+
+    weeks_attended: dict[int, bool] = {}
+    for r in records:
+        if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE):
+            week_num = r.created_at.isocalendar()[1]
+            weeks_attended[week_num] = True
+
+    # Build ordered list of weeks in the range
+    weekly_attendance = []
+    current = date_from
+    while current <= date_to:
+        wk = current.isocalendar()[1]
+        weekly_attendance.append(wk in weeks_attended)
+        current += timedelta(weeks=1)
+
+    return MemberAttendanceStats(
+        total_present=total_present,
+        total_late=total_late,
+        total_absent=status_counts.get("absent", 0),
+        total_excused=status_counts.get("excused", 0),
+        total_sessions=len(records),
+        by_day=dict(day_counts) if day_counts else None,
+        favorite_day=favorite_day,
+        weekly_attendance=weekly_attendance,
+    )

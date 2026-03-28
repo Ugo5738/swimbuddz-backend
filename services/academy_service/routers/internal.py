@@ -1,5 +1,10 @@
-from fastapi import APIRouter
+from datetime import datetime as _datetime
 
+from fastapi import APIRouter, Query
+from pydantic import BaseModel as _BaseModel
+from sqlalchemy import func
+
+from services.academy_service.models import StudentProgress
 from services.academy_service.routers._shared import (
     AsyncSession,
     AuthUser,
@@ -241,4 +246,91 @@ async def get_enrollment_onboarding(
         sessions_link="/account/sessions",
         coach_name=coach_name,
         total_milestones=total_milestones,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Reporting: member academy summary
+# ---------------------------------------------------------------------------
+
+
+class MemberAcademySummary(_BaseModel):
+    milestones_achieved: int = 0
+    milestones_in_progress: int = 0
+    programs_enrolled: int = 0
+    certificates_earned: int = 0
+
+
+@router.get(
+    "/internal/academy/member-summary/{member_auth_id}",
+    response_model=MemberAcademySummary,
+)
+async def get_member_academy_summary(
+    member_auth_id: str,
+    date_from: _datetime = Query(..., alias="from"),
+    date_to: _datetime = Query(..., alias="to"),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Aggregate academy stats for a member within a date range.
+
+    Used by the reporting service for quarterly reports.
+    """
+
+    # Count enrollments in the period
+    enrollment_result = await db.execute(
+        select(func.count(Enrollment.id)).where(
+            Enrollment.member_auth_id == member_auth_id,
+            Enrollment.enrolled_at >= date_from,
+            Enrollment.enrolled_at <= date_to,
+        )
+    )
+    programs_enrolled = enrollment_result.scalar() or 0
+
+    # Count certificates earned
+    cert_result = await db.execute(
+        select(func.count(Enrollment.id)).where(
+            Enrollment.member_auth_id == member_auth_id,
+            Enrollment.certificate_issued_at >= date_from,
+            Enrollment.certificate_issued_at <= date_to,
+        )
+    )
+    certificates_earned = cert_result.scalar() or 0
+
+    # Get enrollment IDs for this member
+    enrollment_ids_result = await db.execute(
+        select(Enrollment.id).where(
+            Enrollment.member_auth_id == member_auth_id,
+        )
+    )
+    enrollment_ids = [row[0] for row in enrollment_ids_result.all()]
+
+    milestones_achieved = 0
+    milestones_in_progress = 0
+
+    if enrollment_ids:
+        # Count milestones achieved in the period
+        achieved_result = await db.execute(
+            select(func.count(StudentProgress.id)).where(
+                StudentProgress.enrollment_id.in_(enrollment_ids),
+                StudentProgress.status == "achieved",
+                StudentProgress.achieved_at >= date_from,
+                StudentProgress.achieved_at <= date_to,
+            )
+        )
+        milestones_achieved = achieved_result.scalar() or 0
+
+        # Count milestones in progress
+        in_progress_result = await db.execute(
+            select(func.count(StudentProgress.id)).where(
+                StudentProgress.enrollment_id.in_(enrollment_ids),
+                StudentProgress.status == "in_progress",
+            )
+        )
+        milestones_in_progress = in_progress_result.scalar() or 0
+
+    return MemberAcademySummary(
+        milestones_achieved=milestones_achieved,
+        milestones_in_progress=milestones_in_progress,
+        programs_enrolled=programs_enrolled,
+        certificates_earned=certificates_earned,
     )

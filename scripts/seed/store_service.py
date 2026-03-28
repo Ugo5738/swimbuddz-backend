@@ -39,6 +39,7 @@ from sqlalchemy import select, text
 
 from libs.db.config import AsyncSessionLocal
 from services.store_service.models import (
+    BundleItem,
     Category,
     Collection,
     CollectionProduct,
@@ -47,6 +48,7 @@ from services.store_service.models import (
     Product,
     ProductImage,
     ProductStatus,
+    ProductType,
     ProductVariant,
     ProductVideo,
     SourcingType,
@@ -183,11 +185,10 @@ PRODUCT_MEDIA = {
     "swimbuddz-training-kickboard": {
         "images": [
             "https://s.alicdn.com/@sc04/kf/H894d2c9d0bae437b9d901d807f52fc6ef.jpg",
-            "https://s.alicdn.com/@sc04/kf/Hf22bd2cc12334dd28ce6828822f80e638.png",
-            "https://s.alicdn.com/@sc04/kf/H04ec02911bb64404b58c631582bfe626B.jpg",
-            "https://s.alicdn.com/@sc04/kf/Hec8ecf1265d444e782bf3fa957d16074a.png",
-            "https://s.alicdn.com/@sc04/kf/H90e8d86799b047bea167619e75c05d54H.png",
-            "https://s.alicdn.com/@sc04/kf/H60cb0e60f30d44a591986b3a7df69483t.png",
+            "https://s.alicdn.com/@sc04/kf/Hf22bd2cc12334dd28ce6828822f80e638.png",  # Orange
+            "https://s.alicdn.com/@sc04/kf/H04ec02911bb64404b58c631582bfe626B.jpg",  # Blue
+            "https://s.alicdn.com/@sc04/kf/Hec8ecf1265d444e782bf3fa957d16074a.png",  # Pink
+            "https://s.alicdn.com/@sc04/kf/H90e8d86799b047bea167619e75c05d54H.png",  # Green
             "https://sc04.alicdn.com/kf/A8e9a867027ff458d9f0359ed11f7f1aau.jpg",
             "https://sc04.alicdn.com/kf/A5320d3640b564eb5b3569497bf149a85E.jpg",
         ],
@@ -235,23 +236,26 @@ PRODUCT_MEDIA = {
     },
     "silicone-training-fins": {
         "images": [
-            "https://sc04.alicdn.com/kf/H92b0c7f6f8eb45eba41d3f51215f8f96G.jpg",
-            "https://sc04.alicdn.com/kf/H8c7f0f80040d407bbe4451458bac899fz.jpg",
-            "https://sc04.alicdn.com/kf/Hc5a76993d9604d1e9393ee70d4963b3eU.jpg",
+            "https://sc04.alicdn.com/kf/H92b0c7f6f8eb45eba41d3f51215f8f96G.jpg",  # Green
             "https://sc04.alicdn.com/kf/Hc470c5e3d3f04b90b39093660d46d4a5m.jpg",
-            "https://sc04.alicdn.com/kf/H89f934c93311440d82f6107df602c3e0E.jpg",
-            "https://sc04.alicdn.com/kf/H914d560ffa0549a8aff7b30d464ba2b9P.jpg",
+            "https://sc04.alicdn.com/kf/H8c7f0f80040d407bbe4451458bac899fz.jpg",  # Rose
+            "https://sc04.alicdn.com/kf/Hc5a76993d9604d1e9393ee70d4963b3eU.jpg",
+            "https://sc04.alicdn.com/kf/H89f934c93311440d82f6107df602c3e0E.jpg",  # Blue
+            "https://sc04.alicdn.com/kf/H914d560ffa0549a8aff7b30d464ba2b9P.jpg",  # Black
         ],
         "videos": [],
     },
     "rubber-dive-swim-fins": {
         "images": [
-            "https://sc04.alicdn.com/kf/H559b9b7cf35b4f699f1c286485c56df5R.png",
+            "https://sc04.alicdn.com/kf/H96d7f770ed274596aaa8fe4732dca60cg.png",  # Black
             "https://sc04.alicdn.com/kf/Ha03f1571265f4cf9a727424a9714b6dcr.jpg",
-            "https://sc04.alicdn.com/kf/H96d7f770ed274596aaa8fe4732dca60cg.png",
-            "https://sc04.alicdn.com/kf/H589b2ceb87144878b61d5bfdecfa03bcq.png",
-            "https://sc04.alicdn.com/kf/Hc2ec1c9d9c9a459b9e69c28b81085418L.png",
-            "https://sc04.alicdn.com/kf/H07d87fa5a812431fa60107cff0100ad1Q.png",
+            "https://sc04.alicdn.com/kf/H589b2ceb87144878b61d5bfdecfa03bcq.png",  # Blue
+            "https://d3on2iqx8wzllm.cloudfront.net/product-images/588af83e-bdb6-45fb-9674-106a056645cc.jpg",
+            "https://d3on2iqx8wzllm.cloudfront.net/product-images/19fe5cc1-120a-4429-a050-312f5c25204f.jpg",
+            "https://sc04.alicdn.com/kf/H559b9b7cf35b4f699f1c286485c56df5R.png",  # Red
+            "https://sc04.alicdn.com/kf/Hc2ec1c9d9c9a459b9e69c28b81085418L.png",  # Green
+            "https://sc04.alicdn.com/kf/H07d87fa5a812431fa60107cff0100ad1Q.png",  # Grass Green
+            "https://d3on2iqx8wzllm.cloudfront.net/product-images/f74bfb9c-89bc-46cd-abca-7bdf5189f0e3.jpeg",  # White
         ],
         "videos": [
             "https://gv.videocdn.alibaba.com/4f4e1c368ac918af/77a891ec4800b05b/20240628_a5c3a5b8a4438b91_469697477755_mp4_264_hd_unlimit_taobao.mp4?bizCode=icbu_vod_video",
@@ -325,7 +329,7 @@ PRODUCT_MEDIA = {
             "https://sc04.alicdn.com/kf/Ha45221492af34d5f8ed571e7188a3df0w.jpg",  # Pink
             "https://sc04.alicdn.com/kf/Hf8e06bf3eeb44c75a4b3c728c1c58ce7q.jpg",  # Green
             "https://sc04.alicdn.com/kf/H5365b18dbaa9483cb199efa4d1319dddM.jpg",  # Orange-pink
-            "https://sc04.alicdn.com/kf/H9894aec2ca1244a2be56e1e7be4b0d18d.jpg",  # Fluorescent Green
+            "https://d3on2iqx8wzllm.cloudfront.net/product-images/4c56395e-0fdd-452b-adb7-38853482a1b1.avif",  # Fluorescent Green
         ],
         "videos": [
             "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv98-a1493807-a1d01ea5-98835be5-28fc/trans/aidc/wub6lv-h264-hd.mp4?bizCode=icbu_vod_video",
@@ -341,8 +345,6 @@ PRODUCT_MEDIA = {
             "https://sc04.alicdn.com/kf/Hfe6a66418e4a4282ae2b4df6ddd4a02ea.jpg",
             "https://sc04.alicdn.com/kf/Hbf316ee3291049f89444a29ec6526077c.jpg",
             "https://sc04.alicdn.com/kf/Ha5972676e73242f188265c52c713cf96s.jpg",
-            # Variant color images
-            "https://sc04.alicdn.com/kf/H1fefe0fa3a884037adf7fa7c1156c1a9w.jpg",  # Black
             "https://sc04.alicdn.com/kf/H9535ef365dec4e949bc363a0c0badf6ep.jpg",  # Blue
             "https://sc04.alicdn.com/kf/H9d930d584a754ad1bd66a6f3151889e2Y.jpg",  # Green
             "https://sc04.alicdn.com/kf/H0d72d17211a54ce8a4e47642a63cada9R.jpg",  # Orange
@@ -361,12 +363,10 @@ PRODUCT_MEDIA = {
             "https://sc04.alicdn.com/kf/H15f735495f2a43e7b97d7f68454f88dfk.png",
             "https://sc04.alicdn.com/kf/Hbf8a8601261248019b3239af4da0c8876.png",
             "https://sc04.alicdn.com/kf/Hbbf120cd7d574e1aade39ea5bc6502d8D.png",
-            # Variant color images
             "https://sc04.alicdn.com/kf/H90dfe74926884c6cb5cebde339f80999M.png",  # Blue
             "https://sc04.alicdn.com/kf/H047c9fdf3e794853b9453734e8a4d0bfK.png",  # Green
             "https://sc04.alicdn.com/kf/H63544bad48fc4686b3878701926a5d2c5.png",  # Yellow
             "https://sc04.alicdn.com/kf/Hf349a8e0932541a4846ec005f45718eeS.png",  # Black
-            "https://sc04.alicdn.com/kf/H7735057a76014e26a1ae4467df788af1R.png",  # White
         ],
         "videos": [],
     },
@@ -588,28 +588,22 @@ PRODUCT_MEDIA = {
     "quick-dry-performance-jammer": {
         "images": [
             "https://sc04.alicdn.com/kf/HTB1wHcRdfWG3KVjSZFPq6xaiXXaC.jpg",
-            "https://sc04.alicdn.com/kf/HTB1HlsRdliE3KVjSZFMq6zQhVXaN.jpg",
+            "https://sc04.alicdn.com/kf/HTB1HlsRdliE3KVjSZFMq6zQhVXaN.jpg",  # Black
             "https://sc04.alicdn.com/kf/HTB1iVZTdoGF3KVjSZFvq6z_nXXaG.jpg",
             "https://sc04.alicdn.com/kf/HTB18TZQdgmH3KVjSZKzq6z2OXXaV.jpg",
             "https://sc04.alicdn.com/kf/HTB1op7Qdf1H3KVjSZFHq6zKppXaO.jpg",
-            "https://sc04.alicdn.com/kf/HTB1s0kQdf1H3KVjSZFBq6zSMXXa0.jpg",
-            # Variant color images
-            "https://sc04.alicdn.com/kf/HTB15PARdf1G3KVjSZFkq6yK4XXa7.jpg",  # Black
             "https://sc04.alicdn.com/kf/HTB1kNp4aLBj_uVjSZFpq6A0SXXaP.jpg",  # Navy
         ],
         "videos": [],
     },
     "yingfa-mid-leg-trunks": {
         "images": [
-            "https://sc04.alicdn.com/kf/H32fe9b34aa3f4da2b3d89ad4a28fdb84j.jpg",
-            "https://sc04.alicdn.com/kf/H8a9a0a4144d94622bb93f5a3ed1a9a375.jpg",
             "https://sc04.alicdn.com/kf/He859f8cb547d4039865a65610bb3b57bZ.jpg",
-            "https://sc04.alicdn.com/kf/H8a408b05183b495fb5ebba82b0100ad7Y.jpg",
+            "https://sc04.alicdn.com/kf/H9cf334e42f2c45988ed689f26cbbed4aD.jpg",  # Dark Blue
             "https://sc04.alicdn.com/kf/H60953daee5f048c9bcfca91ef1694a33Y.jpg",
             "https://sc04.alicdn.com/kf/Hcd0be31eab3c40d3b6613962b81bec9fH.jpg",
-            # Variant color images
             "https://sc04.alicdn.com/kf/H2f425078690f4722ba4269463cf69197Y.jpg",  # Black
-            "https://sc04.alicdn.com/kf/H9cf334e42f2c45988ed689f26cbbed4aD.jpg",  # Dark Blue
+            "https://sc04.alicdn.com/kf/H8a408b05183b495fb5ebba82b0100ad7Y.jpg",
         ],
         "videos": [
             "https://gv.videocdn.alibaba.com/d567ba523987367c/c7aL2COyGPyHJvbK5ir/0oLWmtDzLhrFWDMCmn6_370503034655_mp4_264_hd_unlimit_taobao.mp4?bizCode=icbu_vod_video",
@@ -621,14 +615,12 @@ PRODUCT_MEDIA = {
         "images": [
             "https://sc04.alicdn.com/kf/HTB1jEeBnk7mBKNjSZFyq6zydFXal.jpg",
             "https://sc04.alicdn.com/kf/HTB1YZZ2JVuWBuNjSszbq6AS7FXaT.jpg",
-            "https://sc04.alicdn.com/kf/HTB1d4XdB8yWBuNkSmFPq6xguVXa4.jpg",
-            "https://sc04.alicdn.com/kf/HTB1B4W6nbsrBKNjSZFpq6AXhFXa9.jpg",
+            "https://sc04.alicdn.com/kf/HTB1B4W6nbsrBKNjSZFpq6AXhFXa9.jpg",  # Orange
             "https://sc04.alicdn.com/kf/HTB1ZVwVJ1uSBuNjSsplq6ze8pXak.jpg",
-            "https://sc04.alicdn.com/kf/HTB1pniuKhGYBuNjy0Fnq6x5lpXav.jpg",
-            # Variant color images
-            "https://sc04.alicdn.com/kf/HTB1A6n.m9MmBKNjSZTE761sKpXaH.png",  # Orange
-            "https://sc04.alicdn.com/kf/HTB1U.yInbArBKNjSZFLq6A_dVXa8.jpg",  # Black
-            "https://sc04.alicdn.com/kf/HTB1ZsFpKeSSBuNjy0Flq6zBpVXau.jpg",  # Blue
+            "https://sc04.alicdn.com/kf/HTB1A6n.m9MmBKNjSZTE761sKpXaH.png",
+            "https://sc04.alicdn.com/kf/HTB1pniuKhGYBuNjy0Fnq6x5lpXav.jpg",  # Black
+            "https://sc04.alicdn.com/kf/HTB1U.yInbArBKNjSZFLq6A_dVXa8.jpg",
+            "https://sc04.alicdn.com/kf/HTB1ZsFpKeSSBuNjy0Flq6zBpVXau.jpg",
             "https://sc04.alicdn.com/kf/HTB1wX6Mm0knBKNjSZKP7606OFXa4.png",  # Dark Grey
         ],
         "videos": [],
@@ -654,14 +646,12 @@ PRODUCT_MEDIA = {
             "https://sc04.alicdn.com/kf/Hd038bd7089294d9f85c0d88175ce8474d.jpg",
             "https://sc04.alicdn.com/kf/Hef1326d61f4641ff8e3f5ea85ded31a1M.jpg",
             "https://sc04.alicdn.com/kf/H9f1f1047185647689fde4bc70ad2440dM.jpg",
-            "https://sc04.alicdn.com/kf/Hc2ca9ca6d2114d928c312a64ab620f1bX.jpg",
-            # Variant color images
+            "https://sc04.alicdn.com/kf/Hc2ca9ca6d2114d928c312a64ab620f1bX.jpg",  # Black
             "https://sc04.alicdn.com/kf/Hbf9996771a3b423ba245b13e37806990j.jpg",  # Green
-            "https://sc04.alicdn.com/kf/H31015fba50e84a0699439b1b4847848fh.jpg",  # Black
             "https://sc04.alicdn.com/kf/Ha3a98643bb874c96a22c091883b463a4O.jpg",  # White
         ],
         "videos": [
-            "https://cloud.video.alibaba.com/play/u/2153292369/p/1/e/6/t/1/d/hd/6000289670387.mp4",
+            # "https://cloud.video.alibaba.com/play/u/2153292369/p/1/e/6/t/1/d/hd/6000289670387.mp4",
         ],
     },
     "womens-two-piece-sports-swimsuit": {
@@ -674,7 +664,7 @@ PRODUCT_MEDIA = {
             "https://sc04.alicdn.com/kf/Hd797d3ef34974431a88a32e078d00e51T.jpg",
         ],
         "videos": [
-            "https://cloud.video.alibaba.com/play/u/2153292369/p/1/e/6/t/1/d/hd/448510597463.mp4",
+            # "https://cloud.video.alibaba.com/play/u/2153292369/p/1/e/6/t/1/d/hd/448510597463.mp4",
         ],
     },
     "womens-long-sleeve-eco-swimsuit": {
@@ -708,9 +698,9 @@ PRODUCT_MEDIA = {
             "https://sc04.alicdn.com/kf/Afbb59e1813b3482eb2f79507fac1a9eeW.jpg",
         ],
         "videos": [
-            "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv98-54f2c99f-a1bfe0ad-98363640-669a/trans/aidc/f9x21g-h264-hd.mp4?bizCode=icbu_vod_video",
-            "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv98-54f2c99f-a1bfe0ad-98363640-669a/trans/aidc/yl6bzj-h264-sd.mp4",
-            "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv98-54f2c99f-a1bfe0ad-98363640-669a/trans/aidc/tnfm5n-h264-ld.mp4",
+            # "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv98-54f2c99f-a1bfe0ad-98363640-669a/trans/aidc/f9x21g-h264-hd.mp4?bizCode=icbu_vod_video",
+            # "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv98-54f2c99f-a1bfe0ad-98363640-669a/trans/aidc/yl6bzj-h264-sd.mp4",
+            # "https://gv.videocdn.alibaba.com/icbu_vod_video/video_target/gv98-54f2c99f-a1bfe0ad-98363640-669a/trans/aidc/tnfm5n-h264-ld.mp4",
         ],
     },
     "womens-printed-sports-swimsuit": {
@@ -828,10 +818,10 @@ PRODUCT_MEDIA = {
     "waterproof-canvas-sports-backpack": {
         "images": [
             "https://sc04.alicdn.com/kf/H78a238bc94b445e998de8f4008720169x.jpg",
-            "https://sc04.alicdn.com/kf/H084069fe0c1c479bb3857c691d46163cT.jpg",
+            "https://sc04.alicdn.com/kf/H084069fe0c1c479bb3857c691d46163cT.jpg",  # Gray
             "https://sc04.alicdn.com/kf/H63e9aeb2dd264c20b2153c08fc94aab8A.jpg",
-            "https://sc04.alicdn.com/kf/Hebcd2c9c383c46429e226ac0f532d345E.jpg",
             "https://sc04.alicdn.com/kf/He9d4afde55f748dfbecdd0bc60a7dfb9n.jpg",
+            "https://d3on2iqx8wzllm.cloudfront.net/product-images/371ef5a4-2756-4423-af6e-42e726260c6a.avif",  # Black
             "https://sc04.alicdn.com/kf/Hb85997322a3b47b198bd46fda884d22es.jpg",
         ],
         "videos": [
@@ -841,13 +831,11 @@ PRODUCT_MEDIA = {
     "multi-compartment-gym-duffle": {
         "images": [
             "https://sc04.alicdn.com/kf/H955879d79be14d2bbb657e017f87b2d87.jpg",
-            "https://sc04.alicdn.com/kf/He227382a787540eeabe4b54b9024f34ea.jpg",
+            "https://sc04.alicdn.com/kf/He227382a787540eeabe4b54b9024f34ea.jpg",  # Black
             "https://sc04.alicdn.com/kf/Hb2d60fc2ad0b4460bf076db6d1f1747au.jpg",
             "https://sc04.alicdn.com/kf/Hc90d9101f955462abc013259d4546267J.jpg",
             "https://sc04.alicdn.com/kf/H7437cf235d074913859897a60c36e0fd9.jpg",
             "https://sc04.alicdn.com/kf/Hbc1a47d51aa048759f0f1da2e3352abad.jpg",
-            # Variant color images
-            "https://sc04.alicdn.com/kf/H2a25a216f28a4b5ab2280f7de797782al.jpg",  # Black
             "https://sc04.alicdn.com/kf/Hb2f78b26aa1e4f47b5ef785118fbb867g.jpg",  # Gray
             "https://sc04.alicdn.com/kf/Haed8a4694ad04f2caac252ff29bdd1313.jpg",  # Green
         ],
@@ -857,7 +845,7 @@ PRODUCT_MEDIA = {
         "images": [
             "https://sc04.alicdn.com/kf/Haf8b24b5fbe44c99a31a03c9c4ed806ey.jpg",
             "https://sc04.alicdn.com/kf/H2915a00b02054fa6ae3d5eb075a6e4475.jpg",
-            "https://sc04.alicdn.com/kf/H488cee6462384bef8c580f1c76185a73S.jpg",
+            "https://d3on2iqx8wzllm.cloudfront.net/product-images/afcd83ab-1531-4c45-9901-5a1c5b62e6a1.jpg",  # Black
             "https://sc04.alicdn.com/kf/H2059a13b25a346aba119c5efa3184cedp.jpg",
             "https://sc04.alicdn.com/kf/H84556cf7cccb49af9bbcad34a3a155dcT.jpg",
             "https://sc04.alicdn.com/kf/H17dfdeccd82f4a72b7d7732d4cda33feE.jpg",
@@ -884,12 +872,10 @@ PRODUCT_MEDIA = {
         "images": [
             "https://sc04.alicdn.com/kf/H4b1ed2df08e244ec8a2e408dc76d8b946.jpg",
             "https://sc04.alicdn.com/kf/Hff98c1f24d6b48a29113184c6227cd13s.jpg",
-            "https://sc04.alicdn.com/kf/H088fd3f9a6cd4c04b3a39d9d5f9800f1F.jpg",
+            "https://sc04.alicdn.com/kf/H088fd3f9a6cd4c04b3a39d9d5f9800f1F.jpg",  # Black
             "https://sc04.alicdn.com/kf/H9f7e2e0867ce4c5bbfa84a808f26b4a1Z.jpg",
             "https://sc04.alicdn.com/kf/Hebab11a610624c4b9b14633031c49f9aU.jpg",
             "https://sc04.alicdn.com/kf/Hae8de8922b7b4869a2cf04dd5973081eu.jpg",
-            # Variant color images
-            "https://sc04.alicdn.com/kf/H3be4ce6e12574c669270454c045e6a260.jpg",  # Black
             "https://sc04.alicdn.com/kf/H6e020dd1b41d460fba09a3df8e901106N.jpg",  # Gray
             "https://sc04.alicdn.com/kf/H2fa2e7eadf6446a281f37b88ea5864f1e.jpg",  # Deep Blue
             "https://sc04.alicdn.com/kf/H8857a586647143749e65e14d3a0155904.jpg",  # White
@@ -903,11 +889,9 @@ PRODUCT_MEDIA = {
         "images": [
             "https://sc04.alicdn.com/kf/H0ceb892d305a49f2a6874251c92328d9S.jpg",
             "https://sc04.alicdn.com/kf/H4369b88e07474a56ab42ed41e4e5dea1j.jpg",
-            "https://sc04.alicdn.com/kf/H8b86fe1d56c44ca9bcfecb9ac2804f82v.jpg",
             "https://sc04.alicdn.com/kf/H33d1cba4349f4388b744f6ae31157818Q.jpg",
             "https://sc04.alicdn.com/kf/H3e26952a12ad4092bcd72fb91d35f4d6E.jpg",
             "https://sc04.alicdn.com/kf/Hd19867b6d48446dc8e485eab07d790deo.jpg",
-            # Variant color images
             "https://sc04.alicdn.com/kf/H3ab264fd485745ed9f9ca00f54f15e759.jpg",  # Black
             "https://sc04.alicdn.com/kf/He2626e490a8f499a8797049e6e1e597cx.png",  # Gray
         ],
@@ -1040,6 +1024,8 @@ PRODUCT_SWATCHES = {
         "Dark Grey": "https://sc04.alicdn.com/kf/H0aaba80261ff426d8b61b40e60b7e4057.jpg",
         "Navy Blue": "https://sc04.alicdn.com/kf/H76257a8d5da44f8d9f5dbbf4b517f62e3.jpg",
         "Green": "https://sc04.alicdn.com/kf/H1e6c0bdfe2d74d538fae08e9715c8746h.jpg",
+        "Brown": "https://sc04.alicdn.com/kf/H2eac2a8cefa14320b2236208c52c6addH.jpg",
+        "Silver": "https://sc04.alicdn.com/kf/Hc257b63bdd7b498b83631d3d5a4865e4o.jpg",
     },
     "ear-protection-silicone-swim-cap": {
         "Blue": "https://sc04.alicdn.com/kf/Hdaa76a6d8c5442a6b5484cf91b7b3a09Q.jpg",
@@ -1243,6 +1229,83 @@ VARIANT_GALLERY_MAP: dict[str, dict[str, int]] = {
         "Pink": 6,
         "Blue": 7,
     },
+    "classic-frontal-centre-snorkel": {
+        "Blue": 6,
+        "Green": 7,
+        "Orange": 8,
+    },
+    "multi-compartment-gym-duffle": {
+        "Black": 1,
+        "Gray": 6,
+        "Green": 7,
+    },
+    "multifunctional-travel-backpack": {
+        "Black": 5,
+        "Gray": 6,
+    },
+    "pu-leather-travel-duffel": {
+        "Black": 2,
+        "Gray": 6,
+        "Deep Blue": 7,
+        "White": 8,
+        "Green": 9,
+    },
+    "quick-dry-performance-jammer": {
+        "Black": 1,
+        "Navy": 5,
+    },
+    "semi-dry-frontal-training-snorkel": {
+        "Blue": 6,
+        "Green": 7,
+        "Yellow": 8,
+        "Black": 9,
+    },
+    "sharkskin-performance-jammers": {
+        "Blue": 0,
+        "Orange": 2,
+        "Black": 5,
+        "Dark Grey": 8,
+    },
+    "womens-short-sleeve-one-piece": {
+        "Black": 5,
+        "Green": 6,
+        "White": 7,
+    },
+    "rubber-dive-swim-fins": {
+        "Black": 0,
+        "Blue": 2,
+        "Red": 5,
+        "Green": 6,
+        "Grass Green": 7,
+        "White": 8,
+    },
+    "silicone-training-fins": {
+        "Green": 0,
+        "Rose": 2,
+        "Blue": 4,
+        "Black": 5,
+    },
+    "pu-yoga-swim-duffel-tote": {
+        "Black": 2,
+    },
+    "waterproof-canvas-sports-backpack": {
+        "Gray": 1,
+        "Black": 4,
+    },
+    "silicone-hand-training-paddles": {
+        "Black": 6,
+        "Blue": 7,
+        "Silver": 8,
+        "Red": 9,
+        "Pink": 10,
+        "Green": 11,
+        "Orange-Pink": 12,
+        "Fluorescent Green": 13,
+    },
+    "yingfa-mid-leg-trunks": {
+        "Dark Blue": 1,
+        "Black": 4,
+    },
 }
 
 
@@ -1337,6 +1400,16 @@ CATEGORIES_DATA = [
         ),
         "sort_order": 9,
     },
+    {
+        "key": "kits",
+        "name": "Kits & Bundles",
+        "slug": "kits-bundles",
+        "description": (
+            "Curated product bundles that give you everything you need "
+            "at a discounted price. Save time and money with our hand-picked kits."
+        ),
+        "sort_order": 10,
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -1424,9 +1497,9 @@ PRODUCTS_DATA = [
             "drills, kick sets, and swim lessons."
         ),
         "short_description": "Official SwimBuddz EVA kickboard for training",
-        "base_price_ngn": "6500",
+        "base_price_ngn": "10000",
         "compare_at_price_ngn": None,
-        "cost_price_ngn": "2500",
+        "cost_price_ngn": "3900",
         "is_featured": True,
         "has_variants": True,
         "variant_options": {"Color": ["Blue", "Green", "Orange", "Pink"]},
@@ -1447,9 +1520,9 @@ PRODUCTS_DATA = [
             "Available in five vibrant colour combinations."
         ),
         "short_description": "SwimBuddz pro-grade multi-layer EVA kickboard",
-        "base_price_ngn": "6500",
+        "base_price_ngn": "10000",
         "compare_at_price_ngn": None,
-        "cost_price_ngn": "2544",
+        "cost_price_ngn": "2600",
         "is_featured": True,
         "has_variants": True,
         "variant_options": {"Color": ["Pink", "Blue", "Green", "Purple", "Orange"]},
@@ -1469,9 +1542,9 @@ PRODUCTS_DATA = [
             "during swim lessons and pool play."
         ),
         "short_description": "SwimBuddz kid-sized EVA kickboard for young swimmers",
-        "base_price_ngn": "4000",
+        "base_price_ngn": "9500",
         "compare_at_price_ngn": None,
-        "cost_price_ngn": "2078",
+        "cost_price_ngn": "3000",
         "is_featured": True,
         "has_variants": True,
         "variant_options": {"Color": ["Pink", "Yellow", "Blue", "Green", "Orange"]},
@@ -1514,7 +1587,7 @@ PRODUCTS_DATA = [
         "short_description": "100% silicone open-heel training fins",
         "base_price_ngn": "25000",
         "compare_at_price_ngn": "30000",
-        "cost_price_ngn": "15805",
+        "cost_price_ngn": "15900",
         "is_featured": True,
         "has_variants": True,
         "variant_options": {
@@ -1736,9 +1809,9 @@ PRODUCTS_DATA = [
             "letting swimmers concentrate on body position and pull mechanics."
         ),
         "short_description": "Centre-mount snorkel for focused stroke technique",
-        "base_price_ngn": "9000",
+        "base_price_ngn": "16000",
         "compare_at_price_ngn": None,
-        "cost_price_ngn": "4757",
+        "cost_price_ngn": "4800",
         "is_featured": False,
         "has_variants": True,
         "variant_options": {"Color": ["Black", "Blue", "Green", "Orange"]},
@@ -1757,9 +1830,9 @@ PRODUCTS_DATA = [
             "mouthpiece and adjustable head strap for extended training sets."
         ),
         "short_description": "Semi-dry silicone frontal snorkel for training",
-        "base_price_ngn": "9500",
+        "base_price_ngn": "15000",
         "compare_at_price_ngn": None,
-        "cost_price_ngn": "4907",
+        "cost_price_ngn": "5000",
         "is_featured": False,
         "has_variants": True,
         "variant_options": {"Color": ["Blue", "Green", "Yellow", "Black", "White"]},
@@ -1910,9 +1983,9 @@ PRODUCTS_DATA = [
             "head sizes."
         ),
         "short_description": "Waterproof printed silicone swim cap",
-        "base_price_ngn": "4000",
+        "base_price_ngn": "5000",
         "compare_at_price_ngn": None,
-        "cost_price_ngn": "1069",
+        "cost_price_ngn": "1100",
         "is_featured": False,
         "has_variants": True,
         "variant_options": {
@@ -1949,7 +2022,7 @@ PRODUCTS_DATA = [
             "water out of the ears. Available in nine vibrant colours."
         ),
         "short_description": "High-stretch silicone cap with ear protection",
-        "base_price_ngn": "5000",
+        "base_price_ngn": "8000",
         "compare_at_price_ngn": None,
         "cost_price_ngn": "1200",
         "is_featured": False,
@@ -1983,7 +2056,7 @@ PRODUCTS_DATA = [
             "to keep water out. Ideal for training and competition."
         ),
         "short_description": "Professional swim cap with ear protection",
-        "base_price_ngn": "5000",
+        "base_price_ngn": "7000",
         "compare_at_price_ngn": None,
         "cost_price_ngn": "1400",
         "is_featured": False,
@@ -2006,7 +2079,7 @@ PRODUCTS_DATA = [
             "and free from chlorine damage. Durable, tear-resistant silicone."
         ),
         "short_description": "Plus-size swim cap for long hair & braids",
-        "base_price_ngn": "7000",
+        "base_price_ngn": "10000",
         "compare_at_price_ngn": None,
         "cost_price_ngn": "1800",
         "is_featured": False,
@@ -2081,9 +2154,9 @@ PRODUCTS_DATA = [
             "chlorinated water. Comfortable compression fit from L to 5XL."
         ),
         "short_description": "Chlorine-resistant training jammer for daily use",
-        "base_price_ngn": "9500",
+        "base_price_ngn": "10000",
         "compare_at_price_ngn": "12000",
-        "cost_price_ngn": "5208",
+        "cost_price_ngn": "5300",
         "is_featured": False,
         "has_variants": True,
         "variant_options": {
@@ -2840,6 +2913,69 @@ COLLECTIONS_DATA = [
     },
 ]
 
+# ---------------------------------------------------------------------------
+# BUNDLES / KITS — curated product bundles sold at a discount
+# ---------------------------------------------------------------------------
+
+BUNDLES_DATA = [
+    {
+        "name": "Beginner Starter Kit",
+        "slug": "beginner-starter-kit",
+        "category_key": "kits",
+        "description": (
+            "Everything a new swimmer needs to get started. This beginner-friendly "
+            "bundle includes a silicone swim cap, anti-fog goggles with earplugs, "
+            "a protective goggle case, a nose clip, and a foam pool noodle for "
+            "flotation support. Save over 10% compared to buying each item separately."
+        ),
+        "short_description": "Complete starter bundle for new swimmers — cap, goggles, case, nose clip & noodle",
+        "base_price_ngn": "20000",
+        "compare_at_price_ngn": "23000",  # sum of individual items
+        "cost_price_ngn": "6933",  # sum of component costs
+        "is_featured": True,
+        "sku_prefix": "SB-KIT-001",
+        "preorder_lead_days": 21,
+        "bundle_items": [
+            {
+                "component_slug": "printed-silicone-swim-cap",
+                "quantity": 1,
+                "sort_order": 0,
+            },
+            {
+                "component_slug": "anti-fog-waterproof-swim-goggles-with-earplugs",
+                "quantity": 1,
+                "sort_order": 1,
+            },
+            {
+                "component_slug": "eva-silicone-swim-goggle-case",
+                "quantity": 1,
+                "sort_order": 2,
+            },
+            {"component_slug": "silicone-nose-clip", "quantity": 1, "sort_order": 3},
+            {"component_slug": "epe-foam-pool-noodle", "quantity": 1, "sort_order": 4},
+        ],
+    },
+    {
+        "name": "Poolside First Aid Kit",
+        "slug": "poolside-first-aid-kit",
+        "category_key": "kits",
+        "description": (
+            "A compact poolside first aid kit curated for swimmers and swim coaches. "
+            "Includes waterproof adhesive bandages, antiseptic wipes, ear drying drops, "
+            "saline eye wash, cold pack, medical tape, tweezers, and a waterproof pouch. "
+            "Keep one in your swim bag for peace of mind at every session."
+        ),
+        "short_description": "Compact first aid essentials for poolside safety",
+        "base_price_ngn": "12000",
+        "compare_at_price_ngn": None,
+        "cost_price_ngn": "4500",
+        "is_featured": False,
+        "sku_prefix": "SB-KIT-002",
+        "preorder_lead_days": 21,
+        "bundle_items": [],  # standalone kit product, not a bundle of existing products
+    },
+]
+
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -2861,6 +2997,7 @@ async def find_by_name(db, model, name):
 async def truncate_store_tables(db):
     """Truncate all store tables. DESTRUCTIVE — use only with --fresh."""
     tables = [
+        "store_bundle_items",
         "store_collection_products",
         "store_collections",
         "store_product_images",
@@ -3234,6 +3371,124 @@ async def seed_collections(db, product_map, verbose=False):
     print(f"  Collections: {created} created, {skipped} existed")
 
 
+async def seed_bundles(db, categories, supplier, product_map, verbose=False):
+    """Find or create bundle/kit products and link their component items."""
+    created = 0
+    skipped = 0
+
+    for b in BUNDLES_DATA:
+        existing = await find_by_slug(db, Product, b["slug"])
+        if existing:
+            product_map[b["slug"]] = existing
+            skipped += 1
+            if verbose:
+                print(f"  skip  Bundle '{existing.name}'")
+            continue
+
+        cat = categories.get(b["category_key"])
+        if not cat:
+            print(
+                f"  WARN  Category '{b['category_key']}' not found "
+                f"for '{b['name']}' — skipping"
+            )
+            continue
+
+        # Determine product_type based on whether it has component products
+        has_components = bool(b.get("bundle_items"))
+        product_type = ProductType.BUNDLE if has_components else ProductType.STANDARD
+
+        bundle_product = Product(
+            name=b["name"],
+            slug=b["slug"],
+            category_id=cat.id,
+            product_type=product_type,
+            description=b["description"],
+            short_description=b["short_description"],
+            base_price_ngn=Decimal(b["base_price_ngn"]),
+            compare_at_price_ngn=(
+                Decimal(b["compare_at_price_ngn"])
+                if b.get("compare_at_price_ngn")
+                else None
+            ),
+            status=ProductStatus.ACTIVE,
+            is_featured=b.get("is_featured", False),
+            has_variants=False,
+            sourcing_type=SourcingType.PREORDER,
+            preorder_lead_days=b.get("preorder_lead_days", 14),
+            supplier_id=supplier.id,
+            cost_price_ngn=(
+                Decimal(b["cost_price_ngn"]) if b.get("cost_price_ngn") else None
+            ),
+        )
+        db.add(bundle_product)
+        await db.flush()
+        product_map[b["slug"]] = bundle_product
+
+        # Create a default variant for the bundle (required for cart/inventory)
+        variant = ProductVariant(
+            product_id=bundle_product.id,
+            sku=b["sku_prefix"],
+            name="Default",
+        )
+        db.add(variant)
+        await db.flush()
+        db.add(
+            InventoryItem(
+                variant_id=variant.id,
+                quantity_on_hand=0,
+                low_stock_threshold=3,
+            )
+        )
+
+        # Link component products as bundle items
+        linked = 0
+        for item_data in b.get("bundle_items", []):
+            component = product_map.get(item_data["component_slug"])
+            if component:
+                db.add(
+                    BundleItem(
+                        bundle_product_id=bundle_product.id,
+                        component_product_id=component.id,
+                        quantity=item_data.get("quantity", 1),
+                        sort_order=item_data.get("sort_order", 0),
+                    )
+                )
+                linked += 1
+            elif verbose:
+                print(
+                    f"  WARN  Component '{item_data['component_slug']}' "
+                    f"not found for bundle '{b['name']}'"
+                )
+
+        # Use first component's primary image as the bundle image (if available)
+        if has_components and b.get("bundle_items"):
+            first_component = product_map.get(b["bundle_items"][0]["component_slug"])
+            if first_component:
+                db.add(
+                    ProductImage(
+                        product_id=bundle_product.id,
+                        url=f"https://picsum.photos/seed/{b['slug']}/600/600",
+                        alt_text=b["name"],
+                        is_primary=True,
+                    )
+                )
+        else:
+            db.add(
+                ProductImage(
+                    product_id=bundle_product.id,
+                    url=f"https://picsum.photos/seed/{b['slug']}/600/600",
+                    alt_text=b["name"],
+                    is_primary=True,
+                )
+            )
+
+        created += 1
+        if verbose:
+            print(f"  +     Bundle '{bundle_product.name}' ({linked} components)")
+
+    print(f"  Bundles: {created} created, {skipped} existed")
+
+
 # =============================================================================
 # MAIN
 # =============================================================================
@@ -3258,6 +3513,9 @@ async def seed_store_data(fresh=False, verbose=False):
         print("\n[Products + Variants + Inventory + Images]")
         product_map = await seed_products(db, categories, supplier, verbose)
 
+        print("\n[Bundles / Kits]")
+        await seed_bundles(db, categories, supplier, product_map, verbose)
+
         print("\n[Pickup Locations]")
         await seed_pickup_locations(db, verbose)
 
@@ -3271,6 +3529,7 @@ async def seed_store_data(fresh=False, verbose=False):
         print("=" * 60)
         print(f"  Categories defined:       {len(CATEGORIES_DATA)}")
         print(f"  Products defined:         {len(PRODUCTS_DATA)}")
+        print(f"  Bundles defined:          {len(BUNDLES_DATA)}")
         print(f"  Pickup locations defined: {len(PICKUP_LOCATIONS_DATA)}")
         print(f"  Collections defined:      {len(COLLECTIONS_DATA)}")
         print("  Sourcing type:            All PREORDER")

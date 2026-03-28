@@ -4,13 +4,17 @@ These endpoints are called by other SwimBuddz services via service-role JWT,
 not by frontend clients directly.
 """
 
-from fastapi import APIRouter, Depends
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.wallet_service.schemas import (
     AdminScholarshipCreditRequest,
     BalanceCheckRequest,
@@ -282,3 +286,83 @@ async def internal_referral_qualify(
     except Exception as e:
         logger.warning("Referral qualification failed for %s: %s", member_auth_id, e)
         return {"success": False, "message": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Reporting: member wallet summary
+# ---------------------------------------------------------------------------
+
+
+class MemberWalletSummary(BaseModel):
+    bubbles_earned: int = 0
+    bubbles_spent: int = 0
+
+
+@router.get(
+    "/wallet/member-summary/{member_auth_id}",
+    response_model=MemberWalletSummary,
+)
+async def get_member_wallet_summary(
+    member_auth_id: str,
+    date_from: datetime = Query(..., alias="from"),
+    date_to: datetime = Query(..., alias="to"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Aggregate wallet stats for a member within a date range.
+
+    Used by the reporting service for quarterly reports.
+    """
+    from services.wallet_service.models import (
+        TransactionDirection,
+        Wallet,
+        WalletTransaction,
+    )
+
+    # Find wallet for this member
+    wallet_result = await db.execute(
+        select(Wallet.id).where(Wallet.member_auth_id == member_auth_id)
+    )
+    wallet_id = wallet_result.scalar_one_or_none()
+    if wallet_id is None:
+        return MemberWalletSummary()
+
+    # Aggregate credits (earned) and debits (spent)
+    result = await db.execute(
+        select(
+            func.coalesce(
+                func.sum(
+                    func.case(
+                        (
+                            WalletTransaction.direction == TransactionDirection.CREDIT,
+                            WalletTransaction.amount,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("earned"),
+            func.coalesce(
+                func.sum(
+                    func.case(
+                        (
+                            WalletTransaction.direction == TransactionDirection.DEBIT,
+                            WalletTransaction.amount,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("spent"),
+        ).where(
+            WalletTransaction.wallet_id == wallet_id,
+            WalletTransaction.created_at >= date_from,
+            WalletTransaction.created_at <= date_to,
+        )
+    )
+    row = result.one()
+
+    return MemberWalletSummary(
+        bubbles_earned=int(row.earned or 0),
+        bubbles_spent=int(row.spent or 0),
+    )

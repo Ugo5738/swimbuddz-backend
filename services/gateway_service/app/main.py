@@ -10,12 +10,12 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from slowapi.errors import RateLimitExceeded
+
 from libs.common.error_handler import add_exception_handlers
 from libs.common.logging import get_request_id
 from libs.common.middleware import add_observability_middleware
 from libs.common.rate_limit import limiter, rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-
 from services.gateway_service.app import clients
 
 
@@ -422,6 +422,29 @@ def create_app() -> FastAPI:
     async def proxy_ai(path: str, request: Request):
         """Proxy all /api/v1/ai/* requests to AI service."""
         return await proxy_request(clients.ai_client, f"/ai/{path}", request)
+
+    # ==================================================================
+    # REPORTING SERVICE
+    # ==================================================================
+    @app.api_route(
+        "/api/v1/reports/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_reports(path: str, request: Request):
+        """Proxy all /api/v1/reports/* requests to reporting service."""
+        return await proxy_request(
+            clients.reporting_client, f"/reports/{path}", request
+        )
+
+    @app.api_route(
+        "/api/v1/admin/reports/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_admin_reports(path: str, request: Request):
+        """Proxy all /api/v1/admin/reports/* requests to reporting service."""
+        return await proxy_request(
+            clients.reporting_client, f"/admin/reports/{path}", request
+        )
 
     # ==================================================================
     # DASHBOARD (Gateway-specific aggregation)

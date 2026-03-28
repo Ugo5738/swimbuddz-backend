@@ -15,6 +15,7 @@ from services.store_service.routers import (
     checkout_router,
     orders_router,
 )
+from services.store_service.routers.internal import router as internal_router
 
 
 def create_app() -> FastAPI:
@@ -44,6 +45,9 @@ def create_app() -> FastAPI:
     app.include_router(admin_payouts_router, prefix="/admin/store")
     app.include_router(admin_reports_router, prefix="/admin/store")
     app.include_router(admin_maintenance_router, prefix="/admin/store")
+
+    # Internal service-to-service routes (not proxied by gateway)
+    app.include_router(internal_router)
 
     return app
 
