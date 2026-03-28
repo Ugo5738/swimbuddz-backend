@@ -102,6 +102,16 @@ services:
     volumes:
       - .:/app
 
+  reporting-service-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-reporting-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_reporting_staging
+    env_file:
+      - .env.staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
   # ==================================================================
   # API GATEWAY (STAGING)
   # ==================================================================
@@ -130,6 +140,8 @@ services:
       transport-service-staging:
         condition: service_started
       store-service-staging:
+        condition: service_started
+      reporting-service-staging:
         condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -202,6 +214,22 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: arq services.media_service.tasks.worker.WorkerSettings
+    volumes:
+      - .:/app
+
+  reporting-worker-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-reporting-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_reporting_worker_staging
+    env_file:
+      - .env.staging
+    depends_on:
+      redis-staging:
+        condition: service_healthy
+      reporting-service-staging:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.reporting_service.tasks.worker.WorkerSettings
     volumes:
       - .:/app
 
