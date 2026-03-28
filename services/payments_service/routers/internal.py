@@ -311,7 +311,7 @@ class MemberPaymentSummary(BaseModel):
 
 
 @router.get(
-    "/payments/member-summary/{member_auth_id}",
+    "/member-summary/{member_auth_id}",
     response_model=MemberPaymentSummary,
 )
 async def get_member_payment_summary(

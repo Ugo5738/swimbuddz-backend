@@ -96,7 +96,7 @@ async def _fetch_payment_summary(
     """Fetch payment summary from payments service."""
     data = await _safe_get(
         settings.PAYMENTS_SERVICE_URL,
-        f"/internal/payments/member-summary/{member_auth_id}",
+        f"/payments/member-summary/{member_auth_id}",
         params={"from": date_from, "to": date_to},
     )
     return data or {}

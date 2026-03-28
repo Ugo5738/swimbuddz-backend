@@ -299,7 +299,7 @@ class MemberWalletSummary(BaseModel):
 
 
 @router.get(
-    "/wallet/member-summary/{member_auth_id}",
+    "/member-summary/{member_auth_id}",
     response_model=MemberWalletSummary,
 )
 async def get_member_wallet_summary(
