@@ -4,16 +4,17 @@ from datetime import datetime
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_service_role
+from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
-from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.payments_service.models import (
     Discount,
     DiscountType,
@@ -296,4 +297,51 @@ async def internal_validate_discount(
         value=discount.value,
         discount_amount=discount_amount,
         message=None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Reporting: member payment summary
+# ---------------------------------------------------------------------------
+
+
+class MemberPaymentSummary(BaseModel):
+    total_spent: int = 0
+    payment_count: int = 0
+
+
+@router.get(
+    "/payments/member-summary/{member_auth_id}",
+    response_model=MemberPaymentSummary,
+)
+async def get_member_payment_summary(
+    member_auth_id: str,
+    date_from: datetime = Query(..., alias="from"),
+    date_to: datetime = Query(..., alias="to"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Aggregate payment stats for a member within a date range.
+
+    Used by the reporting service for quarterly reports.
+    """
+    from services.payments_service.models import Payment
+    from services.payments_service.models.enums import PaymentStatus
+
+    result = await db.execute(
+        select(
+            func.count(Payment.id).label("count"),
+            func.coalesce(func.sum(Payment.amount), 0).label("total"),
+        ).where(
+            Payment.member_auth_id == member_auth_id,
+            Payment.status == PaymentStatus.PAID,
+            Payment.paid_at >= date_from,
+            Payment.paid_at <= date_to,
+        )
+    )
+    row = result.one()
+
+    return MemberPaymentSummary(
+        total_spent=int(row.total or 0),
+        payment_count=row.count or 0,
     )

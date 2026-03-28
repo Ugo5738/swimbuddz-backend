@@ -7,12 +7,17 @@ from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
+from services.store_service.models.enums import (
+    ProductStatus,
+    ProductType,
+    SourcingType,
+    enum_values,
+)
+from sqlalchemy import Boolean, DateTime
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy import ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from services.store_service.models.enums import ProductStatus, SourcingType, enum_values
 
 # ============================================================================
 # REFERENCE MODELS (cross-service references without imports)
@@ -90,6 +95,17 @@ class Product(Base):
         UUID(as_uuid=True),
         ForeignKey("store_categories.id", ondelete="SET NULL"),
         nullable=True,
+    )
+
+    # Product type (standard product vs bundle/kit)
+    product_type: Mapped[ProductType] = mapped_column(
+        SAEnum(
+            ProductType,
+            values_callable=enum_values,
+            name="store_product_type_enum",
+        ),
+        default=ProductType.STANDARD,
+        server_default="standard",
     )
 
     # Basic info
@@ -185,6 +201,17 @@ class Product(Base):
         "CollectionProduct", back_populates="product", cascade="all, delete-orphan"
     )
     supplier = relationship("Supplier", back_populates="products")
+    bundle_items = relationship(
+        "BundleItem",
+        back_populates="bundle_product",
+        foreign_keys="BundleItem.bundle_product_id",
+        cascade="all, delete-orphan",
+    )
+    included_in_bundles = relationship(
+        "BundleItem",
+        back_populates="component_product",
+        foreign_keys="BundleItem.component_product_id",
+    )
 
     def __repr__(self):
         return f"<Product {self.name}>"
@@ -378,3 +405,60 @@ class CollectionProduct(Base):
     # Relationships
     collection = relationship("Collection", back_populates="collection_products")
     product = relationship("Product", back_populates="collection_products")
+
+
+# ============================================================================
+# BUNDLE MODELS
+# ============================================================================
+
+
+class BundleItem(Base):
+    """Links a bundle product to its component products (kit contents)."""
+
+    __tablename__ = "store_bundle_items"
+    __table_args__ = (
+        # A component+variant combo can only appear once per bundle
+        {"comment": "Bundle/kit component items"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    bundle_product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("store_products.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    component_product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("store_products.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    component_variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("store_product_variants.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    quantity: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+
+    # Relationships
+    bundle_product = relationship(
+        "Product", back_populates="bundle_items", foreign_keys=[bundle_product_id]
+    )
+    component_product = relationship(
+        "Product",
+        back_populates="included_in_bundles",
+        foreign_keys=[component_product_id],
+    )
+    component_variant = relationship("ProductVariant")
+
+    def __repr__(self):
+        return f"<BundleItem bundle={self.bundle_product_id} component={self.component_product_id}>"

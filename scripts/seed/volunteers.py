@@ -2,7 +2,7 @@
 """
 Seed default volunteer roles into the database.
 
-This script creates the 13 core volunteer roles defined for the
+This script creates the 15 core volunteer roles defined for the
 SwimBuddz community. See docs/VOLUNTEER_ROLES.md for full descriptions.
 
 Usage:
@@ -171,6 +171,37 @@ SEED_ROLES = [
     },
     # ── Community Roles ────────────────────────────────────────────────
     {
+        "title": "Pool Ambassador",
+        "description": (
+            "Engages curious onlookers and non-members at the pool during sessions. "
+            "Has casual conversations about SwimBuddz, answers basic questions, and "
+            "adds interested people to the prospects WhatsApp group. The bridge "
+            "between the community and potential new members."
+        ),
+        "category": VolunteerRoleCategory.WELCOME,
+        "min_tier": VolunteerTier.TIER_1,
+        "icon": "🌊",
+        "sort_order": 6,
+        "time_commitment": "~30–45 min during the session (you still get to swim)",
+        "responsibilities": [
+            "Keep an eye out for non-members watching, asking questions, or lingering near the group during sessions.",
+            "Approach curious onlookers with a warm, casual conversation about SwimBuddz.",
+            "Answer basic questions about the community, sessions, and how to join.",
+            "Add interested people to the 'SwimBuddz — New Here?' WhatsApp prospects group.",
+            "Send a follow-up WhatsApp message to anyone you added within a few hours.",
+            "Report to the Session Lead after the session: people approached, people added to the group.",
+            "Never pressure anyone to sign up or pay on the spot — the WhatsApp group is the only ask.",
+        ],
+        "skills_needed": (
+            "Warmth and friendliness. Comfortable starting conversations with strangers. "
+            "Good listener. No swimming expertise needed — you're connecting, not coaching."
+        ),
+        "best_for": (
+            "Extroverts, natural conversationalists, people who enjoy meeting new people. "
+            "Great entry-level role for anyone who wants to help the community grow."
+        ),
+    },
+    {
         "title": "Welcome Volunteer",
         "description": (
             "First friendly face for newcomers. Gives orientation on changing "
@@ -180,7 +211,7 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.WELCOME,
         "min_tier": VolunteerTier.TIER_1,
         "icon": "👋",
-        "sort_order": 6,
+        "sort_order": 7,
         "time_commitment": "~30 min spread across the session (before, during breaks, after)",
         "responsibilities": [
             "Introduce yourself to anyone attending their first session.",
@@ -205,7 +236,7 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.RIDE_SHARE,
         "min_tier": VolunteerTier.TIER_1,
         "icon": "🚗",
-        "sort_order": 7,
+        "sort_order": 8,
         "time_commitment": "Variable, depends on distance. Typically 30–60 min each way (Lagos traffic considered).",
         "responsibilities": [
             "Make your car available for a designated pickup zone (Yaba, VI, Ikoyi, Lekki, etc.).",
@@ -230,7 +261,7 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.MENTOR,
         "min_tier": VolunteerTier.TIER_2,
         "icon": "🤝",
-        "sort_order": 8,
+        "sort_order": 9,
         "time_commitment": (
             "No extra time beyond attending sessions you'd already attend. Plus 5–10 min of WhatsApp check-ins between sessions."
         ),
@@ -258,7 +289,7 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.OTHER,
         "min_tier": VolunteerTier.TIER_2,
         "icon": "🤝",
-        "sort_order": 9,
+        "sort_order": 10,
         "time_commitment": ("~1–2 hours per week (spread out in 5-minute increments)."),
         "responsibilities": [
             "Post the weekly session registration links and reminders (templates provided).",
@@ -285,7 +316,7 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.MEDIA,
         "min_tier": VolunteerTier.TIER_1,
         "icon": "📸",
-        "sort_order": 10,
+        "sort_order": 11,
         "time_commitment": "Throughout the session. You can still swim, just keep your phone nearby for key moments.",
         "responsibilities": [
             "Bring your phone (or camera if you have one) to the session.",
@@ -311,7 +342,7 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.GALLERY_SUPPORT,
         "min_tier": VolunteerTier.TIER_1,
         "icon": "🖼️",
-        "sort_order": 11,
+        "sort_order": 12,
         "time_commitment": "30–60 min after each session (can be done from home)",
         "responsibilities": [
             "Collect raw photos/videos from Media Volunteers after each session.",
@@ -340,7 +371,7 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.EVENTS_LOGISTICS,
         "min_tier": VolunteerTier.TIER_1,
         "icon": "📦",
-        "sort_order": 12,
+        "sort_order": 13,
         "time_commitment": "Variable, depends on the event. Could be 2–4 hours for a small social or a full day for a community meet.",
         "responsibilities": [
             "Help set up and tear down for special events (beach days, social gatherings, watch parties, community meets).",
@@ -364,7 +395,7 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.TRIP_PLANNER,
         "min_tier": VolunteerTier.TIER_2,
         "icon": "🗺️",
-        "sort_order": 13,
+        "sort_order": 14,
         "time_commitment": (
             "5–10 hours of planning per trip (spread over 2–4 weeks). Plus the trip day itself."
         ),
@@ -396,7 +427,7 @@ SEED_ROLES = [
         "category": VolunteerRoleCategory.ACADEMY_ASSISTANT,
         "min_tier": VolunteerTier.TIER_2,
         "icon": "🎓",
-        "sort_order": 14,
+        "sort_order": 15,
         "time_commitment": (
             "Full academy session duration (~60–90 min) + 10 min debrief with coach."
         ),

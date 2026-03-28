@@ -2,6 +2,7 @@
 
 from services.academy_service.models.cohort import (
     Cohort,
+    CohortExtensionRequest,
     CohortResource,
     CohortTimelineShiftLog,
 )
@@ -14,6 +15,7 @@ from services.academy_service.models.enums import (
     CohortStatus,
     EnrollmentSource,
     EnrollmentStatus,
+    ExtensionRequestStatus,
     InstallmentStatus,
     LocationType,
     MilestoneType,
@@ -52,9 +54,11 @@ __all__ = [
     "CoachGrade",
     "Cohort",
     "CohortComplexityScore",
+    "CohortExtensionRequest",
     "CohortResource",
     "CohortStatus",
     "CohortTimelineShiftLog",
+    "ExtensionRequestStatus",
     "CurriculumLesson",
     "CurriculumWeek",
     "Enrollment",

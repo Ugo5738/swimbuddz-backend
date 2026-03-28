@@ -1,6 +1,7 @@
 """Store Service models package."""
 
 from services.store_service.models.catalog import (
+    BundleItem,
     Category,
     Collection,
     CollectionProduct,
@@ -28,6 +29,7 @@ from services.store_service.models.enums import (
     OrderStatus,
     PayoutStatus,
     ProductStatus,
+    ProductType,
     SourcingType,
     StoreCreditSourceType,
     SupplierStatus,
@@ -37,6 +39,7 @@ from services.store_service.models.supplier import Supplier, SupplierPayout
 
 __all__ = [
     "AuditEntityType",
+    "BundleItem",
     "Cart",
     "CartItem",
     "CartStatus",
@@ -56,6 +59,7 @@ __all__ = [
     "Product",
     "ProductImage",
     "ProductStatus",
+    "ProductType",
     "ProductVariant",
     "ProductVideo",
     "SourcingType",

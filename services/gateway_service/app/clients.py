@@ -4,6 +4,7 @@ import asyncio
 from typing import Dict, Optional
 
 import httpx
+
 from libs.common.config import get_settings
 
 settings = get_settings()
@@ -117,3 +118,4 @@ ai_client = ServiceClient(settings.AI_SERVICE_URL)
 volunteer_client = ServiceClient(settings.VOLUNTEER_SERVICE_URL)
 wallet_client = ServiceClient(settings.WALLET_SERVICE_URL)
 pools_client = ServiceClient(settings.POOLS_SERVICE_URL)
+reporting_client = ServiceClient(settings.REPORTING_SERVICE_URL)

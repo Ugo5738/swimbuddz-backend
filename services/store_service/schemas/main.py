@@ -13,6 +13,7 @@ from services.store_service.models import (
     OrderStatus,
     PayoutStatus,
     ProductStatus,
+    ProductType,
     SourcingType,
     StoreCreditSourceType,
     SupplierStatus,
@@ -69,6 +70,7 @@ class ProductBase(BaseModel):
     name: str = Field(..., max_length=255)
     slug: str = Field(..., max_length=255)
     category_id: Optional[uuid.UUID] = None
+    product_type: ProductType = ProductType.STANDARD
     description: Optional[str] = None
     short_description: Optional[str] = Field(None, max_length=500)
     base_price_ngn: Decimal = Field(..., ge=0)
@@ -95,6 +97,7 @@ class ProductUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     slug: Optional[str] = Field(None, max_length=255)
     category_id: Optional[uuid.UUID] = None
+    product_type: Optional[ProductType] = None
     description: Optional[str] = None
     short_description: Optional[str] = Field(None, max_length=500)
     base_price_ngn: Optional[Decimal] = Field(None, ge=0)
@@ -741,3 +744,56 @@ class SupplierPayoutListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+# ============================================================================
+# BUNDLE / KIT SCHEMAS
+# ============================================================================
+
+
+class BundleItemCreate(BaseModel):
+    """Add a component product to a bundle."""
+
+    component_product_id: uuid.UUID
+    component_variant_id: Optional[uuid.UUID] = None
+    quantity: int = Field(1, ge=1)
+    sort_order: int = 0
+
+
+class BundleItemResponse(BaseModel):
+    """Bundle component with resolved product info."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    component_product_id: uuid.UUID
+    component_variant_id: Optional[uuid.UUID] = None
+    quantity: int
+    sort_order: int
+
+    # Resolved from relationships
+    component_name: Optional[str] = None
+    component_slug: Optional[str] = None
+    component_image_url: Optional[str] = None
+    component_price_ngn: Optional[Decimal] = None
+
+
+class BundleCreate(ProductCreate):
+    """Create a bundle product with its component items."""
+
+    product_type: ProductType = ProductType.BUNDLE
+    bundle_items: list[BundleItemCreate] = Field(..., min_length=1)
+
+
+class BundleUpdate(ProductUpdate):
+    """Update a bundle product. Bundle items managed separately."""
+
+    pass
+
+
+class BundleDetailResponse(ProductDetail):
+    """Bundle product detail with component items and savings info."""
+
+    bundle_items: list[BundleItemResponse] = []
+    total_individual_price_ngn: Optional[Decimal] = None
+    savings_percent: Optional[Decimal] = None
