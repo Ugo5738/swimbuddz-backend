@@ -3,7 +3,8 @@
 Generates "SwimBuddz Wrapped" style cards for quarterly reports.
 Two formats: square (1080x1080) and story (1080x1920).
 
-Design: Bold, vibrant card inspired by Spotify Wrapped.
+Design: Clean, premium Apple-style — light background, dark typography,
+subtle accent colors, intentional white space.
 """
 
 from __future__ import annotations
@@ -21,15 +22,17 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# ── Brand palette ──
-CYAN = (0, 188, 212)
-DARK = (15, 23, 42)
+# ── Apple-style palette ──
+BG_TOP = (240, 248, 255)  # very faint blue-white
+BG_BOTTOM = (225, 238, 248)  # slightly deeper cool white
+TEXT_PRIMARY = (15, 23, 42)  # slate-900
+TEXT_SECONDARY = (100, 116, 139)  # slate-500
+TEXT_TERTIARY = (148, 163, 184)  # slate-400
+ACCENT = (0, 172, 193)  # SwimBuddz teal
+ACCENT_LIGHT = (224, 247, 250)  # very light teal
+GOLD = (234, 170, 0)  # warm gold for highlights
 WHITE = (255, 255, 255)
-LIGHT_CYAN = (178, 235, 242)
-GOLD = (255, 193, 7)
-CORAL = (255, 111, 97)
-PURPLE = (139, 92, 246)
-GREEN = (16, 185, 129)
+DIVIDER = (226, 232, 240)  # slate-200
 
 FORMATS = {
     "square": (1080, 1080),
@@ -37,53 +40,43 @@ FORMATS = {
 }
 
 
-def _gradient_bg(width: int, height: int) -> "PILImage":
-    """Create a vibrant gradient background using numpy-style row fills."""
+def _clean_bg(width: int, height: int) -> "PILImage":
+    """Create a subtle cool-white gradient background."""
     from PIL import Image, ImageDraw
 
     img = Image.new("RGB", (width, height))
     draw = ImageDraw.Draw(img)
 
-    # Three-stop gradient: teal → deep blue → near-black
-    stops = [
-        (0.0, (0, 172, 193)),  # bright teal
-        (0.45, (13, 71, 161)),  # deep blue
-        (1.0, (8, 12, 38)),  # near black
-    ]
-
-    for y in range(height):
-        ratio = y / height
-        # Find which two stops we're between
-        for i in range(len(stops) - 1):
-            if ratio <= stops[i + 1][0]:
-                local = (ratio - stops[i][0]) / (stops[i + 1][0] - stops[i][0])
-                c1, c2 = stops[i][1], stops[i + 1][1]
-                r = int(c1[0] * (1 - local) + c2[0] * local)
-                g = int(c1[1] * (1 - local) + c2[1] * local)
-                b = int(c1[2] * (1 - local) + c2[2] * local)
-                draw.line([(0, y), (width, y)], fill=(r, g, b))
-                break
+    for y_pos in range(height):
+        ratio = y_pos / height
+        r = int(BG_TOP[0] * (1 - ratio) + BG_BOTTOM[0] * ratio)
+        g = int(BG_TOP[1] * (1 - ratio) + BG_BOTTOM[1] * ratio)
+        b = int(BG_TOP[2] * (1 - ratio) + BG_BOTTOM[2] * ratio)
+        draw.line([(0, y_pos), (width, y_pos)], fill=(r, g, b))
 
     return img
 
 
-def _draw_rounded_rect(draw, xy, fill, radius=20):
+def _rounded_rect(draw, xy, fill, radius=20):
     """Draw a rounded rectangle."""
-    x0, y0, x1, y1 = xy
     draw.rounded_rectangle(xy, radius=radius, fill=fill)
 
 
 def _load_fonts():
-    """Load fonts with fallback."""
+    """Load fonts with fallback to system defaults."""
     from PIL import ImageFont
 
-    paths = [
+    bold_paths = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
     ]
     regular_paths = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    ]
+    light_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-ExtraLight.ttf",
+        *regular_paths,
     ]
 
     def _try_load(path_list, size):
@@ -95,166 +88,180 @@ def _load_fonts():
         return ImageFont.load_default()
 
     return {
-        "hero": _try_load(paths, 160),
-        "title": _try_load(paths, 52),
-        "subtitle": _try_load(regular_paths, 32),
-        "stat_value": _try_load(paths, 56),
-        "stat_label": _try_load(regular_paths, 22),
-        "badge": _try_load(paths, 28),
-        "footer": _try_load(regular_paths, 22),
-        "tag": _try_load(paths, 20),
+        "hero": _try_load(bold_paths, 144),
+        "hero_label": _try_load(light_paths, 28),
+        "name": _try_load(bold_paths, 40),
+        "quarter": _try_load(regular_paths, 24),
+        "stat_value": _try_load(bold_paths, 44),
+        "stat_label": _try_load(regular_paths, 18),
+        "badge": _try_load(bold_paths, 20),
+        "nudge": _try_load(bold_paths, 24),
+        "comparison": _try_load(regular_paths, 22),
+        "footer": _try_load(regular_paths, 18),
+        "footer_small": _try_load(regular_paths, 14),
     }
 
 
 async def generate_card_image(
     report: "MemberQuarterlyReport", format: str = "square"
 ) -> bytes:
-    """Generate a vibrant shareable card PNG."""
+    """Generate an Apple-style clean shareable card PNG."""
     from PIL import ImageDraw
 
     width, height = FORMATS.get(format, FORMATS["square"])
     is_story = format == "story"
     fonts = _load_fonts()
 
-    img = _gradient_bg(width, height)
+    img = _clean_bg(width, height)
     draw = ImageDraw.Draw(img)
 
     cx = width // 2
-    pad = 50
-    y = 50 if is_story else 40
+    pad = 70
+    y = 80 if is_story else 60
 
-    # ── Top badge: "SWIMBUDDZ WRAPPED" ──
-    badge_text = "SWIMBUDDZ WRAPPED"
-    badge_w = draw.textlength(badge_text, font=fonts["tag"]) + 40
-    _draw_rounded_rect(
-        draw,
-        (cx - badge_w / 2, y, cx + badge_w / 2, y + 38),
-        fill=(0, 100, 120),
-        radius=19,
-    )
-    draw.text((cx, y + 19), badge_text, fill=WHITE, font=fonts["tag"], anchor="mm")
-    y += 52
+    # ── Brand mark ──
+    brand = "swimbuddz"
+    draw.text((cx, y), brand, fill=ACCENT, font=fonts["quarter"], anchor="mt")
+    y += 36
+
+    # ── Thin divider ──
+    div_w = 60
+    draw.line([(cx - div_w, y), (cx + div_w, y)], fill=DIVIDER, width=2)
+    y += 24
 
     # ── Quarter label ──
     label = quarter_label(report.year, report.quarter)
-    draw.text((cx, y), label, fill=LIGHT_CYAN, font=fonts["subtitle"], anchor="mt")
-    y += 42
+    draw.text(
+        (cx, y),
+        f"Your {label} Swim Report",
+        fill=TEXT_SECONDARY,
+        font=fonts["quarter"],
+        anchor="mt",
+    )
+    y += 40
 
     # ── Member name ──
-    draw.text((cx, y), report.member_name, fill=WHITE, font=fonts["title"], anchor="mt")
-    y += 60
+    draw.text(
+        (cx, y), report.member_name, fill=TEXT_PRIMARY, font=fonts["name"], anchor="mt"
+    )
+    y += 56
 
     # ── First-timer badge ──
     is_first = getattr(report, "is_first_quarter", False)
     if is_first:
         badge = "NEW SWIMMER"
-        bw = draw.textlength(badge, font=fonts["tag"]) + 30
-        _draw_rounded_rect(
-            draw, (cx - bw / 2, y, cx + bw / 2, y + 36), fill=GOLD, radius=18
-        )
-        draw.text((cx, y + 18), badge, fill=DARK, font=fonts["tag"], anchor="mm")
-        y += 48
+        bw = draw.textlength(badge, font=fonts["badge"]) + 32
+        _rounded_rect(draw, (cx - bw / 2, y, cx + bw / 2, y + 32), fill=GOLD, radius=16)
+        draw.text((cx, y + 16), badge, fill=WHITE, font=fonts["badge"], anchor="mm")
+        y += 46
 
-    # ── Hero stat: Pool hours or sessions ──
+    # ── Hero stat ──
     pool_hours = getattr(report, "pool_hours", 0.0)
     if pool_hours > 0:
         hero_val = f"{pool_hours:.0f}" if pool_hours >= 10 else f"{pool_hours:.1f}"
-        hero_label = "hours in the pool"
+        hero_unit = "hours in the pool"
     else:
         hero_val = str(report.total_sessions_attended)
-        hero_label = "sessions attended"
+        hero_unit = (
+            "session attended"
+            if report.total_sessions_attended == 1
+            else "sessions attended"
+        )
 
-    hero_y = y + (20 if is_story else 5)
-    draw.text((cx, hero_y), hero_val, fill=GOLD, font=fonts["hero"], anchor="mt")
-    hero_y += 140
+    hero_y = y + (30 if is_story else 15)
     draw.text(
-        (cx, hero_y), hero_label, fill=LIGHT_CYAN, font=fonts["subtitle"], anchor="mt"
+        (cx, hero_y), hero_val, fill=TEXT_PRIMARY, font=fonts["hero"], anchor="mt"
     )
-    hero_y += 45
+    hero_y += 130
+    draw.text(
+        (cx, hero_y),
+        hero_unit,
+        fill=TEXT_SECONDARY,
+        font=fonts["hero_label"],
+        anchor="mt",
+    )
+    hero_y += 50
 
-    # ── Stat cards row ──
-    stat_cards = []
-
-    att_pct = f"{report.attendance_rate * 100:.0f}%"
-    stat_cards.append(("Attendance", att_pct, CYAN))
-
-    if report.streak_longest > 0:
-        stat_cards.append(("Streak", f"{report.streak_longest}w", CORAL))
-
-    if report.milestones_achieved > 0:
-        stat_cards.append(("Milestones", str(report.milestones_achieved), PURPLE))
-    elif report.bubbles_earned > 0:
-        stat_cards.append(("Bubbles", str(report.bubbles_earned), PURPLE))
-
-    if report.volunteer_hours > 0:
-        stat_cards.append(("Volunteered", f"{report.volunteer_hours:.0f}h", GREEN))
-
-    # Draw stat cards in a row
-    num_cards = min(len(stat_cards), 4)
-    if num_cards > 0:
-        gap = 12
-        card_w = (width - pad * 2 - (num_cards - 1) * gap) // num_cards
-        card_h = 100
-        start_x = pad
-
-        for i, (lbl, val, color) in enumerate(stat_cards[:num_cards]):
-            cx_card = start_x + i * (card_w + gap) + card_w // 2
-            cy_card = hero_y
-
-            # Card background — solid color
-            _draw_rounded_rect(
-                draw,
-                (
-                    cx_card - card_w // 2,
-                    cy_card,
-                    cx_card + card_w // 2,
-                    cy_card + card_h,
-                ),
-                fill=color,
-                radius=14,
-            )
-
-            # Value
-            draw.text(
-                (cx_card, cy_card + 32),
-                val,
-                fill=WHITE,
-                font=fonts["stat_value"],
-                anchor="mm",
-            )
-            # Label
-            draw.text(
-                (cx_card, cy_card + 74),
-                lbl,
-                fill=(*WHITE[:2], 200),
-                font=fonts["stat_label"],
-                anchor="mm",
-            )
-
-        hero_y += card_h + 24
-
-    # ── Percentile nudge ──
+    # ── Percentile nudge (above stats) ──
     percentile = getattr(report, "attendance_percentile", 0.0)
     if percentile >= 0.5:
-        top_pct = int((1 - percentile) * 100)
-        if top_pct <= 0:
-            top_pct = 1
-        nudge = f"Top {top_pct}% of swimmers this quarter"
-        nudge_w = draw.textlength(nudge, font=fonts["badge"]) + 40
-        _draw_rounded_rect(
+        top_pct = max(1, int((1 - percentile) * 100))
+        nudge = f"Top {top_pct}% of swimmers"
+        nw = draw.textlength(nudge, font=fonts["nudge"]) + 40
+        _rounded_rect(
             draw,
-            (cx - nudge_w / 2, hero_y, cx + nudge_w / 2, hero_y + 44),
-            fill=(255, 193, 7, 60),
-            radius=22,
+            (cx - nw / 2, hero_y, cx + nw / 2, hero_y + 38),
+            fill=ACCENT_LIGHT,
+            radius=19,
         )
-        draw.text((cx, hero_y + 22), nudge, fill=GOLD, font=fonts["badge"], anchor="mm")
-        hero_y += 60
+        draw.text(
+            (cx, hero_y + 19), nudge, fill=ACCENT, font=fonts["nudge"], anchor="mm"
+        )
+        hero_y += 52
+
+    # ── Stat pills ──
+    stats = []
+    att_pct = f"{report.attendance_rate * 100:.0f}%"
+    stats.append((att_pct, "Attendance"))
+
+    if report.streak_longest > 0:
+        stats.append((f"{report.streak_longest}w", "Streak"))
+
+    if report.milestones_achieved > 0:
+        stats.append((str(report.milestones_achieved), "Milestones"))
+
+    if report.bubbles_earned > 0:
+        stats.append((str(report.bubbles_earned), "Bubbles"))
+
+    if report.volunteer_hours > 0:
+        stats.append((f"{report.volunteer_hours:.0f}h", "Volunteered"))
+
+    num_stats = min(len(stats), 4)
+    if num_stats > 0:
+        # Thin divider above stats
+        draw.line(
+            [(pad + 20, hero_y), (width - pad - 20, hero_y)], fill=DIVIDER, width=1
+        )
+        hero_y += 24
+
+        col_w = (width - pad * 2) // num_stats
+
+        for i, (val, lbl) in enumerate(stats[:num_stats]):
+            stat_cx = pad + i * col_w + col_w // 2
+
+            draw.text(
+                (stat_cx, hero_y),
+                val,
+                fill=TEXT_PRIMARY,
+                font=fonts["stat_value"],
+                anchor="mt",
+            )
+            draw.text(
+                (stat_cx, hero_y + 48),
+                lbl.upper(),
+                fill=TEXT_TERTIARY,
+                font=fonts["stat_label"],
+                anchor="mt",
+            )
+
+            # Vertical divider between stats
+            if i < num_stats - 1:
+                div_x = pad + (i + 1) * col_w
+                draw.line(
+                    [(div_x, hero_y + 4), (div_x, hero_y + 60)],
+                    fill=DIVIDER,
+                    width=1,
+                )
+
+        hero_y += 80
 
     # ── Fun comparison ──
     if pool_hours > 0:
         lagoon_crossings = pool_hours / 3.2
         if lagoon_crossings >= 1:
-            comparison = f"That's {lagoon_crossings:.0f} Lagos Lagoon crossings!"
+            comparison = (
+                f"That's like crossing the Lagos Lagoon {lagoon_crossings:.0f}x"
+            )
         else:
             comparison = "Keep swimming — you're making waves!"
     elif report.total_sessions_attended > 0:
@@ -264,39 +271,45 @@ async def generate_card_image(
 
     if comparison:
         draw.text(
-            (cx, hero_y + 10),
+            (cx, hero_y + 4),
             comparison,
-            fill=GOLD,
-            font=fonts["subtitle"],
+            fill=TEXT_SECONDARY,
+            font=fonts["comparison"],
             anchor="mt",
         )
-        hero_y += 55
+        hero_y += 40
 
-    # ── Footer ──
-    # Position footer at bottom, but at least hero_y + 40
-    footer_y = max(hero_y + 40, height - 90 if is_story else height - 70)
+    # ── Footer area ──
+    footer_y = max(hero_y + 50, height - 100 if is_story else height - 80)
 
-    # QR code
+    # Thin top line
+    draw.line([(pad, footer_y), (width - pad, footer_y)], fill=DIVIDER, width=1)
+    footer_y += 20
+
+    # QR code on the right
     try:
         import qrcode
 
-        qr = qrcode.QRCode(version=1, box_size=4, border=1)
+        qr = qrcode.QRCode(version=1, box_size=3, border=1)
         qr.add_data("https://swimbuddz.com")
         qr.make(fit=True)
-        qr_img = qr.make_image(fill_color="white", back_color=(0, 0, 0, 0))
-        qr_img = qr_img.convert("RGBA").resize((100, 100))
-        qr_x = width - 130
-        qr_y = footer_y - 60
-        img.paste(qr_img, (qr_x, qr_y), qr_img)
+        qr_img = qr.make_image(fill_color=TEXT_SECONDARY, back_color=(0, 0, 0, 0))
+        qr_img = qr_img.convert("RGBA").resize((70, 70))
+        img.paste(qr_img, (width - pad - 70, footer_y - 6), qr_img)
     except ImportError:
         logger.debug("qrcode not available, skipping")
 
-    draw.text((pad, footer_y), "swimbuddz.com", fill=LIGHT_CYAN, font=fonts["footer"])
     draw.text(
-        (pad, footer_y + 28),
-        "Join the wave",
-        fill=(*LIGHT_CYAN[:2], LIGHT_CYAN[2] // 2),
+        (pad, footer_y),
+        "swimbuddz.com",
+        fill=TEXT_SECONDARY,
         font=fonts["footer"],
+    )
+    draw.text(
+        (pad, footer_y + 24),
+        "Join the wave",
+        fill=TEXT_TERTIARY,
+        font=fonts["footer_small"],
     )
 
     # ── Export ──

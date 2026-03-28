@@ -156,6 +156,15 @@ services:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
+  reporting-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-reporting-service:latest
+    container_name: swimbuddz_reporting
+    env_file:
+      - .env.prod
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
   # ==================================================================
   # API GATEWAY
   # ==================================================================
@@ -192,6 +201,8 @@ services:
       wallet-service:
         condition: service_started
       pools-service:
+        condition: service_started
+      reporting-service:
         condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -279,6 +290,21 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: arq services.media_service.tasks.worker.WorkerSettings
+    restart: unless-stopped
+
+  reporting-worker:
+    image: ${DOCKER_USERNAME}/swimbuddz-reporting-service:latest
+    container_name: swimbuddz_reporting_worker
+    env_file:
+      - .env.prod
+    depends_on:
+      redis:
+        condition: service_healthy
+      reporting-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.reporting_service.tasks.worker.WorkerSettings
     restart: unless-stopped
 
   # ==================================================================
