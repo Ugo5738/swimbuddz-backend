@@ -128,6 +128,9 @@ jobs:
           - context: .
             dockerfile: ./services/pools_service/Dockerfile
             image: swimbuddz-pools-service
+          - context: .
+            dockerfile: ./services/reporting_service/Dockerfile
+            image: swimbuddz-reporting-service
 
     steps:
       - uses: actions/checkout@v4
