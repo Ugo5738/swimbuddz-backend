@@ -46,6 +46,7 @@ ALL_SERVICES=(
   volunteer
   wallet
   pools
+  reporting
 )
 
 # Parse service list from argument (comma-separated) or use all
