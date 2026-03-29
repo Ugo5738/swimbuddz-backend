@@ -328,11 +328,13 @@ async def get_member_wallet_summary(
         return MemberWalletSummary()
 
     # Aggregate credits (earned) and debits (spent)
+    from sqlalchemy import case
+
     result = await db.execute(
         select(
             func.coalesce(
                 func.sum(
-                    func.case(
+                    case(
                         (
                             WalletTransaction.direction == TransactionDirection.CREDIT,
                             WalletTransaction.amount,
@@ -344,7 +346,7 @@ async def get_member_wallet_summary(
             ).label("earned"),
             func.coalesce(
                 func.sum(
-                    func.case(
+                    case(
                         (
                             WalletTransaction.direction == TransactionDirection.DEBIT,
                             WalletTransaction.amount,
