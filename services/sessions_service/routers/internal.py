@@ -372,3 +372,41 @@ async def get_session_detailed_stats(
         most_popular_time_slot=most_popular_slot,
         session_details=details,
     )
+
+
+@router.get("/sessions/durations")
+async def get_session_durations(
+    ids: str = Query(..., description="Comma-separated session UUIDs"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return duration in hours for a list of session IDs.
+
+    Used by attendance service to compute per-member pool hours.
+    """
+    import uuid as _uuid
+
+    session_ids = []
+    for sid in ids.split(","):
+        sid = sid.strip()
+        if sid:
+            try:
+                session_ids.append(_uuid.UUID(sid))
+            except ValueError:
+                continue
+
+    if not session_ids:
+        return []
+
+    result = await db.execute(select(Session).where(Session.id.in_(session_ids)))
+    sessions = result.scalars().all()
+
+    return [
+        {
+            "session_id": str(s.id),
+            "duration_hours": round(
+                (s.ends_at - s.starts_at).total_seconds() / 3600, 2
+            ),
+        }
+        for s in sessions
+    ]
