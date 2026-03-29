@@ -283,21 +283,27 @@ class SessionDetailedStats(BaseModel):
 
 @router.get("/sessions/detailed-stats", response_model=SessionDetailedStats)
 async def get_session_detailed_stats(
-    date_from: datetime = Query(..., alias="from"),
-    date_to: datetime = Query(..., alias="to"),
+    date_from: str = Query(..., alias="from"),
+    date_to: str = Query(..., alias="to"),
     _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get detailed session stats for quarterly reports.
 
     Returns pool hours, location rankings, busiest sessions, etc.
+    Accepts ISO 8601 date strings (with or without timezone).
     """
     from collections import Counter
+    from datetime import datetime as _dt
+
+    # Parse date strings flexibly
+    parsed_from = _dt.fromisoformat(date_from.replace("Z", "+00:00"))
+    parsed_to = _dt.fromisoformat(date_to.replace("Z", "+00:00"))
 
     result = await db.execute(
         select(Session).where(
-            Session.starts_at >= date_from,
-            Session.starts_at <= date_to,
+            Session.starts_at >= parsed_from,
+            Session.starts_at <= parsed_to,
             Session.status.in_([SessionStatus.SCHEDULED, SessionStatus.COMPLETED]),
         )
     )
@@ -372,3 +378,41 @@ async def get_session_detailed_stats(
         most_popular_time_slot=most_popular_slot,
         session_details=details,
     )
+
+
+@router.get("/sessions/durations")
+async def get_session_durations(
+    ids: str = Query(..., description="Comma-separated session UUIDs"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return duration in hours for a list of session IDs.
+
+    Used by attendance service to compute per-member pool hours.
+    """
+    import uuid as _uuid
+
+    session_ids = []
+    for sid in ids.split(","):
+        sid = sid.strip()
+        if sid:
+            try:
+                session_ids.append(_uuid.UUID(sid))
+            except ValueError:
+                continue
+
+    if not session_ids:
+        return []
+
+    result = await db.execute(select(Session).where(Session.id.in_(session_ids)))
+    sessions = result.scalars().all()
+
+    return [
+        {
+            "session_id": str(s.id),
+            "duration_hours": round(
+                (s.ends_at - s.starts_at).total_seconds() / 3600, 2
+            ),
+        }
+        for s in sessions
+    ]

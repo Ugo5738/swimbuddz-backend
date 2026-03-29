@@ -116,6 +116,7 @@ class MemberAttendanceStats(BaseModel):
     favorite_location: str | None = None
     weekly_attendance: list[bool] | None = None
     events_attended: int = 0
+    total_pool_hours: float = 0.0
 
 
 @router.get(
@@ -191,6 +192,39 @@ async def get_member_attendance_stats(
         weekly_attendance.append(wk in weeks_attended)
         current += timedelta(weeks=1)
 
+    # Compute pool hours from attended sessions
+    # Fetch session durations from sessions service for attended session IDs
+    attended_session_ids = list(
+        {
+            str(r.session_id)
+            for r in records
+            if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE)
+        }
+    )
+    total_pool_hours = 0.0
+    if attended_session_ids:
+        try:
+            from libs.common.config import get_settings
+            from libs.common.service_client import internal_get
+
+            _settings = get_settings()
+            resp = await internal_get(
+                service_url=_settings.SESSIONS_SERVICE_URL,
+                path="/internal/sessions/durations",
+                calling_service="attendance",
+                params={"ids": ",".join(attended_session_ids)},
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                durations = resp.json()
+                # durations is a list of {"session_id": ..., "duration_hours": ...}
+                raw_hours = sum(d.get("duration_hours", 0) for d in durations)
+                # Subtract ~1 hour per session for warmups/rests (minimum 0)
+                effective_hours = max(0, raw_hours - len(attended_session_ids) * 1.0)
+                total_pool_hours = round(effective_hours, 1)
+        except Exception:
+            pass  # Graceful fallback — pool hours stays 0
+
     return MemberAttendanceStats(
         total_present=total_present,
         total_late=total_late,
@@ -200,4 +234,5 @@ async def get_member_attendance_stats(
         by_day=dict(day_counts) if day_counts else None,
         favorite_day=favorite_day,
         weekly_attendance=weekly_attendance,
+        total_pool_hours=total_pool_hours,
     )
