@@ -166,7 +166,7 @@ def _get_initials(name: str) -> str:
     return "?"
 
 
-def _load_fonts():
+def _load_fonts(is_story=False):
     """Load DM Sans fonts (bundled, closest to Canva Sans) with fallbacks."""
     from PIL import ImageFont
 
@@ -192,16 +192,16 @@ def _load_fonts():
     light = [dm_light, dm_regular, dv_regular]
 
     return {
-        "hero": _try(bold, 200),
-        "hero_label": _try(light, 38),
-        "name": _try(bold, 40),
-        "quarter": _try(bold, 24),
-        "initials": _try(bold, 46),
-        "stat_label": _try(regular, 18),  # label on TOP
-        "stat_value": _try(bold, 38),  # value on BOTTOM
-        "badge": _try(bold, 24),
-        "fun_fact": _try(regular, 24),
-        "footer": _try(regular, 22),
+        "hero": _try(bold, 300) if is_story else _try(bold, 250),
+        "hero_label": _try(light, 48) if is_story else _try(light, 35),
+        "name": _try(bold, 48) if is_story else _try(bold, 35),
+        "quarter": _try(bold, 50) if is_story else _try(bold, 35),
+        "initials": _try(bold, 60) if is_story else _try(bold, 46),
+        "stat_label": _try(regular, 24) if is_story else _try(regular, 18),
+        "stat_value": _try(bold, 50) if is_story else _try(bold, 38),
+        "badge": _try(bold, 32) if is_story else _try(bold, 24),
+        "fun_fact": _try(regular, 32) if is_story else _try(regular, 24),
+        "footer": _try(regular, 28) if is_story else _try(regular, 22),
     }
 
 
@@ -278,6 +278,35 @@ async def _fetch_member_photo_url(member_auth_id: str) -> str | None:
     return None
 
 
+async def _fetch_referral_link(member_auth_id: str) -> str:
+    """Fetch member's referral share link from the wallet service.
+
+    Falls back to the swimbuddz homepage if unavailable.
+    """
+    try:
+        import httpx
+
+        from libs.common.config import get_settings
+
+        settings = get_settings()
+        wallet_url = getattr(
+            settings, "WALLET_SERVICE_URL", "http://wallet-service:8012"
+        )
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                f"{wallet_url}/api/v1/referral/code",
+                headers={"X-User-Auth-Id": member_auth_id},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                link = data.get("share_link")
+                if link:
+                    return link
+    except Exception as e:
+        logger.debug("Could not fetch referral link: %s", e)
+    return "https://swimbuddz.com"
+
+
 # ── Main generator ──
 
 
@@ -289,7 +318,7 @@ async def generate_card_image(
 
     width, height = FORMATS.get(format, FORMATS["square"])
     is_story = format == "story"
-    fonts = _load_fonts()
+    fonts = _load_fonts(is_story=is_story)
 
     img = _gradient_bg(width, height).convert("RGBA")
     draw = ImageDraw.Draw(img)
@@ -310,7 +339,7 @@ async def generate_card_image(
 
     # Logo — 14% of width (~150px on 1080)
     logo_path = ASSETS_DIR / "logo.png"
-    logo_size = vw(14)
+    logo_size = vw(18) if is_story else vw(14)
     try:
         logo = Image.open(logo_path).convert("RGBA")
         logo = logo.resize((logo_size, logo_size), Image.LANCZOS)
@@ -337,7 +366,7 @@ async def generate_card_image(
         anchor="mm",
     )
 
-    y += logo_size + vh(2)
+    y += logo_size  # + vh(1)
 
     # ═══════════════════════════════════════════
     # AVATAR — large circle with photo or initials
@@ -362,7 +391,7 @@ async def generate_card_image(
             anchor="mm",
         )
 
-    y = avatar_cy + avatar_r + vh(2)
+    y = avatar_cy + avatar_r + vh(1.5)
 
     # ═══════════════════════════════════════════
     # MEMBER NAME
@@ -390,7 +419,7 @@ async def generate_card_image(
         y += vh(4)
 
     draw.text((cx, y), hero_val, fill=WHITE, font=fonts["hero"], anchor="mt")
-    y += _text_height(draw, hero_val, fonts["hero"]) + vh(1)
+    y += _text_height(draw, hero_val, fonts["hero"]) + vh(1.5)
 
     draw.text(
         (cx, y),
@@ -450,7 +479,7 @@ async def generate_card_image(
 
     num_stats = len(stats)
     pill_h = vh(7.5) if is_story else vh(8)
-    pill_gap = vw(2.5)
+    pill_gap = vh(3.5) if is_story else vw(2.5)
     total_pill_w = width - pad * 2 - (num_stats - 1) * pill_gap
     pill_w = total_pill_w // num_stats
 
@@ -465,7 +494,7 @@ async def generate_card_image(
         # LABEL on top, VALUE below — with good spacing
         lbl_h = _text_height(draw, lbl, fonts["stat_label"])
         val_h = _text_height(draw, val, fonts["stat_value"])
-        inner_gap = 10
+        inner_gap = 30 if is_story else 15
         total_inner = lbl_h + inner_gap + val_h
         lbl_top = y + (pill_h - total_inner) // 2
 
@@ -484,7 +513,7 @@ async def generate_card_image(
             anchor="mt",
         )
 
-    y += pill_h + vh(3)
+    y += pill_h + vh(4)
 
     # ═══════════════════════════════════════════
     # FUN FACT
@@ -499,33 +528,75 @@ async def generate_card_image(
     )
 
     # ═══════════════════════════════════════════
-    # FOOTER — centered "...Join the wave" + QR code
+    # QR CODE + FOOTER
+    # Story: QR centered between fun fact and "...Join the wave"
+    # Square: QR bottom-right, "...Join the wave" bottom-center
     # ═══════════════════════════════════════════
-    footer_y = height - vh(8)
-    qr_size = vw(7)
+    referral_link = await _fetch_referral_link(report.member_auth_id)
+    qr_inner = vw(20) if is_story else vw(8)  # story bigger, square stays same
+    qr_pad = 10  # padding inside the background box
+    qr_box = qr_inner + qr_pad * 2  # total box size
+    qr_generated = None
 
-    # QR code (bottom-right)
     try:
         import qrcode
 
-        qr = qrcode.QRCode(version=1, box_size=3, border=1)
-        qr.add_data("https://swimbuddz.com")
+        qr = qrcode.QRCode(version=1, box_size=4, border=0)
+        qr.add_data(referral_link)
         qr.make(fit=True)
-        qr_img = qr.make_image(fill_color="white", back_color=(0, 0, 0, 0))
-        qr_img = qr_img.convert("RGBA").resize((qr_size, qr_size))
-        img.paste(qr_img, (width - pad - qr_size, footer_y), qr_img)
-        draw = ImageDraw.Draw(img)
+        # White QR modules on dark background
+        qr_raw = qr.make_image(fill_color="white", back_color="#1a1a2e")
+        qr_raw = qr_raw.convert("RGBA").resize((qr_inner, qr_inner), Image.LANCZOS)
+
+        # Put QR inside a dark rounded box for visibility
+        qr_box_img = Image.new("RGBA", (qr_box, qr_box), (0, 0, 0, 0))
+        from PIL import ImageDraw as _ID
+
+        _ID.Draw(qr_box_img).rounded_rectangle(
+            [0, 0, qr_box - 1, qr_box - 1],
+            radius=12,
+            fill=(26, 26, 46, 220),  # dark navy, slightly transparent
+        )
+        qr_box_img.paste(qr_raw, (qr_pad, qr_pad), qr_raw)
+        qr_generated = qr_box_img
     except ImportError:
         logger.debug("qrcode not available, skipping")
 
-    # "...Join the wave" — CENTERED
-    draw.text(
-        (cx, footer_y + qr_size // 2),
-        "...Join the wave",
-        fill=(255, 255, 255, 160),
-        font=fonts["footer"],
-        anchor="mm",
-    )
+    if is_story:
+        # Story: "...Join the wave" anchored at bottom, QR centered above it
+        footer_y = height - vh(6)
+        draw.text(
+            (cx, footer_y),
+            "...Join the wave",
+            fill=(255, 255, 255, 160),
+            font=fonts["footer"],
+            anchor="mt",
+        )
+
+        # QR centered between fun fact and footer
+        if qr_generated:
+            qr_y = footer_y - qr_box - vh(3)
+            img.paste(qr_generated, (cx - qr_box // 2, qr_y), qr_generated)
+            draw = ImageDraw.Draw(img)
+    else:
+        # Square layout: QR bottom-right, text bottom-center
+        footer_y = height - vh(8)  # text stays here
+        qr_y = height - vh(14)  # QR shifted up
+        if qr_generated:
+            img.paste(
+                qr_generated,
+                (width - pad - qr_box, qr_y),
+                qr_generated,
+            )
+            draw = ImageDraw.Draw(img)
+
+        draw.text(
+            (cx, footer_y + qr_box // 2),
+            "...Join the wave",
+            fill=(255, 255, 255, 160),
+            font=fonts["footer"],
+            anchor="mm",
+        )
 
     # ═══════════════════════════════════════════
     # EXPORT

@@ -24,7 +24,7 @@ class MockReport:
     member_auth_id = "mock-auth-id"
     year = 2026
     quarter = 1
-    pool_hours = 2.0
+    pool_hours = 42
     total_sessions_attended = 6
     attendance_rate = 1.0
     streak_longest = 1
@@ -55,6 +55,11 @@ async def main():
         return None
 
     cg._fetch_member_photo_url = _no_photo
+
+    async def _mock_referral(*a, **kw):
+        return "https://swimbuddz.com/join?ref=SB-UGOCHU-2K9M"
+
+    cg._fetch_referral_link = _mock_referral
 
     from services.reporting_service.services.card_generator import generate_card_image
 
