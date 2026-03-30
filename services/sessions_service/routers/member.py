@@ -129,7 +129,7 @@ async def list_my_coach_sessions(
 
         # 2. Resolve cohort IDs via academy-service (avoid cross-service DB reads)
         cohorts_resp = await client.get(
-            f"{settings.ACADEMY_SERVICE_URL}/academy/internal/coaches/{member_id}/cohort-ids",
+            f"{settings.ACADEMY_SERVICE_URL}/internal/academy/coaches/{member_id}/cohort-ids",
             headers=headers,
         )
         if not cohorts_resp.is_success:

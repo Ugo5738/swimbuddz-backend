@@ -16,7 +16,7 @@ from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 
-router = APIRouter(prefix="/internal", tags=["internal"])
+router = APIRouter(prefix="/internal/transport", tags=["internal"])
 
 
 class MemberTransportSummary(BaseModel):
@@ -25,7 +25,7 @@ class MemberTransportSummary(BaseModel):
 
 
 @router.get(
-    "/transport/member-summary/{member_auth_id}",
+    "/member-summary/{member_auth_id}",
     response_model=MemberTransportSummary,
 )
 async def get_member_transport_summary(

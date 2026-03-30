@@ -99,7 +99,7 @@ async def test_bulk_members_contract(members_client, db_session):
 @pytest.mark.contract
 async def test_coach_profile_contract(members_client, db_session):
     """
-    GET /internal/coaches/{id}/profile response contract.
+    GET /internal/members/coaches/{id}/profile response contract.
 
     Consumers: academy_service (coach assignment), ai_service (scoring)
     """
@@ -111,7 +111,9 @@ async def test_coach_profile_contract(members_client, db_session):
     db_session.add(coach)
     await db_session.commit()
 
-    response = await members_client.get(f"/internal/coaches/{member.id}/profile")
+    response = await members_client.get(
+        f"/internal/members/coaches/{member.id}/profile"
+    )
     assert response.status_code == 200
     data = response.json()
 
@@ -130,7 +132,7 @@ async def test_coach_profile_contract(members_client, db_session):
 @pytest.mark.contract
 async def test_coach_readiness_contract(members_client, db_session):
     """
-    GET /internal/coaches/{id}/readiness response contract.
+    GET /internal/members/coaches/{id}/readiness response contract.
 
     Consumers: ai_service (complexity scoring, coach suggestion)
     """
@@ -142,7 +144,9 @@ async def test_coach_readiness_contract(members_client, db_session):
     db_session.add(coach)
     await db_session.commit()
 
-    response = await members_client.get(f"/internal/coaches/{member.id}/readiness")
+    response = await members_client.get(
+        f"/internal/members/coaches/{member.id}/readiness"
+    )
     assert response.status_code == 200
     data = response.json()
 

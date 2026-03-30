@@ -40,7 +40,7 @@ async def test_get_session_by_id_not_found(sessions_client):
 
 
 # ---------------------------------------------------------------------------
-# GET /internal/cohorts/{cohort_id}/next-session
+# GET /internal/sessions/cohorts/{cohort_id}/next-session
 # ---------------------------------------------------------------------------
 
 
@@ -74,7 +74,9 @@ async def test_get_next_session_for_cohort(sessions_client, db_session):
     db_session.add_all([past, upcoming, future])
     await db_session.commit()
 
-    response = await sessions_client.get(f"/internal/cohorts/{cohort_id}/next-session")
+    response = await sessions_client.get(
+        f"/internal/sessions/cohorts/{cohort_id}/next-session"
+    )
 
     assert response.status_code == 200
     data = response.json()
@@ -88,13 +90,13 @@ async def test_get_next_session_for_cohort_not_found(sessions_client):
     import uuid
 
     response = await sessions_client.get(
-        f"/internal/cohorts/{uuid.uuid4()}/next-session"
+        f"/internal/sessions/cohorts/{uuid.uuid4()}/next-session"
     )
     assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------
-# GET /internal/cohorts/{cohort_id}/session-ids
+# GET /internal/sessions/cohorts/{cohort_id}/session-ids
 # ---------------------------------------------------------------------------
 
 
@@ -113,7 +115,9 @@ async def test_get_session_ids_for_cohort(sessions_client, db_session):
     db_session.add_all([s1, s2, s3])
     await db_session.commit()
 
-    response = await sessions_client.get(f"/internal/cohorts/{cohort_id}/session-ids")
+    response = await sessions_client.get(
+        f"/internal/sessions/cohorts/{cohort_id}/session-ids"
+    )
 
     assert response.status_code == 200
     data = response.json()
@@ -123,7 +127,7 @@ async def test_get_session_ids_for_cohort(sessions_client, db_session):
 
 
 # ---------------------------------------------------------------------------
-# GET /internal/cohorts/{cohort_id}/completed-session-ids
+# GET /internal/sessions/cohorts/{cohort_id}/completed-session-ids
 # ---------------------------------------------------------------------------
 
 
@@ -141,7 +145,7 @@ async def test_get_completed_session_ids_for_cohort(sessions_client, db_session)
     await db_session.commit()
 
     response = await sessions_client.get(
-        f"/internal/cohorts/{cohort_id}/completed-session-ids"
+        f"/internal/sessions/cohorts/{cohort_id}/completed-session-ids"
     )
 
     assert response.status_code == 200

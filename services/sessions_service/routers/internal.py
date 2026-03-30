@@ -20,7 +20,7 @@ from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.sessions_service.models import Session, SessionCoach, SessionStatus
 
-router = APIRouter(prefix="/internal", tags=["internal"])
+router = APIRouter(prefix="/internal/sessions", tags=["internal"])
 
 
 # ---------------------------------------------------------------------------
@@ -58,12 +58,12 @@ class NextSessionResponse(BaseModel):
 # Endpoints
 # ---------------------------------------------------------------------------
 
-# NOTE: Static path "/sessions/scheduled" must be registered before the
-# parameterized "/sessions/{session_id}" to avoid route collision (FastAPI
+# NOTE: Static path "/scheduled" must be registered before the
+# parameterized "/{session_id}" to avoid route collision (FastAPI
 # matches routes in definition order).
 
 
-@router.get("/sessions/scheduled", response_model=List[SessionBasic])
+@router.get("/scheduled", response_model=List[SessionBasic])
 async def get_scheduled_sessions(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -103,8 +103,8 @@ async def get_scheduled_sessions(
 
 # ---------------------------------------------------------------------------
 # Reporting aggregation
-# NOTE: Static path "/sessions/range-stats" must be registered before the
-# parameterized "/sessions/{session_id}" to avoid route collision.
+# NOTE: Static path "/range-stats" must be registered before the
+# parameterized "/{session_id}" to avoid route collision.
 # ---------------------------------------------------------------------------
 
 
@@ -116,7 +116,7 @@ class SessionRangeStats(BaseModel):
     new_members: int = 0  # placeholder — computed elsewhere
 
 
-@router.get("/sessions/range-stats", response_model=SessionRangeStats)
+@router.get("/range-stats", response_model=SessionRangeStats)
 async def get_session_range_stats(
     date_from: datetime = Query(..., alias="from"),
     date_to: datetime = Query(..., alias="to"),
@@ -156,7 +156,7 @@ async def get_session_range_stats(
     )
 
 
-@router.get("/sessions/{session_id}", response_model=SessionBasic)
+@router.get("/{session_id}", response_model=SessionBasic)
 async def get_session_by_id(
     session_id: uuid.UUID,
     _: AuthUser = Depends(require_service_role),
@@ -251,7 +251,7 @@ async def get_completed_session_ids_for_cohort(
     return [str(row[0]) for row in result.all()]
 
 
-@router.get("/sessions/{session_id}/coaches", response_model=List[str])
+@router.get("/{session_id}/coaches", response_model=List[str])
 async def get_session_coach_ids(
     session_id: uuid.UUID,
     _: AuthUser = Depends(require_service_role),
@@ -281,7 +281,7 @@ class SessionDetailedStats(BaseModel):
     session_details: list[dict] | None = None
 
 
-@router.get("/sessions/detailed-stats", response_model=SessionDetailedStats)
+@router.get("/detailed-stats", response_model=SessionDetailedStats)
 async def get_session_detailed_stats(
     date_from: str = Query(..., alias="from"),
     date_to: str = Query(..., alias="to"),
@@ -380,7 +380,7 @@ async def get_session_detailed_stats(
     )
 
 
-@router.get("/sessions/durations")
+@router.get("/durations")
 async def get_session_durations(
     ids: str = Query(..., description="Comma-separated session UUIDs"),
     _: AuthUser = Depends(require_service_role),

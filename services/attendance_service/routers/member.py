@@ -91,7 +91,7 @@ async def require_admin_or_coach_for_session(
     settings = get_settings()
     cohort_resp = await internal_get(
         service_url=settings.ACADEMY_SERVICE_URL,
-        path=f"/academy/internal/cohorts/{cohort_id}",
+        path=f"/internal/academy/cohorts/{cohort_id}",
         calling_service="attendance",
     )
     if cohort_resp.status_code != 200:
@@ -356,7 +356,7 @@ async def get_cohort_attendance_summary(
     settings = get_settings()
     enrolled_resp = await internal_get(
         service_url=settings.ACADEMY_SERVICE_URL,
-        path=f"/academy/internal/cohorts/{cohort_id}/enrolled-students",
+        path=f"/internal/academy/cohorts/{cohort_id}/enrolled-students",
         calling_service="attendance",
     )
     if enrolled_resp.status_code != 200:

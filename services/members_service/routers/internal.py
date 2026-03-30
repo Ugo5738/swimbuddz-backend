@@ -24,7 +24,7 @@ from services.members_service.models import (
     Member,
 )
 
-router = APIRouter(prefix="/internal", tags=["internal"])
+router = APIRouter(prefix="/internal/members", tags=["internal"])
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ class CoachReadinessData(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-@router.get("/members/by-auth/{auth_id}", response_model=MemberBasic)
+@router.get("/by-auth/{auth_id}", response_model=MemberBasic)
 async def get_member_by_auth_id(
     auth_id: str,
     _: AuthUser = Depends(require_service_role),
@@ -110,7 +110,7 @@ async def get_member_by_auth_id(
     )
 
 
-@router.get("/members/active", response_model=List[MemberBasic])
+@router.get("/active", response_model=List[MemberBasic])
 async def get_active_members(
     _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
@@ -132,7 +132,7 @@ async def get_active_members(
 
 # ---------------------------------------------------------------------------
 # Reporting: approved members list
-# NOTE: This must be defined BEFORE /members/{member_id} to avoid route conflict.
+# NOTE: This must be defined BEFORE /{member_id} to avoid route conflict.
 # ---------------------------------------------------------------------------
 
 
@@ -144,7 +144,7 @@ class ApprovedMemberBasic(BaseModel):
     primary_tier: str | None = None
 
 
-@router.get("/members/approved-list", response_model=List[ApprovedMemberBasic])
+@router.get("/approved-list", response_model=List[ApprovedMemberBasic])
 async def get_approved_members_list(
     _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
@@ -176,7 +176,7 @@ async def get_approved_members_list(
     ]
 
 
-@router.get("/members/{member_id}", response_model=MemberBasic)
+@router.get("/{member_id}", response_model=MemberBasic)
 async def get_member_by_id(
     member_id: uuid.UUID,
     _: AuthUser = Depends(require_service_role),
@@ -196,7 +196,7 @@ async def get_member_by_id(
     )
 
 
-@router.post("/members/bulk", response_model=List[MemberBasic])
+@router.post("/bulk", response_model=List[MemberBasic])
 async def get_members_bulk(
     body: BulkMembersRequest,
     _: AuthUser = Depends(require_service_role),
@@ -252,9 +252,7 @@ async def get_coach_profile(
     )
 
 
-@router.get(
-    "/members/{member_id}/bank-account", response_model=CoachBankAccountResponse
-)
+@router.get("/{member_id}/bank-account", response_model=CoachBankAccountResponse)
 async def get_member_bank_account(
     member_id: uuid.UUID,
     _: AuthUser = Depends(require_service_role),
