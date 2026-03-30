@@ -1438,7 +1438,7 @@ async def create_payment_intent(
         headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
-                f"{settings.ACADEMY_SERVICE_URL}/academy/internal/enrollments/{payload.enrollment_id}",
+                f"{settings.ACADEMY_SERVICE_URL}/internal/academy/enrollments/{payload.enrollment_id}",
                 params={"use_installments": str(payload.use_installments).lower()},
                 headers=headers,
             )

@@ -8,8 +8,8 @@ Uses the same _safe_get pattern as the quarterly report aggregator.
 Available data sources:
     - Members service:    /internal/members/approved-list → active member count
     - Sessions service:   /internal/sessions/range-stats  → session count by type
-    - Attendance service:  /internal/stats/member/{id}     → per-member attendance
-    - Payments service:   /payments/payments/member-summary/{id} → per-member spend
+    - Attendance service:  /internal/attendance/stats/member/{id} → per-member attendance
+    - Payments service:   /internal/payments/member-summary/{id} → per-member spend
 
 For aggregate totals (attendance, revenue), we iterate approved members
 with a concurrency limiter to avoid overwhelming services.  This is
@@ -95,7 +95,7 @@ async def _fetch_member_attendance(
     """Fetch attendance stats for one member."""
     data = await _safe_get(
         settings.ATTENDANCE_SERVICE_URL,
-        f"/internal/stats/member/{member_auth_id}",
+        f"/internal/attendance/stats/member/{member_auth_id}",
         params={"from": date_from, "to": date_to},
     )
     return data or {}
@@ -107,7 +107,7 @@ async def _fetch_member_payment(
     """Fetch payment summary for one member."""
     data = await _safe_get(
         settings.PAYMENTS_SERVICE_URL,
-        f"/payments/payments/member-summary/{member_auth_id}",
+        f"/internal/payments/member-summary/{member_auth_id}",
         params={"from": date_from, "to": date_to},
     )
     return data or {}

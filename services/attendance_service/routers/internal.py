@@ -21,7 +21,7 @@ from libs.db.session import get_async_db
 from services.attendance_service.models import AttendanceRecord
 from services.attendance_service.models.enums import AttendanceStatus
 
-router = APIRouter(prefix="/internal", tags=["internal"])
+router = APIRouter(prefix="/internal/attendance", tags=["internal"])
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ class AttendanceRecordBasic(BaseModel):
 
 
 @router.get(
-    "/attendance/member/{member_id}",
+    "/member/{member_id}",
     response_model=List[AttendanceRecordBasic],
 )
 async def get_member_attendance(
@@ -76,7 +76,7 @@ async def get_member_attendance(
 
 
 @router.get(
-    "/attendance/session/{session_id}/member-ids",
+    "/session/{session_id}/member-ids",
     response_model=List[str],
 )
 async def get_session_attendee_member_ids(
@@ -210,7 +210,7 @@ async def get_member_attendance_stats(
             _settings = get_settings()
             resp = await internal_get(
                 service_url=_settings.SESSIONS_SERVICE_URL,
-                path="/internal/sessions/durations",
+                path="/internal/durations",
                 calling_service="attendance",
                 params={"ids": ",".join(attended_session_ids)},
                 timeout=10.0,

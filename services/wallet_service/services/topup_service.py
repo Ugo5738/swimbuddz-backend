@@ -80,7 +80,7 @@ async def initiate_topup(
         try:
             resp = await internal_post(
                 service_url=settings.PAYMENTS_SERVICE_URL,
-                path="/payments/internal/initialize",
+                path="/internal/payments/initialize",
                 calling_service="wallet",
                 json={
                     "purpose": "wallet_topup",
@@ -300,7 +300,7 @@ async def reconcile_topup_return(
     try:
         resp = await internal_get(
             service_url=settings.PAYMENTS_SERVICE_URL,
-            path=f"/payments/internal/paystack/verify/{topup_reference}",
+            path=f"/internal/payments/paystack/verify/{topup_reference}",
             calling_service="wallet",
         )
         if resp.status_code >= 400:

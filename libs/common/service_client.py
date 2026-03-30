@@ -210,7 +210,7 @@ async def get_coach_profile(member_id: str, *, calling_service: str) -> Optional
     settings = get_settings()
     resp = await internal_get(
         service_url=settings.MEMBERS_SERVICE_URL,
-        path=f"/internal/coaches/{member_id}/profile",
+        path=f"/internal/members/coaches/{member_id}/profile",
         calling_service=calling_service,
     )
     if resp.status_code == 404:
@@ -246,7 +246,7 @@ async def get_next_session_for_cohort(
     settings = get_settings()
     resp = await internal_get(
         service_url=settings.SESSIONS_SERVICE_URL,
-        path=f"/internal/cohorts/{cohort_id}/next-session",
+        path=f"/internal/sessions/cohorts/{cohort_id}/next-session",
         calling_service=calling_service,
     )
     if resp.status_code == 404:
@@ -265,7 +265,7 @@ async def get_session_ids_for_cohort(
     settings = get_settings()
     resp = await internal_get(
         service_url=settings.SESSIONS_SERVICE_URL,
-        path=f"/internal/cohorts/{cohort_id}/session-ids",
+        path=f"/internal/sessions/cohorts/{cohort_id}/session-ids",
         calling_service=calling_service,
     )
     resp.raise_for_status()
@@ -284,7 +284,7 @@ async def get_coach_readiness_data(
     settings = get_settings()
     resp = await internal_get(
         service_url=settings.MEMBERS_SERVICE_URL,
-        path=f"/internal/coaches/{member_id}/readiness",
+        path=f"/internal/members/coaches/{member_id}/readiness",
         calling_service=calling_service,
     )
     if resp.status_code == 404:
@@ -308,7 +308,7 @@ async def get_eligible_coaches(
     settings = get_settings()
     resp = await internal_get(
         service_url=settings.MEMBERS_SERVICE_URL,
-        path="/internal/coaches/eligible",
+        path="/internal/members/coaches/eligible",
         calling_service=calling_service,
         params={
             "grade_column": grade_column,
@@ -458,7 +458,7 @@ async def initialize_store_payment(
     reference = f"store-order-{order_id}"
     resp = await internal_post(
         service_url=settings.PAYMENTS_SERVICE_URL,
-        path="/payments/internal/initialize",
+        path="/internal/payments/initialize",
         calling_service=calling_service,
         json={
             "purpose": "store_order",
@@ -490,7 +490,7 @@ async def verify_store_payment(
     settings = get_settings()
     resp = await internal_get(
         service_url=settings.PAYMENTS_SERVICE_URL,
-        path=f"/payments/internal/paystack/verify/{reference}",
+        path=f"/internal/payments/paystack/verify/{reference}",
         calling_service=calling_service,
     )
     resp.raise_for_status()
@@ -513,7 +513,7 @@ async def validate_discount_code(
     settings = get_settings()
     resp = await internal_post(
         service_url=settings.PAYMENTS_SERVICE_URL,
-        path="/payments/internal/discounts/validate",
+        path="/internal/payments/discounts/validate",
         calling_service=calling_service,
         json={
             "code": code,

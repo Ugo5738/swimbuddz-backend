@@ -35,13 +35,13 @@ from services.payments_service.schemas import (
     InternalPaystackVerifyResponse,
 )
 
-router = APIRouter(prefix="/payments", tags=["payments"])
+router = APIRouter(prefix="/internal/payments", tags=["internal"])
 settings = get_settings()
 logger = get_logger(__name__)
 
 
 @router.post(
-    "/internal/initialize",
+    "/initialize",
     response_model=InternalInitializeResponse,
     dependencies=[Depends(require_service_role)],
     tags=["internal-payments"],
@@ -168,7 +168,7 @@ async def internal_initialize_payment(
 
 
 @router.get(
-    "/internal/paystack/verify/{reference}",
+    "/paystack/verify/{reference}",
     response_model=InternalPaystackVerifyResponse,
     dependencies=[Depends(require_service_role)],
     tags=["internal-payments"],
@@ -228,7 +228,7 @@ class InternalDiscountValidateResponse(BaseModel):
 
 
 @router.post(
-    "/internal/discounts/validate",
+    "/discounts/validate",
     response_model=InternalDiscountValidateResponse,
     dependencies=[Depends(require_service_role)],
     tags=["internal-payments"],

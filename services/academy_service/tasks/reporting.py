@@ -316,7 +316,7 @@ async def check_attendance_and_notify():
                 # Get completed sessions in last 7 days via sessions-service
                 sessions_resp = await internal_get(
                     service_url=settings.SESSIONS_SERVICE_URL,
-                    path=f"/internal/cohorts/{cohort.id}/completed-session-ids",
+                    path=f"/internal/sessions/cohorts/{cohort.id}/completed-session-ids",
                     calling_service="academy",
                     params={
                         "start_date": seven_days_ago.isoformat(),

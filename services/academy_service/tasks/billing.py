@@ -486,7 +486,7 @@ async def attempt_wallet_auto_deduction():
                             payment_ref = f"PAY-{secrets.token_hex(3).upper()}"
                             init_resp = await internal_post(
                                 service_url=settings_obj.PAYMENTS_SERVICE_URL,
-                                path="/payments/internal/initialize",
+                                path="/internal/payments/initialize",
                                 calling_service="academy",
                                 json={
                                     "reference": payment_ref,

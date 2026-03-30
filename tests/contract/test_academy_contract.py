@@ -24,7 +24,7 @@ async def test_cohort_internal_contract(academy_client, db_session):
     db_session.add(cohort)
     await db_session.commit()
 
-    response = await academy_client.get(f"/academy/internal/cohorts/{cohort.id}")
+    response = await academy_client.get(f"/internal/academy/cohorts/{cohort.id}")
     assert response.status_code == 200
     data = response.json()
 
@@ -58,7 +58,7 @@ async def test_enrolled_students_contract(academy_client, db_session):
     await db_session.commit()
 
     response = await academy_client.get(
-        f"/academy/internal/cohorts/{cohort.id}/enrolled-students"
+        f"/internal/academy/cohorts/{cohort.id}/enrolled-students"
     )
     assert response.status_code == 200
     data = response.json()
@@ -95,7 +95,7 @@ async def test_enrollment_internal_contract(academy_client, db_session):
     await db_session.commit()
 
     response = await academy_client.get(
-        f"/academy/internal/enrollments/{enrollment.id}"
+        f"/internal/academy/enrollments/{enrollment.id}"
     )
     assert response.status_code == 200
     data = response.json()
