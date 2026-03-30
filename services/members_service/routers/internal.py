@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
+from libs.common.media_utils import resolve_media_urls
 from libs.db.session import get_async_db
 from services.members_service.models import (
     CoachAgreement,
@@ -39,6 +40,7 @@ class MemberBasic(BaseModel):
     email: str
     phone: str | None = None
     community_paid_until: str | None = None
+    profile_photo_url: str | None = None
 
 
 class CoachProfileBasic(BaseModel):
@@ -101,12 +103,20 @@ async def get_member_by_auth_id(
     member = result.scalar_one_or_none()
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    # Resolve profile photo URL from media service
+    photo_url = None
+    if member.profile_photo_media_id:
+        url_map = await resolve_media_urls([member.profile_photo_media_id])
+        photo_url = url_map.get(member.profile_photo_media_id)
+
     return MemberBasic(
         id=str(member.id),
         first_name=member.first_name,
         last_name=member.last_name,
         email=member.email,
         phone=member.profile.phone if member.profile else None,
+        profile_photo_url=photo_url,
     )
 
 
