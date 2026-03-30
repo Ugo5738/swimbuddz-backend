@@ -323,7 +323,7 @@ async def get_member_academy_summary(
         in_progress_result = await db.execute(
             select(func.count(StudentProgress.id)).where(
                 StudentProgress.enrollment_id.in_(enrollment_ids),
-                StudentProgress.status == "in_progress",
+                StudentProgress.status == "pending",
             )
         )
         milestones_in_progress = in_progress_result.scalar() or 0
