@@ -12,7 +12,7 @@ from tests.factories import (
 )
 
 # ---------------------------------------------------------------------------
-# GET /academy/internal/coaches/{coach_member_id}/cohort-ids
+# GET /internal/academy/coaches/{coach_member_id}/cohort-ids
 # ---------------------------------------------------------------------------
 
 
@@ -30,7 +30,7 @@ async def test_list_cohort_ids_for_coach_legacy(academy_client, db_session):
     await db_session.commit()
 
     response = await academy_client.get(
-        f"/academy/internal/coaches/{member.id}/cohort-ids"
+        f"/internal/academy/coaches/{member.id}/cohort-ids"
     )
 
     assert response.status_code == 200
@@ -63,7 +63,7 @@ async def test_list_cohort_ids_for_coach_assignment(academy_client, db_session):
     await db_session.commit()
 
     response = await academy_client.get(
-        f"/academy/internal/coaches/{member.id}/cohort-ids"
+        f"/internal/academy/coaches/{member.id}/cohort-ids"
     )
 
     assert response.status_code == 200
@@ -76,14 +76,14 @@ async def test_list_cohort_ids_for_coach_assignment(academy_client, db_session):
 async def test_list_cohort_ids_for_coach_empty(academy_client):
     """Returns empty list when coach has no cohorts."""
     response = await academy_client.get(
-        f"/academy/internal/coaches/{uuid.uuid4()}/cohort-ids"
+        f"/internal/academy/coaches/{uuid.uuid4()}/cohort-ids"
     )
     assert response.status_code == 200
     assert response.json() == []
 
 
 # ---------------------------------------------------------------------------
-# GET /academy/internal/enrollments/{enrollment_id}
+# GET /internal/academy/enrollments/{enrollment_id}
 # ---------------------------------------------------------------------------
 
 
@@ -109,7 +109,7 @@ async def test_get_enrollment_internal(academy_client, db_session):
     await db_session.commit()
 
     response = await academy_client.get(
-        f"/academy/internal/enrollments/{enrollment.id}"
+        f"/internal/academy/enrollments/{enrollment.id}"
     )
 
     assert response.status_code == 200
@@ -123,12 +123,12 @@ async def test_get_enrollment_internal(academy_client, db_session):
 @pytest.mark.integration
 async def test_get_enrollment_internal_not_found(academy_client):
     """Returns 404 for non-existent enrollment."""
-    response = await academy_client.get(f"/academy/internal/enrollments/{uuid.uuid4()}")
+    response = await academy_client.get(f"/internal/academy/enrollments/{uuid.uuid4()}")
     assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------
-# GET /academy/internal/cohorts/{cohort_id}
+# GET /internal/academy/cohorts/{cohort_id}
 # ---------------------------------------------------------------------------
 
 
@@ -144,7 +144,7 @@ async def test_get_cohort_internal(academy_client, db_session):
     db_session.add(cohort)
     await db_session.commit()
 
-    response = await academy_client.get(f"/academy/internal/cohorts/{cohort.id}")
+    response = await academy_client.get(f"/internal/academy/cohorts/{cohort.id}")
 
     assert response.status_code == 200
     data = response.json()
@@ -157,12 +157,12 @@ async def test_get_cohort_internal(academy_client, db_session):
 @pytest.mark.integration
 async def test_get_cohort_internal_not_found(academy_client):
     """Returns 404 for non-existent cohort."""
-    response = await academy_client.get(f"/academy/internal/cohorts/{uuid.uuid4()}")
+    response = await academy_client.get(f"/internal/academy/cohorts/{uuid.uuid4()}")
     assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------
-# GET /academy/internal/cohorts/{cohort_id}/enrolled-students
+# GET /internal/academy/cohorts/{cohort_id}/enrolled-students
 # ---------------------------------------------------------------------------
 
 
@@ -196,7 +196,7 @@ async def test_get_cohort_enrolled_students(academy_client, db_session):
     await db_session.commit()
 
     response = await academy_client.get(
-        f"/academy/internal/cohorts/{cohort.id}/enrolled-students"
+        f"/internal/academy/cohorts/{cohort.id}/enrolled-students"
     )
 
     assert response.status_code == 200
@@ -219,7 +219,7 @@ async def test_get_cohort_enrolled_students_empty(academy_client, db_session):
     await db_session.commit()
 
     response = await academy_client.get(
-        f"/academy/internal/cohorts/{cohort.id}/enrolled-students"
+        f"/internal/academy/cohorts/{cohort.id}/enrolled-students"
     )
 
     assert response.status_code == 200

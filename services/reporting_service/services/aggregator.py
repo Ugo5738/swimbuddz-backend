@@ -64,7 +64,7 @@ async def _fetch_attendance_stats(
     """Fetch attendance aggregation from attendance service."""
     data = await _safe_get(
         settings.ATTENDANCE_SERVICE_URL,
-        f"/internal/stats/member/{member_auth_id}",
+        f"/internal/attendance/stats/member/{member_auth_id}",
         params={"from": date_from, "to": date_to},
     )
     return data or {}
@@ -96,7 +96,7 @@ async def _fetch_payment_summary(
     """Fetch payment summary from payments service."""
     data = await _safe_get(
         settings.PAYMENTS_SERVICE_URL,
-        f"/payments/member-summary/{member_auth_id}",
+        f"/internal/payments/member-summary/{member_auth_id}",
         params={"from": date_from, "to": date_to},
     )
     return data or {}
@@ -120,7 +120,7 @@ async def _fetch_academy_summary(
     """Fetch academy progress summary from academy service."""
     data = await _safe_get(
         settings.ACADEMY_SERVICE_URL,
-        f"/academy/internal/academy/member-summary/{member_auth_id}",
+        f"/internal/academy/member-summary/{member_auth_id}",
         params={"from": date_from, "to": date_to},
     )
     return data or {}

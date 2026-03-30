@@ -53,7 +53,9 @@ async def test_next_session_contract(sessions_client, db_session):
     db_session.add(session)
     await db_session.commit()
 
-    response = await sessions_client.get(f"/internal/cohorts/{cohort_id}/next-session")
+    response = await sessions_client.get(
+        f"/internal/sessions/cohorts/{cohort_id}/next-session"
+    )
     assert response.status_code == 200
     data = response.json()
 
@@ -76,7 +78,9 @@ async def test_session_ids_for_cohort_contract(sessions_client, db_session):
     db_session.add(session)
     await db_session.commit()
 
-    response = await sessions_client.get(f"/internal/cohorts/{cohort_id}/session-ids")
+    response = await sessions_client.get(
+        f"/internal/sessions/cohorts/{cohort_id}/session-ids"
+    )
     assert response.status_code == 200
     data = response.json()
 

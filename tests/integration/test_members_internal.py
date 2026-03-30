@@ -119,7 +119,7 @@ async def test_get_coach_profile(members_client, db_session):
     await db_session.commit()
 
     response = await members_client.get(
-        f"/internal/coaches/{member.id}/profile",
+        f"/internal/members/coaches/{member.id}/profile",
     )
 
     assert response.status_code == 200
@@ -137,7 +137,7 @@ async def test_get_coach_profile_not_a_coach(members_client, db_session):
     await db_session.commit()
 
     response = await members_client.get(
-        f"/internal/coaches/{member.id}/profile",
+        f"/internal/members/coaches/{member.id}/profile",
     )
 
     assert response.status_code == 404
@@ -194,7 +194,7 @@ async def test_get_coach_readiness_data(members_client, db_session):
     await db_session.commit()
 
     response = await members_client.get(
-        f"/internal/coaches/{member.id}/readiness",
+        f"/internal/members/coaches/{member.id}/readiness",
     )
 
     assert response.status_code == 200

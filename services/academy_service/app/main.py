@@ -42,7 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(scoring_router, prefix="/academy")
     app.include_router(reports_router, prefix="/academy")
     app.include_router(admin_tasks_router, prefix="/academy")
-    app.include_router(internal_router, prefix="/academy")
+    app.include_router(internal_router)
     app.include_router(extensions_router, prefix="/academy")
 
     # Shared routers (curriculum and coach assignments)
