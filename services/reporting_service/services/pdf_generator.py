@@ -184,7 +184,7 @@ async def generate_pdf_report(report: "MemberQuarterlyReport") -> bytes:
     elements.append(Paragraph("Financial & Rewards", section_style))
     fin_data = [
         ["Metric", "Value"],
-        ["Total Spent", _fmt_ngn(report.total_spent_ngn)],
+        # ["Total Spent", _fmt_ngn(report.total_spent_ngn)],  # hidden for now
         ["Store Purchases", _fmt_ngn(report.store_spent_ngn)],
         ["Orders Placed", str(report.orders_placed)],
         ["Bubbles Earned", str(report.bubbles_earned)],
