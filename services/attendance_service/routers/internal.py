@@ -210,7 +210,7 @@ async def get_member_attendance_stats(
             _settings = get_settings()
             resp = await internal_get(
                 service_url=_settings.SESSIONS_SERVICE_URL,
-                path="/internal/durations",
+                path="/internal/sessions/durations",
                 calling_service="attendance",
                 params={"ids": ",".join(attended_session_ids)},
                 timeout=10.0,
