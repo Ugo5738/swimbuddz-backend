@@ -266,9 +266,11 @@ async def _fetch_member_photo_url(member_auth_id: str) -> str | None:
         members_url = getattr(
             settings, "MEMBERS_SERVICE_URL", "http://members-service:8001"
         )
+        service_key = getattr(settings, "SUPABASE_SERVICE_KEY", "")
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(
-                f"{members_url}/api/v1/members/by-auth/{member_auth_id}"
+                f"{members_url}/internal/members/by-auth/{member_auth_id}",
+                headers={"Authorization": f"Bearer {service_key}"},
             )
             if resp.status_code == 200:
                 data = resp.json()

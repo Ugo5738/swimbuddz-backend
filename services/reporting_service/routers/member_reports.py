@@ -97,7 +97,7 @@ async def get_my_quarterly_card(
                 f'inline; filename="swimbuddz-{quarter_label(year, quarter)}'
                 f'-{format}.png"'
             ),
-            "Cache-Control": "public, max-age=86400",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
         },
     )
 
