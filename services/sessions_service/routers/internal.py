@@ -14,7 +14,6 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
@@ -116,6 +115,20 @@ class SessionRangeStats(BaseModel):
     new_members: int = 0  # placeholder — computed elsewhere
 
 
+class SessionDetailedStats(BaseModel):
+    """Extended session stats for quarterly reports."""
+
+    total_sessions: int = 0
+    total_pool_hours: float = 0.0
+    by_type: dict | None = None
+    most_active_location: str | None = None
+    busiest_session_title: str | None = None
+    busiest_session_attendance: int = 0
+    most_popular_day: str | None = None
+    most_popular_time_slot: str | None = None
+    session_details: list[dict] | None = None
+
+
 @router.get("/range-stats", response_model=SessionRangeStats)
 async def get_session_range_stats(
     date_from: datetime = Query(..., alias="from"),
@@ -154,131 +167,6 @@ async def get_session_range_stats(
         total_sessions=len(sessions),
         by_type=dict(type_counts) if type_counts else None,
     )
-
-
-@router.get("/{session_id}", response_model=SessionBasic)
-async def get_session_by_id(
-    session_id: uuid.UUID,
-    _: AuthUser = Depends(require_service_role),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Look up a session by ID."""
-    result = await db.execute(select(Session).where(Session.id == session_id))
-    session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return SessionBasic(
-        id=str(session.id),
-        title=session.title,
-        session_type=session.session_type.value,
-        status=session.status.value,
-        starts_at=session.starts_at.isoformat(),
-        ends_at=session.ends_at.isoformat(),
-        location_name=session.location_name,
-        location_address=session.location_address,
-        location=session.location.value if session.location else None,
-        cohort_id=str(session.cohort_id) if session.cohort_id else None,
-        capacity=session.capacity,
-        pool_fee=session.pool_fee,
-        week_number=session.week_number,
-        lesson_title=session.lesson_title,
-        timezone=session.timezone,
-    )
-
-
-@router.get("/cohorts/{cohort_id}/next-session", response_model=NextSessionResponse)
-async def get_next_session_for_cohort(
-    cohort_id: uuid.UUID,
-    _: AuthUser = Depends(require_service_role),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Get the next upcoming session for a cohort."""
-    now = datetime.now(timezone.utc)
-    result = await db.execute(
-        select(Session)
-        .where(
-            Session.cohort_id == cohort_id,
-            Session.starts_at > now,
-            Session.status == SessionStatus.SCHEDULED,
-        )
-        .order_by(Session.starts_at.asc())
-        .limit(1)
-    )
-    session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="No upcoming session found")
-    return NextSessionResponse(
-        starts_at=session.starts_at.isoformat(),
-        title=session.title,
-        location_name=session.location_name,
-    )
-
-
-@router.get("/cohorts/{cohort_id}/session-ids", response_model=List[str])
-async def get_session_ids_for_cohort(
-    cohort_id: uuid.UUID,
-    _: AuthUser = Depends(require_service_role),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Get all session IDs for a cohort."""
-    result = await db.execute(
-        select(Session.id)
-        .where(Session.cohort_id == cohort_id)
-        .order_by(Session.starts_at.asc())
-    )
-    return [str(row[0]) for row in result.all()]
-
-
-@router.get("/cohorts/{cohort_id}/completed-session-ids", response_model=List[str])
-async def get_completed_session_ids_for_cohort(
-    cohort_id: uuid.UUID,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    _: AuthUser = Depends(require_service_role),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Get completed session IDs for a cohort, optionally filtered by date range."""
-    query = select(Session.id).where(
-        Session.cohort_id == cohort_id,
-        Session.status == SessionStatus.COMPLETED,
-    )
-    if start_date:
-        query = query.where(Session.starts_at >= start_date)
-    if end_date:
-        query = query.where(Session.starts_at <= end_date)
-    query = query.order_by(Session.starts_at.asc())
-    result = await db.execute(query)
-    return [str(row[0]) for row in result.all()]
-
-
-@router.get("/{session_id}/coaches", response_model=List[str])
-async def get_session_coach_ids(
-    session_id: uuid.UUID,
-    _: AuthUser = Depends(require_service_role),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Get coach member IDs for a session."""
-    result = await db.execute(
-        select(SessionCoach.coach_id).where(SessionCoach.session_id == session_id)
-    )
-    return [str(row[0]) for row in result.all()]
-
-
-# ── Detailed reporting stats ──
-
-
-class SessionDetailedStats(BaseModel):
-    """Extended session stats for quarterly reports."""
-
-    total_sessions: int = 0
-    total_pool_hours: float = 0.0
-    by_type: dict | None = None
-    most_active_location: str | None = None
-    busiest_session_title: str | None = None
-    busiest_session_attendance: int = 0
-    most_popular_day: str | None = None
-    most_popular_time_slot: str | None = None
-    session_details: list[dict] | None = None
 
 
 @router.get("/detailed-stats", response_model=SessionDetailedStats)
@@ -416,3 +304,115 @@ async def get_session_durations(
         }
         for s in sessions
     ]
+
+
+# NOTE: Parameterized routes must come AFTER all static routes to avoid
+# "durations", "detailed-stats", etc. being matched as {session_id}.
+
+
+@router.get("/{session_id}", response_model=SessionBasic)
+async def get_session_by_id(
+    session_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Look up a session by ID."""
+    result = await db.execute(select(Session).where(Session.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return SessionBasic(
+        id=str(session.id),
+        title=session.title,
+        session_type=session.session_type.value,
+        status=session.status.value,
+        starts_at=session.starts_at.isoformat(),
+        ends_at=session.ends_at.isoformat(),
+        location_name=session.location_name,
+        location_address=session.location_address,
+        location=session.location.value if session.location else None,
+        cohort_id=str(session.cohort_id) if session.cohort_id else None,
+        capacity=session.capacity,
+        pool_fee=session.pool_fee,
+        week_number=session.week_number,
+        lesson_title=session.lesson_title,
+        timezone=session.timezone,
+    )
+
+
+@router.get("/cohorts/{cohort_id}/next-session", response_model=NextSessionResponse)
+async def get_next_session_for_cohort(
+    cohort_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get the next upcoming session for a cohort."""
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(Session)
+        .where(
+            Session.cohort_id == cohort_id,
+            Session.starts_at > now,
+            Session.status == SessionStatus.SCHEDULED,
+        )
+        .order_by(Session.starts_at.asc())
+        .limit(1)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="No upcoming session found")
+    return NextSessionResponse(
+        starts_at=session.starts_at.isoformat(),
+        title=session.title,
+        location_name=session.location_name,
+    )
+
+
+@router.get("/cohorts/{cohort_id}/session-ids", response_model=List[str])
+async def get_session_ids_for_cohort(
+    cohort_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get all session IDs for a cohort."""
+    result = await db.execute(
+        select(Session.id)
+        .where(Session.cohort_id == cohort_id)
+        .order_by(Session.starts_at.asc())
+    )
+    return [str(row[0]) for row in result.all()]
+
+
+@router.get("/cohorts/{cohort_id}/completed-session-ids", response_model=List[str])
+async def get_completed_session_ids_for_cohort(
+    cohort_id: uuid.UUID,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get completed session IDs for a cohort, optionally filtered by date range."""
+    query = select(Session.id).where(
+        Session.cohort_id == cohort_id,
+        Session.status == SessionStatus.COMPLETED,
+    )
+    if start_date:
+        query = query.where(Session.starts_at >= start_date)
+    if end_date:
+        query = query.where(Session.starts_at <= end_date)
+    query = query.order_by(Session.starts_at.asc())
+    result = await db.execute(query)
+    return [str(row[0]) for row in result.all()]
+
+
+@router.get("/{session_id}/coaches", response_model=List[str])
+async def get_session_coach_ids(
+    session_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get coach member IDs for a session."""
+    result = await db.execute(
+        select(SessionCoach.coach_id).where(SessionCoach.session_id == session_id)
+    )
+    return [str(row[0]) for row in result.all()]

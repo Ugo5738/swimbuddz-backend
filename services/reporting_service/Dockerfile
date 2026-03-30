@@ -12,6 +12,11 @@ RUN pip install --no-cache-dir --prefix=/install .
 # ---- Stage 2: Runtime ----
 FROM python:3.11-slim
 
+# Install fonts for card/PDF generation (DejaVu Sans family)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY --from=builder /install /usr/local
