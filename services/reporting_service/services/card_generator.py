@@ -195,13 +195,14 @@ def _load_fonts(is_story=False):
         "hero": _try(bold, 300) if is_story else _try(bold, 250),
         "hero_label": _try(light, 48) if is_story else _try(light, 35),
         "name": _try(bold, 48) if is_story else _try(bold, 35),
-        "quarter": _try(bold, 50) if is_story else _try(bold, 35),
+        "quarter": _try(bold, 45) if is_story else _try(bold, 30),
         "initials": _try(bold, 60) if is_story else _try(bold, 46),
         "stat_label": _try(regular, 24) if is_story else _try(regular, 18),
         "stat_value": _try(bold, 50) if is_story else _try(bold, 38),
         "badge": _try(bold, 32) if is_story else _try(bold, 24),
         "fun_fact": _try(regular, 32) if is_story else _try(regular, 24),
         "footer": _try(regular, 28) if is_story else _try(regular, 22),
+        "brand": _try(bold, 35) if is_story else _try(bold, 27),
     }
 
 
@@ -341,17 +342,28 @@ async def generate_card_image(
 
     # Logo — 14% of width (~150px on 1080)
     logo_path = ASSETS_DIR / "logo.png"
-    logo_size = vw(18) if is_story else vw(14)
+    logo_size = vw(25) if is_story else vw(18)
     try:
         logo = Image.open(logo_path).convert("RGBA")
         logo = logo.resize((logo_size, logo_size), Image.LANCZOS)
         img.paste(logo, (pad, y), logo)
     except (FileNotFoundError, OSError):
         logger.warning("Logo not found at %s", logo_path)
-        draw.text((pad, y + 20), "swimbuddz", fill=WHITE, font=fonts["name"])
+
+    # "SWIMBUDDZ" text below logo icon
+    draw = ImageDraw.Draw(img)
+    brand_x = pad + logo_size // 2
+    brand_y = logo_size + 60 if is_story else logo_size + 40
+    draw.text(
+        (brand_x, brand_y),
+        "SWIMBUDDZ",
+        fill=WHITE,
+        font=fonts["brand"],
+        anchor="mt",
+    )
 
     # Quarter pill — top-right, centered vertically with logo
-    q_text = f"Q{report.quarter}"
+    q_text = f"Q{report.quarter} {report.year}"
     q_w = draw.textlength(q_text, font=fonts["quarter"]) + 36
     q_h = 44
     q_x = width - pad - q_w
@@ -368,12 +380,12 @@ async def generate_card_image(
         anchor="mm",
     )
 
-    y += logo_size  # + vh(1)
+    y += logo_size + (vh(1) if is_story else 0)
 
     # ═══════════════════════════════════════════
     # AVATAR — large circle with photo or initials
     # ═══════════════════════════════════════════
-    avatar_r = vw(8)  # ~86px radius = 172px diameter
+    avatar_r = vw(10) if is_story else vw(8)  # ~86px radius = 172px diameter
     avatar_cy = y + avatar_r
 
     # Try member photo — fetch from members service at generation time
@@ -400,7 +412,9 @@ async def generate_card_image(
     # ═══════════════════════════════════════════
     draw = ImageDraw.Draw(img)
     draw.text((cx, y), report.member_name, fill=WHITE, font=fonts["name"], anchor="mt")
-    y += _text_height(draw, report.member_name, fonts["name"]) + vh(3)
+    y += _text_height(draw, report.member_name, fonts["name"]) + (
+        vh(1) if is_story else vh(3)
+    )
 
     # ═══════════════════════════════════════════
     # HERO STAT — giant number + label below
@@ -583,7 +597,7 @@ async def generate_card_image(
     else:
         # Square layout: QR bottom-right, text bottom-center
         footer_y = height - vh(8)  # text stays here
-        qr_y = height - vh(14)  # QR shifted up
+        qr_y = height - vh(12)  # QR shifted up
         if qr_generated:
             img.paste(
                 qr_generated,
