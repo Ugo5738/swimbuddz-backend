@@ -241,11 +241,10 @@ def _pick_third_stat(report: "MemberQuarterlyReport"):
     if report.milestones_achieved > 0:
         return (str(report.milestones_achieved), "Milestones")
     if report.volunteer_hours > 0:
-        vol_display = (
-            f"{report.volunteer_hours:.1f}h"
-            if report.volunteer_hours < 1
-            else f"{report.volunteer_hours:.0f}h"
-        )
+        if report.volunteer_hours == int(report.volunteer_hours):
+            vol_display = f"{int(report.volunteer_hours)}h"
+        else:
+            vol_display = f"{report.volunteer_hours:.1f}h"
         return (vol_display, "Volunteered")
     if report.bubbles_earned > 0:
         return (str(report.bubbles_earned), "Bubbles")
