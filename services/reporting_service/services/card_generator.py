@@ -553,7 +553,7 @@ async def generate_card_image(
     # ═══════════════════════════════════════════
     referral_link = await _fetch_referral_link(report.member_auth_id)
     qr_inner = vw(20) if is_story else vw(8)  # story bigger, square stays same
-    qr_pad = 10  # padding inside the background box
+    qr_pad = 8  # padding inside the background box
     qr_box = qr_inner + qr_pad * 2  # total box size
     qr_generated = None
 
@@ -564,7 +564,8 @@ async def generate_card_image(
         qr.add_data(referral_link)
         qr.make(fit=True)
         # White QR modules on dark background
-        qr_raw = qr.make_image(fill_color="white", back_color="#1a1a2e")
+        qr_raw = qr.make_image(fill_color="white", back_color="#2F2F67")
+
         qr_raw = qr_raw.convert("RGBA").resize((qr_inner, qr_inner), Image.LANCZOS)
 
         # Put QR inside a dark rounded box for visibility
@@ -574,7 +575,7 @@ async def generate_card_image(
         _ID.Draw(qr_box_img).rounded_rectangle(
             [0, 0, qr_box - 1, qr_box - 1],
             radius=12,
-            fill=(26, 26, 46, 220),  # dark navy, slightly transparent
+            fill=(60, 60, 140, 150),
         )
         qr_box_img.paste(qr_raw, (qr_pad, qr_pad), qr_raw)
         qr_generated = qr_box_img
@@ -604,7 +605,8 @@ async def generate_card_image(
         if qr_generated:
             img.paste(
                 qr_generated,
-                (width - pad - qr_box, qr_y),
+                # (width - pad - qr_box, qr_y),  # bottom-right
+                (pad, qr_y),  # bottom-left
                 qr_generated,
             )
             draw = ImageDraw.Draw(img)
