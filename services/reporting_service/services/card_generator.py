@@ -259,23 +259,22 @@ def _pick_third_stat(report: "MemberQuarterlyReport"):
 async def _fetch_member_photo_url(member_auth_id: str) -> str | None:
     """Fetch member photo URL from the members service at generation time."""
     try:
-        import httpx
-
         from libs.common.config import get_settings
+        from libs.common.service_client import internal_request
 
         settings = get_settings()
         members_url = getattr(
             settings, "MEMBERS_SERVICE_URL", "http://members-service:8001"
         )
-        service_key = getattr(settings, "SUPABASE_SERVICE_KEY", "")
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(
-                f"{members_url}/internal/members/by-auth/{member_auth_id}",
-                headers={"Authorization": f"Bearer {service_key}"},
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                return data.get("profile_photo_url")
+        resp = await internal_request(
+            service_url=members_url,
+            method="GET",
+            path=f"/internal/members/by-auth/{member_auth_id}",
+            calling_service="reporting_service",
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("profile_photo_url")
     except Exception as e:
         logger.debug("Could not fetch member photo: %s", e)
     return None
