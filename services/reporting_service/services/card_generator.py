@@ -290,24 +290,24 @@ async def _fetch_referral_link(member_auth_id: str) -> str:
     Falls back to the swimbuddz homepage if unavailable.
     """
     try:
-        import httpx
-
         from libs.common.config import get_settings
+        from libs.common.service_client import internal_request
 
         settings = get_settings()
         wallet_url = getattr(
             settings, "WALLET_SERVICE_URL", "http://wallet-service:8012"
         )
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(
-                f"{wallet_url}/api/v1/referral/code",
-                headers={"X-User-Auth-Id": member_auth_id},
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                link = data.get("share_link")
-                if link:
-                    return link
+        resp = await internal_request(
+            service_url=wallet_url,
+            method="GET",
+            path=f"/internal/wallet/referral-link/{member_auth_id}",
+            calling_service="reporting_service",
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            link = data.get("share_link")
+            if link:
+                return link
     except Exception as e:
         logger.debug("Could not fetch referral link: %s", e)
     return "https://swimbuddz.com"

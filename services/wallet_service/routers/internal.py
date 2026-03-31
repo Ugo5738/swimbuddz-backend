@@ -36,6 +36,7 @@ from services.wallet_service.services.promotional_service import (
 from services.wallet_service.services.referral_service import (
     apply_referral_code,
     check_and_qualify_referral,
+    get_or_create_referral_code,
 )
 from services.wallet_service.services.topup_service import confirm_topup
 from services.wallet_service.services.wallet_ops import (
@@ -368,3 +369,33 @@ async def get_member_wallet_summary(
         bubbles_earned=int(row.earned or 0),
         bubbles_spent=int(row.spent or 0),
     )
+
+
+# ---------------------------------------------------------------------------
+# Reporting: member referral share link
+# ---------------------------------------------------------------------------
+
+
+class ReferralLinkResponse(BaseModel):
+    share_link: str
+
+
+@router.get(
+    "/referral-link/{member_auth_id}",
+    response_model=ReferralLinkResponse,
+)
+async def get_member_referral_link(
+    member_auth_id: str,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get or create a referral share link for a member.
+
+    Used by the reporting service to embed in wrapped cards.
+    """
+    from libs.common.config import get_settings
+
+    code_obj = await get_or_create_referral_code(member_auth_id, db)
+    frontend_url = get_settings().FRONTEND_URL.rstrip("/")
+    share_link = f"{frontend_url}/join?ref={code_obj.code}"
+    return ReferralLinkResponse(share_link=share_link)
