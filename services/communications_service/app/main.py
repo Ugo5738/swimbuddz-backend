@@ -11,6 +11,7 @@ from services.communications_service.routers.announcements import (
 )
 from services.communications_service.routers.content import content_router
 from services.communications_service.routers.email import router as email_router
+from services.communications_service.routers.internal import router as internal_router
 from services.communications_service.routers.messaging import router as messaging_router
 from services.communications_service.routers.notifications import (
     router as notifications_router,
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(email_router)
     app.include_router(notifications_router)
     app.include_router(preferences_router)
+    app.include_router(internal_router)
 
     return app
 

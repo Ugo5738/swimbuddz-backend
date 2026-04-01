@@ -219,6 +219,43 @@ async def get_coach_profile(member_id: str, *, calling_service: str) -> Optional
     return resp.json()
 
 
+async def get_member_membership(
+    member_id: str, *, calling_service: str
+) -> Optional[dict]:
+    """Look up a member's membership tier and billing info.
+
+    Returns dict with {member_id, primary_tier, active_tiers,
+    community_paid_until, club_paid_until, academy_paid_until} or None.
+    """
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.MEMBERS_SERVICE_URL,
+        path=f"/internal/members/{member_id}/membership",
+        calling_service=calling_service,
+    )
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def check_cohort_enrollment(
+    cohort_id: str, member_id: str, *, calling_service: str
+) -> Optional[dict]:
+    """Check if a member is enrolled in a specific academy cohort.
+
+    Returns dict with {enrolled: bool, status: str|None, access_suspended: bool}.
+    """
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.ACADEMY_SERVICE_URL,
+        path=f"/internal/academy/cohorts/{cohort_id}/check-enrollment/{member_id}",
+        calling_service=calling_service,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 async def get_session_by_id(session_id: str, *, calling_service: str) -> Optional[dict]:
     """Look up a session by ID.
 

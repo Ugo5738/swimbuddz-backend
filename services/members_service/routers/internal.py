@@ -23,6 +23,7 @@ from services.members_service.models import (
     CoachBankAccount,
     CoachProfile,
     Member,
+    MemberMembership,
 )
 
 router = APIRouter(prefix="/internal/members", tags=["internal"])
@@ -60,6 +61,15 @@ class CoachBankAccountResponse(BaseModel):
     account_name: str | None = None
     is_verified: bool
     recipient_code: str | None = None
+
+
+class MemberMembershipResponse(BaseModel):
+    member_id: str
+    primary_tier: str
+    active_tiers: list[str] | None = None
+    community_paid_until: str | None = None
+    club_paid_until: str | None = None
+    academy_paid_until: str | None = None
 
 
 class BulkMembersRequest(BaseModel):
@@ -184,6 +194,41 @@ async def get_approved_members_list(
         )
         for m in members
     ]
+
+
+@router.get("/{member_id}/membership", response_model=MemberMembershipResponse)
+async def get_member_membership(
+    member_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Look up a member's membership tier and billing info."""
+    result = await db.execute(
+        select(MemberMembership).where(MemberMembership.member_id == member_id)
+    )
+    membership = result.scalar_one_or_none()
+    if not membership:
+        raise HTTPException(status_code=404, detail="Membership not found")
+    return MemberMembershipResponse(
+        member_id=str(membership.member_id),
+        primary_tier=membership.primary_tier,
+        active_tiers=membership.active_tiers,
+        community_paid_until=(
+            membership.community_paid_until.isoformat()
+            if membership.community_paid_until
+            else None
+        ),
+        club_paid_until=(
+            membership.club_paid_until.isoformat()
+            if membership.club_paid_until
+            else None
+        ),
+        academy_paid_until=(
+            membership.academy_paid_until.isoformat()
+            if membership.academy_paid_until
+            else None
+        ),
+    )
 
 
 @router.get("/{member_id}", response_model=MemberBasic)
