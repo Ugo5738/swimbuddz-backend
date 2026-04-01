@@ -151,6 +151,38 @@ async def get_cohort_enrolled_students_internal(
     ]
 
 
+@router.get("/cohorts/{cohort_id}/check-enrollment/{member_id}")
+async def check_cohort_enrollment_internal(
+    cohort_id: uuid.UUID,
+    member_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Check if a member is enrolled in a specific cohort.
+
+    Used by attendance-service to enforce tier-based session access control.
+    Returns enrollment status and access info.
+    """
+    query = select(Enrollment).where(
+        Enrollment.cohort_id == cohort_id,
+        Enrollment.member_id == member_id,
+    )
+    result = await db.execute(query)
+    enrollment = result.scalar_one_or_none()
+
+    if not enrollment:
+        return {
+            "enrolled": False,
+            "status": None,
+            "access_suspended": False,
+        }
+
+    return {
+        "enrolled": enrollment.status == EnrollmentStatus.ENROLLED,
+        "status": enrollment.status.value if enrollment.status else None,
+        "access_suspended": enrollment.access_suspended or False,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Reporting: member academy summary
 # ---------------------------------------------------------------------------

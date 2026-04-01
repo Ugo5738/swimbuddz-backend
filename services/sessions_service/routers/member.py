@@ -4,6 +4,9 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import delete, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import (
     _service_role_jwt,
     get_optional_user,
@@ -14,6 +17,7 @@ from libs.auth.dependencies import (
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
+from libs.common.service_client import internal_post
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     Session,
@@ -26,8 +30,6 @@ from services.sessions_service.schemas import (
     SessionResponse,
     SessionUpdate,
 )
-from sqlalchemy import delete, func, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 settings = get_settings()
 
@@ -319,24 +321,30 @@ async def publish_session(
     await db.commit()
     await db.refresh(session)
 
-    # Trigger notifications asynchronously
-    # Import here to avoid circular imports
-    from services.communications_service.tasks import (
-        schedule_session_notifications,
-        send_session_announcement,
-    )
+    # Trigger notifications via HTTP call to communications_service.
+    # Best-effort: notification failures must not cause a 500 after the
+    # session has already been published in the database.
+    settings = get_settings()
+    try:
+        await internal_post(
+            service_url=settings.COMMUNICATIONS_SERVICE_URL,
+            path="/internal/communications/session-published",
+            calling_service="sessions",
+            json={
+                "session_id": str(session.id),
+                "is_short_notice": is_short_notice,
+                "short_notice_message": short_notice_message or "",
+            },
+        )
+    except Exception as exc:
+        import logging
 
-    # Schedule reminders (24h, 3h, 1h)
-    await schedule_session_notifications(
-        session_id=session.id,
-        is_short_notice=is_short_notice,
-    )
-
-    # Send immediate announcement
-    await send_session_announcement(
-        session_id=session.id,
-        short_notice_message=short_notice_message or "",
-    )
+        logger = logging.getLogger(__name__)
+        logger.error(
+            "Failed to trigger publish notifications for session %s: %s",
+            session_id,
+            exc,
+        )
 
     return session
 
@@ -384,13 +392,26 @@ async def cancel_session(
     await db.commit()
     await db.refresh(session)
 
-    # Cancel pending notifications and send cancellation emails
-    from services.communications_service.tasks import cancel_session_notifications
+    # Cancel pending notifications and send cancellation emails via HTTP.
+    # Best-effort: notification failures must not block the cancellation response.
+    settings = get_settings()
+    try:
+        await internal_post(
+            service_url=settings.COMMUNICATIONS_SERVICE_URL,
+            path="/internal/communications/session-cancelled",
+            calling_service="sessions",
+            json={
+                "session_id": str(session.id),
+                "cancellation_reason": cancellation_reason or "",
+            },
+        )
+    except Exception as exc:
+        import logging
 
-    await cancel_session_notifications(
-        session_id=session.id,
-        cancellation_reason=cancellation_reason or "",
-    )
+        logger = logging.getLogger(__name__)
+        logger.error(
+            "Failed to trigger cancel notifications for session %s: %s", session_id, exc
+        )
 
     return session
 
