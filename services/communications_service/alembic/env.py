@@ -29,6 +29,7 @@ from services.communications_service.models import (  # noqa: F401
     NotificationPreferences,
     ScheduledNotification,
     SessionNotificationLog,
+    Testimonial,
 )
 
 settings = get_settings()
@@ -51,6 +52,7 @@ SERVICE_TABLES = {
     "notification_preferences",
     "scheduled_notifications",
     "session_notification_logs",
+    "testimonials",
 }
 
 url = settings.DATABASE_URL.replace("%", "%%")
