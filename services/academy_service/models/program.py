@@ -63,7 +63,9 @@ class Program(Base):
     currency: Mapped[str] = mapped_column(String, default="NGN", server_default="NGN")
     price_amount: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0"
-    )  # Kobo (minor NGN unit)
+    )  # Naira (major NGN unit). Payments service converts → kobo via _to_kobo()
+    # before calling Paystack. Keep this as naira so admin/member UIs can
+    # render directly without unit math.
     billing_type: Mapped[BillingType] = mapped_column(
         SAEnum(
             BillingType,
