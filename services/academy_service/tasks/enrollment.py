@@ -2,6 +2,10 @@
 
 from datetime import timedelta
 
+from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
+
 from libs.common.datetime_utils import utc_now
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
@@ -11,10 +15,6 @@ from libs.common.service_client import (
     get_members_bulk,
 )
 from libs.db.session import get_async_db
-from sqlalchemy import func, select
-from sqlalchemy.orm import selectinload
-from sqlalchemy.orm.attributes import flag_modified
-
 from services.academy_service.models import (
     Cohort,
     CohortStatus,
@@ -27,24 +27,35 @@ logger = get_logger(__name__)
 
 async def send_enrollment_reminders():
     """
-    Send reminders for upcoming cohorts:
-    - 7 days before (General)
-    - 3 days before (Logistics)
-    - 1 day before (Urgent)
+    Pre-cohort drip sequence. Sends a progressively more urgent sequence
+    of reminders to enrolled students, anchored on the cohort's start date:
+    - 14 days before (onboarding / set expectations)
+    - 7 days before (general)
+    - 3 days before (logistics)
+    - 1 day before (urgent)
+    - 0 days / start day (arrival details, encouragement)
+
+    Each step is sent at most once per enrollment thanks to the
+    `reminders_sent` field on Enrollment. Runs periodically; idempotent.
     """
+    # Drip touchpoints. Keep descending so start-day catches cohorts
+    # whose start_date is already today but hasn't elapsed yet.
+    DRIP_INTERVALS = [14, 7, 3, 1, 0]
+
     async for db in get_async_db():
         try:
             now = utc_now()
             today = now.date()
 
-            # Find active/open cohorts starting in next 8 days
+            # Find OPEN/ACTIVE cohorts starting today or within the next 15 days.
+            # We include today (>= now.date() start-of-day) so start-day reminders fire.
             query = (
                 select(Cohort)
                 .options(selectinload(Cohort.program))
                 .where(
                     Cohort.status.in_([CohortStatus.OPEN, CohortStatus.ACTIVE]),
-                    Cohort.start_date > now,
-                    Cohort.start_date <= now + timedelta(days=8),
+                    Cohort.start_date >= now - timedelta(days=1),
+                    Cohort.start_date <= now + timedelta(days=15),
                 )
             )
             result = await db.execute(query)
@@ -53,8 +64,8 @@ async def send_enrollment_reminders():
             for cohort in cohorts:
                 days_until = (cohort.start_date.date() - today).days
 
-                # Only target 7, 3, or 1 days out
-                if days_until not in [7, 3, 1]:
+                # Only fire at our drip checkpoints
+                if days_until not in DRIP_INTERVALS:
                     continue
 
                 reminder_key = f"{days_until}_days"
