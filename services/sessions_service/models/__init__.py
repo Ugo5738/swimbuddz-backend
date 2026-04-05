@@ -2,6 +2,7 @@
 
 from services.sessions_service.models.core import (
     Session,
+    SessionBundleCart,
     SessionCoach,
     SessionLocation,
     SessionStatus,
@@ -11,6 +12,7 @@ from services.sessions_service.models.core import (
 
 __all__ = [
     "Session",
+    "SessionBundleCart",
     "SessionCoach",
     "SessionLocation",
     "SessionStatus",

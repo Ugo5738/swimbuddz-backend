@@ -34,6 +34,9 @@ async def send_session_confirmation_email(
     ride_distance: str | None = None,
     ride_duration: str | None = None,
     currency: str = "NGN",
+    bubbles_applied: int | None = None,
+    bubbles_amount_ngn: float | None = None,
+    bundle_info: str | None = None,
 ) -> bool:
     """
     Send session confirmation email to a member after successful payment.
@@ -92,17 +95,24 @@ Please be at the pickup location at least 5 minutes before departure.
 
     subject = f"Session Confirmed: {session_title} on {session_date}"
 
+    bundle_line = f"\n{bundle_info}\n" if bundle_info else ""
+    bubbles_line = (
+        f"- Bubbles Applied: -₦{bubbles_amount_ngn:,.0f} ({bubbles_applied} 🫧)\n"
+        if bubbles_applied and bubbles_amount_ngn
+        else ""
+    )
+
     body = f"""Hi {member_name},
 
 Your session has been confirmed! 🎉
-
+{bundle_line}
 Session Details:
 - Session: {session_title}
 - Date: {session_date}
 - Time: {session_time}
 - Location: {session_location}
 {f"- Address: {session_address}" if session_address else ""}
-- Amount Paid: {amount_display}
+{bubbles_line}- Amount Paid: {amount_display}
 {ride_share_text}
 Your E-Card:
 Show this to pool staff for verification: {verify_url}
@@ -126,8 +136,12 @@ See you in the water! 🏊‍♂️
         "⏰ Time": session_time,
         "📍 Location": session_location,
         "🗺️ Address": session_address,
-        "💳 Amount Paid": amount_display,
     }
+    if bubbles_applied and bubbles_amount_ngn:
+        details[f"🫧 Bubbles Applied ({bubbles_applied})"] = (
+            f"-₦{bubbles_amount_ngn:,.0f}"
+        )
+    details["💳 Amount Paid"] = amount_display
 
     ecard_html = (
         '<div style="background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); '
@@ -140,9 +154,18 @@ See you in the water! 🏊‍♂️
         'font-weight: 600;">View E-Card &rarr;</a></div>'
     )
 
+    bundle_html = (
+        f'<div style="background: #ecfeff; border-left: 3px solid #0891b2; '
+        f'padding: 10px 14px; border-radius: 6px; margin: 12px 0; font-size: 14px; color: #155e75;">'
+        f"📦 {bundle_info}</div>"
+        if bundle_info
+        else ""
+    )
+
     body_html = (
         f"<p>Hi {member_name},</p>"
         "<p>Your session has been confirmed! Here are your details:</p>"
+        + bundle_html
         + detail_box(details)
         + ride_share_html
         + ecard_html

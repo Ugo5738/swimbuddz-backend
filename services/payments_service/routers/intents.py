@@ -8,6 +8,9 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import delete, desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import _service_role_jwt, get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
@@ -21,9 +24,6 @@ from libs.common.service_client import (
     internal_post,
 )
 from libs.db.session import get_async_db
-from sqlalchemy import delete, desc, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.payments_service.models import (
     Discount,
     DiscountType,
@@ -826,6 +826,44 @@ async def _apply_entitlement(payment: Payment) -> None:
             member_data = member_resp.json()
             member_id = member_data.get("id")
 
+            # Partial Bubbles: debit wallet for bubbles_to_apply before attendance.
+            bubbles_to_apply = int(
+                (payment.payment_metadata or {}).get("bubbles_to_apply") or 0
+            )
+            if bubbles_to_apply > 0:
+                debit_resp = await client.post(
+                    f"{settings.WALLET_SERVICE_URL}/internal/wallet/debit",
+                    json={
+                        "idempotency_key": f"session_fee_{payment.reference}",
+                        "member_auth_id": payment.member_auth_id,
+                        "amount": bubbles_to_apply,
+                        "transaction_type": "purchase",
+                        "description": f"Session booking (partial payment): {payment.reference}",
+                        "service_source": "payments_service",
+                        "reference_type": "session_fee",
+                        "reference_id": str(payment.reference),
+                    },
+                    headers=headers,
+                )
+                if debit_resp.status_code >= 400:
+                    # Log but don't fail — the Paystack portion was already charged.
+                    # Record the failure in metadata so it's visible without log access.
+                    # (Caller commits the payment after _apply_entitlement returns.)
+                    logger.warning(
+                        f"Wallet debit failed for session_fee {payment.reference}: "
+                        f"{debit_resp.status_code} {debit_resp.text}"
+                    )
+                    payment.payment_metadata = {
+                        **(payment.payment_metadata or {}),
+                        "bubbles_debit_failed": True,
+                        "bubbles_debit_error": f"{debit_resp.status_code}: {debit_resp.text[:200]}",
+                    }
+                else:
+                    logger.info(
+                        f"Wallet debit succeeded for session_fee {payment.reference}: "
+                        f"{bubbles_to_apply} Bubbles"
+                    )
+
             # Create attendance record via attendance service
             attendance_resp = await client.post(
                 f"{settings.ATTENDANCE_SERVICE_URL}/attendance/sessions/{session_id}/attendance/public",
@@ -931,6 +969,15 @@ async def _apply_entitlement(payment: Payment) -> None:
                                     break
                             break
 
+                # Partial Bubbles details (if applied)
+                fee_bubbles = int(
+                    (payment.payment_metadata or {}).get("bubbles_to_apply") or 0
+                )
+                fee_bubbles_ngn = float(
+                    (payment.payment_metadata or {}).get("bubbles_value_ngn")
+                    or (fee_bubbles * 100)
+                )
+
                 # Send the email via centralized email service
                 if member_email:
                     email_client = get_email_client()
@@ -956,6 +1003,10 @@ async def _apply_entitlement(payment: Payment) -> None:
                             "ride_distance": ride_distance,
                             "ride_duration": ride_duration,
                             "currency": payment.currency,
+                            "bubbles_applied": fee_bubbles if fee_bubbles > 0 else None,
+                            "bubbles_amount_ngn": (
+                                fee_bubbles_ngn if fee_bubbles > 0 else None
+                            ),
                         },
                     )
                     logger.info(f"Session confirmation email sent to {member_email}")
@@ -1006,9 +1057,7 @@ async def _apply_entitlement(payment: Payment) -> None:
                     headers=headers,
                 )
                 if att_resp.status_code >= 400:
-                    failed.append(
-                        {"session_id": session_id, "error": att_resp.text}
-                    )
+                    failed.append({"session_id": session_id, "error": att_resp.text})
                     logger.warning(
                         f"Bundle attendance creation failed for session {session_id}: "
                         f"{att_resp.status_code} {att_resp.text}"
@@ -1025,6 +1074,150 @@ async def _apply_entitlement(payment: Payment) -> None:
                 logger.warning(
                     f"Bundle partial fulfillment: {len(created)} created, {len(failed)} failed"
                 )
+
+            # Create ride bookings for any sessions with ride configs in metadata.
+            ride_configs = (payment.payment_metadata or {}).get(
+                "session_ride_configs"
+            ) or {}
+            if ride_configs:
+                ride_created: list[str] = []
+                ride_failed: list[dict] = []
+                for session_id, ride_cfg in ride_configs.items():
+                    transport_resp = await client.post(
+                        f"{settings.TRANSPORT_SERVICE_URL}/transport/sessions/{session_id}/bookings",
+                        json={
+                            "session_ride_config_id": ride_cfg.get("ride_config_id"),
+                            "pickup_location_id": ride_cfg.get("pickup_location_id"),
+                            "num_seats": int(ride_cfg.get("num_seats") or 1),
+                        },
+                        params={"member_id": str(member_id)},
+                        headers=headers,
+                    )
+                    if transport_resp.status_code >= 400:
+                        ride_failed.append(
+                            {"session_id": session_id, "error": transport_resp.text}
+                        )
+                        logger.warning(
+                            f"Bundle ride booking failed for session {session_id}: "
+                            f"{transport_resp.status_code} {transport_resp.text}"
+                        )
+                    else:
+                        ride_created.append(session_id)
+                if ride_failed:
+                    logger.warning(
+                        f"Bundle ride partial fulfillment: {len(ride_created)} created, "
+                        f"{len(ride_failed)} failed"
+                    )
+
+            # Send one confirmation email per booked session in the bundle.
+            try:
+                member_email = member_data.get("email") or payment.payer_email
+                member_name = (
+                    f"{member_data.get('first_name', '')} "
+                    f"{member_data.get('last_name', '')}"
+                ).strip()
+                session_count = len(session_ids)
+                per_session_amount = (
+                    float(payment.amount) / session_count if session_count else 0.0
+                )
+                # Partial Bubbles applied to the bundle, pro-rated per session
+                bundle_bubbles = int(
+                    (payment.payment_metadata or {}).get("bubbles_to_apply") or 0
+                )
+                bundle_bubbles_ngn = float(
+                    (payment.payment_metadata or {}).get("bubbles_value_ngn")
+                    or (bundle_bubbles * 100)
+                )
+                per_session_bubbles = (
+                    bundle_bubbles // session_count if session_count else 0
+                )
+                per_session_bubbles_ngn = (
+                    bundle_bubbles_ngn / session_count if session_count else 0.0
+                )
+                if member_email:
+                    email_client = get_email_client()
+                    for idx, session_id in enumerate(session_ids, start=1):
+                        if session_id not in created:
+                            continue  # skip sessions whose attendance failed
+                        try:
+                            session_resp = await client.get(
+                                f"{settings.SESSIONS_SERVICE_URL}/sessions/{session_id}",
+                                headers=headers,
+                            )
+                            session_data = (
+                                session_resp.json()
+                                if session_resp.status_code < 400
+                                else {}
+                            )
+                            starts_at = session_data.get("starts_at", "")
+                            session_date = ""
+                            session_time = ""
+                            if starts_at:
+                                try:
+                                    dt = datetime.fromisoformat(
+                                        starts_at.replace("Z", "+00:00")
+                                    )
+                                    session_date = dt.strftime("%A, %B %d, %Y")
+                                    session_time = f"{dt.strftime('%I:%M %p')} - "
+                                    ends_at = session_data.get("ends_at", "")
+                                    if ends_at:
+                                        end_dt = datetime.fromisoformat(
+                                            ends_at.replace("Z", "+00:00")
+                                        )
+                                        session_time += end_dt.strftime("%I:%M %p")
+                                except Exception:
+                                    session_date = (
+                                        starts_at[:10]
+                                        if len(starts_at) >= 10
+                                        else starts_at
+                                    )
+
+                            await email_client.send_template(
+                                template_type="session_confirmation",
+                                to_email=member_email,
+                                template_data={
+                                    "member_name": member_name or "Member",
+                                    "member_id": str(member_id),
+                                    "session_title": session_data.get(
+                                        "title", "Swimming Session"
+                                    ),
+                                    "session_date": session_date,
+                                    "session_time": session_time,
+                                    "session_location": session_data.get(
+                                        "location_name", ""
+                                    )
+                                    or session_data.get("location", ""),
+                                    "session_address": session_data.get("address", ""),
+                                    "amount_paid": per_session_amount,
+                                    "currency": payment.currency,
+                                    "bubbles_applied": (
+                                        per_session_bubbles
+                                        if per_session_bubbles > 0
+                                        else None
+                                    ),
+                                    "bubbles_amount_ngn": (
+                                        per_session_bubbles_ngn
+                                        if per_session_bubbles > 0
+                                        else None
+                                    ),
+                                    "bundle_info": (
+                                        f"Session {idx} of {session_count} in your booking"
+                                        if session_count > 1
+                                        else None
+                                    ),
+                                },
+                            )
+                        except Exception as inner_e:
+                            logger.warning(
+                                "Failed to send bundle confirmation for session %s: %s",
+                                session_id,
+                                inner_e,
+                            )
+                    logger.info(
+                        f"Bundle confirmation emails sent ({len(created)}) to {member_email}"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to send bundle confirmation emails: {e}")
 
         # Clear pending payment reference on success
         await _update_pending_payment_reference(payment.member_auth_id, None)
@@ -1435,6 +1628,7 @@ async def create_payment_intent(
 
                     if community_until_str:
                         from dateutil.relativedelta import relativedelta
+
                         from libs.common.datetime_utils import utc_now
 
                         community_until = datetime.fromisoformat(
@@ -1638,6 +1832,7 @@ async def create_payment_intent(
             ),
             "attendance_status": attendance_status.value,
             "num_seats": payload.num_seats or 1,
+            "bubbles_to_apply": payload.bubbles_to_apply or 0,
         }
 
     # Session bundle — book multiple sessions in one payment intent
@@ -1665,10 +1860,27 @@ async def create_payment_intent(
                 detail="direct_amount is required and must be greater than zero for SESSION_BUNDLE payments",
             )
         amount = float(payload.direct_amount)
+        # Validate per-session ride configs (if provided) — every key must be
+        # one of the session_ids in the bundle.
+        ride_configs_meta: dict = {}
+        if payload.session_ride_configs:
+            bundle_id_set = {str(sid) for sid in payload.session_ids}
+            for sid_key, ride_cfg in payload.session_ride_configs.items():
+                if str(sid_key) not in bundle_id_set:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"session_ride_configs key {sid_key} is not in session_ids",
+                    )
+                ride_configs_meta[str(sid_key)] = {
+                    "ride_config_id": str(ride_cfg.ride_config_id),
+                    "pickup_location_id": str(ride_cfg.pickup_location_id),
+                    "num_seats": int(ride_cfg.num_seats),
+                }
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "session_ids": [str(sid) for sid in payload.session_ids],
             "session_count": len(payload.session_ids),
+            "session_ride_configs": ride_configs_meta if ride_configs_meta else None,
         }
 
     # Standalone ride share payment (after session already booked)
@@ -1746,6 +1958,28 @@ async def create_payment_intent(
                 "original_amount": original_amount,
                 "discount_applies_to_component": applies_to_component,
             }
+
+    # Partial Bubbles: subtract the Bubbles value from amount AFTER discount.
+    # 1 Bubble = ₦100. Only applies to SESSION_FEE / SESSION_BUNDLE / RIDE_SHARE.
+    bubbles_purposes = {
+        PaymentPurpose.SESSION_FEE,
+        PaymentPurpose.SESSION_BUNDLE,
+        PaymentPurpose.RIDE_SHARE,
+    }
+    bubbles_to_apply_val = payload.bubbles_to_apply or 0
+    if bubbles_to_apply_val > 0 and payload.purpose in bubbles_purposes:
+        bubbles_value_ngn = bubbles_to_apply_val * 100
+        if bubbles_value_ngn > amount:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="bubbles_to_apply exceeds amount after discount",
+            )
+        amount = amount - bubbles_value_ngn
+        payment_metadata = {
+            **payment_metadata,
+            "bubbles_to_apply": bubbles_to_apply_val,
+            "bubbles_value_ngn": bubbles_value_ngn,
+        }
 
     payment = Payment(
         reference=Payment.generate_reference(),

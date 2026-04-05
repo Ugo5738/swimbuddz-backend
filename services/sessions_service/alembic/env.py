@@ -3,20 +3,25 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
-
-from alembic import context
 
 # Ensure project root on sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.append(str(PROJECT_ROOT))
 
+from sqlalchemy import Column, Table
+from sqlalchemy.dialects.postgresql import UUID
+
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.sessions_service.models import Session, SessionTemplate, SessionCoach  # noqa: F401
-from sqlalchemy import Table, Column
-from sqlalchemy.dialects.postgresql import UUID
+from services.sessions_service.models import (  # noqa: F401
+    Session,
+    SessionBundleCart,
+    SessionCoach,
+    SessionTemplate,
+)
 
 settings = get_settings()
 config = context.config
