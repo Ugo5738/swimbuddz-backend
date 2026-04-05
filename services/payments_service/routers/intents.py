@@ -424,6 +424,11 @@ async def _dispatch_payment_notification(payment: Payment) -> None:
                 "graduation-cap",
             ),
             PaymentPurpose.SESSION_FEE: ("Session Fee Paid", "sessions", "calendar"),
+            PaymentPurpose.SESSION_BUNDLE: (
+                "Session Bundle Paid",
+                "sessions",
+                "calendar",
+            ),
             PaymentPurpose.RIDE_SHARE: ("Ride Share Payment", "transport", "car"),
             PaymentPurpose.STORE_ORDER: (
                 "Store Order Payment",
@@ -957,6 +962,69 @@ async def _apply_entitlement(payment: Payment) -> None:
             except Exception as e:
                 # Log but don't fail if email fails
                 logger.error(f"Failed to send session confirmation email: {e}")
+
+        # Clear pending payment reference on success
+        await _update_pending_payment_reference(payment.member_auth_id, None)
+        return
+
+    # Handle session bundle payment — create attendance records for all sessions in bundle
+    elif payment.purpose == PaymentPurpose.SESSION_BUNDLE:
+        session_ids = (payment.payment_metadata or {}).get("session_ids") or []
+        if not session_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="session_ids missing in payment metadata",
+            )
+
+        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Look up member_id from auth_id via members service
+            member_resp = await client.get(
+                f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{payment.member_auth_id}",
+                headers=headers,
+            )
+            if member_resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to look up member ({member_resp.status_code}): {member_resp.text}",
+                )
+            member_data = member_resp.json()
+            member_id = member_data.get("id")
+
+            # Create attendance record for each session in bundle
+            created: list[str] = []
+            failed: list[dict] = []
+            for session_id in session_ids:
+                att_resp = await client.post(
+                    f"{settings.ATTENDANCE_SERVICE_URL}/attendance/sessions/{session_id}/attendance/public",
+                    json={
+                        "member_id": member_id,
+                        "status": SessionAttendanceStatus.PRESENT.value,
+                        "role": SessionAttendanceRole.SWIMMER.value,
+                        "notes": f"Bundle payment ref: {payment.reference}",
+                    },
+                    headers=headers,
+                )
+                if att_resp.status_code >= 400:
+                    failed.append(
+                        {"session_id": session_id, "error": att_resp.text}
+                    )
+                    logger.warning(
+                        f"Bundle attendance creation failed for session {session_id}: "
+                        f"{att_resp.status_code} {att_resp.text}"
+                    )
+                else:
+                    created.append(session_id)
+
+            if failed and not created:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"All bundle attendance creations failed: {failed}",
+                )
+            if failed:
+                logger.warning(
+                    f"Bundle partial fulfillment: {len(created)} created, {len(failed)} failed"
+                )
 
         # Clear pending payment reference on success
         await _update_pending_payment_reference(payment.member_auth_id, None)
@@ -1570,6 +1638,37 @@ async def create_payment_intent(
             ),
             "attendance_status": attendance_status.value,
             "num_seats": payload.num_seats or 1,
+        }
+
+    # Session bundle — book multiple sessions in one payment intent
+    elif payload.purpose == PaymentPurpose.SESSION_BUNDLE:
+        if not payload.session_ids or len(payload.session_ids) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="session_ids is required for SESSION_BUNDLE payments",
+            )
+        if len(payload.session_ids) > 10:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Maximum 10 sessions per bundle",
+            )
+        # Check for duplicates
+        unique_ids = list({str(sid) for sid in payload.session_ids})
+        if len(unique_ids) != len(payload.session_ids):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Duplicate session_ids in bundle",
+            )
+        if not payload.direct_amount or payload.direct_amount <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="direct_amount is required and must be greater than zero for SESSION_BUNDLE payments",
+            )
+        amount = float(payload.direct_amount)
+        payment_metadata = {
+            **(payload.payment_metadata or {}),
+            "session_ids": [str(sid) for sid in payload.session_ids],
+            "session_count": len(payload.session_ids),
         }
 
     # Standalone ride share payment (after session already booked)
