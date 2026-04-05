@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+
 from services.academy_service.routers._shared import (
     AsyncSession,
     AuthUser,
@@ -32,13 +33,35 @@ logger = get_logger(__name__)
 # --- Programs ---
 
 
+async def _assert_slug_available(
+    db: AsyncSession,
+    slug: str | None,
+    exclude_program_id: uuid.UUID | None = None,
+) -> None:
+    """Raise 409 if another program already uses this slug."""
+    if not slug:
+        return
+    query = select(Program.id).where(Program.slug == slug)
+    if exclude_program_id is not None:
+        query = query.where(Program.id != exclude_program_id)
+    result = await db.execute(query)
+    existing_id = result.scalar_one_or_none()
+    if existing_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Program slug '{slug}' is already in use. Pick a unique slug.",
+        )
+
+
 @router.post("/programs", response_model=ProgramResponse)
 async def create_program(
     program_in: ProgramCreate,
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    program = Program(**program_in.model_dump())
+    data = program_in.model_dump()
+    await _assert_slug_available(db, data.get("slug"))
+    program = Program(**data)
     db.add(program)
     await db.commit()
     await db.refresh(program)
@@ -124,6 +147,11 @@ async def update_program(
         raise HTTPException(status_code=404, detail="Program not found")
 
     update_data = program_in.model_dump(exclude_unset=True)
+    # If slug is being changed, ensure it's still unique
+    if "slug" in update_data and update_data["slug"] != program.slug:
+        await _assert_slug_available(
+            db, update_data["slug"], exclude_program_id=program.id
+        )
     for field, value in update_data.items():
         setattr(program, field, value)
 

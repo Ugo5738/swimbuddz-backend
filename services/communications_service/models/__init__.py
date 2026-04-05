@@ -20,6 +20,7 @@ from services.communications_service.models.core import (
     SessionNotificationLog,
     SessionNotificationType,
 )
+from services.communications_service.models.testimonial import Testimonial
 
 __all__ = [
     "Announcement",
@@ -40,4 +41,5 @@ __all__ = [
     "ScheduledNotificationStatus",
     "SessionNotificationLog",
     "SessionNotificationType",
+    "Testimonial",
 ]

@@ -27,6 +27,7 @@ class PaymentPurpose(str, enum.Enum):
     CLUB_BUNDLE = "club_bundle"
     ACADEMY_COHORT = "academy_cohort"
     SESSION_FEE = "session_fee"
+    SESSION_BUNDLE = "session_bundle"
     STORE_ORDER = "store_order"
     WALLET_TOPUP = "wallet_topup"
     RIDE_SHARE = "ride_share"

@@ -2,6 +2,11 @@ import uuid
 from datetime import datetime, time
 from typing import Optional
 
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Time
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from services.sessions_service.models.enums import (
@@ -10,11 +15,6 @@ from services.sessions_service.models.enums import (
     SessionType,
     enum_values,
 )
-from sqlalchemy import Boolean, DateTime
-from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Integer, String, Text, Time
-from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 # ============================================================================
 # SESSION MODEL
@@ -230,3 +230,53 @@ class SessionTemplate(Base):
 
     def __repr__(self):
         return f"<SessionTemplate {self.title}>"
+
+
+# ============================================================================
+# SESSION BUNDLE CART (multi-session booking selection)
+# ============================================================================
+
+
+class SessionBundleCart(Base):
+    """Temporary shopping cart for booking multiple sessions at once.
+
+    Created when a member selects multiple sessions from the Sessions Hub.
+    The member then navigates to /sessions/bundle/{id}/book which loads
+    the selected sessions via this cart. After payment, the cart can be
+    kept for analytics or soft-deleted.
+    """
+
+    __tablename__ = "session_bundle_carts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+
+    # The member (auth id) who created the cart. Used for access control.
+    member_auth_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
+
+    # List of session UUIDs (as strings) selected for the bundle.
+    # Validation constraints are enforced at the API layer (max 10, no dups).
+    session_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
+
+    # Status: "open" (awaiting payment), "paid", "expired", "abandoned"
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="open", server_default="open"
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, server_default="now()"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        server_default="now()",
+    )
+    # TTL for abandoned carts — checkout flow should complete within this window.
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<SessionBundleCart {self.id} {len(self.session_ids)} sessions>"

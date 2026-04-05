@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -9,6 +9,14 @@ from services.payments_service.schemas.enums import (
     ClubBillingCycle,
     SessionAttendanceStatus,
 )
+
+
+class SessionRideConfig(BaseModel):
+    """Per-session ride selection for a SESSION_BUNDLE payment."""
+
+    ride_config_id: uuid.UUID
+    pickup_location_id: uuid.UUID
+    num_seats: int = Field(default=1, ge=1, le=20)
 
 
 class CreatePaymentIntentRequest(BaseModel):
@@ -38,6 +46,18 @@ class CreatePaymentIntentRequest(BaseModel):
     )
     direct_amount: Optional[float] = None  # Direct amount for session fees
     num_seats: int = Field(default=1, ge=1, le=20)  # Seats for ride share booking
+
+    # SESSION_BUNDLE — book multiple sessions in one payment intent
+    session_ids: Optional[List[uuid.UUID]] = Field(
+        default=None, max_length=10
+    )  # Max 10 sessions per bundle
+    # Optional per-session ride share selections for a bundle.
+    # Keys are session IDs (as strings), values are SessionRideConfig.
+    session_ride_configs: Optional[Dict[str, "SessionRideConfig"]] = None
+
+    # Partial Bubbles: pay some of the total with Bubbles, remainder via Paystack.
+    # 1 Bubble = ₦100. Only supported for SESSION_FEE, SESSION_BUNDLE, RIDE_SHARE.
+    bubbles_to_apply: Optional[int] = Field(default=None, ge=0)
 
     # Accept "metadata" for backwards-compat, store internally as payment_metadata.
     payment_metadata: Optional[dict] = Field(default=None, alias="metadata")

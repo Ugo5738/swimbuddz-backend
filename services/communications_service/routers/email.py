@@ -431,6 +431,9 @@ async def send_templated_email(
             ride_distance=d.get("ride_distance"),
             ride_duration=d.get("ride_duration"),
             currency=d.get("currency", "NGN"),
+            bubbles_applied=d.get("bubbles_applied"),
+            bubbles_amount_ngn=d.get("bubbles_amount_ngn"),
+            bundle_info=d.get("bundle_info"),
         ),
         "ride_share_confirmation": lambda d: (
             sessions.send_ride_share_confirmation_email(

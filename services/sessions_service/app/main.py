@@ -2,6 +2,8 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from services.sessions_service.routers.bundles import router as bundles_router
 from services.sessions_service.routers.internal import router as internal_router
 from services.sessions_service.routers.member import router as sessions_router
 from services.sessions_service.routers.templates import router as templates_router
@@ -37,6 +39,9 @@ def create_app() -> FastAPI:
     # Register templates router with  full path to avoid trailing slash issues
     # FastAPI is strict about trailing slashes - /sessions/templates != /sessions/templates/
     app.include_router(templates_router)
+    # Bundles must be registered BEFORE sessions_router — its /sessions/bundles path
+    # would otherwise be swallowed by the sessions_router's /sessions/{id} matcher.
+    app.include_router(bundles_router)
     app.include_router(sessions_router)
 
     # Internal service-to-service endpoints (not exposed via gateway)

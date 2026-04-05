@@ -142,33 +142,58 @@ async def send_enrollment_reminder_email(
     Send reminder email X days before cohort starts.
     Content varies based on days remaining (7, 3, 1).
     """
-    days_text = f"{days_until} days" if days_until > 1 else "tomorrow"
-    subject = f"Reminder: Your swimming course starts in {days_text}! 🏊\u200d♂️"
-
-    if days_until == 1:
+    # Day text + subject
+    if days_until == 0:
+        days_text = "today"
+        subject = "Today is the day — your swimming course starts! 🏊\u200d♂️"
+    elif days_until == 1:
+        days_text = "tomorrow"
         subject = "URGENT: Your swimming course starts tomorrow! 🏊\u200d♂️"
+    else:
+        days_text = f"{days_until} days"
+        subject = f"Reminder: Your swimming course starts in {days_text}! 🏊\u200d♂️"
 
-    urgency_msg = f"We're excited to see you in {days_text}!"
-    if days_until == 1:
+    # Urgency message
+    if days_until == 0:
+        urgency_msg = (
+            "It's happening today! Grab your gear and arrive 15 minutes early."
+        )
+    elif days_until == 1:
         urgency_msg = (
             "We're excited to see you tomorrow! Please double check your gear."
         )
+    else:
+        urgency_msg = f"We're excited to see you in {days_text}!"
 
     # Tip based on timing
     tip_html = ""
-    if days_until >= 7:
+    if days_until >= 14:
+        tip_html = info_box(
+            "<strong>💡 Two weeks out:</strong><br/>"
+            "Start building a simple pre-swim routine: stretch, hydrate, and review the prep materials on your dashboard.",
+            bg_color="#fffbeb",
+            border_color="#f59e0b",
+        )
+    elif days_until >= 7:
         tip_html = info_box(
             "<strong>💡 Pro Tip:</strong><br/>"
             "Now is a great time to try on your swimwear and make sure everything fits comfortably!",
             bg_color="#fffbeb",
             border_color="#f59e0b",
         )
-    elif days_until <= 3:
+    elif days_until >= 1:
         tip_html = info_box(
             "<strong>💡 Preparation:</strong><br/>"
             "Hydrate well before your session and arrive 15 minutes early to change.",
             bg_color="#fffbeb",
             border_color="#f59e0b",
+        )
+    else:  # days_until == 0
+        tip_html = info_box(
+            "<strong>🎉 You're starting today!</strong><br/>"
+            "Arrive 15 minutes early, find your coach, and don't stress about technique — this first session is baseline-only.",
+            bg_color="#ecfdf5",
+            border_color="#10b981",
         )
 
     body = f"""Hi {member_name},
