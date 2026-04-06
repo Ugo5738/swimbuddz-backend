@@ -72,7 +72,7 @@ class Cohort(Base):
         UUID(as_uuid=True), nullable=True
     )
 
-    # Pricing override in naira (major NGN unit). See Program.price_amount.
+    # Pricing override in kobo (minor NGN unit). Schema auto-converts naira↔kobo.
     price_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     status: Mapped[CohortStatus] = mapped_column(
@@ -110,7 +110,7 @@ class Cohort(Base):
     )
     # Number of total installments (e.g. 3 means deposit + 2 follow-up payments)
     installment_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # Deposit amount in naira. If null, defaults to (total_price / installment_count).
+    # Deposit amount in kobo. If null, defaults to (total_price / installment_count).
     installment_deposit_amount: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True
     )
