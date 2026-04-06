@@ -63,7 +63,8 @@ class Program(Base):
     currency: Mapped[str] = mapped_column(String, default="NGN", server_default="NGN")
     price_amount: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0"
-    )  # Kobo (minor NGN unit)
+    )  # Kobo (minor NGN unit). API schemas auto-convert: ProgramCreate/Update
+    # accept naira and multiply ×100, ProgramResponse divides ÷100 on output.
     billing_type: Mapped[BillingType] = mapped_column(
         SAEnum(
             BillingType,

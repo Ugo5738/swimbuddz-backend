@@ -25,6 +25,7 @@ from services.academy_service.models import (
 
 class ProgramBase(BaseModel):
     name: str
+    slug: Optional[str] = None
     description: Optional[str] = None
     cover_image_media_id: Optional[UUID] = None
     level: ProgramLevel
@@ -50,6 +51,7 @@ class ProgramCreate(ProgramBase):
 
 class ProgramUpdate(BaseModel):
     name: Optional[str] = None
+    slug: Optional[str] = None
     description: Optional[str] = None
     cover_image_media_id: Optional[UUID] = None
     level: Optional[ProgramLevel] = None

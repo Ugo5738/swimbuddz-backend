@@ -72,7 +72,7 @@ class Cohort(Base):
         UUID(as_uuid=True), nullable=True
     )
 
-    # Pricing override in kobo (minor NGN unit)
+    # Pricing override in kobo (minor NGN unit). Schema auto-converts naira↔kobo.
     price_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     status: Mapped[CohortStatus] = mapped_column(
