@@ -10,7 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from services.pools_service.models.enums import (
     IndoorOutdoor,
     PartnershipStatus,
+    PoolSource,
     PoolType,
+    PreferredContactChannel,
 )
 
 # ============================================================================
@@ -68,6 +70,22 @@ class PoolBase(BaseModel):
     video_content_allowed: Optional[bool] = None
     trial_session_possible: Optional[bool] = None
 
+    # Safety (extended)
+    lifeguard_count: Optional[int] = Field(None, ge=0)
+    has_first_aid_kit: Optional[bool] = None
+    has_aed: Optional[bool] = None
+    has_cctv: Optional[bool] = None
+
+    # Ops (extended)
+    booking_lead_time_hours: Optional[int] = Field(None, ge=0)
+    preferred_contact_channel: Optional[PreferredContactChannel] = None
+
+    # Discovery
+    source: Optional[PoolSource] = None
+
+    # Data quality
+    last_verified_at: Optional[datetime] = None
+
     # Partnership
     partnership_status: PartnershipStatus = PartnershipStatus.PROSPECT
 
@@ -124,6 +142,16 @@ class PoolUpdate(BaseModel):
     video_content_allowed: Optional[bool] = None
     trial_session_possible: Optional[bool] = None
 
+    # Phase 1 additions
+    lifeguard_count: Optional[int] = Field(None, ge=0)
+    has_first_aid_kit: Optional[bool] = None
+    has_aed: Optional[bool] = None
+    has_cctv: Optional[bool] = None
+    booking_lead_time_hours: Optional[int] = Field(None, ge=0)
+    preferred_contact_channel: Optional[PreferredContactChannel] = None
+    source: Optional[PoolSource] = None
+    last_verified_at: Optional[datetime] = None
+
     partnership_status: Optional[PartnershipStatus] = None
     pool_type: Optional[PoolType] = None
     notes: Optional[str] = None
@@ -134,6 +162,9 @@ class PoolResponse(PoolBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    # Auto-computed weighted average of component scores; safe to display
+    # alongside overall_score (admin judgment) to flag data-quality gaps.
+    computed_score: Optional[Decimal] = None
     created_at: datetime
     updated_at: datetime
 

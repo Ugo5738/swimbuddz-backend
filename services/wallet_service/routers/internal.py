@@ -15,6 +15,7 @@ from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
+from services.wallet_service.models.enums import GrantType
 from services.wallet_service.schemas import (
     AdminScholarshipCreditRequest,
     BalanceCheckRequest,
@@ -27,6 +28,7 @@ from services.wallet_service.schemas import (
     GrantWelcomeBonusRequest,
     GrantWelcomeBonusResponse,
     InternalDebitCreditResponse,
+    PoolSubmissionRewardRequest,
     WalletCreateRequest,
     WalletResponse,
 )
@@ -244,6 +246,42 @@ async def internal_scholarship_credit(
         body.amount,
         body.member_auth_id,
         body.enrollment_id,
+    )
+    return grant
+
+
+@router.post(
+    "/pool-submission-reward",
+    response_model=GrantResponse,
+    status_code=201,
+)
+async def internal_pool_submission_reward(
+    body: PoolSubmissionRewardRequest,
+    caller: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Grant Bubbles for an approved member pool submission.
+
+    Called by pools_service when an admin approves a submission.
+    Uses the submission_id as the campaign_code so retries do not
+    double-grant the same submission.
+
+    Auth: service-role JWT only.
+    """
+    grant = await grant_promotional_bubbles(
+        db,
+        member_auth_id=body.member_auth_id,
+        bubbles_amount=body.bubbles_amount,
+        grant_type=GrantType.CAMPAIGN,
+        reason=f"Pool submission approved: {body.submission_id}",
+        campaign_code=f"POOL_SUBMISSION_{body.submission_id}",
+        granted_by=body.granted_by or caller.user_id or "admin",
+    )
+    logger.info(
+        "Granted %d Bubbles to %s for pool submission %s",
+        body.bubbles_amount,
+        body.member_auth_id,
+        body.submission_id,
     )
     return grant
 

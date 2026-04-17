@@ -224,6 +224,112 @@ async def attach_ride_areas_to_session(
     return responses
 
 
+# ─── Batch endpoint ──────────────────────────────────────────────────────
+
+
+class SlimPickupLocation(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
+class SlimRideConfig(BaseModel):
+    id: uuid.UUID
+    ride_area_name: str
+    cost: float
+    capacity: int
+    pickup_locations: List[SlimPickupLocation]
+
+
+class BatchRideConfigsRequest(BaseModel):
+    session_ids: List[uuid.UUID]
+
+
+class BatchRideConfigsResponse(BaseModel):
+    """Map of session_id (str) -> list of slim ride configs."""
+
+    configs: Dict[str, List[SlimRideConfig]]
+
+
+@router.post(
+    "/sessions/ride-configs/batch",
+    response_model=BatchRideConfigsResponse,
+)
+async def get_ride_configs_batch(
+    body: BatchRideConfigsRequest,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Batch-fetch ride configs for multiple sessions in a single request.
+
+    Returns a slim payload (no booking counts, no route timing) suitable for
+    session list views. For full detail (availability, ETAs), use the
+    per-session endpoint.
+
+    Collapses what was previously N HTTP requests + N*(5-10) DB queries into
+    1 request + 3 batched DB queries.
+    """
+    if not body.session_ids:
+        return BatchRideConfigsResponse(configs={})
+
+    # Dedup + cap defensive limit
+    ids = list({sid for sid in body.session_ids})[:200]
+
+    # 1. One query for all session ride configs
+    configs = (
+        (
+            await db.execute(
+                select(SessionRideConfig).where(SessionRideConfig.session_id.in_(ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not configs:
+        return BatchRideConfigsResponse(configs={str(sid): [] for sid in ids})
+
+    # 2. One query for all involved ride areas
+    area_ids = list({cfg.ride_area_id for cfg in configs})
+    areas = (
+        (await db.execute(select(RideArea).where(RideArea.id.in_(area_ids))))
+        .scalars()
+        .all()
+    )
+    area_name_by_id = {area.id: area.name for area in areas}
+
+    # 3. One query for all pickup locations for those areas
+    locations = (
+        (
+            await db.execute(
+                select(PickupLocation).where(PickupLocation.area_id.in_(area_ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    locations_by_area: Dict[uuid.UUID, List[PickupLocation]] = {}
+    for loc in locations:
+        locations_by_area.setdefault(loc.area_id, []).append(loc)
+
+    # Compose response grouped by session_id
+    result: Dict[str, List[SlimRideConfig]] = {str(sid): [] for sid in ids}
+    for cfg in configs:
+        pickup_locations = [
+            SlimPickupLocation(id=loc.id, name=loc.name)
+            for loc in locations_by_area.get(cfg.ride_area_id, [])
+        ]
+        result[str(cfg.session_id)].append(
+            SlimRideConfig(
+                id=cfg.id,
+                ride_area_name=area_name_by_id.get(cfg.ride_area_id, ""),
+                cost=cfg.cost / 100.0,  # kobo → naira
+                capacity=cfg.capacity,
+                pickup_locations=pickup_locations,
+            )
+        )
+
+    return BatchRideConfigsResponse(configs=result)
+
+
 @router.get(
     "/sessions/{session_id}/ride-configs",
     response_model=List[SessionRideConfigResponse],

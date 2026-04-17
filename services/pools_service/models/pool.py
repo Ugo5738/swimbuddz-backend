@@ -3,19 +3,28 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from sqlalchemy import Boolean, DateTime, Float, Integer, Numeric, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+if TYPE_CHECKING:
+    from services.pools_service.models.pool_agreement import PoolAgreement
+    from services.pools_service.models.pool_asset import PoolAsset
+    from services.pools_service.models.pool_contact import PoolContact
+    from services.pools_service.models.pool_status_change import PoolStatusChange
+    from services.pools_service.models.pool_visit import PoolVisit
 
 from services.pools_service.models.enums import (
     IndoorOutdoor,
     PartnershipStatus,
+    PoolSource,
     PoolType,
+    PreferredContactChannel,
     enum_values,
 )
 
@@ -71,6 +80,12 @@ class Pool(Base):
     )
     partnership_potential: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     overall_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Auto-computed weighted average of the 6 component scores above,
+    # weighted by pool_type. Kept in sync on every create/update of score fields.
+    # Use alongside overall_score (admin judgment) to spot data-quality gaps.
+    computed_score: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(3, 2), nullable=True
+    )
 
     # ── Availability ──────────────────────────────────────────────────────
     available_days_times: Mapped[Optional[dict]] = mapped_column(
@@ -106,6 +121,42 @@ class Pool(Base):
         Boolean, nullable=True
     )
 
+    # ── Safety (extended) ─────────────────────────────────────────────────
+    lifeguard_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    has_first_aid_kit: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    has_aed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    has_cctv: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+
+    # ── Ops extended ──────────────────────────────────────────────────────
+    booking_lead_time_hours: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    preferred_contact_channel: Mapped[Optional[PreferredContactChannel]] = (
+        mapped_column(
+            SAEnum(
+                PreferredContactChannel,
+                values_callable=enum_values,
+                name="pool_preferred_contact_channel_enum",
+            ),
+            nullable=True,
+        )
+    )
+
+    # ── Discovery ─────────────────────────────────────────────────────────
+    source: Mapped[Optional[PoolSource]] = mapped_column(
+        SAEnum(
+            PoolSource,
+            values_callable=enum_values,
+            name="pool_source_enum",
+        ),
+        nullable=True,
+    )
+
+    # ── Data quality ──────────────────────────────────────────────────────
+    last_verified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # ── Partnership ───────────────────────────────────────────────────────
     partnership_status: Mapped[PartnershipStatus] = mapped_column(
         SAEnum(
@@ -137,6 +188,23 @@ class Pool(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    # ── Relationships ─────────────────────────────────────────────────────
+    contacts: Mapped[list["PoolContact"]] = relationship(
+        "PoolContact", back_populates="pool", cascade="all, delete-orphan"
+    )
+    visits: Mapped[list["PoolVisit"]] = relationship(
+        "PoolVisit", back_populates="pool", cascade="all, delete-orphan"
+    )
+    status_changes: Mapped[list["PoolStatusChange"]] = relationship(
+        "PoolStatusChange", back_populates="pool", cascade="all, delete-orphan"
+    )
+    agreements: Mapped[list["PoolAgreement"]] = relationship(
+        "PoolAgreement", back_populates="pool", cascade="all, delete-orphan"
+    )
+    assets: Mapped[list["PoolAsset"]] = relationship(
+        "PoolAsset", back_populates="pool", cascade="all, delete-orphan"
     )
 
     def __repr__(self):

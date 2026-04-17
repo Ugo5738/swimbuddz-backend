@@ -150,6 +150,52 @@ async def get_active_members(
     ]
 
 
+class MemberSearchResult(BaseModel):
+    """Slim search result with auth_id for cross-service filtering."""
+
+    id: str
+    auth_id: str
+    first_name: str
+    last_name: str
+    email: str
+
+
+@router.get("/search", response_model=List[MemberSearchResult])
+async def search_members(
+    q: str = Query(..., min_length=1, description="Search term (name or email)"),
+    limit: int = Query(50, ge=1, le=200),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Search members by first name, last name, or email (case-insensitive substring).
+
+    Used by other services (e.g., wallet_service admin) to resolve human-readable
+    queries into auth_ids for filtering. Returns up to `limit` matches.
+    """
+    term = f"%{q.strip()}%"
+    result = await db.execute(
+        select(Member)
+        .where(
+            (Member.first_name.ilike(term))
+            | (Member.last_name.ilike(term))
+            | (Member.email.ilike(term))
+        )
+        .order_by(Member.last_name.asc(), Member.first_name.asc())
+        .limit(limit)
+    )
+    members = result.scalars().all()
+    return [
+        MemberSearchResult(
+            id=str(m.id),
+            auth_id=m.auth_id,
+            first_name=m.first_name,
+            last_name=m.last_name,
+            email=m.email,
+        )
+        for m in members
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Reporting: approved members list
 # NOTE: This must be defined BEFORE /{member_id} to avoid route conflict.

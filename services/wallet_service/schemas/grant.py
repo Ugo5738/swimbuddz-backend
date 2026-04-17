@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
 from services.wallet_service.models.enums import GrantType
 
 
@@ -69,6 +70,19 @@ class BulkGrantPromotionalRequest(BaseModel):
     reason: str = Field(..., min_length=5)
     campaign_code: Optional[str] = None
     expires_in_days: Optional[int] = None
+
+
+class PoolSubmissionRewardRequest(BaseModel):
+    """Reward Bubbles for an approved member pool submission.
+
+    Called by pools_service after an admin approves a submission.
+    Uses submission_id for idempotent campaign code to prevent double-grants.
+    """
+
+    member_auth_id: str
+    bubbles_amount: int = Field(..., gt=0)
+    submission_id: str = Field(..., description="Pool submission UUID for audit trail")
+    granted_by: str = "admin"
 
 
 class GrantResponse(BaseModel):
