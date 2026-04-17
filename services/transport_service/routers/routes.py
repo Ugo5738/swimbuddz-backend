@@ -275,29 +275,37 @@ async def get_ride_configs_batch(
 
     # 1. One query for all session ride configs
     configs = (
-        await db.execute(
-            select(SessionRideConfig).where(SessionRideConfig.session_id.in_(ids))
+        (
+            await db.execute(
+                select(SessionRideConfig).where(SessionRideConfig.session_id.in_(ids))
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     if not configs:
-        return BatchRideConfigsResponse(
-            configs={str(sid): [] for sid in ids}
-        )
+        return BatchRideConfigsResponse(configs={str(sid): [] for sid in ids})
 
     # 2. One query for all involved ride areas
     area_ids = list({cfg.ride_area_id for cfg in configs})
     areas = (
-        await db.execute(select(RideArea).where(RideArea.id.in_(area_ids)))
-    ).scalars().all()
+        (await db.execute(select(RideArea).where(RideArea.id.in_(area_ids))))
+        .scalars()
+        .all()
+    )
     area_name_by_id = {area.id: area.name for area in areas}
 
     # 3. One query for all pickup locations for those areas
     locations = (
-        await db.execute(
-            select(PickupLocation).where(PickupLocation.area_id.in_(area_ids))
+        (
+            await db.execute(
+                select(PickupLocation).where(PickupLocation.area_id.in_(area_ids))
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     locations_by_area: Dict[uuid.UUID, List[PickupLocation]] = {}
     for loc in locations:
         locations_by_area.setdefault(loc.area_id, []).append(loc)

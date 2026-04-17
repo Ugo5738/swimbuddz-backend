@@ -45,7 +45,9 @@ class PoolAsset(Base):
     )
 
     # Either media_service id OR direct URL (at least one should be set)
-    media_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

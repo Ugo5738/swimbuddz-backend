@@ -33,9 +33,7 @@ class PoolVisit(Base):
         index=True,
     )
 
-    visit_date: Mapped[datetime] = mapped_column(
-        Date, nullable=False, index=True
-    )
+    visit_date: Mapped[datetime] = mapped_column(Date, nullable=False, index=True)
     visit_type: Mapped[PoolVisitType] = mapped_column(
         SAEnum(
             PoolVisitType,
@@ -59,9 +57,7 @@ class PoolVisit(Base):
 
     # Follow-up
     follow_up_action: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    follow_up_due_at: Mapped[Optional[datetime]] = mapped_column(
-        Date, nullable=True
-    )
+    follow_up_due_at: Mapped[Optional[datetime]] = mapped_column(Date, nullable=True)
     follow_up_completed: Mapped[bool] = mapped_column(
         default=False, server_default="false", nullable=False
     )

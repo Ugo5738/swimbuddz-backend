@@ -69,12 +69,16 @@ async def list_contacts(
 ):
     await _ensure_pool_exists(pool_id, db)
     rows = (
-        await db.execute(
-            select(PoolContact)
-            .where(PoolContact.pool_id == pool_id)
-            .order_by(PoolContact.is_primary.desc(), PoolContact.name.asc())
+        (
+            await db.execute(
+                select(PoolContact)
+                .where(PoolContact.pool_id == pool_id)
+                .order_by(PoolContact.is_primary.desc(), PoolContact.name.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return rows
 
 
@@ -102,9 +106,7 @@ async def create_contact(
     return contact
 
 
-@router.patch(
-    "/{pool_id}/contacts/{contact_id}", response_model=PoolContactResponse
-)
+@router.patch("/{pool_id}/contacts/{contact_id}", response_model=PoolContactResponse)
 async def update_contact(
     pool_id: uuid.UUID,
     contact_id: uuid.UUID,
@@ -184,12 +186,16 @@ async def list_visits(
 ):
     await _ensure_pool_exists(pool_id, db)
     rows = (
-        await db.execute(
-            select(PoolVisit)
-            .where(PoolVisit.pool_id == pool_id)
-            .order_by(PoolVisit.visit_date.desc(), PoolVisit.created_at.desc())
+        (
+            await db.execute(
+                select(PoolVisit)
+                .where(PoolVisit.pool_id == pool_id)
+                .order_by(PoolVisit.visit_date.desc(), PoolVisit.created_at.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return rows
 
 
@@ -281,12 +287,16 @@ async def list_status_history(
 ):
     await _ensure_pool_exists(pool_id, db)
     rows = (
-        await db.execute(
-            select(PoolStatusChange)
-            .where(PoolStatusChange.pool_id == pool_id)
-            .order_by(PoolStatusChange.created_at.desc())
+        (
+            await db.execute(
+                select(PoolStatusChange)
+                .where(PoolStatusChange.pool_id == pool_id)
+                .order_by(PoolStatusChange.created_at.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return rows
 
 
@@ -303,12 +313,16 @@ async def list_agreements(
 ):
     await _ensure_pool_exists(pool_id, db)
     rows = (
-        await db.execute(
-            select(PoolAgreement)
-            .where(PoolAgreement.pool_id == pool_id)
-            .order_by(PoolAgreement.created_at.desc())
+        (
+            await db.execute(
+                select(PoolAgreement)
+                .where(PoolAgreement.pool_id == pool_id)
+                .order_by(PoolAgreement.created_at.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return rows
 
 
@@ -394,16 +408,20 @@ async def list_assets(
 ):
     await _ensure_pool_exists(pool_id, db)
     rows = (
-        await db.execute(
-            select(PoolAsset)
-            .where(PoolAsset.pool_id == pool_id)
-            .order_by(
-                PoolAsset.is_primary.desc(),
-                PoolAsset.display_order.asc(),
-                PoolAsset.created_at.desc(),
+        (
+            await db.execute(
+                select(PoolAsset)
+                .where(PoolAsset.pool_id == pool_id)
+                .order_by(
+                    PoolAsset.is_primary.desc(),
+                    PoolAsset.display_order.asc(),
+                    PoolAsset.created_at.desc(),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return rows
 
 

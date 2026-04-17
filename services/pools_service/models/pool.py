@@ -131,13 +131,15 @@ class Pool(Base):
     booking_lead_time_hours: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True
     )
-    preferred_contact_channel: Mapped[Optional[PreferredContactChannel]] = mapped_column(
-        SAEnum(
-            PreferredContactChannel,
-            values_callable=enum_values,
-            name="pool_preferred_contact_channel_enum",
-        ),
-        nullable=True,
+    preferred_contact_channel: Mapped[Optional[PreferredContactChannel]] = (
+        mapped_column(
+            SAEnum(
+                PreferredContactChannel,
+                values_callable=enum_values,
+                name="pool_preferred_contact_channel_enum",
+            ),
+            nullable=True,
+        )
     )
 
     # ── Discovery ─────────────────────────────────────────────────────────
