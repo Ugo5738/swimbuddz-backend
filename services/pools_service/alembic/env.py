@@ -17,7 +17,15 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.pools_service.models import Pool  # noqa: F401
+from services.pools_service.models import (  # noqa: F401
+    Pool,
+    PoolAgreement,
+    PoolAsset,
+    PoolContact,
+    PoolStatusChange,
+    PoolSubmission,
+    PoolVisit,
+)
 
 settings = get_settings()
 config = context.config
@@ -30,6 +38,12 @@ target_metadata = Base.metadata
 # Only migrate tables owned by this service
 SERVICE_TABLES = {
     "pools",
+    "pool_submissions",
+    "pool_contacts",
+    "pool_visits",
+    "pool_status_changes",
+    "pool_agreements",
+    "pool_assets",
 }
 
 url = settings.DATABASE_URL.replace("%", "%%")

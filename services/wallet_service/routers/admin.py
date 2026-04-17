@@ -5,11 +5,14 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-from libs.common.service_client import get_member_by_auth_id
+from libs.common.service_client import get_member_by_auth_id, search_members
 from libs.db.session import get_async_db
 from services.wallet_service.models import (
     AuditAction,
@@ -49,8 +52,6 @@ from services.wallet_service.services.wallet_ops import (
     debit_wallet,
     get_wallet_by_id,
 )
-from sqlalchemy import desc, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/admin/wallet", tags=["admin-wallet"])
@@ -107,16 +108,47 @@ async def list_wallets(
     _admin: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """List all wallets (paginated, filterable)."""
+    """List all wallets (paginated, filterable by status or member name/email/auth_id)."""
     query = select(Wallet)
     count_query = select(func.count()).select_from(Wallet)
 
     if wallet_status:
         query = query.where(Wallet.status == wallet_status)
         count_query = count_query.where(Wallet.status == wallet_status)
+
     if search:
-        query = query.where(Wallet.member_auth_id.ilike(f"%{search}%"))
-        count_query = count_query.where(Wallet.member_auth_id.ilike(f"%{search}%"))
+        search_term = search.strip()
+        # Resolve name/email search to auth_ids via members_service.
+        # If members_service is unreachable or returns nothing, fall back
+        # to matching auth_id directly (UUIDs, useful for debugging).
+        matched_auth_ids: list[str] = []
+        try:
+            member_results = await search_members(
+                search_term, calling_service="wallet", limit=200
+            )
+            matched_auth_ids = [
+                m["auth_id"] for m in member_results if m.get("auth_id")
+            ]
+        except Exception as exc:  # noqa: BLE001 — non-fatal, fall through
+            logger.warning("Member search failed, falling back to auth_id: %s", exc)
+
+        if matched_auth_ids:
+            # Also include direct auth_id substring matches (covers case where
+            # admin pastes an auth_id fragment that isn't a name).
+            query = query.where(
+                Wallet.member_auth_id.in_(matched_auth_ids)
+                | Wallet.member_auth_id.ilike(f"%{search_term}%")
+            )
+            count_query = count_query.where(
+                Wallet.member_auth_id.in_(matched_auth_ids)
+                | Wallet.member_auth_id.ilike(f"%{search_term}%")
+            )
+        else:
+            # No member matches — fall back to auth_id substring search
+            query = query.where(Wallet.member_auth_id.ilike(f"%{search_term}%"))
+            count_query = count_query.where(
+                Wallet.member_auth_id.ilike(f"%{search_term}%")
+            )
 
     total = (await db.execute(count_query)).scalar() or 0
     result = await db.execute(

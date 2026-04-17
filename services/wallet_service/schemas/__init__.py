@@ -35,6 +35,7 @@ from services.wallet_service.schemas.grant import (  # noqa: F401
     GrantResponse,
     GrantWelcomeBonusRequest,
     GrantWelcomeBonusResponse,
+    PoolSubmissionRewardRequest,
 )
 from services.wallet_service.schemas.referral import (  # noqa: F401
     AdminReferralListResponse,
@@ -119,6 +120,7 @@ __all__ = [
     "GrantResponse",
     "GrantWelcomeBonusRequest",
     "GrantWelcomeBonusResponse",
+    "PoolSubmissionRewardRequest",
     # Admin
     "AdjustBalanceRequest",
     "AdminStatsResponse",

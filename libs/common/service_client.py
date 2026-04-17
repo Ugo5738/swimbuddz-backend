@@ -165,6 +165,24 @@ async def get_member_by_auth_id(
     return resp.json()
 
 
+async def search_members(
+    query: str, *, calling_service: str, limit: int = 50
+) -> list[dict]:
+    """Search members by first name, last name, or email.
+
+    Returns list of dicts with {id, auth_id, first_name, last_name, email}.
+    """
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.MEMBERS_SERVICE_URL,
+        path="/internal/members/search",
+        calling_service=calling_service,
+        params={"q": query, "limit": limit},
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 async def get_member_by_id(member_id: str, *, calling_service: str) -> Optional[dict]:
     """Look up a member by their member ID.
 
@@ -374,6 +392,35 @@ async def get_wallet_balance(auth_id: str, *, calling_service: str) -> Optional[
     )
     if resp.status_code == 404:
         return None
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def grant_pool_submission_reward(
+    *,
+    member_auth_id: str,
+    bubbles_amount: int,
+    submission_id: str,
+    granted_by: str,
+    calling_service: str,
+) -> dict:
+    """Grant Bubbles to a member for an approved pool submission.
+
+    Called by pools_service after admin approval. Idempotent via submission_id.
+    Returns the GrantResponse dict from wallet_service.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.WALLET_SERVICE_URL,
+        path="/internal/wallet/pool-submission-reward",
+        calling_service=calling_service,
+        json={
+            "member_auth_id": member_auth_id,
+            "bubbles_amount": bubbles_amount,
+            "submission_id": submission_id,
+            "granted_by": granted_by,
+        },
+    )
     resp.raise_for_status()
     return resp.json()
 

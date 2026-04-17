@@ -4,12 +4,12 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from libs.auth.dependencies import require_admin
-from libs.auth.models import AuthUser
-from libs.db.session import get_async_db
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from libs.auth.dependencies import require_admin
+from libs.auth.models import AuthUser
+from libs.db.session import get_async_db
 from services.pools_service.models import PartnershipStatus, Pool, PoolType
 from services.pools_service.schemas import (
     PoolCreate,
@@ -17,6 +17,7 @@ from services.pools_service.schemas import (
     PoolResponse,
     PoolUpdate,
 )
+from services.pools_service.services import recompute_pool_score
 
 router = APIRouter(tags=["admin-pools"])
 
@@ -91,6 +92,8 @@ async def create_pool(
         )
 
     pool = Pool(**pool_in.model_dump())
+    # Compute weighted composite score from component scores + pool_type
+    pool.computed_score = recompute_pool_score(pool)
     db.add(pool)
     await db.commit()
     await db.refresh(pool)
@@ -154,6 +157,19 @@ async def update_pool(
     for field, value in update_data.items():
         setattr(pool, field, value)
 
+    # Recompute if any scoring input (components or pool_type) changed
+    score_inputs = {
+        "water_quality",
+        "good_for_beginners",
+        "good_for_training",
+        "ease_of_access",
+        "management_cooperation",
+        "partnership_potential",
+        "pool_type",
+    }
+    if score_inputs & set(update_data.keys()):
+        pool.computed_score = recompute_pool_score(pool)
+
     await db.commit()
     await db.refresh(pool)
 
@@ -168,15 +184,27 @@ async def update_pool(
 @router.post("/{pool_id}/status", response_model=PoolResponse)
 async def update_partnership_status(
     pool_id: uuid.UUID,
-    partnership_status: PartnershipStatus,
+    partnership_status: PartnershipStatus = Query(...),
+    reason: Optional[str] = Query(None, max_length=2000),
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Update a pool's partnership status."""
+    """Update a pool's partnership status and auto-log the transition."""
+    from services.pools_service.routers.admin_related import record_status_change
+
     result = await db.execute(select(Pool).where(Pool.id == pool_id))
     pool = result.scalar_one_or_none()
     if not pool:
         raise HTTPException(status_code=404, detail="Pool not found")
+
+    # Record transition BEFORE mutating partnership_status
+    await record_status_change(
+        pool=pool,
+        new_status=partnership_status,
+        changed_by_auth_id=current_user.user_id,
+        reason=reason,
+        db=db,
+    )
 
     pool.partnership_status = partnership_status
     await db.commit()
