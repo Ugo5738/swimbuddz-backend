@@ -5,7 +5,10 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from libs.db.session import get_async_db
 from services.members_service.models import CoachProfile, Member
-from services.members_service.routers._helpers import member_eager_load_options
+from services.members_service.routers._helpers import (
+    member_eager_load_options,
+    resolve_member_media_urls,
+)
 from services.members_service.schemas import MemberResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +34,15 @@ async def list_coaches(
         .order_by(Member.created_at.desc())
     )
     result = await db.execute(query)
-    return result.scalars().all()
+    members = result.scalars().all()
+
+    # Serialize and resolve media URLs (profile photo, coach photo, docs)
+    enriched = []
+    for m in members:
+        data = MemberResponse.model_validate(m).model_dump(mode="json")
+        data = await resolve_member_media_urls(data)
+        enriched.append(data)
+    return enriched
 
 
 @router.get("/coaches/{member_id}", response_model=MemberResponse)
@@ -57,4 +68,5 @@ async def get_coach_by_id(
     if not coach:
         raise HTTPException(status_code=404, detail="Coach not found or not active")
 
-    return coach
+    data = MemberResponse.model_validate(coach).model_dump(mode="json")
+    return await resolve_member_media_urls(data)
