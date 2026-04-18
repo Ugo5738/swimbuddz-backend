@@ -396,12 +396,32 @@ def create_app() -> FastAPI:
     # ==================================================================
     # POOLS SERVICE PROXY
     # ==================================================================
+    # Exact-match routes for bare paths avoid a 307 redirect chain:
+    #   1. Frontend hits /api/v1/admin/pools (no trailing slash)
+    #   2. Without an exact route, FastAPI's redirect_slashes=True would 307 →
+    #      /api/v1/admin/pools/, the proxy forwards /admin/pools/, pools-service
+    #      then 307s back to /admin/pools (no slash), and the browser follows
+    #      the Location relative to the current origin → lands on the admin HTML
+    #      page instead of the API. Net result: "Failed to load pools".
+    # Handling the bare path explicitly short-circuits all of that.
+    @app.api_route("/api/v1/pools", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+    async def proxy_pools_root(request: Request):
+        return await proxy_request(clients.pools_client, "/pools", request)
+
     @app.api_route(
         "/api/v1/pools/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
     )
     async def proxy_pools(path: str, request: Request):
         """Proxy all /api/v1/pools/* requests to pools service."""
-        return await proxy_request(clients.pools_client, f"/pools/{path}", request)
+        target = f"/pools/{path}" if path else "/pools"
+        return await proxy_request(clients.pools_client, target, request)
+
+    @app.api_route(
+        "/api/v1/admin/pools",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_admin_pools_root(request: Request):
+        return await proxy_request(clients.pools_client, "/admin/pools", request)
 
     @app.api_route(
         "/api/v1/admin/pools/{path:path}",
@@ -409,9 +429,8 @@ def create_app() -> FastAPI:
     )
     async def proxy_admin_pools(path: str, request: Request):
         """Proxy all /api/v1/admin/pools/* requests to pools service."""
-        return await proxy_request(
-            clients.pools_client, f"/admin/pools/{path}", request
-        )
+        target = f"/admin/pools/{path}" if path else "/admin/pools"
+        return await proxy_request(clients.pools_client, target, request)
 
     # ==================================================================
     # AI SERVICE
