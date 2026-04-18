@@ -102,10 +102,15 @@ async def _ensure_wallet_exists(member_id: str, member_auth_id: str) -> None:
         )
 
 
-def _build_coach_response(
+async def _build_coach_response(
     member: Member, coach: CoachProfile
 ) -> CoachApplicationResponse:
     """Build CoachApplicationResponse from Member and CoachProfile models."""
+    coach_photo_url = (
+        await resolve_media_url(coach.coach_profile_photo_media_id)
+        if coach.coach_profile_photo_media_id
+        else None
+    )
     return CoachApplicationResponse(
         id=str(coach.id),
         member_id=str(member.id),
@@ -113,6 +118,8 @@ def _build_coach_response(
         first_name=member.first_name,
         last_name=member.last_name,
         display_name=coach.display_name,
+        coach_profile_photo_media_id=coach.coach_profile_photo_media_id,
+        coach_profile_photo_url=coach_photo_url,
         status=coach.status,
         short_bio=coach.short_bio,
         coaching_years=coach.coaching_years or 0,
@@ -232,7 +239,7 @@ async def apply_as_coach(
         await session.refresh(member)
         await session.refresh(coach_profile)
 
-        return _build_coach_response(member, coach_profile)
+        return await _build_coach_response(member, coach_profile)
 
 
 @router.get("/me", response_model=CoachApplicationResponse)
@@ -256,7 +263,7 @@ async def get_my_coach_profile(
             raise HTTPException(status_code=404, detail="No coach profile found")
 
         coach = member.coach_profile
-        return _build_coach_response(member, coach)
+        return await _build_coach_response(member, coach)
 
 
 @router.get("/application-status", response_model=CoachApplicationStatusResponse)
@@ -326,7 +333,7 @@ async def update_my_coach_profile(
         await session.commit()
         await session.refresh(coach)
 
-        return _build_coach_response(member, coach)
+        return await _build_coach_response(member, coach)
 
 
 @router.post("/me/preferences", response_model=CoachApplicationResponse)
@@ -360,7 +367,7 @@ async def update_my_coach_preferences(
         await session.commit()
         await session.refresh(coach)
 
-        return _build_coach_response(member, coach)
+        return await _build_coach_response(member, coach)
 
 
 @router.post("/me/onboarding", response_model=CoachApplicationResponse)
@@ -430,7 +437,7 @@ async def complete_coach_onboarding(
         await session.commit()
         await session.refresh(coach)
 
-        return _build_coach_response(member, coach)
+        return await _build_coach_response(member, coach)
 
 
 # === Admin Coach Review Endpoints ===

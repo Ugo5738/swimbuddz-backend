@@ -77,6 +77,8 @@ class CoachApplicationResponse(BaseModel):
     first_name: str
     last_name: str
     display_name: Optional[str] = None
+    coach_profile_photo_media_id: Optional[uuid.UUID] = None
+    coach_profile_photo_url: Optional[str] = None  # Resolved from media_id
 
     status: str  # draft, pending_review, more_info_needed, approved, rejected, active
     short_bio: Optional[str] = None

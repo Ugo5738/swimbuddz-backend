@@ -202,38 +202,41 @@ async def list_cohorts(
     return result.scalars().all()
 
 
-@router.get("/cohorts/open", response_model=List[CohortResponse])
-async def list_open_cohorts(
-    db: AsyncSession = Depends(get_async_db),
-):
-    """List all cohorts with status OPEN, only from published programs."""
+async def _annotate_enrollment_counts(db: AsyncSession, cohorts: List[Cohort]) -> None:
+    """Stamp each cohort with `enrolled_count` and `is_full` so the API response
+    can drive waitlist UX without extra client round trips.
 
-    query = (
-        select(Cohort)
-        .join(Program, Cohort.program_id == Program.id)
-        .where(Cohort.status == CohortStatus.OPEN)
-        .where(
-            Program.is_published.is_(True)
-        )  # Only show cohorts from published programs
-        .options(selectinload(Cohort.program))
-        .order_by(Cohort.start_date.asc())
-    )
-    result = await db.execute(query)
-    return result.scalars().all()
-
-
-@router.get("/cohorts/enrollable", response_model=List[CohortResponse])
-async def list_enrollable_cohorts(
-    program_id: uuid.UUID = None,
-    db: AsyncSession = Depends(get_async_db),
-):
-    """List cohorts members can enroll in right now.
-
-    Includes:
-    - OPEN cohorts (published programs)
-    - ACTIVE cohorts where mid-entry is enabled and still within cutoff week
+    A seat is "occupied" when an enrollment is ENROLLED or PENDING_APPROVAL —
+    same rule used in enrollments.py when deciding whether a new enrolment
+    should be auto-waitlisted.
     """
+    if not cohorts:
+        return
+    cohort_ids = [c.id for c in cohorts]
+    count_rows = await db.execute(
+        select(Enrollment.cohort_id, func.count())
+        .where(Enrollment.cohort_id.in_(cohort_ids))
+        .where(
+            Enrollment.status.in_(
+                [EnrollmentStatus.ENROLLED, EnrollmentStatus.PENDING_APPROVAL]
+            )
+        )
+        .group_by(Enrollment.cohort_id)
+    )
+    counts = {cohort_id: count for cohort_id, count in count_rows.all()}
+    for cohort in cohorts:
+        enrolled_count = counts.get(cohort.id, 0)
+        cohort.enrolled_count = enrolled_count
+        cohort.is_full = bool(cohort.capacity and enrolled_count >= cohort.capacity)
 
+
+async def _list_enrollable_cohorts(
+    db: AsyncSession, program_id: uuid.UUID | None = None
+) -> List[Cohort]:
+    """Return cohorts a member can enroll in right now — OPEN cohorts plus
+    ACTIVE cohorts where mid-entry is enabled and still within the cutoff.
+    Annotates each with enrollment counts.
+    """
     now = utc_now()
 
     query = (
@@ -257,13 +260,44 @@ async def list_enrollable_cohorts(
         query = query.where(Cohort.program_id == program_id)
 
     result = await db.execute(query)
-    cohorts = result.scalars().all()
-
-    return [
+    cohorts = [
         cohort
-        for cohort in cohorts
+        for cohort in result.scalars().all()
         if cohort.status == CohortStatus.OPEN or _is_mid_entry_open_now(cohort, now)
     ]
+    await _annotate_enrollment_counts(db, cohorts)
+    return cohorts
+
+
+@router.get("/cohorts/open", response_model=List[CohortResponse])
+async def list_open_cohorts(
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List cohorts members can enroll in — OPEN cohorts plus ACTIVE cohorts
+    with mid-entry still open. Only from published programs.
+
+    Previously returned just OPEN status; broadened so the public academy page
+    surfaces in-progress cohorts that still accept mid-entry. Callers that
+    need only-not-yet-started cohorts should filter by status client-side.
+    """
+    return await _list_enrollable_cohorts(db)
+
+
+@router.get("/cohorts/enrollable", response_model=List[CohortResponse])
+async def list_enrollable_cohorts(
+    program_id: uuid.UUID = None,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List cohorts members can enroll in right now.
+
+    Includes:
+    - OPEN cohorts (published programs)
+    - ACTIVE cohorts where mid-entry is enabled and still within cutoff week
+
+    Identical semantics to /cohorts/open; this endpoint additionally accepts a
+    program_id filter.
+    """
+    return await _list_enrollable_cohorts(db, program_id=program_id)
 
 
 @router.get("/cohorts/by-coach/{coach_member_id}", response_model=List[CohortResponse])

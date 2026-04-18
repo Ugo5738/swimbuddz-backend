@@ -293,6 +293,12 @@ class CohortResponse(CohortBase):
     # Include program details for UI convenience (avoid extra client round trips).
     program: Optional[ProgramResponse] = None
 
+    # Populated by list endpoints (/cohorts/open, /cohorts/enrollable) so the
+    # frontend can drive waitlist UX without a second round trip. None on
+    # endpoints that don't compute them (e.g. detail lookups).
+    enrolled_count: Optional[int] = None
+    is_full: Optional[bool] = None
+
     @field_validator("price_override", "installment_deposit_amount", mode="before")
     @classmethod
     def convert_amounts_to_naira(cls, value: Optional[int]) -> Optional[int]:
