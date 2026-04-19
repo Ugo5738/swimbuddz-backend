@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, model_validator
+
 from services.sessions_service.models import SessionLocation, SessionStatus, SessionType
 
 
@@ -14,7 +15,9 @@ class SessionBase(BaseModel):
     session_type: SessionType = SessionType.CLUB
     status: Optional[SessionStatus] = None  # Defaults to DRAFT at creation
 
-    # Location (enum or custom string)
+    # Location — prefer pool_id (refs pools registry). location / location_name
+    # are kept for backwards compatibility with pre-pool-registry sessions.
+    pool_id: Optional[uuid.UUID] = None
     location: Optional[SessionLocation] = None
     location_name: Optional[str] = None
     location_address: Optional[str] = None
@@ -51,6 +54,7 @@ class SessionUpdate(BaseModel):
     session_type: Optional[SessionType] = None
     status: Optional[SessionStatus] = None
 
+    pool_id: Optional[uuid.UUID] = None
     location: Optional[SessionLocation] = None
     location_name: Optional[str] = None
     location_address: Optional[str] = None
@@ -98,6 +102,7 @@ class SessionResponse(SessionBase):
             "notes": obj.notes,
             "session_type": obj.session_type,
             "status": obj.status,
+            "pool_id": getattr(obj, "pool_id", None),
             "location": obj.location,
             "location_name": obj.location_name,
             "location_address": obj.location_address,

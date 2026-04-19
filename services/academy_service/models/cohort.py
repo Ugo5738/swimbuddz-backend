@@ -66,6 +66,11 @@ class Cohort(Base):
     )
     location_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     location_address: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Preferred location reference — pool in the pools registry.
+    # When set, session generation uses this pool for every session in the cohort.
+    pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
 
     # Coach - References Member ID (who has a CoachProfile)
     coach_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -74,6 +79,14 @@ class Cohort(Base):
 
     # Pricing override in kobo (minor NGN unit). Schema auto-converts naira↔kobo.
     price_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # ── Session defaults ─────────────────────────────────────────────────
+    # Used when generating sessions for this cohort so admins don't have
+    # to set pool_fee / ride configs on every session individually.
+    # Schema layer converts naira↔kobo. Ride configs stored as JSON:
+    #   [{"ride_area_id": "uuid", "cost_kobo": 500000, "capacity": 4}, ...]
+    default_pool_fee: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    default_ride_configs: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
     status: Mapped[CohortStatus] = mapped_column(
         SAEnum(

@@ -67,6 +67,14 @@ class Session(Base):
     )
 
     # === Location ===
+    # Preferred: pool_id → references a row in the pools registry
+    # (pools_service). Since services are decoupled we store it as a
+    # plain UUID with no FK constraint; clients resolve the name via
+    # the pools API. The legacy `location` enum + `location_name` still
+    # exist for backwards compatibility with pre-pool-registry sessions.
+    pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     location: Mapped[Optional[SessionLocation]] = mapped_column(
         SAEnum(
             SessionLocation,

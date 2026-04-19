@@ -145,9 +145,19 @@ class CohortBase(BaseModel):
     location_type: Optional[LocationType] = None
     location_name: Optional[str] = None
     location_address: Optional[str] = None
+    # Preferred: pool_id from the pools registry.
+    # When set, session generation tags every session with this pool.
+    pool_id: Optional[UUID] = None
     # Pricing override
     price_override: Optional[int] = None  # API contract: naira (major unit)
     notes_internal: Optional[str] = None
+    # ── Session defaults (applied to every session generated for this cohort) ──
+    # API contract: default_pool_fee in naira (major unit); DB stores kobo.
+    default_pool_fee: Optional[float] = None
+    # Ride configs as a list of dicts. Client sends naira costs; schema converts
+    # to kobo in the `cost_kobo` field so backend consumers have consistent units.
+    #   [{"ride_area_id": "uuid", "cost": 5000.0, "capacity": 4}, ...]
+    default_ride_configs: Optional[list[dict]] = None
     # ── Installment billing ──────────────────────────────────────────────────
     # Toggle: admin enables installment option for this cohort
     installment_plan_enabled: bool = False
@@ -169,10 +179,31 @@ class CohortCreate(CohortBase):
     program_id: UUID
     coach_assignments: Optional[list[CoachAssignmentInput]] = None
 
-    @field_validator("price_override", "installment_deposit_amount", mode="before")
+    @field_validator(
+        "price_override",
+        "installment_deposit_amount",
+        "default_pool_fee",
+        mode="before",
+    )
     @classmethod
-    def convert_amounts_to_kobo(cls, value: Optional[int]) -> Optional[int]:
+    def convert_amounts_to_kobo(cls, value):
         return naira_to_kobo(value) if value is not None else None
+
+    @field_validator("default_ride_configs", mode="before")
+    @classmethod
+    def convert_ride_config_costs_to_kobo(cls, value):
+        """Convert each ride-config entry's `cost` (naira) → `cost_kobo` (int)."""
+        if value is None:
+            return None
+        normalised: list[dict] = []
+        for entry in value:
+            if not isinstance(entry, dict):
+                continue
+            out = dict(entry)
+            if "cost" in out and out["cost"] is not None:
+                out["cost_kobo"] = naira_to_kobo(out.pop("cost"))
+            normalised.append(out)
+        return normalised
 
 
 class CohortUpdate(BaseModel):
@@ -190,18 +221,42 @@ class CohortUpdate(BaseModel):
     location_type: Optional[LocationType] = None
     location_name: Optional[str] = None
     location_address: Optional[str] = None
+    pool_id: Optional[UUID] = None
     # Pricing override
     price_override: Optional[int] = None
     notes_internal: Optional[str] = None
+    # ── Session defaults ─────────────────────────────────────────────────
+    default_pool_fee: Optional[float] = None
+    default_ride_configs: Optional[list[dict]] = None
     # ── Installment billing ──────────────────────────────────────────────────
     installment_plan_enabled: Optional[bool] = None
     installment_count: Optional[int] = None
     installment_deposit_amount: Optional[int] = None
 
-    @field_validator("price_override", "installment_deposit_amount", mode="before")
+    @field_validator(
+        "price_override",
+        "installment_deposit_amount",
+        "default_pool_fee",
+        mode="before",
+    )
     @classmethod
-    def convert_amounts_to_kobo(cls, value: Optional[int]) -> Optional[int]:
+    def convert_amounts_to_kobo(cls, value):
         return naira_to_kobo(value) if value is not None else None
+
+    @field_validator("default_ride_configs", mode="before")
+    @classmethod
+    def convert_ride_config_costs_to_kobo(cls, value):
+        if value is None:
+            return None
+        normalised: list[dict] = []
+        for entry in value:
+            if not isinstance(entry, dict):
+                continue
+            out = dict(entry)
+            if "cost" in out and out["cost"] is not None:
+                out["cost_kobo"] = naira_to_kobo(out.pop("cost"))
+            normalised.append(out)
+        return normalised
 
 
 class CohortTimelineShiftRequest(BaseModel):
@@ -299,10 +354,31 @@ class CohortResponse(CohortBase):
     enrolled_count: Optional[int] = None
     is_full: Optional[bool] = None
 
-    @field_validator("price_override", "installment_deposit_amount", mode="before")
+    @field_validator(
+        "price_override",
+        "installment_deposit_amount",
+        "default_pool_fee",
+        mode="before",
+    )
     @classmethod
-    def convert_amounts_to_naira(cls, value: Optional[int]) -> Optional[int]:
-        return int(kobo_to_naira(value)) if value is not None else None
+    def convert_amounts_to_naira(cls, value):
+        return kobo_to_naira(value) if value is not None else None
+
+    @field_validator("default_ride_configs", mode="before")
+    @classmethod
+    def convert_ride_config_costs_to_naira(cls, value):
+        """On read: restore `cost` (naira, float) from stored `cost_kobo` (int)."""
+        if value is None:
+            return None
+        normalised: list[dict] = []
+        for entry in value:
+            if not isinstance(entry, dict):
+                continue
+            out = dict(entry)
+            if "cost_kobo" in out and out["cost_kobo"] is not None:
+                out["cost"] = kobo_to_naira(out.pop("cost_kobo"))
+            normalised.append(out)
+        return normalised
 
     model_config = ConfigDict(from_attributes=True)
 

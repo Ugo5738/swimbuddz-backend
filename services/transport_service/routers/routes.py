@@ -6,9 +6,12 @@ from typing import Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.common.currency import naira_to_kobo
 from libs.db.session import get_async_db
-from pydantic import BaseModel, ConfigDict
 from services.transport_service.models import (
     PickupLocation,
     RideArea,
@@ -16,8 +19,6 @@ from services.transport_service.models import (
     RouteInfo,
     SessionRideConfig,
 )
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/transport", tags=["transport"])
 
@@ -28,7 +29,10 @@ router = APIRouter(prefix="/transport", tags=["transport"])
 class RouteInfoBase(BaseModel):
     origin_area_id: Optional[uuid.UUID] = None
     origin_pickup_location_id: Optional[uuid.UUID] = None
-    destination: str
+    # Preferred destination link — pool from the pools registry.
+    destination_pool_id: Optional[uuid.UUID] = None
+    # Legacy string (matches Session.location enum); optional now.
+    destination: Optional[str] = None
     destination_name: str
     distance_text: str
     duration_text: str
@@ -42,6 +46,7 @@ class RouteInfoCreate(RouteInfoBase):
 class RouteInfoUpdate(BaseModel):
     origin_area_id: Optional[uuid.UUID] = None
     origin_pickup_location_id: Optional[uuid.UUID] = None
+    destination_pool_id: Optional[uuid.UUID] = None
     destination: Optional[str] = None
     destination_name: Optional[str] = None
     distance_text: Optional[str] = None
@@ -85,6 +90,7 @@ async def list_routes(
     origin_area_id: Optional[uuid.UUID] = None,
     origin_pickup_location_id: Optional[uuid.UUID] = None,
     destination: Optional[str] = None,
+    destination_pool_id: Optional[uuid.UUID] = None,
     db: AsyncSession = Depends(get_async_db),
 ):
     query = select(RouteInfo)
@@ -94,6 +100,8 @@ async def list_routes(
         query = query.where(
             RouteInfo.origin_pickup_location_id == origin_pickup_location_id
         )
+    if destination_pool_id:
+        query = query.where(RouteInfo.destination_pool_id == destination_pool_id)
     if destination:
         query = query.where(RouteInfo.destination == destination)
 
@@ -358,7 +366,10 @@ async def get_session_ride_configs(
             session_start_time = datetime.fromisoformat(
                 start_time_str.replace("Z", "+00:00")
             )
-            session_location = session_data["location"]
+            # Prefer the pool_id link (post-registry); fall back to the legacy
+            # location enum string for pre-registry sessions.
+            session_pool_id = session_data.get("pool_id")
+            session_location = session_data.get("location")
         except httpx.HTTPError:
             raise HTTPException(status_code=404, detail="Session not found")
 
@@ -401,7 +412,6 @@ async def get_session_ride_configs(
 
         # Build pickup locations with availability info AND route info
         pickup_locations_data = []
-        destination_val = session_location
 
         for loc in locations:
             loc_id = str(loc.id)
@@ -419,14 +429,30 @@ async def get_session_ride_configs(
                 is_available = current_bookings < cfg.capacity
             # else: Another location is active, this one is not available
 
-            # Fetch route info for this specific pickup location
-            route_query = select(RouteInfo).where(
-                RouteInfo.origin_pickup_location_id == loc.id,
-                RouteInfo.destination == destination_val,
-            )
-            route_result = await db.execute(route_query)
-            route_info = route_result.scalar_one_or_none()
-
+            # Fetch route info for this specific pickup location.
+            # Match strategy: prefer the session's pool_id against the route's
+            # destination_pool_id (pool-registry era). When either side is
+            # missing, fall back to matching the legacy `destination` string
+            # against the session's `location` enum value.
+            route_info = None
+            if session_pool_id:
+                route_info = (
+                    await db.execute(
+                        select(RouteInfo).where(
+                            RouteInfo.origin_pickup_location_id == loc.id,
+                            RouteInfo.destination_pool_id == session_pool_id,
+                        )
+                    )
+                ).scalar_one_or_none()
+            if route_info is None and session_location:
+                route_info = (
+                    await db.execute(
+                        select(RouteInfo).where(
+                            RouteInfo.origin_pickup_location_id == loc.id,
+                            RouteInfo.destination == session_location,
+                        )
+                    )
+                ).scalar_one_or_none()
             # Calculate times
             loc_distance_text = None
             loc_duration_text = None
