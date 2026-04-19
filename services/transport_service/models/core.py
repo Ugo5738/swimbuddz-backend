@@ -1,11 +1,12 @@
 import uuid
 from datetime import datetime
 
-from libs.common.datetime_utils import utc_now
-from libs.db.base import Base
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
+
+from libs.common.datetime_utils import utc_now
+from libs.db.base import Base
 
 
 class MemberRef(Base):
@@ -87,11 +88,18 @@ class RouteInfo(Base):
         UUID(as_uuid=True), ForeignKey("pickup_locations.id"), nullable=True
     )
 
-    # Destination (matches SessionLocation enum values or custom)
-    destination: Mapped[str] = mapped_column(String, nullable=False)
+    # Preferred: pool from the pools registry (pools_service). Sessions
+    # carrying `pool_id` match a route when their pool_id equals this column.
+    # Cross-service, so stored as UUID with no FK constraint.
+    destination_pool_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    # Legacy string destination kept for pre-pool-registry routes — still
+    # matched against `Session.location` enum values as a fallback.
+    destination: Mapped[str] = mapped_column(String, nullable=True)
     destination_name: Mapped[str] = mapped_column(
         String, nullable=False
-    )  # e.g. "Rowe Park, Yaba"
+    )  # Human-readable; auto-filled with pool.name when pool picked.
 
     distance_text: Mapped[str] = mapped_column(String, nullable=False)  # e.g. "13.7 km"
     duration_text: Mapped[str] = mapped_column(String, nullable=False)  # e.g. "44 mins"
