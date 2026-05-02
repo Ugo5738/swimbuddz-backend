@@ -14,6 +14,8 @@ from services.members_service.routers import (
     coach_grades_admin_router,
     coach_grades_router,
     coaches_router,
+    guardians_admin_router,
+    guardians_internal_router,
     internal_router,
     members_router,
     registration_router,
@@ -52,6 +54,10 @@ def create_app() -> FastAPI:
     app.include_router(coach_grades_admin_router)
     app.include_router(coach_agreements_router)
     app.include_router(coach_agreements_admin_router)
+
+    # Guardian-link endpoints — admin CRUD + internal read for chat_service
+    app.include_router(guardians_admin_router)
+    app.include_router(guardians_internal_router)
 
     # Internal service-to-service endpoints (not exposed via gateway)
     app.include_router(internal_router)

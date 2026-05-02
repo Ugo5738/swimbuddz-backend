@@ -466,6 +466,25 @@ def create_app() -> FastAPI:
         )
 
     # ==================================================================
+    # CHAT SERVICE PROXY (Phase 0 scaffold — Phase 1 endpoints to follow)
+    # ==================================================================
+    @app.api_route(
+        "/api/v1/chat/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_chat(path: str, request: Request):
+        """Proxy all /api/v1/chat/* requests to chat service."""
+        return await proxy_request(clients.chat_client, f"/chat/{path}", request)
+
+    @app.api_route(
+        "/api/v1/admin/chat/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_admin_chat(path: str, request: Request):
+        """Proxy all /api/v1/admin/chat/* requests to chat service."""
+        return await proxy_request(clients.chat_client, f"/admin/chat/{path}", request)
+
+    # ==================================================================
     # DASHBOARD (Gateway-specific aggregation)
     # ==================================================================
     from services.gateway_service.app.routers.cleanup import router as cleanup_router

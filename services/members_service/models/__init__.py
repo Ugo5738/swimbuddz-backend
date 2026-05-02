@@ -14,6 +14,7 @@ Model definitions are split across:
 
 from services.members_service.models.assessment import SwimAssessment  # noqa: F401
 from services.members_service.models.coach import (  # noqa: F401
+    AgreementType,
     AgreementVersion,
     CoachAgreement,
     CoachBankAccount,
@@ -21,6 +22,10 @@ from services.members_service.models.coach import (  # noqa: F401
     HandbookVersion,
 )
 from services.members_service.models.enums import CoachGrade  # noqa: F401
+from services.members_service.models.guardian import (  # noqa: F401
+    GuardianLink,
+    GuardianRelationship,
+)
 from services.members_service.models.member import (  # noqa: F401
     Member,
     MemberAvailability,
@@ -39,6 +44,8 @@ from services.members_service.models.volunteer import (  # noqa: F401
 
 __all__ = [
     "CoachGrade",
+    "GuardianLink",
+    "GuardianRelationship",
     "Member",
     "MemberProfile",
     "MemberEmergencyContact",
@@ -52,6 +59,7 @@ __all__ = [
     "MemberChallengeCompletion",
     "CoachProfile",
     "CoachAgreement",
+    "AgreementType",
     "AgreementVersion",
     "HandbookVersion",
     "CoachBankAccount",

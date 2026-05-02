@@ -1,14 +1,27 @@
 """Coach-specific models: profiles, agreements, handbook versions, and bank accounts."""
 
+import enum
 import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Optional
 
-from libs.common.datetime_utils import utc_now
-from libs.db.base import Base
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from libs.common.datetime_utils import utc_now
+from libs.db.base import Base
 
 if TYPE_CHECKING:
     from .member import Member
@@ -300,12 +313,31 @@ class CoachAgreement(Base):
         return f"<CoachAgreement {self.id} v{self.agreement_version} active={self.is_active}>"
 
 
-class AgreementVersion(Base):
-    """Stores agreement text versions for coach agreements.
+class AgreementType(str, enum.Enum):
+    """Types of versioned agreements stored in ``agreement_versions``.
 
-    Only one version can be current at a time (is_current=True).
-    When a new version is created, the previous one is deactivated.
-    Coaches must sign the current version to maintain dashboard access.
+    Kept as a Python enum mapped to a String column (not a Postgres enum) so
+    adding a new type never requires a DB migration — just a code change.
+    """
+
+    COACH_AGREEMENT = "coach_agreement"
+    SAFEGUARDING = "safeguarding"
+    # Future candidates (add when needed): member_terms, privacy_policy,
+    # media_consent, parental_consent.
+
+
+class AgreementVersion(Base):
+    """Stores versioned agreement text, scoped by ``agreement_type``.
+
+    Supports multiple parallel policy documents (coach agreement, chat
+    safeguarding policy, etc.) — each with its own version history.
+
+    Rules:
+      * ``(agreement_type, version)`` is unique.
+      * At most one ``is_current=True`` row per ``agreement_type``.
+        When you activate a new version, deactivate the previous one in the
+        same transaction (enforced by a partial unique index).
+      * Old versions are preserved for audit; never deleted.
     """
 
     __tablename__ = "agreement_versions"
@@ -313,9 +345,17 @@ class AgreementVersion(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    # Which policy document this is a version of. Defaults to coach_agreement
+    # for backward compatibility with existing rows.
+    agreement_type: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default=AgreementType.COACH_AGREEMENT.value,
+        server_default=AgreementType.COACH_AGREEMENT.value,
+    )
     version: Mapped[str] = mapped_column(
-        String(20), unique=True, nullable=False
-    )  # e.g., "1.0", "2.0"
+        String(20), nullable=False
+    )  # e.g., "1.0", "2.0"; unique per agreement_type
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)  # Markdown content
     content_hash: Mapped[str] = mapped_column(
@@ -337,8 +377,24 @@ class AgreementVersion(Base):
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
+    __table_args__ = (
+        UniqueConstraint(
+            "agreement_type", "version", name="uq_agreement_version_per_type"
+        ),
+        # Only one current version per type
+        Index(
+            "uq_agreement_current_per_type",
+            "agreement_type",
+            unique=True,
+            postgresql_where="is_current = true",
+        ),
+    )
+
     def __repr__(self):
-        return f"<AgreementVersion v{self.version} current={self.is_current}>"
+        return (
+            f"<AgreementVersion type={self.agreement_type} "
+            f"v{self.version} current={self.is_current}>"
+        )
 
 
 class HandbookVersion(Base):

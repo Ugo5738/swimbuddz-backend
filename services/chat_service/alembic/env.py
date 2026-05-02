@@ -1,4 +1,4 @@
-"""Alembic configuration entrypoint for members service."""
+"""Alembic configuration entrypoint for chat service."""
 
 # ruff: noqa: F401
 
@@ -17,25 +17,13 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.members_service.models import (  # noqa: F401
-    AgreementVersion,
-    ClubChallenge,
-    CoachAgreement,
-    CoachBankAccount,
-    CoachProfile,
-    GuardianLink,
-    HandbookVersion,
-    Member,
-    MemberAvailability,
-    MemberChallengeCompletion,
-    MemberEmergencyContact,
-    MemberMembership,
-    MemberPreferences,
-    MemberProfile,
-    PendingRegistration,
-    SwimAssessment,
-    VolunteerInterest,
-    VolunteerRole,
+from services.chat_service.models import (  # noqa: F401
+    ChatAuditLog,
+    ChatChannel,
+    ChatChannelMember,
+    ChatMessage,
+    ChatMessageReaction,
+    ChatMessageReport,
 )
 
 settings = get_settings()
@@ -45,18 +33,26 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+# Only migrate tables owned by this service. Keep in sync with model imports
+# above — when adding a new table, update both.
+SERVICE_TABLES: set[str] = {
+    "chat_channels",
+    "chat_channel_members",
+    "chat_messages",
+    "chat_message_reactions",
+    "chat_message_reports",
+    "chat_audit_log",
+}
 
 url = settings.DATABASE_URL.replace("%", "%%")
 config.set_main_option("sqlalchemy.url", url)
 
 
 def include_object(obj, name, type_, reflected, compare_to):
-    if reflected and name not in target_metadata.tables:
-        return False
     if type_ == "table":
-        return name in target_metadata.tables
+        return name in SERVICE_TABLES
     if type_ in ("index", "column", "foreign_key_constraint"):
-        return obj.table.name in target_metadata.tables
+        return obj.table.name in SERVICE_TABLES
     return True
 
 
@@ -67,7 +63,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        version_table="alembic_version_members",
+        version_table="alembic_version_chat",
         include_object=include_object,
     )
 
@@ -79,7 +75,7 @@ def do_run_migrations(connection):
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        version_table="alembic_version_members",
+        version_table="alembic_version_chat",
         include_object=include_object,
     )
     with context.begin_transaction():
