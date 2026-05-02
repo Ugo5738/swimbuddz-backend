@@ -524,6 +524,32 @@ class PaymentInitResponse(BaseModel):
 # ============================================================================
 
 
+class OrderItemImageInfo(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    url: str
+    is_primary: bool = False
+
+
+class OrderItemProductInfo(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    images: list[OrderItemImageInfo] = []
+
+
+class OrderItemVariantInfo(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    sku: str
+    name: Optional[str] = None
+    options: dict = Field(default_factory=dict)
+    product: Optional[OrderItemProductInfo] = None
+
+
 class OrderItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -539,6 +565,7 @@ class OrderItemResponse(BaseModel):
     estimated_ship_date: Optional[datetime]
     supplier_id: Optional[uuid.UUID] = None
     supplier_name: Optional[str] = None
+    variant: Optional[OrderItemVariantInfo] = None
 
 
 class OrderResponse(BaseModel):
@@ -594,6 +621,14 @@ class OrderStatusUpdate(BaseModel):
 
     status: OrderStatus
     admin_notes: Optional[str] = None
+
+
+class OrderUpdate(BaseModel):
+    """Partial admin update for an order."""
+
+    status: Optional[OrderStatus] = None
+    admin_notes: Optional[str] = None
+    tracking_number: Optional[str] = None
 
 
 # ============================================================================
