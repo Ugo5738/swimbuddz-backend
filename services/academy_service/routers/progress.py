@@ -1,6 +1,6 @@
 from fastapi import APIRouter
-from libs.common.service_client import emit_rewards_event
 
+from libs.common.service_client import emit_rewards_event
 from services.academy_service.routers._shared import (
     AsyncSession,
     AuthUser,
@@ -12,6 +12,9 @@ from services.academy_service.routers._shared import (
     List,
     MemberMilestoneClaimRequest,
     Milestone,
+    MilestoneEventType,
+    MilestoneReviewEvent,
+    MilestoneReviewEventResponse,
     ProgressStatus,
     RequiredEvidence,
     StudentProgress,
@@ -107,6 +110,7 @@ async def update_student_progress(
     progress = result.scalar_one_or_none()
 
     if progress:
+        previous_status = progress.status
         progress.status = progress_in.status
         progress.achieved_at = progress_in.achieved_at
         progress.coach_notes = progress_in.coach_notes
@@ -118,6 +122,7 @@ async def update_student_progress(
             progress.reviewed_by_coach_id = current_user.user_id
             progress.reviewed_at = progress_in.reviewed_at or utc_now()
     else:
+        previous_status = None
         progress = StudentProgress(
             enrollment_id=enrollment_id,
             milestone_id=milestone_id,
@@ -129,6 +134,39 @@ async def update_student_progress(
             reviewed_at=progress_in.reviewed_at or utc_now(),
         )
         db.add(progress)
+
+    # Flush so that `progress.id` is populated for the audit event FK
+    await db.flush()
+
+    # Classify the event: approval, rejection, or generic status change
+    from libs.auth.dependencies import is_admin_or_service
+
+    actor_role = "admin" if is_admin_or_service(current_user) else "coach"
+    has_review_payload = bool(
+        progress_in.coach_notes
+        or progress_in.reviewed_at
+        or progress_in.reviewed_by_coach_id
+    )
+    if progress_in.status == ProgressStatus.ACHIEVED and has_review_payload:
+        event_type = MilestoneEventType.APPROVED
+    elif progress_in.status == ProgressStatus.PENDING and progress_in.coach_notes:
+        event_type = MilestoneEventType.REJECTED
+    else:
+        event_type = MilestoneEventType.STATUS_CHANGED
+
+    db.add(
+        MilestoneReviewEvent(
+            progress_id=progress.id,
+            enrollment_id=enrollment_id,
+            milestone_id=milestone_id,
+            event_type=event_type,
+            actor_id=current_user.user_id,
+            actor_role=actor_role,
+            previous_status=previous_status,
+            new_status=progress_in.status,
+            coach_notes_snapshot=progress_in.coach_notes,
+        )
+    )
 
     await db.commit()
     await db.refresh(progress)
@@ -255,6 +293,7 @@ async def claim_milestone(
 
     if progress:
         # Update existing record (handles both first claim and resubmission after rejection)
+        previous_status = progress.status
         progress.status = ProgressStatus.ACHIEVED
         progress.achieved_at = utc_now()
         if claim_in.evidence_media_id:
@@ -262,13 +301,16 @@ async def claim_milestone(
         if claim_in.student_notes is not None:
             progress.student_notes = claim_in.student_notes
 
-        # Clear previous review fields so it goes back to "pending review" state
+        # Clear previous review fields so it goes back to "pending review" state.
+        # The prior rejection feedback is preserved in the MilestoneReviewEvent
+        # audit trail emitted at the time of the rejection.
         progress.reviewed_at = None
         progress.reviewed_by_coach_id = None
         progress.score = None
         progress.coach_notes = None
     else:
         # Create new record
+        previous_status = None
         progress = StudentProgress(
             enrollment_id=enrollment_id,
             milestone_id=milestone_id,
@@ -279,6 +321,83 @@ async def claim_milestone(
         )
         db.add(progress)
 
+    # Flush so progress.id is available for the audit FK
+    await db.flush()
+
+    db.add(
+        MilestoneReviewEvent(
+            progress_id=progress.id,
+            enrollment_id=enrollment_id,
+            milestone_id=milestone_id,
+            event_type=MilestoneEventType.CLAIMED,
+            actor_id=current_user.user_id,
+            actor_role="student",
+            previous_status=previous_status,
+            new_status=ProgressStatus.ACHIEVED,
+            student_notes_snapshot=claim_in.student_notes,
+            evidence_media_id_snapshot=claim_in.evidence_media_id,
+        )
+    )
+
     await db.commit()
     await db.refresh(progress)
     return progress
+
+
+@router.get(
+    "/enrollments/{enrollment_id}/progress/{progress_id}/events",
+    response_model=List[MilestoneReviewEventResponse],
+)
+async def list_milestone_review_events(
+    enrollment_id: uuid.UUID,
+    progress_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List the audit trail of claim / review / status-change events for a
+    given StudentProgress record.
+
+    Visible to: the enrolled student, the coach assigned to the cohort, or an
+    admin.
+    """
+    # Fetch progress + enrollment to check authorization
+    progress_query = select(StudentProgress).where(
+        StudentProgress.id == progress_id,
+        StudentProgress.enrollment_id == enrollment_id,
+    )
+    progress_result = await db.execute(progress_query)
+    progress = progress_result.scalar_one_or_none()
+    if progress is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Progress record not found",
+        )
+
+    enrollment_query = select(Enrollment).where(Enrollment.id == enrollment_id)
+    enrollment_result = await db.execute(enrollment_query)
+    enrollment = enrollment_result.scalar_one_or_none()
+    if enrollment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Enrollment not found",
+        )
+
+    from libs.auth.dependencies import is_admin_or_service
+
+    is_owner_student = enrollment.member_auth_id == current_user.user_id
+    if not is_owner_student and not is_admin_or_service(current_user):
+        # Must be a coach assigned to this cohort
+        if enrollment.cohort_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view this progress history",
+            )
+        await require_coach_for_cohort(current_user, str(enrollment.cohort_id), db)
+
+    events_query = (
+        select(MilestoneReviewEvent)
+        .where(MilestoneReviewEvent.progress_id == progress_id)
+        .order_by(MilestoneReviewEvent.created_at.asc())
+    )
+    events_result = await db.execute(events_query)
+    return events_result.scalars().all()

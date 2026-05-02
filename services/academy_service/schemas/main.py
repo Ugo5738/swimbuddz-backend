@@ -12,6 +12,7 @@ from services.academy_service.models import (
     EnrollmentStatus,
     InstallmentStatus,
     LocationType,
+    MilestoneEventType,
     MilestoneType,
     PaymentStatus,
     ProgramCategory,
@@ -529,6 +530,30 @@ class StudentProgressResponse(StudentProgressBase):
     reviewed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Milestone Review Event Schemas ---
+
+
+class MilestoneReviewEventResponse(BaseModel):
+    """One entry in the milestone review audit trail."""
+
+    id: UUID
+    progress_id: UUID
+    enrollment_id: UUID
+    milestone_id: UUID
+    event_type: MilestoneEventType
+    actor_id: UUID
+    actor_role: str
+    previous_status: Optional[ProgressStatus] = None
+    new_status: ProgressStatus
+    student_notes_snapshot: Optional[str] = None
+    coach_notes_snapshot: Optional[str] = None
+    evidence_media_id_snapshot: Optional[UUID] = None
+    score_snapshot: Optional[int] = None
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

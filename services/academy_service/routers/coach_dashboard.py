@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+
 from services.academy_service.routers._shared import (
     AsyncSession,
     AuthUser,
@@ -15,7 +16,9 @@ from services.academy_service.routers._shared import (
     HTTPException,
     List,
     Milestone,
+    MilestoneEventType,
     MilestoneReviewAction,
+    MilestoneReviewEvent,
     PendingMilestoneReview,
     ProgressStatus,
     StudentProgress,
@@ -643,12 +646,15 @@ async def review_milestone_claim(
         )
 
     # 4. Perform the review action
+    previous_status = progress.status
     if action.action == "approve":
         progress.status = ProgressStatus.ACHIEVED
         progress.achieved_at = utc_now()
+        event_type = MilestoneEventType.APPROVED
     elif action.action == "reject":
         progress.status = ProgressStatus.PENDING
         # Keep evidence_media_id for audit trail - student will replace it on resubmission
+        event_type = MilestoneEventType.REJECTED
     else:
         raise HTTPException(
             status_code=400, detail="Invalid action. Use 'approve' or 'reject'"
@@ -658,6 +664,21 @@ async def review_milestone_claim(
     progress.reviewed_at = utc_now()
     progress.score = action.score
     progress.coach_notes = action.coach_notes
+
+    db.add(
+        MilestoneReviewEvent(
+            progress_id=progress.id,
+            enrollment_id=progress.enrollment_id,
+            milestone_id=progress.milestone_id,
+            event_type=event_type,
+            actor_id=member_id,
+            actor_role="coach",
+            previous_status=previous_status,
+            new_status=progress.status,
+            coach_notes_snapshot=action.coach_notes,
+            score_snapshot=action.score,
+        )
+    )
 
     await db.commit()
 

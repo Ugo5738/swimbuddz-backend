@@ -5,6 +5,11 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
+from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload, selectinload
+
 from libs.auth.dependencies import (
     get_current_user,
     require_admin,
@@ -34,11 +39,6 @@ from libs.common.service_client import (
     internal_post,
 )
 from libs.db.session import get_async_db
-from sqlalchemy import and_, delete, func, or_, select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
-
 from services.academy_service.models import (
     CoachAssignment,
     CoachGrade,
@@ -52,6 +52,8 @@ from services.academy_service.models import (
     EnrollmentStatus,
     InstallmentStatus,
     Milestone,
+    MilestoneEventType,
+    MilestoneReviewEvent,
     PaymentStatus,
     Program,
     ProgramCategory,
@@ -93,6 +95,7 @@ from services.academy_service.schemas import (
     MilestoneCreate,
     MilestoneResponse,
     MilestoneReviewAction,
+    MilestoneReviewEventResponse,
     NextSessionInfo,
     OnboardingResponse,
     PendingMilestoneReview,
@@ -170,6 +173,8 @@ __all__ = [
     "EnrollmentStatus",
     "InstallmentStatus",
     "Milestone",
+    "MilestoneEventType",
+    "MilestoneReviewEvent",
     "PaymentStatus",
     "Program",
     "ProgramCategory",
@@ -210,6 +215,7 @@ __all__ = [
     "MilestoneCreate",
     "MilestoneResponse",
     "MilestoneReviewAction",
+    "MilestoneReviewEventResponse",
     "NextSessionInfo",
     "OnboardingResponse",
     "PendingMilestoneReview",
