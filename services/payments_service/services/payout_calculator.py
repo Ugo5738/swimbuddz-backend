@@ -81,7 +81,9 @@ class BlockPayoutComputation:
     new_makeup_obligations: List[dict]  # To be created in CohortMakeupObligation
 
 
-def _block_window(config: RecurringPayoutConfig, block_index: int) -> tuple[datetime, datetime]:
+def _block_window(
+    config: RecurringPayoutConfig, block_index: int
+) -> tuple[datetime, datetime]:
     """Return [start, end) for a given block index of a cohort."""
     delta = timedelta(days=config.block_length_days)
     start = config.cohort_start_date + delta * block_index
@@ -100,9 +102,10 @@ async def _count_sessions_in_block(
     Excludes sessions whose status is `cancelled` (they didn't happen).
     """
     rows = (
-        await db.execute(
-            text(
-                """
+        (
+            await db.execute(
+                text(
+                    """
                 SELECT id, starts_at, status
                 FROM public.sessions
                 WHERE cohort_id = :cohort_id
@@ -111,15 +114,18 @@ async def _count_sessions_in_block(
                   AND COALESCE(status, '') <> :cancelled
                 ORDER BY starts_at
                 """
-            ),
-            {
-                "cohort_id": cohort_id,
-                "start": block_start,
-                "end": block_end,
-                "cancelled": CANCELLED_STATUS,
-            },
+                ),
+                {
+                    "cohort_id": cohort_id,
+                    "start": block_start,
+                    "end": block_end,
+                    "cancelled": CANCELLED_STATUS,
+                },
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     return [dict(r) for r in rows]
 
 
@@ -137,9 +143,10 @@ async def _active_enrollments(
       - pending_approval, waitlist (never actually attended)
     """
     rows = (
-        await db.execute(
-            text(
-                """
+        (
+            await db.execute(
+                text(
+                    """
                 SELECT e.id AS enrollment_id, e.member_id, e.status,
                        e.created_at AS row_created_at,
                        e.enrolled_at, e.dropped_at,
@@ -153,10 +160,13 @@ async def _active_enrollments(
                   )
                 ORDER BY e.created_at
                 """
-            ),
-            {"cohort_id": cohort_id, "as_of": as_of},
+                ),
+                {"cohort_id": cohort_id, "as_of": as_of},
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     return [dict(r) for r in rows]
 
 
@@ -180,11 +190,15 @@ async def _attendance_for_student_in_sessions(
         """
     ).bindparams(bindparam("session_ids", expanding=True))
     rows = (
-        await db.execute(
-            stmt,
-            {"member_id": member_id, "session_ids": session_ids},
+        (
+            await db.execute(
+                stmt,
+                {"member_id": member_id, "session_ids": session_ids},
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     return {r["session_id"]: (r["status"] or "").lower() for r in rows}
 
 
@@ -233,7 +247,9 @@ def _per_session_amount_kobo(
     if sessions_in_block <= 0:
         return 0
     band = Decimal(config.band_percentage) / Decimal(100)
-    block_share = Decimal(config.cohort_price_amount) * band / Decimal(config.total_blocks)
+    block_share = (
+        Decimal(config.cohort_price_amount) * band / Decimal(config.total_blocks)
+    )
     per_session = block_share / Decimal(sessions_in_block)
     return int(per_session.quantize(Decimal("1")))  # floor to whole kobo
 
@@ -250,12 +266,15 @@ async def compute_block_payout(
     """
     block_start, block_end = _block_window(config, block_index)
 
-    sessions = await _count_sessions_in_block(db, config.cohort_id, block_start, block_end)
-    session_ids = [s["id"] for s in sessions]
+    sessions = await _count_sessions_in_block(
+        db, config.cohort_id, block_start, block_end
+    )
     sessions_in_block = len(sessions)
 
     enrollments = await _active_enrollments(db, config.cohort_id, as_of=block_end)
-    makeup_counts = await _completed_makeups_in_block(db, config, block_start, block_end)
+    makeup_counts = await _completed_makeups_in_block(
+        db, config, block_start, block_end
+    )
 
     per_session_kobo = _per_session_amount_kobo(config, sessions_in_block)
 
@@ -293,13 +312,15 @@ async def compute_block_payout(
         # Late-join: each session that ran before the student enrolled is a
         # make-up obligation owed.
         for s in ineligible_sessions:
-            new_makeup_obligations.append({
-                "cohort_id": config.cohort_id,
-                "student_member_id": student_id,
-                "coach_member_id": config.coach_member_id,
-                "original_session_id": s["id"],
-                "reason": MakeupReason.LATE_JOIN,
-            })
+            new_makeup_obligations.append(
+                {
+                    "cohort_id": config.cohort_id,
+                    "student_member_id": student_id,
+                    "coach_member_id": config.coach_member_id,
+                    "original_session_id": s["id"],
+                    "reason": MakeupReason.LATE_JOIN,
+                }
+            )
 
         # Look up explicit attendance for the eligible sessions.
         attendance = await _attendance_for_student_in_sessions(
@@ -313,13 +334,15 @@ async def compute_block_payout(
             if status == EXCUSED_STATUS:
                 excused_count += 1
                 # Excused = make-up owed
-                new_makeup_obligations.append({
-                    "cohort_id": config.cohort_id,
-                    "student_member_id": student_id,
-                    "coach_member_id": config.coach_member_id,
-                    "original_session_id": s["id"],
-                    "reason": MakeupReason.EXCUSED_ABSENCE,
-                })
+                new_makeup_obligations.append(
+                    {
+                        "cohort_id": config.cohort_id,
+                        "student_member_id": student_id,
+                        "coach_member_id": config.coach_member_id,
+                        "original_session_id": s["id"],
+                        "reason": MakeupReason.EXCUSED_ABSENCE,
+                    }
+                )
             elif status == CANCELLED_STATUS:
                 # Session cancelled at attendance level; not delivered, not excused.
                 pass
@@ -332,7 +355,10 @@ async def compute_block_payout(
 
         student_name = None
         if enr.get("first_name") or enr.get("last_name"):
-            student_name = f"{enr.get('first_name') or ''} {enr.get('last_name') or ''}".strip() or None
+            student_name = (
+                f"{enr.get('first_name') or ''} {enr.get('last_name') or ''}".strip()
+                or None
+            )
 
         lines.append(
             StudentBlockLine(
@@ -378,7 +404,9 @@ async def compute_block_payout(
     )
 
 
-def block_window(config: RecurringPayoutConfig, block_index: int) -> tuple[datetime, datetime]:
+def block_window(
+    config: RecurringPayoutConfig, block_index: int
+) -> tuple[datetime, datetime]:
     """Public alias for _block_window (used by callers that need the window
     without computing a full payout)."""
     return _block_window(config, block_index)

@@ -303,9 +303,7 @@ class RecurringPayoutConfig(Base):
     # The single rate stored. Per-block / per-session naira amounts are
     # derived at runtime from (cohort.price × band_percentage / total_blocks).
     # Decimal(5,2) supports values like 38.50, 42.00 etc.
-    band_percentage: Mapped[float] = mapped_column(
-        Numeric(5, 2), nullable=False
-    )
+    band_percentage: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
 
     # Cohort plan snapshot (taken at config creation time so the payout
     # schedule is stable even if cohort dates shift later).

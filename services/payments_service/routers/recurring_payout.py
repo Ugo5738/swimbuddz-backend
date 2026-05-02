@@ -42,10 +42,8 @@ from libs.common.logging import get_logger
 from libs.common.service_client import get_member_by_auth_id
 from libs.db.config import AsyncSessionLocal
 from services.payments_service.models import (
-    CoachPayout,
     CohortMakeupObligation,
     MakeupStatus,
-    PayoutStatus,
     RecurringPayoutConfig,
     RecurringPayoutStatus,
 )
@@ -60,10 +58,7 @@ from services.payments_service.schemas import (
     RecurringPayoutConfigResponse,
     RecurringPayoutConfigUpdate,
 )
-from services.payments_service.services.payout_calculator import (
-    block_window,
-    compute_block_payout,
-)
+from services.payments_service.services.payout_calculator import compute_block_payout
 from sqlalchemy import func, select, text
 
 logger = get_logger(__name__)
@@ -84,9 +79,7 @@ makeups_coach_router = APIRouter(
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_cohort_snapshot(
-    db, cohort_id: uuid.UUID
-) -> dict:
+async def _fetch_cohort_snapshot(db, cohort_id: uuid.UUID) -> dict:
     """Fetch cohort fields needed to seed a recurring config snapshot.
 
     Reads the cohorts and programs tables directly (same DB). Returns:
@@ -96,9 +89,10 @@ async def _fetch_cohort_snapshot(
       - pay_band_min, pay_band_max (from complexity score)
     """
     row = (
-        await db.execute(
-            text(
-                """
+        (
+            await db.execute(
+                text(
+                    """
                 SELECT
                     c.id, c.start_date, c.end_date, c.required_coach_grade,
                     COALESCE(c.price_override, p.price_amount) AS price_amount,
@@ -111,10 +105,13 @@ async def _fetch_cohort_snapshot(
                     ON s.cohort_id = c.id
                 WHERE c.id = :cohort_id
                 """
-            ),
-            {"cohort_id": cohort_id},
+                ),
+                {"cohort_id": cohort_id},
+            )
         )
-    ).mappings().first()
+        .mappings()
+        .first()
+    )
     if not row:
         return {}
     return dict(row)
@@ -215,7 +212,9 @@ async def create_recurring_payout_config(
             block_index=0,
             next_run_date=first_run,
             status=RecurringPayoutStatus.ACTIVE,
-            created_by_member_id=uuid.UUID(admin_member_id) if admin_member_id else None,
+            created_by_member_id=uuid.UUID(admin_member_id)
+            if admin_member_id
+            else None,
             notes=payload.notes,
         )
         db.add(config)
@@ -254,14 +253,10 @@ async def list_recurring_payout_configs(
             )
         if cohort_id:
             stmt = stmt.where(RecurringPayoutConfig.cohort_id == cohort_id)
-            count_stmt = count_stmt.where(
-                RecurringPayoutConfig.cohort_id == cohort_id
-            )
+            count_stmt = count_stmt.where(RecurringPayoutConfig.cohort_id == cohort_id)
         if status_filter:
             stmt = stmt.where(RecurringPayoutConfig.status == status_filter)
-            count_stmt = count_stmt.where(
-                RecurringPayoutConfig.status == status_filter
-            )
+            count_stmt = count_stmt.where(RecurringPayoutConfig.status == status_filter)
 
         total = (await db.execute(count_stmt)).scalar_one()
         result = await db.execute(
@@ -331,9 +326,7 @@ async def update_recurring_payout_config(
         return RecurringPayoutConfigResponse.model_validate(config)
 
 
-@admin_router.get(
-    "/{config_id}/preview", response_model=PayoutPreviewResponse
-)
+@admin_router.get("/{config_id}/preview", response_model=PayoutPreviewResponse)
 async def preview_recurring_payout(
     config_id: uuid.UUID,
     _admin: AuthUser = Depends(require_admin),
@@ -382,9 +375,7 @@ async def preview_recurring_payout(
         )
 
 
-@admin_router.post(
-    "/{config_id}/run-now", response_model=RecurringPayoutConfigResponse
-)
+@admin_router.post("/{config_id}/run-now", response_model=RecurringPayoutConfigResponse)
 async def run_recurring_payout_now(
     config_id: uuid.UUID,
     _admin: AuthUser = Depends(require_admin),
@@ -405,13 +396,9 @@ async def run_recurring_payout_now(
         if not config:
             raise HTTPException(status_code=404, detail="Config not found")
         if config.status != RecurringPayoutStatus.ACTIVE:
-            raise HTTPException(
-                status_code=400, detail="Config is not active"
-            )
+            raise HTTPException(status_code=400, detail="Config is not active")
         if config.block_index >= config.total_blocks:
-            raise HTTPException(
-                status_code=400, detail="All blocks already paid"
-            )
+            raise HTTPException(status_code=400, detail="All blocks already paid")
         # Pull next_run_date forward to now so the standard sweep picks it up.
         config.next_run_date = utc_now()
         await db.commit()
@@ -447,13 +434,9 @@ async def list_makeup_obligations(
         count_stmt = select(func.count()).select_from(CohortMakeupObligation)
         if cohort_id:
             stmt = stmt.where(CohortMakeupObligation.cohort_id == cohort_id)
-            count_stmt = count_stmt.where(
-                CohortMakeupObligation.cohort_id == cohort_id
-            )
+            count_stmt = count_stmt.where(CohortMakeupObligation.cohort_id == cohort_id)
         if coach_member_id:
-            stmt = stmt.where(
-                CohortMakeupObligation.coach_member_id == coach_member_id
-            )
+            stmt = stmt.where(CohortMakeupObligation.coach_member_id == coach_member_id)
             count_stmt = count_stmt.where(
                 CohortMakeupObligation.coach_member_id == coach_member_id
             )
@@ -588,14 +571,14 @@ async def coach_list_makeup_obligations(
         stmt = select(CohortMakeupObligation).where(
             CohortMakeupObligation.coach_member_id == coach_member_id,
         )
-        count_stmt = select(func.count()).select_from(
-            CohortMakeupObligation
-        ).where(CohortMakeupObligation.coach_member_id == coach_member_id)
+        count_stmt = (
+            select(func.count())
+            .select_from(CohortMakeupObligation)
+            .where(CohortMakeupObligation.coach_member_id == coach_member_id)
+        )
         if cohort_id:
             stmt = stmt.where(CohortMakeupObligation.cohort_id == cohort_id)
-            count_stmt = count_stmt.where(
-                CohortMakeupObligation.cohort_id == cohort_id
-            )
+            count_stmt = count_stmt.where(CohortMakeupObligation.cohort_id == cohort_id)
         if status_filter:
             stmt = stmt.where(CohortMakeupObligation.status == status_filter)
             count_stmt = count_stmt.where(
@@ -659,21 +642,23 @@ async def coach_schedule_makeup(
 
         # Verify the target session is in the same cohort and is in the future.
         session_row = (
-            await db.execute(
-                text(
-                    """
+            (
+                await db.execute(
+                    text(
+                        """
                     SELECT id, cohort_id, starts_at, status
                     FROM public.sessions
                     WHERE id = :sid
                     """
-                ),
-                {"sid": payload.scheduled_session_id},
+                    ),
+                    {"sid": payload.scheduled_session_id},
+                )
             )
-        ).mappings().first()
+            .mappings()
+            .first()
+        )
         if not session_row:
-            raise HTTPException(
-                status_code=404, detail="Target session not found"
-            )
+            raise HTTPException(status_code=404, detail="Target session not found")
         if session_row["cohort_id"] != obligation.cohort_id:
             raise HTTPException(
                 status_code=400,
@@ -686,9 +671,7 @@ async def coach_schedule_makeup(
         if starts_at is not None and starts_at <= utc_now():
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "Target session has already started; pick a future session"
-                ),
+                detail=("Target session has already started; pick a future session"),
             )
 
         obligation.scheduled_session_id = payload.scheduled_session_id

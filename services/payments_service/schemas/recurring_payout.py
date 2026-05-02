@@ -24,10 +24,12 @@ class RecurringPayoutConfigCreate(BaseModel):
     coach_member_id: uuid.UUID
     cohort_id: uuid.UUID
     band_percentage: Decimal = Field(
-        ..., ge=Decimal("0.01"), le=Decimal("100.00"),
+        ...,
+        ge=Decimal("0.01"),
+        le=Decimal("100.00"),
         description="Coach's revenue-share percentage. Must sit within the "
-                    "cohort's complexity-derived pay band (e.g. 35-42 for "
-                    "Grade 1 Learn-to-Swim).",
+        "cohort's complexity-derived pay band (e.g. 35-42 for "
+        "Grade 1 Learn-to-Swim).",
     )
     notes: Optional[str] = Field(
         default=None,

@@ -200,9 +200,7 @@ async def process_recurring_payouts() -> None:
                     await db.commit()
                     continue
 
-                computation = await compute_block_payout(
-                    db, config, config.block_index
-                )
+                computation = await compute_block_payout(db, config, config.block_index)
 
                 # Insert the PENDING payout row.
                 payout = CoachPayout(
@@ -242,13 +240,9 @@ async def process_recurring_payouts() -> None:
                         CohortMakeupObligation.coach_member_id
                         == config.coach_member_id,
                         CohortMakeupObligation.status == MakeupStatus.COMPLETED,
-                        CohortMakeupObligation.completed_at
-                        >= computation.block_start,
-                        CohortMakeupObligation.completed_at
-                        < computation.block_end,
-                        CohortMakeupObligation.pay_credited_in_payout_id.is_(
-                            None
-                        ),
+                        CohortMakeupObligation.completed_at >= computation.block_start,
+                        CohortMakeupObligation.completed_at < computation.block_end,
+                        CohortMakeupObligation.pay_credited_in_payout_id.is_(None),
                     )
                 )
                 for obligation in makeup_credit_result.scalars().all():
@@ -264,8 +258,7 @@ async def process_recurring_payouts() -> None:
                             == new_obligation["student_member_id"],
                             CohortMakeupObligation.original_session_id
                             == new_obligation["original_session_id"],
-                            CohortMakeupObligation.reason
-                            == new_obligation["reason"],
+                            CohortMakeupObligation.reason == new_obligation["reason"],
                         )
                     )
                     if existing.scalar_one_or_none():
@@ -324,8 +317,7 @@ async def expire_overdue_makeups() -> None:
             select(CohortMakeupObligation, RecurringPayoutConfig.cohort_end_date)
             .join(
                 RecurringPayoutConfig,
-                RecurringPayoutConfig.cohort_id
-                == CohortMakeupObligation.cohort_id,
+                RecurringPayoutConfig.cohort_id == CohortMakeupObligation.cohort_id,
             )
             .where(
                 CohortMakeupObligation.status.in_(

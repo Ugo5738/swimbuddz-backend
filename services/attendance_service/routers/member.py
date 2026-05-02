@@ -441,13 +441,17 @@ async def coach_mark_session_attendance(
     # Pull existing rows for this session for the members in the payload.
     member_ids = [e.member_id for e in payload.entries]
     existing_rows = (
-        await db.execute(
-            select(AttendanceRecord).where(
-                AttendanceRecord.session_id == session_id,
-                AttendanceRecord.member_id.in_(member_ids),
+        (
+            await db.execute(
+                select(AttendanceRecord).where(
+                    AttendanceRecord.session_id == session_id,
+                    AttendanceRecord.member_id.in_(member_ids),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     existing_by_member: dict[uuid.UUID, AttendanceRecord] = {
         r.member_id: r for r in existing_rows
     }
@@ -483,13 +487,17 @@ async def coach_mark_session_attendance(
 
     # Re-fetch the resulting state for the response.
     refreshed = (
-        await db.execute(
-            select(AttendanceRecord).where(
-                AttendanceRecord.session_id == session_id,
-                AttendanceRecord.member_id.in_(member_ids),
+        (
+            await db.execute(
+                select(AttendanceRecord).where(
+                    AttendanceRecord.session_id == session_id,
+                    AttendanceRecord.member_id.in_(member_ids),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     members_data = await get_members_bulk(
         [str(r.member_id) for r in refreshed], calling_service="attendance"
