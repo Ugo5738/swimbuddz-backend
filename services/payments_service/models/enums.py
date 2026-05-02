@@ -50,3 +50,30 @@ class PayoutMethod(str, enum.Enum):
     PAYSTACK_TRANSFER = "paystack_transfer"
     BANK_TRANSFER = "bank_transfer"
     OTHER = "other"
+
+
+class MakeupStatus(str, enum.Enum):
+    """Lifecycle of a make-up obligation owed to a student."""
+
+    PENDING = "pending"  # Obligation created, no make-up scheduled yet
+    SCHEDULED = "scheduled"  # Coach has scheduled a make-up session
+    COMPLETED = "completed"  # Make-up session was held and student attended
+    EXPIRED = "expired"  # Cohort ended before make-up was delivered
+    CANCELLED = "cancelled"  # Admin cancelled the obligation
+
+
+class MakeupReason(str, enum.Enum):
+    """Why a make-up is owed to a student."""
+
+    LATE_JOIN = "late_join"  # Student enrolled after sessions began
+    EXCUSED_ABSENCE = "excused_absence"  # Coach marked EXCUSED for a session
+    SESSION_CANCELLED = "session_cancelled"  # A scheduled session was cancelled
+
+
+class RecurringPayoutStatus(str, enum.Enum):
+    """Lifecycle of a recurring payout configuration."""
+
+    ACTIVE = "active"
+    PAUSED = "paused"  # Admin temporarily paused; no new payouts created
+    COMPLETED = "completed"  # All blocks paid out
+    CANCELLED = "cancelled"  # Admin cancelled mid-cohort

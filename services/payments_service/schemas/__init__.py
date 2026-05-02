@@ -30,6 +30,17 @@ from services.payments_service.schemas.payout import (
     PayoutResponse,
     PayoutSummary,
 )
+from services.payments_service.schemas.recurring_payout import (
+    MakeupObligationListResponse,
+    MakeupObligationResponse,
+    MakeupScheduleRequest,
+    PayoutPreviewLine,
+    PayoutPreviewResponse,
+    RecurringPayoutConfigCreate,
+    RecurringPayoutConfigListResponse,
+    RecurringPayoutConfigResponse,
+    RecurringPayoutConfigUpdate,
+)
 
 __all__ = [
     "AdminReviewRequest",
@@ -42,6 +53,9 @@ __all__ = [
     "InternalInitializeRequest",
     "InternalInitializeResponse",
     "InternalPaystackVerifyResponse",
+    "MakeupObligationListResponse",
+    "MakeupObligationResponse",
+    "MakeupScheduleRequest",
     "PaymentIntentResponse",
     "PaymentResponse",
     "PayoutApprove",
@@ -50,9 +64,15 @@ __all__ = [
     "PayoutFail",
     "PayoutInitiateTransfer",
     "PayoutListResponse",
+    "PayoutPreviewLine",
+    "PayoutPreviewResponse",
     "PayoutResponse",
     "PayoutSummary",
     "PricingConfigResponse",
+    "RecurringPayoutConfigCreate",
+    "RecurringPayoutConfigListResponse",
+    "RecurringPayoutConfigResponse",
+    "RecurringPayoutConfigUpdate",
     "SessionAttendanceRole",
     "SessionAttendanceStatus",
     "SubmitProofRequest",

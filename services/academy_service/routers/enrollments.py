@@ -848,6 +848,10 @@ async def admin_dropout_action(
         enrollment.status = EnrollmentStatus.DROPPED
         enrollment.access_suspended = True
         enrollment.payment_status = PaymentStatus.FAILED
+        # Preserve the original drop date if already stamped at the
+        # DROPOUT_PENDING transition; otherwise stamp now.
+        if enrollment.dropped_at is None:
+            enrollment.dropped_at = utc_now()
         logger.info(
             f"Admin {current_user.id} approved dropout for enrollment {enrollment_id}"
         )
@@ -889,6 +893,10 @@ async def admin_dropout_action(
                         if requires_approval
                         else EnrollmentStatus.ENROLLED
                     )
+
+        # Clear drop timestamp last so the sync above can't re-stamp it.
+        # Coach payout calculator treats this enrollment as continuously active again.
+        enrollment.dropped_at = None
 
         logger.info(
             f"Admin {current_user.id} reversed dropout for enrollment {enrollment_id}"

@@ -14,7 +14,13 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.payments_service.models import Payment  # noqa: F401
+from services.payments_service.models import (  # noqa: F401
+    CoachPayout,
+    CohortMakeupObligation,
+    Discount,
+    Payment,
+    RecurringPayoutConfig,
+)
 
 settings = get_settings()
 config = context.config

@@ -75,3 +75,36 @@ class CohortAttendanceSummary(BaseModel):
     students: List[StudentAttendanceSummary]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CoachAttendanceMarkEntry(BaseModel):
+    """Single entry in a coach bulk attendance mark."""
+
+    member_id: uuid.UUID
+    status: AttendanceStatus
+    notes: Optional[str] = None
+
+
+class CoachAttendanceMarkRequest(BaseModel):
+    """Bulk attendance mark by coach for a single session.
+
+    Default-present model: students NOT included in `entries` are treated
+    as implicitly PRESENT (no row written). The coach typically only
+    submits entries for exceptions: EXCUSED, ABSENT, or LATE.
+
+    Server upserts by (session_id, member_id) so resubmitting the same
+    entry overwrites the previous status (last-write-wins). To "unmark"
+    a previously-recorded exception (return a student to default-present),
+    submit them with status=PRESENT — the row is deleted.
+    """
+
+    entries: List[CoachAttendanceMarkEntry]
+
+
+class CoachAttendanceMarkResponse(BaseModel):
+    """Result of a coach bulk attendance mark."""
+
+    session_id: uuid.UUID
+    upserted: int
+    deleted: int  # PRESENT entries that removed an existing exception row
+    records: List[AttendanceResponse]
