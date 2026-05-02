@@ -6,11 +6,12 @@ call them directly via Docker network.
 """
 
 import uuid
+from datetime import date, datetime, time, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import case, select
+from sqlalchemy import case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -24,6 +25,7 @@ from services.members_service.models import (
     CoachProfile,
     Member,
     MemberMembership,
+    MemberProfile,
 )
 
 router = APIRouter(prefix="/internal/members", tags=["internal"])
@@ -95,6 +97,34 @@ class CoachReadinessData(BaseModel):
     has_cpr_training: bool = False
     cpr_expiry_date: Optional[str] = None
     has_active_agreement: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Flywheel / funnel reporting schemas
+# ---------------------------------------------------------------------------
+
+
+_VALID_TIERS = {"community", "club", "academy"}
+
+
+class JoinedTierMember(BaseModel):
+    id: str
+    source_joined_at: str
+    acquisition_source: str | None = None
+
+
+class JoinedTierResponse(BaseModel):
+    members: List[JoinedTierMember]
+
+
+class TierHistoryEntry(BaseModel):
+    tier: str
+    entered_at: str
+    exited_at: str | None = None
+
+
+class TierHistoryResponse(BaseModel):
+    entries: List[TierHistoryEntry]
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +272,102 @@ async def get_approved_members_list(
     ]
 
 
+# ---------------------------------------------------------------------------
+# Flywheel / funnel reporting endpoints
+# NOTE: /joined-tier MUST be defined BEFORE /{member_id} to avoid route conflict.
+# ---------------------------------------------------------------------------
+
+
+def _date_window_to_datetimes(start: date, end: date) -> tuple[datetime, datetime]:
+    """Convert inclusive date window to UTC datetime [start_of_day, end_of_day]."""
+    start_dt = datetime.combine(start, time.min, tzinfo=timezone.utc)
+    end_dt = datetime.combine(end, time.max, tzinfo=timezone.utc)
+    return start_dt, end_dt
+
+
+def _tier_paid_until_column(tier: str):
+    """Return the SQLAlchemy column tracking access end for the given tier."""
+    return {
+        "community": MemberMembership.community_paid_until,
+        "club": MemberMembership.club_paid_until,
+        "academy": MemberMembership.academy_paid_until,
+    }[tier]
+
+
+@router.get("/joined-tier", response_model=JoinedTierResponse)
+async def get_members_who_joined_tier(
+    tier: str = Query(..., description="One of: community, club, academy"),
+    from_: date = Query(..., alias="from", description="ISO date (inclusive)"),
+    to: date = Query(..., description="ISO date (inclusive)"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Members who entered ``tier`` in the [from, to] window.
+
+    Used by reporting_service.tasks.flywheel for funnel-conversion snapshots.
+    Decision: no tier-transition audit table exists, so we use the simplest
+    proxy. For ``community`` we treat ``Member.created_at`` as the entry
+    signal when ``primary_tier == 'community'`` OR the member has ``community``
+    in ``active_tiers``. For ``club``/``academy`` we approximate entry from
+    ``MemberMembership.{tier}_paid_until`` falling within the window — i.e.
+    a non-null paid_until that landed in [from, to] indicates the member
+    crossed into that tier during the window. This is best-effort and should
+    be replaced with an explicit tier-transition audit log in future.
+    """
+    if tier not in _VALID_TIERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid tier: {tier!r}. Must be one of {_VALID_TIERS}",
+        )
+    if from_ > to:
+        raise HTTPException(status_code=400, detail="`from` must be <= `to`")
+
+    start_dt, end_dt = _date_window_to_datetimes(from_, to)
+
+    if tier == "community":
+        # Proxy: community entry == member account creation, when their
+        # primary tier is community (or community is in their active tiers).
+        stmt = (
+            select(Member.id, Member.created_at, MemberProfile.acquisition_source)
+            .join(MemberMembership, MemberMembership.member_id == Member.id)
+            .outerjoin(MemberProfile, MemberProfile.member_id == Member.id)
+            .where(
+                Member.created_at >= start_dt,
+                Member.created_at <= end_dt,
+                or_(
+                    MemberMembership.primary_tier == "community",
+                    MemberMembership.active_tiers.any("community"),
+                ),
+            )
+        )
+    else:
+        paid_until_col = _tier_paid_until_column(tier)
+        stmt = (
+            select(Member.id, paid_until_col, MemberProfile.acquisition_source)
+            .join(MemberMembership, MemberMembership.member_id == Member.id)
+            .outerjoin(MemberProfile, MemberProfile.member_id == Member.id)
+            .where(
+                paid_until_col.is_not(None),
+                paid_until_col >= start_dt,
+                paid_until_col <= end_dt,
+            )
+        )
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    members = [
+        JoinedTierMember(
+            id=str(row[0]),
+            source_joined_at=row[1].isoformat() if row[1] else "",
+            acquisition_source=(row[2].value if row[2] is not None else None),
+        )
+        for row in rows
+        if row[1] is not None
+    ]
+    return JoinedTierResponse(members=members)
+
+
 @router.get("/{member_id}/membership", response_model=MemberMembershipResponse)
 async def get_member_membership(
     member_id: uuid.UUID,
@@ -275,6 +401,98 @@ async def get_member_membership(
             else None
         ),
     )
+
+
+@router.get("/{member_id}/tier-history", response_model=TierHistoryResponse)
+async def get_member_tier_history(
+    member_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Best-effort tier entry/exit history for a single member.
+
+    Used by reporting_service.tasks.flywheel to verify whether a member
+    crossed into a target tier within an observation window.
+
+    Decision: no tier-transition audit table exists, so we derive entries
+    from the current MemberMembership state:
+      - community: entered_at = Member.created_at (community is the default
+        starting tier); exited_at = community_paid_until if it lies in the
+        past, else None.
+      - club / academy: entry exists only if {tier}_paid_until is non-null;
+        entered_at is approximated as Member.created_at (we don't track the
+        actual upgrade timestamp), exited_at = {tier}_paid_until.
+    Entries are returned only for tiers the member has a signal for. This
+    is best-effort and should be replaced when an audit log is introduced.
+    """
+    member_result = await db.execute(
+        select(Member, MemberMembership)
+        .outerjoin(MemberMembership, MemberMembership.member_id == Member.id)
+        .where(Member.id == member_id)
+    )
+    row = member_result.first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    member, membership = row[0], row[1]
+    entries: list[TierHistoryEntry] = []
+
+    if membership is None:
+        # No membership row — return only the implicit community entry.
+        entries.append(
+            TierHistoryEntry(
+                tier="community",
+                entered_at=member.created_at.isoformat(),
+                exited_at=None,
+            )
+        )
+        return TierHistoryResponse(entries=entries)
+
+    active = set(membership.active_tiers or [])
+    if (
+        membership.primary_tier == "community"
+        or "community" in active
+        or membership.community_paid_until is not None
+    ):
+        entries.append(
+            TierHistoryEntry(
+                tier="community",
+                entered_at=member.created_at.isoformat(),
+                exited_at=(
+                    membership.community_paid_until.isoformat()
+                    if membership.community_paid_until
+                    else None
+                ),
+            )
+        )
+
+    if membership.club_paid_until is not None or "club" in active:
+        entries.append(
+            TierHistoryEntry(
+                tier="club",
+                entered_at=member.created_at.isoformat(),
+                exited_at=(
+                    membership.club_paid_until.isoformat()
+                    if membership.club_paid_until
+                    else None
+                ),
+            )
+        )
+
+    if membership.academy_paid_until is not None or "academy" in active:
+        entries.append(
+            TierHistoryEntry(
+                tier="academy",
+                entered_at=member.created_at.isoformat(),
+                exited_at=(
+                    membership.academy_paid_until.isoformat()
+                    if membership.academy_paid_until
+                    else None
+                ),
+            )
+        )
+
+    return TierHistoryResponse(entries=entries)
 
 
 @router.get("/{member_id}", response_model=MemberBasic)

@@ -21,7 +21,10 @@ from services.members_service.models.coach import (  # noqa: F401
     CoachProfile,
     HandbookVersion,
 )
-from services.members_service.models.enums import CoachGrade  # noqa: F401
+from services.members_service.models.enums import (  # noqa: F401
+    AcquisitionSource,
+    CoachGrade,
+)
 from services.members_service.models.guardian import (  # noqa: F401
     GuardianLink,
     GuardianRelationship,
@@ -43,6 +46,7 @@ from services.members_service.models.volunteer import (  # noqa: F401
 )
 
 __all__ = [
+    "AcquisitionSource",
     "CoachGrade",
     "GuardianLink",
     "GuardianRelationship",

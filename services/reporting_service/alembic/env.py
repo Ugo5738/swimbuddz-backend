@@ -18,12 +18,15 @@ sys.path.append(str(PROJECT_ROOT))
 from libs.common.config import get_settings
 from libs.db.base import Base
 from services.reporting_service.models import (  # noqa: F401
+    CohortFillSnapshot,
     CommunityQuarterlyStats,
     ExternalFactor,
+    FunnelConversionSnapshot,
     MemberQuarterlyReport,
     MonthlyActual,
     QuarterlySnapshot,
     SeasonalityForecast,
+    WalletEcosystemSnapshot,
 )
 
 settings = get_settings()
@@ -41,6 +44,9 @@ SERVICE_TABLES = {
     "monthly_actuals",
     "seasonality_forecasts",
     "external_factors",
+    "cohort_fill_snapshots",
+    "funnel_conversion_snapshots",
+    "wallet_ecosystem_snapshots",
 }
 
 url = settings.DATABASE_URL.replace("%", "%%")

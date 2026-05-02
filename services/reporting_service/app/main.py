@@ -2,6 +2,9 @@
 
 from fastapi import FastAPI
 
+from services.reporting_service.routers.admin_flywheel import (
+    router as admin_flywheel_router,
+)
 from services.reporting_service.routers.admin_reports import (
     router as admin_reports_router,
 )
@@ -43,6 +46,10 @@ def create_app() -> FastAPI:
     # Admin seasonality forecast routes
     # Gateway: /api/v1/admin/reports/seasonality/{path} → /admin/reports/seasonality/{path}
     app.include_router(seasonality_router)
+
+    # Admin flywheel metrics routes
+    # Gateway: /api/v1/admin/reports/flywheel/{path} → /admin/reports/flywheel/{path}
+    app.include_router(admin_flywheel_router)
 
     # Internal service-to-service routes (not proxied by gateway)
     app.include_router(internal_router)

@@ -67,3 +67,20 @@ class DataSource(str, Enum):
     MANUAL = "manual"
     IMPORT = "import"
     PRIOR = "prior"
+
+
+class FunnelStage(str, Enum):
+    """Cross-service conversion stage tracked in flywheel metrics."""
+
+    COMMUNITY_TO_CLUB = "community_to_club"
+    CLUB_TO_ACADEMY = "club_to_academy"
+    COMMUNITY_TO_ACADEMY = "community_to_academy"  # bypass conversion
+
+
+class SnapshotJobStatus(str, Enum):
+    """Status of an async flywheel snapshot job (alias of ReportStatus)."""
+
+    PENDING = "pending"
+    COMPUTING = "computing"
+    COMPLETED = "completed"
+    FAILED = "failed"

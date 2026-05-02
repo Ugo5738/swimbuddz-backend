@@ -4,14 +4,22 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from libs.common.datetime_utils import utc_now
-from libs.db.base import Base
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from libs.common.datetime_utils import utc_now
+from libs.db.base import Base
+from services.members_service.models.enums import AcquisitionSource
+
 if TYPE_CHECKING:
     from .coach import CoachProfile
+
+
+def _enum_values(enum_cls):
+    """Return persistent DB values for SAEnum mappings."""
+    return [member.value for member in enum_cls]
 
 
 class Member(Base):
@@ -137,6 +145,18 @@ class MemberProfile(Base):
 
     # Discovery
     how_found_us: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Structured acquisition channel — used by reporting_service for funnel
+    # conversion breakdowns. Nullable so existing rows aren't broken; the
+    # legacy free-form ``how_found_us`` field is preserved alongside.
+    acquisition_source: Mapped[Optional[AcquisitionSource]] = mapped_column(
+        SAEnum(
+            AcquisitionSource,
+            name="acquisition_source_enum",
+            values_callable=_enum_values,
+            validate_strings=True,
+        ),
+        nullable=True,
+    )
     previous_communities: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     hopes_from_swimbuddz: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 

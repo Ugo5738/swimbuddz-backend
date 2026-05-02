@@ -405,6 +405,20 @@ Announcements power the public noticeboard and admin share helpers.
 - **Body:** `{ "milestone_id": "uuid", "status": "completed", "notes": "..." }`
 - **Response 200:** `ProgressRead`
 
+#### `GET /api/v1/academy/enrollments/{enrollment_id}/progress/{progress_id}/events`
+
+- **Auth:** Owner (student), assigned coach for the cohort, or Admin
+- **Description:** Return the append-only audit trail of claim, review, and
+  status-change events for a single milestone progress record. Each event
+  includes a snapshot of the notes, evidence media id, and score at the time —
+  so rejection feedback and prior evidence are preserved even after resubmits.
+- **Response 200:** `List[MilestoneReviewEventResponse]` ordered by `created_at`
+  ascending. Fields: `id`, `progress_id`, `enrollment_id`, `milestone_id`,
+  `event_type` (`claimed` | `approved` | `rejected` | `status_changed`),
+  `actor_id`, `actor_role` (`student` | `coach` | `admin`), `previous_status`,
+  `new_status`, `student_notes_snapshot`, `coach_notes_snapshot`,
+  `evidence_media_id_snapshot`, `score_snapshot`, `created_at`.
+
 ### Curriculum Management
 
 #### `GET /api/v1/academy/programs/{program_id}/curriculum`
@@ -1247,3 +1261,82 @@ These endpoints are **not proxied through the gateway**. They are called directl
 - **Description:** Submit an event for rewards engine processing. Deduplicates by `event_id` and `idempotency_key`.
 - **Body:** `EventIngestRequest` — `{ event_id, event_type, member_auth_id, member_id?, service_source, occurred_at, event_data, idempotency_key }`
 - **Response 200:** `EventIngestResponse` — `{ event_id, accepted, rewards_granted, rewards: [{ rule_name, bubbles }] }`
+
+---
+
+## 15. Flywheel Metrics (Reporting Service)
+
+Cross-service ecosystem health: cohort fill operational state, community→club / club→academy funnel conversion, and wallet cross-service spend. See [docs/reference/FLYWHEEL_METRICS_DESIGN.md](../../docs/reference/FLYWHEEL_METRICS_DESIGN.md) for the underlying model.
+
+Snapshots are computed by ARQ tasks on cron (daily for cohort fill, weekly for funnel + wallet) and persisted to `cohort_fill_snapshots`, `funnel_conversion_snapshots`, `wallet_ecosystem_snapshots` in the reporting_service database.
+
+### Admin Endpoints (Admin Auth Required)
+
+#### `GET /api/v1/admin/reports/flywheel/overview`
+
+- **Auth:** Admin
+- **Description:** Single-call dashboard overview combining the latest snapshot for each metric category. Returns `is_stale=true` if no snapshot in the last 36 hours.
+- **Response 200:** `FlywheelOverviewResponse` — `{ cohort_fill_avg, open_cohorts_count, open_cohorts_at_risk_count, community_to_club_rate, community_to_club_period, club_to_academy_rate, club_to_academy_period, wallet_cross_service_rate, wallet_active_users, last_refreshed_at, is_stale }`. All rate fields are `0.0–1.0` floats and may be `null` if no snapshot exists yet.
+
+#### `GET /api/v1/admin/reports/flywheel/cohorts`
+
+- **Auth:** Admin
+- **Query:** `status` (default `open,active`, comma-separated), `sort` (one of `fill_rate_asc` (default), `fill_rate_desc`, `starts_at_asc`, `starts_at_desc`)
+- **Description:** Latest fill snapshot per cohort, default sorted by lowest fill rate first (operational use case: act on cold cohorts).
+- **Response 200:** `List[CohortFillSnapshotResponse]` — fields include `cohort_id`, `cohort_name`, `program_name`, `capacity`, `active_enrollments`, `pending_approvals`, `waitlist_count`, `fill_rate`, `starts_at`, `ends_at`, `cohort_status`, `days_until_start`, `snapshot_taken_at`.
+
+#### `GET /api/v1/admin/reports/flywheel/funnel`
+
+- **Auth:** Admin
+- **Query:** `funnel_stage` (optional, one of `community_to_club`, `club_to_academy`, `community_to_academy`), `cohort_period` (optional, e.g. `2026-Q1`), `limit` (default 20, max 100)
+- **Description:** Funnel conversion snapshots ordered by `snapshot_taken_at` desc, filterable by stage and period.
+- **Response 200:** `List[FunnelConversionSnapshotResponse]` — `{ funnel_stage, cohort_period, period_start, period_end, observation_window_days, source_count, converted_count, conversion_rate, breakdown_by_source, snapshot_taken_at }`.
+
+#### `GET /api/v1/admin/reports/flywheel/wallet`
+
+- **Auth:** Admin
+- **Description:** Most recent wallet ecosystem snapshot. Returns `null` if no snapshot exists yet.
+- **Response 200:** `Optional[WalletEcosystemSnapshotResponse]` — `{ period_start, period_end, period_days, active_wallet_users, single_service_users, cross_service_users, cross_service_rate, total_bubbles_spent, total_topup_bubbles, spend_distribution, snapshot_taken_at }`.
+
+#### `POST /api/v1/admin/reports/flywheel/refresh`
+
+- **Auth:** Admin
+- **Description:** Enqueue an ARQ job (`task_refresh_all_flywheel`) on the `arq:reporting` queue to recompute all three snapshot categories. Returns immediately; poll `/overview` to see the updated `last_refreshed_at`.
+- **Response 200:** `RefreshFlywheelResponse` — `{ job_enqueued: true, message: "..." }`
+
+### Internal Endpoints (Service-to-Service Only)
+
+The flywheel computation tasks call these prerequisite endpoints on academy, members, and wallet services.
+
+#### `GET /internal/academy/cohorts`
+
+- **Auth:** Internal service header
+- **Query:** `status` (comma-separated, e.g. `open,active`)
+- **Description:** List cohorts in the given statuses. Used by the cohort-fill snapshot task.
+- **Response 200:** `{ cohorts: [{ id, name, program_name, capacity, status, start_date, end_date }] }`
+
+#### `GET /internal/academy/cohorts/{cohort_id}/enrollment-counts`
+
+- **Auth:** Internal service header
+- **Description:** Enrollment counts grouped by status for a cohort.
+- **Response 200:** `{ active, pending_approval, waitlist, dropped, graduated }`
+
+#### `GET /internal/members/joined-tier`
+
+- **Auth:** Internal service header
+- **Query:** `tier` (one of `community`, `club`, `academy`), `from` (ISO date), `to` (ISO date)
+- **Description:** Members who entered the given tier between the dates. Powers the funnel-conversion source-count.
+- **Response 200:** `JoinedTierResponse` — `{ members: [{ id, source_joined_at, acquisition_source }] }`. `acquisition_source` is null for legacy registrations that pre-date the typed enum.
+
+#### `GET /internal/members/{member_id}/tier-history`
+
+- **Auth:** Internal service header
+- **Description:** Chronological tier-entry history for a single member. Used to determine whether/when a member crossed to the target tier within the observation window.
+- **Response 200:** `TierHistoryResponse` — `{ entries: [{ tier, entered_at, exited_at }] }`
+
+#### `GET /internal/wallet/ecosystem-stats`
+
+- **Auth:** Internal service header
+- **Query:** `from` (ISO date), `to` (ISO date)
+- **Description:** Aggregated wallet usage stats over the period. Cross-service user = ≥2 distinct `service_source` values in DEBIT transactions.
+- **Response 200:** `{ active_wallet_users, single_service_users, cross_service_users, total_bubbles_spent, total_topup_bubbles, spend_distribution: { sessions, academy, store, ... } }`

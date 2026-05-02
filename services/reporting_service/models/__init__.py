@@ -16,9 +16,16 @@ from services.reporting_service.models.enums import (  # noqa: F401
     DataSource,
     DemandLevel,
     ForecastStatus,
+    FunnelStage,
     LeaderboardCategory,
     MonthStatus,
     ReportStatus,
+    SnapshotJobStatus,
+)
+from services.reporting_service.models.flywheel import (  # noqa: F401
+    CohortFillSnapshot,
+    FunnelConversionSnapshot,
+    WalletEcosystemSnapshot,
 )
 from services.reporting_service.models.seasonality import (  # noqa: F401
     ExternalFactor,
@@ -34,6 +41,9 @@ __all__ = [
     "MonthlyActual",
     "SeasonalityForecast",
     "ExternalFactor",
+    "CohortFillSnapshot",
+    "FunnelConversionSnapshot",
+    "WalletEcosystemSnapshot",
     # Enums
     "ReportStatus",
     "LeaderboardCategory",
@@ -42,4 +52,6 @@ __all__ = [
     "DemandLevel",
     "MonthStatus",
     "DataSource",
+    "FunnelStage",
+    "SnapshotJobStatus",
 ]

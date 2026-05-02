@@ -4,11 +4,11 @@ These endpoints are called by other SwimBuddz services via service-role JWT,
 not by frontend clients directly.
 """
 
-from datetime import datetime
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_service_role
@@ -437,3 +437,155 @@ async def get_member_referral_link(
     frontend_url = get_settings().FRONTEND_URL.rstrip("/")
     share_link = f"{frontend_url}/join?ref={code_obj.code}"
     return ReferralLinkResponse(share_link=share_link)
+
+
+# ---------------------------------------------------------------------------
+# Reporting: wallet ecosystem aggregates (flywheel metrics)
+# ---------------------------------------------------------------------------
+
+
+# Sentinel used to bucket NULL service_source values in spend distribution
+# and cross-service-user counting (NULL is treated as a single "uncategorized"
+# service per FLYWHEEL_METRICS_DESIGN).
+_UNCATEGORIZED_BUCKET = "uncategorized"
+
+
+class WalletEcosystemStatsResponse(BaseModel):
+    """Aggregate wallet ecosystem stats over a date window.
+
+    Consumed by ``reporting_service.tasks.flywheel._fetch_wallet_ecosystem_aggregates``.
+    """
+
+    active_wallet_users: int = 0
+    single_service_users: int = 0
+    cross_service_users: int = 0
+    total_bubbles_spent: int = 0
+    total_topup_bubbles: int = 0
+    spend_distribution: dict[str, float] = {}
+
+
+@router.get(
+    "/ecosystem-stats",
+    response_model=WalletEcosystemStatsResponse,
+)
+async def get_ecosystem_stats(
+    period_start: date = Query(..., alias="from"),
+    period_end: date = Query(..., alias="to"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+) -> WalletEcosystemStatsResponse:
+    """Aggregate wallet activity for the flywheel ecosystem snapshot.
+
+    Window is ``[from 00:00 UTC, to+1 00:00 UTC)`` so the ``to`` date is
+    inclusive of its full day.
+
+    All aggregations are pushed down to SQL (3 round-trips: active users,
+    spend totals + distribution, top-up totals + per-wallet service counts).
+
+    Auth: service-role JWT only.
+    """
+    from services.wallet_service.models import (
+        TransactionDirection,
+        TransactionStatus,
+        TransactionType,
+        WalletTransaction,
+    )
+
+    # Convert inclusive date range to half-open UTC datetime range.
+    window_start = datetime.combine(period_start, time.min, tzinfo=timezone.utc)
+    window_end = datetime.combine(
+        period_end + timedelta(days=1), time.min, tzinfo=timezone.utc
+    )
+
+    in_window = (
+        WalletTransaction.created_at >= window_start,
+        WalletTransaction.created_at < window_end,
+        WalletTransaction.status == TransactionStatus.COMPLETED,
+    )
+
+    # 1. Active wallet users — any COMPLETED txn (any direction/type) in window.
+    active_result = await db.execute(
+        select(func.count(distinct(WalletTransaction.wallet_id))).where(*in_window)
+    )
+    active_wallet_users = int(active_result.scalar() or 0)
+
+    # 2. Spend totals + per-service distribution — only COMPLETED DEBITs.
+    spend_rows = (
+        await db.execute(
+            select(
+                func.coalesce(
+                    WalletTransaction.service_source, _UNCATEGORIZED_BUCKET
+                ).label("bucket"),
+                func.coalesce(func.sum(WalletTransaction.amount), 0).label("total"),
+            )
+            .where(
+                *in_window,
+                WalletTransaction.direction == TransactionDirection.DEBIT,
+            )
+            .group_by("bucket")
+        )
+    ).all()
+
+    spend_by_bucket: dict[str, int] = {
+        row.bucket: int(row.total or 0) for row in spend_rows
+    }
+    total_bubbles_spent = sum(spend_by_bucket.values())
+    if total_bubbles_spent > 0:
+        spend_distribution = {
+            bucket: amount / total_bubbles_spent
+            for bucket, amount in spend_by_bucket.items()
+        }
+    else:
+        spend_distribution = {}
+
+    # 3. Top-up totals — COMPLETED CREDITs of type TOPUP.
+    topup_result = await db.execute(
+        select(func.coalesce(func.sum(WalletTransaction.amount), 0)).where(
+            *in_window,
+            WalletTransaction.direction == TransactionDirection.CREDIT,
+            WalletTransaction.transaction_type == TransactionType.TOPUP,
+        )
+    )
+    total_topup_bubbles = int(topup_result.scalar() or 0)
+
+    # 4. Cross-service users — wallets with COMPLETED DEBITs tagged with
+    # ≥2 distinct service_source buckets (NULL collapses to one bucket).
+    per_wallet_distinct_services = (
+        select(
+            WalletTransaction.wallet_id.label("wallet_id"),
+            func.count(
+                distinct(
+                    func.coalesce(
+                        WalletTransaction.service_source, _UNCATEGORIZED_BUCKET
+                    )
+                )
+            ).label("service_count"),
+        )
+        .where(
+            *in_window,
+            WalletTransaction.direction == TransactionDirection.DEBIT,
+        )
+        .group_by(WalletTransaction.wallet_id)
+        .subquery()
+    )
+    cross_result = await db.execute(
+        select(func.count())
+        .select_from(per_wallet_distinct_services)
+        .where(per_wallet_distinct_services.c.service_count >= 2)
+    )
+    cross_service_users = int(cross_result.scalar() or 0)
+
+    # Single-service users = active users who are NOT cross-service. This
+    # includes active users whose only activity in the window was non-DEBIT
+    # (e.g. top-ups, refunds, rewards) — they spent on 0 distinct services,
+    # which still counts as "single-service" per the spec.
+    single_service_users = max(active_wallet_users - cross_service_users, 0)
+
+    return WalletEcosystemStatsResponse(
+        active_wallet_users=active_wallet_users,
+        single_service_users=single_service_users,
+        cross_service_users=cross_service_users,
+        total_bubbles_spent=total_bubbles_spent,
+        total_topup_bubbles=total_topup_bubbles,
+        spend_distribution=spend_distribution,
+    )

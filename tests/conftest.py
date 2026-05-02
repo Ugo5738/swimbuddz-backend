@@ -454,3 +454,17 @@ async def store_client(db_session):
     ) as client:
         yield client
     store_app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def reporting_client(db_session):
+    """AsyncClient for the reporting service with admin auth."""
+    from services.reporting_service.app.main import app as reporting_app
+
+    _wire_app(reporting_app, db_session)
+    async with AsyncClient(
+        transport=ASGITransport(app=reporting_app),
+        base_url="http://test",
+    ) as client:
+        yield client
+    reporting_app.dependency_overrides.clear()
