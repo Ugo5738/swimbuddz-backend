@@ -8,8 +8,6 @@ These don't touch the database — pure functions in
 from datetime import date, datetime, timezone
 from unittest.mock import patch
 
-import pytest
-
 from services.reporting_service.tasks.flywheel import (
     _parse_iso_dt,
     _resolve_period,

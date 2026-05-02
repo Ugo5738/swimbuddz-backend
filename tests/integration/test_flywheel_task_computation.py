@@ -13,7 +13,7 @@ inside each task to yield the test session.
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Callable
+from typing import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
