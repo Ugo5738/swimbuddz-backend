@@ -79,7 +79,9 @@ def _route_internal_get(routes: dict[str, Callable[[dict | None], dict]]):
     and returning the JSON payload.
     """
 
-    async def _fake(*, service_url: str, path: str, calling_service: str, params=None, **_):
+    async def _fake(
+        *, service_url: str, path: str, calling_service: str, params=None, **_
+    ):
         for needle, builder in routes.items():
             if needle in path:
                 return _mock_resp(builder(params or {}))
@@ -124,8 +126,9 @@ async def test_cohort_fill_snapshot_computes_fill_rate(db_session):
         }
     )
 
-    with _patch_session_factory(db_session), patch(
-        "services.reporting_service.tasks.flywheel.internal_get", fake_get
+    with (
+        _patch_session_factory(db_session),
+        patch("services.reporting_service.tasks.flywheel.internal_get", fake_get),
     ):
         count = await flywheel_tasks.compute_cohort_fill_snapshots()
 
@@ -171,8 +174,9 @@ async def test_cohort_fill_snapshot_zero_capacity_safe(db_session):
         }
     )
 
-    with _patch_session_factory(db_session), patch(
-        "services.reporting_service.tasks.flywheel.internal_get", fake_get
+    with (
+        _patch_session_factory(db_session),
+        patch("services.reporting_service.tasks.flywheel.internal_get", fake_get),
     ):
         await flywheel_tasks.compute_cohort_fill_snapshots()
 
@@ -190,8 +194,9 @@ async def test_cohort_fill_snapshot_no_cohorts_returns_zero(db_session):
         {"/internal/academy/cohorts": lambda _p: {"cohorts": []}}
     )
 
-    with _patch_session_factory(db_session), patch(
-        "services.reporting_service.tasks.flywheel.internal_get", fake_get
+    with (
+        _patch_session_factory(db_session),
+        patch("services.reporting_service.tasks.flywheel.internal_get", fake_get),
     ):
         result = await flywheel_tasks.compute_cohort_fill_snapshots()
 
@@ -227,8 +232,9 @@ async def test_funnel_conversion_persists_three_stages(db_session):
         }
     )
 
-    with _patch_session_factory(db_session), patch(
-        "services.reporting_service.tasks.flywheel.internal_get", fake_get
+    with (
+        _patch_session_factory(db_session),
+        patch("services.reporting_service.tasks.flywheel.internal_get", fake_get),
     ):
         count = await flywheel_tasks.compute_funnel_conversions(period_label="2026-Q1")
 
@@ -290,8 +296,9 @@ async def test_funnel_conversion_counts_crossover(db_session):
         }
     )
 
-    with _patch_session_factory(db_session), patch(
-        "services.reporting_service.tasks.flywheel.internal_get", fake_get
+    with (
+        _patch_session_factory(db_session),
+        patch("services.reporting_service.tasks.flywheel.internal_get", fake_get),
     ):
         await flywheel_tasks.compute_funnel_conversions(period_label="2026-Q1")
 
@@ -332,8 +339,9 @@ async def test_wallet_ecosystem_snapshot_basic(db_session):
         }
     )
 
-    with _patch_session_factory(db_session), patch(
-        "services.reporting_service.tasks.flywheel.internal_get", fake_get
+    with (
+        _patch_session_factory(db_session),
+        patch("services.reporting_service.tasks.flywheel.internal_get", fake_get),
     ):
         snap = await flywheel_tasks.compute_wallet_ecosystem_snapshot(window_days=30)
 
@@ -362,8 +370,9 @@ async def test_wallet_ecosystem_snapshot_zero_active_safe(db_session):
         }
     )
 
-    with _patch_session_factory(db_session), patch(
-        "services.reporting_service.tasks.flywheel.internal_get", fake_get
+    with (
+        _patch_session_factory(db_session),
+        patch("services.reporting_service.tasks.flywheel.internal_get", fake_get),
     ):
         snap = await flywheel_tasks.compute_wallet_ecosystem_snapshot()
 
