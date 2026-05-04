@@ -10,6 +10,15 @@ from services.payments_service.routers import (
 )
 from services.payments_service.routers.payout import admin_router as payout_admin_router
 from services.payments_service.routers.payout import coach_router as payout_coach_router
+from services.payments_service.routers.recurring_payout import (
+    admin_router as recurring_payout_admin_router,
+)
+from services.payments_service.routers.recurring_payout import (
+    makeups_admin_router as cohort_makeups_admin_router,
+)
+from services.payments_service.routers.recurring_payout import (
+    makeups_coach_router as cohort_makeups_coach_router,
+)
 
 
 def create_app() -> FastAPI:
@@ -36,6 +45,11 @@ def create_app() -> FastAPI:
     # Mount under /payments prefix to match gateway routing (/api/v1/payments/{path} → /payments/{path})
     app.include_router(payout_admin_router, prefix="/payments")
     app.include_router(payout_coach_router, prefix="/payments")
+
+    # Recurring payout config + make-up obligations
+    app.include_router(recurring_payout_admin_router, prefix="/payments")
+    app.include_router(cohort_makeups_admin_router, prefix="/payments")
+    app.include_router(cohort_makeups_coach_router, prefix="/payments")
 
     return app
 

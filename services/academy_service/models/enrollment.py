@@ -95,6 +95,14 @@ class Enrollment(Base):
     enrolled_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # When this enrollment first transitioned out of active status (set on
+    # transition to DROPOUT_PENDING or DROPPED; cleared on admin reversal).
+    # Used by the coach payout calculator to clip eligible sessions at the
+    # drop date so coaches aren't paid for sessions a dropout could not
+    # have attended.
+    dropped_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     source: Mapped[EnrollmentSource] = mapped_column(
         SAEnum(
             EnrollmentSource,

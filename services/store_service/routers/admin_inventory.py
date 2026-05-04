@@ -28,6 +28,7 @@ from services.store_service.models import (
     Order,
     OrderItem,
     OrderStatus,
+    Product,
     ProductVariant,
     StoreCredit,
     StoreCreditSourceType,
@@ -40,11 +41,23 @@ from services.store_service.schemas import (
     OrderListResponse,
     OrderResponse,
     OrderStatusUpdate,
+    OrderUpdate,
     StoreCreditResponse,
 )
 
 router = APIRouter(tags=["admin-store"])
 logger = get_logger(__name__)
+
+
+def _order_eager_load_options():
+    """Eager-load relationships needed to fully render an order response."""
+    return (
+        selectinload(Order.items)
+        .selectinload(OrderItem.variant)
+        .selectinload(ProductVariant.product)
+        .selectinload(Product.images),
+        selectinload(Order.pickup_location),
+    )
 
 
 # ============================================================================
@@ -274,7 +287,7 @@ async def list_all_orders(
 
     # Paginate
     query = (
-        query.options(selectinload(Order.items), selectinload(Order.pickup_location))
+        query.options(*_order_eager_load_options())
         .order_by(Order.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
@@ -310,9 +323,7 @@ async def get_order_admin(
 ):
     """Get order detail (admin)."""
     query = (
-        select(Order)
-        .where(Order.id == order_id)
-        .options(selectinload(Order.items), selectinload(Order.pickup_location))
+        select(Order).where(Order.id == order_id).options(*_order_eager_load_options())
     )
     result = await db.execute(query)
     order = result.scalar_one_or_none()
@@ -322,36 +333,25 @@ async def get_order_admin(
     return order
 
 
-@router.patch("/orders/{order_id}/status", response_model=OrderResponse)
-async def update_order_status(
-    order_id: uuid.UUID,
-    status_update: OrderStatusUpdate,
-    current_user: AuthUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Update order status."""
-    query = (
-        select(Order)
-        .where(Order.id == order_id)
-        .options(selectinload(Order.items), selectinload(Order.pickup_location))
-    )
-    result = await db.execute(query)
-    order = result.scalar_one_or_none()
-
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-
+async def _apply_order_status_change(
+    db: AsyncSession,
+    order: Order,
+    new_status: OrderStatus,
+    admin_notes: Optional[str],
+    current_user: AuthUser,
+) -> None:
+    """Apply a status change to an already-loaded order, including all side effects."""
     old_status = order.status
-    order.status = status_update.status
+    order.status = new_status
 
-    if status_update.admin_notes:
-        order.admin_notes = status_update.admin_notes
+    if admin_notes:
+        order.admin_notes = admin_notes
 
     # Set timestamps based on status
-    if status_update.status in [OrderStatus.PICKED_UP, OrderStatus.DELIVERED]:
+    if new_status in [OrderStatus.PICKED_UP, OrderStatus.DELIVERED]:
         order.fulfilled_at = datetime.utcnow()
-    elif status_update.status in (OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED):
-        if status_update.status == OrderStatus.CANCELLED:
+    elif new_status in (OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED):
+        if new_status == OrderStatus.CANCELLED:
             order.cancelled_at = datetime.utcnow()
 
         # Release inventory reservations for each order item
@@ -364,7 +364,7 @@ async def update_order_status(
                     order.member_auth_id,
                     amount=order.bubbles_applied,
                     idempotency_key=f"refund-order-{order.id}",
-                    description=f"Refund for {status_update.status.value} order {order.order_number}",
+                    description=f"Refund for {new_status.value} order {order.order_number}",
                     calling_service="store",
                     transaction_type="refund",
                     reference_type="order",
@@ -386,15 +386,15 @@ async def update_order_status(
         "status_changed",
         current_user.user_id,
         old_value={"status": old_status.value},
-        new_value={"status": status_update.status.value},
-        notes=status_update.admin_notes,
+        new_value={"status": new_status.value},
+        notes=admin_notes,
     )
 
     await db.commit()
     await db.refresh(order)
 
     # Send notification to customer for ready/shipped status changes via centralized email
-    if status_update.status in [OrderStatus.READY_FOR_PICKUP, OrderStatus.SHIPPED]:
+    if new_status in [OrderStatus.READY_FOR_PICKUP, OrderStatus.SHIPPED]:
         try:
             from libs.common.emails.client import get_email_client
 
@@ -450,7 +450,7 @@ async def update_order_status(
             "x-circle",
         ),
     }
-    notif_config = _STATUS_NOTIFICATION_MAP.get(status_update.status)
+    notif_config = _STATUS_NOTIFICATION_MAP.get(new_status)
     if notif_config and order.member_auth_id:
         notif_type, notif_title, notif_body, notif_icon = notif_config
         member = await get_member_by_auth_id(
@@ -474,7 +474,7 @@ async def update_order_status(
 
     # Emit events based on status transitions
     if order.member_auth_id:
-        if status_update.status == OrderStatus.SHIPPED:
+        if new_status == OrderStatus.SHIPPED:
             await emit_rewards_event(
                 event_type="store.order_shipped",
                 member_auth_id=order.member_auth_id,
@@ -486,7 +486,7 @@ async def update_order_status(
                 idempotency_key=f"store-order-shipped-{order.id}",
                 calling_service="store",
             )
-        elif status_update.status in (OrderStatus.PICKED_UP, OrderStatus.DELIVERED):
+        elif new_status in (OrderStatus.PICKED_UP, OrderStatus.DELIVERED):
             await emit_rewards_event(
                 event_type="store.order_fulfilled",
                 member_auth_id=order.member_auth_id,
@@ -499,7 +499,7 @@ async def update_order_status(
                 idempotency_key=f"store-order-fulfilled-{order.id}",
                 calling_service="store",
             )
-        elif status_update.status == OrderStatus.CANCELLED:
+        elif new_status == OrderStatus.CANCELLED:
             await emit_rewards_event(
                 event_type="store.order_cancelled",
                 member_auth_id=order.member_auth_id,
@@ -511,6 +511,64 @@ async def update_order_status(
                 idempotency_key=f"store-order-cancelled-{order.id}",
                 calling_service="store",
             )
+
+
+async def _load_admin_order(db: AsyncSession, order_id: uuid.UUID) -> Order:
+    """Load an order by ID with all relationships needed for OrderResponse."""
+    query = (
+        select(Order).where(Order.id == order_id).options(*_order_eager_load_options())
+    )
+    result = await db.execute(query)
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order
+
+
+@router.patch("/orders/{order_id}/status", response_model=OrderResponse)
+async def update_order_status(
+    order_id: uuid.UUID,
+    status_update: OrderStatusUpdate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Update order status."""
+    order = await _load_admin_order(db, order_id)
+    await _apply_order_status_change(
+        db, order, status_update.status, status_update.admin_notes, current_user
+    )
+    return order
+
+
+@router.patch("/orders/{order_id}", response_model=OrderResponse)
+async def update_order(
+    order_id: uuid.UUID,
+    update: OrderUpdate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Partial update of an order: status, admin notes, and/or tracking number."""
+    order = await _load_admin_order(db, order_id)
+
+    if update.status is not None:
+        # Status change runs full side-effect pipeline (notifications, audit, refunds, etc).
+        # admin_notes from the same payload is folded in by the helper.
+        await _apply_order_status_change(
+            db, order, update.status, update.admin_notes, current_user
+        )
+
+    field_changes = False
+    if update.status is None and update.admin_notes is not None:
+        order.admin_notes = update.admin_notes
+        field_changes = True
+    if update.tracking_number is not None:
+        # Tracking number is stored in delivery_notes (legacy field name).
+        order.delivery_notes = update.tracking_number
+        field_changes = True
+
+    if field_changes:
+        await db.commit()
+        await db.refresh(order)
 
     return order
 
@@ -526,9 +584,7 @@ async def mark_order_paid(
     Called by payments_service when Paystack webhook confirms payment.
     """
     query = (
-        select(Order)
-        .where(Order.id == order_id)
-        .options(selectinload(Order.items), selectinload(Order.pickup_location))
+        select(Order).where(Order.id == order_id).options(*_order_eager_load_options())
     )
     result = await db.execute(query)
     order = result.scalar_one_or_none()

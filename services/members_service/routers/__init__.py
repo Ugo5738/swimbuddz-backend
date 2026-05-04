@@ -26,6 +26,12 @@ from services.members_service.routers.coach_grades import (
 )
 from services.members_service.routers.coach_grades import router as coach_grades_router
 from services.members_service.routers.coaches import router as coaches_router
+from services.members_service.routers.guardians import (
+    admin_router as guardians_admin_router,
+)
+from services.members_service.routers.guardians import (
+    internal_router as guardians_internal_router,
+)
 from services.members_service.routers.internal import router as internal_router
 from services.members_service.routers.members import router as members_router
 from services.members_service.routers.registration import router as registration_router
@@ -46,4 +52,6 @@ __all__ = [
     "coach_agreements_admin_router",
     "challenge_router",
     "volunteer_router",
+    "guardians_admin_router",
+    "guardians_internal_router",
 ]

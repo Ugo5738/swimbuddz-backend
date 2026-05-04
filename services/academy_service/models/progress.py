@@ -2,19 +2,20 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from services.academy_service.models.enums import (
+    MilestoneEventType,
     MilestoneType,
     ProgressStatus,
     RequiredEvidence,
     enum_values,
 )
-from sqlalchemy import JSON, Boolean, Date, DateTime
-from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 # ============================================================================
 # MILESTONE & PROGRESS MODELS
@@ -169,6 +170,88 @@ class StudentProgress(Base):
 
     def __repr__(self):
         return f"<StudentProgress Enrollment={self.enrollment_id} Milestone={self.milestone_id}>"
+
+
+class MilestoneReviewEvent(Base):
+    """Append-only audit log of milestone claim/review/status-change events.
+
+    Every mutation to a StudentProgress row emits a row here with a snapshot
+    of notes/evidence/score at the time. This preserves the back-and-forth
+    history that would otherwise be lost when StudentProgress.coach_notes
+    is nulled on resubmit or evidence_media_id is overwritten.
+    """
+
+    __tablename__ = "milestone_review_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    progress_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("student_progress.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    enrollment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    milestone_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+
+    event_type: Mapped[MilestoneEventType] = mapped_column(
+        SAEnum(
+            MilestoneEventType,
+            name="milestone_event_type_enum",
+            values_callable=enum_values,
+            validate_strings=True,
+        ),
+        nullable=False,
+    )
+
+    actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    actor_role: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # "student" | "coach" | "admin"
+
+    previous_status: Mapped[Optional[ProgressStatus]] = mapped_column(
+        SAEnum(
+            ProgressStatus,
+            name="progress_status_enum",
+            values_callable=enum_values,
+            validate_strings=True,
+            create_type=False,  # enum is already created by student_progress
+        ),
+        nullable=True,
+    )
+    new_status: Mapped[ProgressStatus] = mapped_column(
+        SAEnum(
+            ProgressStatus,
+            name="progress_status_enum",
+            values_callable=enum_values,
+            validate_strings=True,
+            create_type=False,
+        ),
+        nullable=False,
+    )
+
+    # Snapshots of content at time of event
+    student_notes_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    coach_notes_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    evidence_media_id_snapshot: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    score_snapshot: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+    def __repr__(self):
+        return (
+            f"<MilestoneReviewEvent {self.event_type} progress={self.progress_id} "
+            f"actor={self.actor_role}:{self.actor_id}>"
+        )
 
 
 # ============================================================================

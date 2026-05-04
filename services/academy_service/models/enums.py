@@ -82,6 +82,13 @@ class ProgressStatus(str, enum.Enum):
     ACHIEVED = "achieved"
 
 
+class MilestoneEventType(str, enum.Enum):
+    CLAIMED = "claimed"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    STATUS_CHANGED = "status_changed"
+
+
 class ResourceSourceType(str, enum.Enum):
     URL = "url"
     UPLOAD = "upload"

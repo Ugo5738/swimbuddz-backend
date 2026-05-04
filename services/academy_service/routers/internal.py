@@ -10,6 +10,7 @@ from services.academy_service.routers._shared import (
     AuthUser,
     CoachAssignment,
     Cohort,
+    CohortStatus,
     Depends,
     Enrollment,
     EnrollmentResponse,
@@ -96,6 +97,116 @@ async def get_enrollment_internal(
     )
     await db.commit()
     return enrollment
+
+
+@router.get("/cohorts")
+async def list_cohorts_internal(
+    status: str = Query(
+        ...,
+        description=(
+            "Comma-separated cohort statuses to filter by "
+            "(e.g. 'open,active'). Values must match the CohortStatus enum."
+        ),
+    ),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List cohorts filtered by one or more statuses (internal call).
+
+    Used by reporting_service flywheel snapshot tasks to enumerate cohorts
+    that should be tracked for fill-rate metrics.
+
+    Returns ``{"cohorts": [{id, name, program_name, capacity, status,
+    start_date, end_date}, ...]}``.
+    """
+    raw_values = [s.strip().lower() for s in status.split(",") if s.strip()]
+    if not raw_values:
+        raise HTTPException(
+            status_code=400, detail="status query param must not be empty"
+        )
+
+    statuses: list[CohortStatus] = []
+    invalid: list[str] = []
+    for value in raw_values:
+        try:
+            statuses.append(CohortStatus(value))
+        except ValueError:
+            invalid.append(value)
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown cohort status(es): {', '.join(invalid)}",
+        )
+
+    query = (
+        select(Cohort)
+        .where(Cohort.status.in_(statuses))
+        .options(selectinload(Cohort.program))
+        .order_by(Cohort.start_date)
+    )
+    result = await db.execute(query)
+    cohorts = result.scalars().all()
+
+    return {
+        "cohorts": [
+            {
+                "id": str(c.id),
+                "name": c.name,
+                "program_name": c.program.name if c.program else None,
+                "capacity": int(c.capacity or 0),
+                "status": c.status.value if c.status else None,
+                "start_date": c.start_date.isoformat() if c.start_date else None,
+                "end_date": c.end_date.isoformat() if c.end_date else None,
+            }
+            for c in cohorts
+        ]
+    }
+
+
+@router.get("/cohorts/{cohort_id}/enrollment-counts")
+async def get_cohort_enrollment_counts_internal(
+    cohort_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return enrollment counts grouped by status for a single cohort.
+
+    Used by reporting_service flywheel snapshot tasks. Response keys are
+    lowercase EnrollmentStatus values; ``DROPOUT_PENDING`` is folded into
+    ``dropped`` since the reporting layer only tracks finalised dropouts.
+    """
+    query = (
+        select(Enrollment.status, func.count(Enrollment.id))
+        .where(Enrollment.cohort_id == cohort_id)
+        .group_by(Enrollment.status)
+    )
+    result = await db.execute(query)
+    rows = result.all()
+
+    counts: dict[str, int] = {
+        "active": 0,
+        "pending_approval": 0,
+        "waitlist": 0,
+        "dropped": 0,
+        "graduated": 0,
+    }
+    for status_value, count in rows:
+        if status_value is None:
+            continue
+        if status_value == EnrollmentStatus.ENROLLED:
+            counts["active"] += int(count)
+        elif status_value == EnrollmentStatus.PENDING_APPROVAL:
+            counts["pending_approval"] += int(count)
+        elif status_value == EnrollmentStatus.WAITLIST:
+            counts["waitlist"] += int(count)
+        elif status_value in (
+            EnrollmentStatus.DROPPED,
+            EnrollmentStatus.DROPOUT_PENDING,
+        ):
+            # DROPOUT_PENDING isn't a separate response key — fold into dropped.
+            counts["dropped"] += int(count)
+        elif status_value == EnrollmentStatus.GRADUATED:
+            counts["graduated"] += int(count)
+
+    return counts
 
 
 @router.get("/cohorts/{cohort_id}")

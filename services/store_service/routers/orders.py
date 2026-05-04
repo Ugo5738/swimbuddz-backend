@@ -406,7 +406,13 @@ async def list_my_orders(
     query = (
         select(Order)
         .where(Order.member_auth_id == current_user.user_id)
-        .options(selectinload(Order.items), selectinload(Order.pickup_location))
+        .options(
+            selectinload(Order.items)
+            .selectinload(OrderItem.variant)
+            .selectinload(ProductVariant.product)
+            .selectinload(Product.images),
+            selectinload(Order.pickup_location),
+        )
         .order_by(Order.created_at.desc())
     )
     result = await db.execute(query)
@@ -426,7 +432,13 @@ async def get_order(
             Order.order_number == order_number,
             Order.member_auth_id == current_user.user_id,
         )
-        .options(selectinload(Order.items), selectinload(Order.pickup_location))
+        .options(
+            selectinload(Order.items)
+            .selectinload(OrderItem.variant)
+            .selectinload(ProductVariant.product)
+            .selectinload(Product.images),
+            selectinload(Order.pickup_location),
+        )
     )
     result = await db.execute(query)
     order = result.scalar_one_or_none()

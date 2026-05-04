@@ -229,6 +229,12 @@ def sync_enrollment_installment_state(
                 enrollment.status = EnrollmentStatus.DROPOUT_PENDING
             else:
                 enrollment.status = EnrollmentStatus.DROPPED
+            # Stamp the drop time on first transition so coach payout
+            # calculations know when to stop counting eligible sessions.
+            # Preserve any existing value if status flips DROPOUT_PENDING ->
+            # DROPPED later (the drop began at the earlier date).
+            if enrollment.dropped_at is None:
+                enrollment.dropped_at = effective_now
 
         enrollment.access_suspended = True
         enrollment.payment_status = PaymentStatus.FAILED

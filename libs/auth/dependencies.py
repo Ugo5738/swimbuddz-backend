@@ -192,6 +192,39 @@ async def require_coach(
     return current_user
 
 
+async def require_safeguarding_admin(
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> AuthUser:
+    """
+    Ensure the user has the 'safeguarding_admin' role (or is service_role).
+
+    Safeguarding-admin is a dedicated role separate from general admin, used
+    to gate:
+      - Report queue for safeguarding-flagged content
+      - Manual review of chat image moderation quarantine
+      - Audit log of any channel containing a minor
+      - Approval/verification of guardian links
+
+    General admins are NOT automatically safeguarding admins — this role must
+    be assigned explicitly to the people responsible for safeguarding.
+
+    Checks:
+    - app_metadata.roles contains "safeguarding_admin"
+    - OR token role is "service_role"
+
+    See docs/design/CHAT_SERVICE_DESIGN.md §6 for full rationale.
+    """
+    is_service_role = current_user.role == "service_role"
+    has_safeguarding_role = current_user.has_role("safeguarding_admin")
+
+    if not (is_service_role or has_safeguarding_role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Safeguarding admin privileges required",
+        )
+    return current_user
+
+
 def is_admin_or_service(user: AuthUser) -> bool:
     """Helper to check if user has admin or service privileges."""
     is_service_role = user.role == "service_role"
