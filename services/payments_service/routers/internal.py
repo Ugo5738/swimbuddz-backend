@@ -345,3 +345,195 @@ async def get_member_payment_summary(
         total_spent=int(row.total or 0),
         payment_count=row.count or 0,
     )
+
+
+# ---------------------------------------------------------------------------
+# Paystack proxy endpoints
+#
+# These are the canonical service-to-service path for any caller (e.g.
+# members-service for the coach bank-account flow) to interact with Paystack.
+# Centralising here keeps PAYSTACK_SECRET_KEY in a single service env and
+# preserves the architectural rule that services never import each other's
+# code directly.
+# ---------------------------------------------------------------------------
+
+
+class _BankItem(BaseModel):
+    name: str
+    code: str
+    slug: str
+
+
+class _ResolveAccountRequest(BaseModel):
+    account_number: str
+    bank_code: str
+
+
+class _ResolveAccountResponse(BaseModel):
+    account_number: str
+    account_name: str
+    bank_code: str
+
+
+class _CreateRecipientRequest(BaseModel):
+    name: str
+    account_number: str
+    bank_code: str
+    currency: str = "NGN"
+
+
+class _CreateRecipientResponse(BaseModel):
+    recipient_code: str
+    name: str
+    account_number: str
+    bank_code: str
+    bank_name: str
+
+
+@router.get(
+    "/paystack/banks",
+    response_model=list[_BankItem],
+    dependencies=[Depends(require_service_role)],
+    tags=["internal-paystack"],
+)
+async def internal_paystack_banks(country: str = "nigeria"):
+    """Proxy Paystack's GET /bank for callers that don't carry the
+    PAYSTACK_SECRET_KEY (e.g. members-service).
+    """
+    from services.payments_service.services.paystack_client import (
+        PaystackClient,
+        PaystackError,
+    )
+
+    try:
+        paystack = PaystackClient()
+    except ValueError as exc:
+        logger.error("Paystack client init failed: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Paystack is not configured on this service.",
+        )
+
+    try:
+        banks = await paystack.list_banks(country=country)
+    except PaystackError as exc:
+        logger.error("Paystack list_banks failed: %s", exc.message)
+        raise HTTPException(
+            status_code=502, detail=f"Paystack list_banks failed: {exc.message}"
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error fetching banks")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Bank list unavailable ({type(exc).__name__})",
+        )
+
+    return [
+        _BankItem(name=b.name, code=b.code, slug=b.slug or "")
+        for b in banks
+        if b.is_active
+    ]
+
+
+@router.post(
+    "/paystack/resolve-account",
+    response_model=_ResolveAccountResponse,
+    dependencies=[Depends(require_service_role)],
+    tags=["internal-paystack"],
+)
+async def internal_paystack_resolve_account(req: _ResolveAccountRequest):
+    """Proxy Paystack's GET /bank/resolve."""
+    from services.payments_service.services.paystack_client import (
+        PaystackClient,
+        PaystackError,
+    )
+
+    try:
+        paystack = PaystackClient()
+    except ValueError as exc:
+        logger.error("Paystack client init failed: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Paystack is not configured on this service.",
+        )
+
+    try:
+        resolved = await paystack.resolve_account(
+            account_number=req.account_number,
+            bank_code=req.bank_code,
+        )
+    except PaystackError as exc:
+        # Resolve failures are usually user errors (wrong account/bank) — 400.
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not verify bank account: {exc.message}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error resolving account")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Account resolve unavailable ({type(exc).__name__})",
+        )
+
+    return _ResolveAccountResponse(
+        account_number=resolved.account_number,
+        account_name=resolved.account_name,
+        bank_code=resolved.bank_code,
+    )
+
+
+@router.post(
+    "/paystack/recipients",
+    response_model=_CreateRecipientResponse,
+    dependencies=[Depends(require_service_role)],
+    tags=["internal-paystack"],
+)
+async def internal_paystack_create_recipient(req: _CreateRecipientRequest):
+    """Proxy Paystack's POST /transferrecipient (nuban). Callers should
+    have already verified the account via /resolve-account first.
+    """
+    from services.payments_service.services.paystack_client import (
+        PaystackClient,
+        PaystackError,
+    )
+
+    try:
+        paystack = PaystackClient()
+    except ValueError as exc:
+        logger.error("Paystack client init failed: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Paystack is not configured on this service.",
+        )
+
+    if (req.currency or "NGN").upper() != "NGN":
+        # The PaystackClient currently hardcodes NGN. Accept the field for
+        # forward-compat but reject anything else explicitly.
+        raise HTTPException(status_code=400, detail="Only NGN recipients are supported")
+
+    try:
+        recipient = await paystack.create_transfer_recipient(
+            name=req.name,
+            account_number=req.account_number,
+            bank_code=req.bank_code,
+        )
+    except PaystackError as exc:
+        logger.error("Paystack create_transfer_recipient failed: %s", exc.message)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not create transfer recipient: {exc.message}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error creating recipient")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Recipient creation unavailable ({type(exc).__name__})",
+        )
+
+    return _CreateRecipientResponse(
+        recipient_code=recipient.recipient_code,
+        name=recipient.name,
+        account_number=recipient.account_number,
+        bank_code=recipient.bank_code,
+        bank_name=recipient.bank_name,
+    )
