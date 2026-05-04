@@ -348,6 +348,44 @@ async def get_coach_readiness_data(
     return resp.json()
 
 
+async def get_birthdays_today(
+    *,
+    calling_service: str,
+    on: Optional[str] = None,
+) -> list[dict]:
+    """Return active members whose date_of_birth falls on ``on`` (defaults to today in Lagos).
+
+    Each item: {id, first_name, last_name, email, age}.
+    """
+    settings = get_settings()
+    params: dict[str, Any] = {}
+    if on:
+        params["on"] = on
+    resp = await internal_get(
+        service_url=settings.MEMBERS_SERVICE_URL,
+        path="/internal/members/birthdays-today",
+        calling_service=calling_service,
+        params=params or None,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def get_admin_members(*, calling_service: str) -> list[dict]:
+    """Return active members with admin-flavoured roles.
+
+    Each item: {id, first_name, last_name, email, roles}.
+    """
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.MEMBERS_SERVICE_URL,
+        path="/internal/members/admins",
+        calling_service=calling_service,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 async def get_eligible_coaches(
     grade_column: str,
     eligible_grades: list[str],
@@ -718,3 +756,111 @@ async def emit_rewards_event(
             exc_info=True,
         )
         return None
+
+
+# ---------------------------------------------------------------------------
+# Paystack proxy (payments-service owns PAYSTACK_SECRET_KEY; other services
+# call these helpers instead of importing PaystackClient directly)
+# ---------------------------------------------------------------------------
+
+
+class PaystackProxyError(Exception):
+    """Raised when an internal Paystack proxy call fails.
+
+    Carries the upstream HTTP status and an actionable message that callers
+    can surface to end users (e.g. "Could not verify bank account: ...").
+    """
+
+    def __init__(self, message: str, status_code: int = 502):
+        self.message = message
+        self.status_code = status_code
+        super().__init__(message)
+
+
+def _proxy_error_from(resp: httpx.Response) -> PaystackProxyError:
+    """Build a PaystackProxyError from a non-2xx httpx response."""
+    try:
+        body = resp.json()
+        detail = body.get("detail") if isinstance(body, dict) else None
+    except Exception:
+        detail = None
+    return PaystackProxyError(
+        message=detail or f"Paystack proxy returned HTTP {resp.status_code}",
+        status_code=resp.status_code,
+    )
+
+
+async def paystack_list_banks(
+    *, calling_service: str, country: str = "nigeria"
+) -> list[dict]:
+    """List banks supported by Paystack via the payments-service proxy.
+
+    Returns: list of {name, code, slug}.
+    Raises: PaystackProxyError on non-2xx (lets callers fall back gracefully).
+    """
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path="/internal/payments/paystack/banks",
+        calling_service=calling_service,
+        params={"country": country},
+        timeout=15.0,
+    )
+    if resp.status_code != 200:
+        raise _proxy_error_from(resp)
+    return resp.json()
+
+
+async def paystack_resolve_account(
+    *,
+    account_number: str,
+    bank_code: str,
+    calling_service: str,
+) -> dict:
+    """Resolve a bank account via the payments-service proxy.
+
+    Returns: {account_number, account_name, bank_code}.
+    Raises: PaystackProxyError on non-2xx.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path="/internal/payments/paystack/resolve-account",
+        calling_service=calling_service,
+        json={"account_number": account_number, "bank_code": bank_code},
+        timeout=15.0,
+    )
+    if resp.status_code != 200:
+        raise _proxy_error_from(resp)
+    return resp.json()
+
+
+async def paystack_create_recipient(
+    *,
+    name: str,
+    account_number: str,
+    bank_code: str,
+    calling_service: str,
+    currency: str = "NGN",
+) -> dict:
+    """Create a Paystack transfer recipient via the payments-service proxy.
+
+    Returns: {recipient_code, name, account_number, bank_code, bank_name}.
+    Raises: PaystackProxyError on non-2xx.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path="/internal/payments/paystack/recipients",
+        calling_service=calling_service,
+        json={
+            "name": name,
+            "account_number": account_number,
+            "bank_code": bank_code,
+            "currency": currency,
+        },
+        timeout=15.0,
+    )
+    if resp.status_code != 200:
+        raise _proxy_error_from(resp)
+    return resp.json()
