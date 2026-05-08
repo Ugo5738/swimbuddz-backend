@@ -6,6 +6,7 @@ from services.members_service.routers import (
     admin_router,
     assessments_router,
     challenge_router,
+    clubs_router,
     coach_agreements_admin_router,
     coach_agreements_router,
     coach_application_admin_router,
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)  # Admin approval endpoints
     # NOTE: volunteer_router removed — now handled by volunteer_service (port 8012)
     app.include_router(challenge_router)
+    app.include_router(clubs_router)
     app.include_router(volunteer_router)
 
     # Coach routers (profile management, not public listing)

@@ -463,6 +463,75 @@ async def grant_pool_submission_reward(
     return resp.json()
 
 
+async def grant_challenge_reward_bubbles(
+    *,
+    member_auth_id: str,
+    bubbles_amount: int,
+    submission_id: str,
+    member_id: str,
+    granted_by: str,
+    calling_service: str,
+) -> dict:
+    """Grant Bubbles to a member for an approved challenge submission.
+
+    Called by members_service after admin approves a submission. Idempotent
+    via the per-member campaign code `CHALLENGE_{submission_id}_{member_id}` —
+    the per-member component is critical because team submissions trigger
+    one grant per member, all sharing submission_id.
+    Returns the GrantResponse dict from wallet_service.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.WALLET_SERVICE_URL,
+        path="/internal/wallet/challenge-completion-reward",
+        calling_service=calling_service,
+        json={
+            "member_auth_id": member_auth_id,
+            "bubbles_amount": bubbles_amount,
+            "submission_id": submission_id,
+            "member_id": member_id,
+            "granted_by": granted_by,
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def grant_challenge_volunteer_hours(
+    *,
+    member_id: str,
+    hours: float,
+    submission_id: str,
+    logged_by: Optional[str],
+    notes: Optional[str],
+    calling_service: str,
+) -> dict:
+    """Credit volunteer hours to a member for an approved challenge submission.
+
+    Called by members_service after admin approves a submission. Idempotent
+    via (source='challenge_completion', external_reference_id=submission_id,
+    member_id) tuple enforced by a partial unique index on the
+    volunteer_hours_log table.
+    Returns the LogHoursResponse dict from volunteer_service.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.VOLUNTEER_SERVICE_URL,
+        path="/internal/volunteer/log-hours",
+        calling_service=calling_service,
+        json={
+            "member_id": member_id,
+            "hours": hours,
+            "source": "challenge_completion",
+            "external_reference_id": submission_id,
+            "logged_by": logged_by,
+            "notes": notes,
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 async def debit_member_wallet(
     auth_id: str,
     *,

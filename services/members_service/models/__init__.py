@@ -13,6 +13,7 @@ Model definitions are split across:
 """
 
 from services.members_service.models.assessment import SwimAssessment  # noqa: F401
+from services.members_service.models.club import Club  # noqa: F401
 from services.members_service.models.coach import (  # noqa: F401
     AgreementType,
     AgreementVersion,
@@ -39,6 +40,14 @@ from services.members_service.models.member import (  # noqa: F401
     PendingRegistration,
 )
 from services.members_service.models.volunteer import (  # noqa: F401
+    CHALLENGE_AUDIENCES,
+    CHALLENGE_FORMATS,
+    CHALLENGE_TYPES,
+    SUBMISSION_STATUSES,
+    ChallengeBadgeAward,
+    ChallengeExampleMedia,
+    ChallengeSubmissionMedia,
+    ChallengeSubmissionMember,
     ClubChallenge,
     MemberChallengeCompletion,
     VolunteerInterest,
@@ -47,6 +56,7 @@ from services.members_service.models.volunteer import (  # noqa: F401
 
 __all__ = [
     "AcquisitionSource",
+    "Club",
     "CoachGrade",
     "GuardianLink",
     "GuardianRelationship",
@@ -61,6 +71,14 @@ __all__ = [
     "VolunteerInterest",
     "ClubChallenge",
     "MemberChallengeCompletion",
+    "ChallengeExampleMedia",
+    "ChallengeSubmissionMedia",
+    "ChallengeSubmissionMember",
+    "ChallengeBadgeAward",
+    "CHALLENGE_AUDIENCES",
+    "CHALLENGE_FORMATS",
+    "CHALLENGE_TYPES",
+    "SUBMISSION_STATUSES",
     "CoachProfile",
     "CoachAgreement",
     "AgreementType",

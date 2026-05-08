@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from services.members_service.models import (
+    ChallengeBadgeAward,
     CoachProfile,
     Member,
     MemberAvailability,
@@ -31,6 +32,7 @@ from services.members_service.routers._helpers import (
     resolve_member_media_urls,
 )
 from services.members_service.schemas import (
+    ChallengeBadgeAwardResponse,
     MemberBasicResponse,
     MemberCreate,
     MemberDirectoryResponse,
@@ -73,6 +75,49 @@ async def get_current_member_profile(
     member_dict = MemberResponse.model_validate(member).model_dump()
     member_dict = await resolve_member_media_urls(member_dict)
     return member_dict
+
+
+@router.get("/me/badges", response_model=List[ChallengeBadgeAwardResponse])
+async def list_my_badges(
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List challenge badges earned by the authenticated member.
+
+    Reads from the denormalised challenge_badge_awards table (one row per
+    earned badge). Hydrates badge_image_url via media_service so the
+    profile page can render the badge artwork without a per-row HTTP call.
+    """
+    member_row = await db.execute(
+        select(Member).where(Member.auth_id == current_user.user_id)
+    )
+    member = member_row.scalar_one_or_none()
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member profile not found.",
+        )
+
+    rows = await db.execute(
+        select(ChallengeBadgeAward)
+        .where(ChallengeBadgeAward.member_id == member.id)
+        .order_by(ChallengeBadgeAward.awarded_at.desc())
+    )
+    awards = list(rows.scalars().all())
+
+    # Bulk-resolve all distinct badge image media_ids in one HTTP call
+    image_ids = [a.badge_image_media_id for a in awards if a.badge_image_media_id]
+    url_map = await resolve_media_urls(image_ids) if image_ids else {}
+
+    out: List[ChallengeBadgeAwardResponse] = []
+    for award in awards:
+        item = ChallengeBadgeAwardResponse.model_validate(award)
+        if award.badge_image_media_id is not None:
+            item.badge_image_url = url_map.get(
+                award.badge_image_media_id
+            ) or url_map.get(str(award.badge_image_media_id))
+        out.append(item)
+    return out
 
 
 @router.patch("/me", response_model=MemberResponse)

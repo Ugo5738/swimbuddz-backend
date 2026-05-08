@@ -5,19 +5,21 @@ via service-role JWT, not by frontend clients.
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.volunteer_service.models import VolunteerProfile, VolunteerRole
+from services.volunteer_service.models.core import VolunteerHoursLog
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/internal/volunteer", tags=["internal-volunteer"])
@@ -89,6 +91,135 @@ async def ensure_volunteer_profile(
         preferred_roles,
     )
     return EnsureProfileResponse(success=True, created=True, profile_id=str(profile.id))
+
+
+# ---------------------------------------------------------------------------
+# Hours logging (idempotent cross-service grant)
+# ---------------------------------------------------------------------------
+
+
+class LogHoursRequest(BaseModel):
+    """Idempotent hours-credit request from another service.
+
+    The (source, external_reference_id, member_id) tuple identifies the
+    granting event. If a row with the same tuple already exists, the
+    endpoint is a no-op and returns the existing log id — so retries from
+    the calling service never double-credit.
+    """
+
+    member_id: str = Field(..., description="Members-service Member.id")
+    hours: float = Field(..., gt=0)
+    source: str = Field(
+        ...,
+        description="e.g. 'challenge_completion'. Free-form string, kept "
+        "consistent across calls so idempotency lookup works.",
+    )
+    external_reference_id: str = Field(
+        ...,
+        description="Stable id from the granting event (e.g. challenge "
+        "submission id). Used together with source + member_id for "
+        "idempotency.",
+    )
+    logged_by: Optional[str] = Field(
+        default=None,
+        description="Auth UUID of the admin/service that triggered the grant.",
+    )
+    notes: Optional[str] = None
+
+
+class LogHoursResponse(BaseModel):
+    success: bool
+    created: bool
+    log_id: str
+
+
+@router.post("/log-hours", response_model=LogHoursResponse, status_code=201)
+async def internal_log_hours(
+    body: LogHoursRequest,
+    caller: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Credit volunteer hours to a member, idempotently.
+
+    The (source, external_reference_id, member_id) tuple is enforced
+    unique by a partial unique index in the migration that ships with
+    this endpoint. If the tuple already exists, this is a no-op and
+    returns created=False with the existing log id.
+
+    Auth: service-role JWT only.
+    """
+    try:
+        member_uuid = uuid.UUID(body.member_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid member_id")
+
+    # Idempotency: short-circuit if an identical (source, ext_ref, member) row
+    # already exists. The DB-level partial unique index is the safety net for
+    # concurrent retries; this lookup is the cheap happy path.
+    existing = (
+        await db.execute(
+            select(VolunteerHoursLog).where(
+                VolunteerHoursLog.source == body.source,
+                VolunteerHoursLog.external_reference_id
+                == body.external_reference_id,
+                VolunteerHoursLog.member_id == member_uuid,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        logger.info(
+            "Hours-log idempotency hit: source=%s ref=%s member=%s log_id=%s",
+            body.source,
+            body.external_reference_id,
+            body.member_id,
+            existing.id,
+        )
+        return LogHoursResponse(
+            success=True, created=False, log_id=str(existing.id)
+        )
+
+    logged_by_uuid: Optional[uuid.UUID] = None
+    if body.logged_by:
+        try:
+            logged_by_uuid = uuid.UUID(body.logged_by)
+        except (ValueError, TypeError):
+            logged_by_uuid = None
+
+    log = VolunteerHoursLog(
+        member_id=member_uuid,
+        hours=body.hours,
+        date=utc_now().date(),
+        source=body.source,
+        external_reference_id=body.external_reference_id,
+        logged_by=logged_by_uuid,
+        notes=body.notes,
+    )
+    db.add(log)
+
+    # Keep the volunteer profile's denormalised total in sync if a profile
+    # exists. Missing profile is OK — the immutable hours log is the
+    # source of truth.
+    profile = (
+        await db.execute(
+            select(VolunteerProfile).where(
+                VolunteerProfile.member_id == member_uuid
+            )
+        )
+    ).scalar_one_or_none()
+    if profile is not None:
+        profile.total_hours = (profile.total_hours or 0.0) + body.hours
+
+    await db.commit()
+    await db.refresh(log)
+
+    logger.info(
+        "Logged %.2f hours for member %s from %s (ref=%s)",
+        body.hours,
+        body.member_id,
+        body.source,
+        body.external_reference_id,
+    )
+    return LogHoursResponse(success=True, created=True, log_id=str(log.id))
 
 
 # ---------------------------------------------------------------------------
