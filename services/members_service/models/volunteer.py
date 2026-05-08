@@ -147,9 +147,7 @@ class ClubChallenge(Base):
     )  # ref to media_service; optional badge artwork
 
     # Configurable rewards (creator opts in by setting non-null)
-    reward_bubbles_amount: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True
-    )
+    reward_bubbles_amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     reward_volunteer_hours: Mapped[Optional[float]] = mapped_column(
         Numeric(5, 2), nullable=True
     )
@@ -350,9 +348,7 @@ class ChallengeSubmissionMember(Base):
 
     __tablename__ = "challenge_submission_members"
     __table_args__ = (
-        UniqueConstraint(
-            "submission_id", "member_id", name="uq_submission_member"
-        ),
+        UniqueConstraint("submission_id", "member_id", name="uq_submission_member"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

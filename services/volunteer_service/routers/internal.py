@@ -5,7 +5,7 @@ via service-role JWT, not by frontend clients.
 """
 
 import uuid
-from datetime import date, datetime
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -160,8 +160,7 @@ async def internal_log_hours(
         await db.execute(
             select(VolunteerHoursLog).where(
                 VolunteerHoursLog.source == body.source,
-                VolunteerHoursLog.external_reference_id
-                == body.external_reference_id,
+                VolunteerHoursLog.external_reference_id == body.external_reference_id,
                 VolunteerHoursLog.member_id == member_uuid,
             )
         )
@@ -174,9 +173,7 @@ async def internal_log_hours(
             body.member_id,
             existing.id,
         )
-        return LogHoursResponse(
-            success=True, created=False, log_id=str(existing.id)
-        )
+        return LogHoursResponse(success=True, created=False, log_id=str(existing.id))
 
     logged_by_uuid: Optional[uuid.UUID] = None
     if body.logged_by:
@@ -201,9 +198,7 @@ async def internal_log_hours(
     # source of truth.
     profile = (
         await db.execute(
-            select(VolunteerProfile).where(
-                VolunteerProfile.member_id == member_uuid
-            )
+            select(VolunteerProfile).where(VolunteerProfile.member_id == member_uuid)
         )
     ).scalar_one_or_none()
     if profile is not None:

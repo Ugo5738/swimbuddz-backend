@@ -397,9 +397,7 @@ async def _load_submission_members(
     return out
 
 
-async def _load_member_records(
-    member_ids: List[uuid.UUID], db: AsyncSession
-) -> dict:
+async def _load_member_records(member_ids: List[uuid.UUID], db: AsyncSession) -> dict:
     """Bulk-load member name records by id (single in-service DB query).
 
     Returns dict[UUID -> (first_name, last_name)]. The cross-service
@@ -431,9 +429,7 @@ def _full_name(record: Optional[tuple]) -> Optional[str]:
     return full or None
 
 
-async def _load_member_names(
-    member_ids: List[uuid.UUID], db: AsyncSession
-) -> dict:
+async def _load_member_names(member_ids: List[uuid.UUID], db: AsyncSession) -> dict:
     """Convenience: bulk-resolve member ids → "First Last" strings.
 
     Thin wrapper around _load_member_records + _full_name; kept so the
@@ -504,9 +500,7 @@ async def _hydrate_submission_response(
     sub_dict["members"] = await _load_submission_members(submission.id, db)
 
     # Captain name (top-level convenience for the admin queue table)
-    captain_name_map = await _load_member_names(
-        [submission.member_id], db
-    )
+    captain_name_map = await _load_member_names([submission.member_id], db)
     sub_dict["member_name"] = captain_name_map.get(submission.member_id)
 
     # Parent challenge title (avoids a round-trip per row in the queue UI)
@@ -576,9 +570,7 @@ async def _build_winner_info(
     sub_members = list(members_rows.scalars().all())
 
     member_ids = (
-        [m.member_id for m in sub_members]
-        if sub_members
-        else [submission.member_id]
+        [m.member_id for m in sub_members] if sub_members else [submission.member_id]
     )
 
     records = await _load_member_records(member_ids, db)
@@ -630,17 +622,13 @@ async def _hydrate_public_challenge_response(
 
     badge_image_url: Optional[str] = None
     if challenge.reward_badge_image_media_id is not None:
-        url_map = await resolve_media_urls(
-            [challenge.reward_badge_image_media_id]
-        )
+        url_map = await resolve_media_urls([challenge.reward_badge_image_media_id])
         badge_image_url = url_map.get(
             challenge.reward_badge_image_media_id
         ) or url_map.get(str(challenge.reward_badge_image_media_id))
 
     now = utc_now()
-    is_finished = (
-        challenge.ends_at is not None and challenge.ends_at < now
-    )
+    is_finished = challenge.ends_at is not None and challenge.ends_at < now
 
     winner_info: Optional[ChallengeWinnerPublicInfo] = None
     if include_winner and challenge.format == "competition":
@@ -786,7 +774,7 @@ async def _notify_submission_reviewed(
             },
         )
     elif status == "rejected":
-        body = f"Your attempt at \"{challenge.title}\" wasn't approved this time."
+        body = f'Your attempt at "{challenge.title}" wasn\'t approved this time.'
         if review_note:
             body += f" Note from the reviewer: {review_note}"
         body += " You can try again any time."
@@ -826,7 +814,7 @@ async def _notify_submission_winner(
         member_ids = [str(submission.member_id)]
 
     body = (
-        f"Your attempt at \"{challenge.title}\" was selected as the winner. "
+        f'Your attempt at "{challenge.title}" was selected as the winner. '
         "Congrats — your name is up on the public challenge page."
     )
     await dispatch_notification(
@@ -971,10 +959,7 @@ async def _distribute_external_rewards(
                     exc,
                 )
 
-        if (
-            m.bubbles_grant_id is not None
-            or m.volunteer_hours_log_id is not None
-        ):
+        if m.bubbles_grant_id is not None or m.volunteer_hours_log_id is not None:
             m.rewarded_at = utc_now()
 
 
@@ -988,9 +973,7 @@ async def _distribute_external_rewards(
 # ---------------------------------------------------------------------------
 
 
-@challenge_router.get(
-    "/public/all", response_model=List[ChallengePublicResponse]
-)
+@challenge_router.get("/public/all", response_model=List[ChallengePublicResponse])
 async def list_public_challenges(
     status_filter: Optional[Literal["active", "finished", "all"]] = Query(
         None,
@@ -1015,11 +998,8 @@ async def list_public_challenges(
     if status_filter == "active":
         # Active = (no start, or start is past) AND (no end, or end is future)
         query = query.where(
-            (ClubChallenge.starts_at.is_(None))
-            | (ClubChallenge.starts_at <= now)
-        ).where(
-            (ClubChallenge.ends_at.is_(None)) | (ClubChallenge.ends_at > now)
-        )
+            (ClubChallenge.starts_at.is_(None)) | (ClubChallenge.starts_at <= now)
+        ).where((ClubChallenge.ends_at.is_(None)) | (ClubChallenge.ends_at > now))
     elif status_filter == "finished":
         query = query.where(ClubChallenge.ends_at < now)
 
@@ -1045,9 +1025,7 @@ async def list_public_challenges(
     ]
 
 
-@challenge_router.get(
-    "/public/{challenge_id}", response_model=ChallengePublicResponse
-)
+@challenge_router.get("/public/{challenge_id}", response_model=ChallengePublicResponse)
 async def get_public_challenge(
     challenge_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
@@ -1066,9 +1044,7 @@ async def get_public_challenge(
     challenge = row.scalar_one_or_none()
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
-    return await _hydrate_public_challenge_response(
-        challenge, db, include_winner=True
-    )
+    return await _hydrate_public_challenge_response(challenge, db, include_winner=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1334,10 +1310,7 @@ async def create_challenge_submission(
     captain_member_id = await _resolve_member_id_from_auth(current_user, db)
 
     # Ignore any client-sent challenge_id mismatch — the path param wins
-    if (
-        submission_data.challenge_id
-        and submission_data.challenge_id != challenge_id
-    ):
+    if submission_data.challenge_id and submission_data.challenge_id != challenge_id:
         raise HTTPException(
             status_code=400, detail="challenge_id in body does not match path"
         )
@@ -1705,9 +1678,7 @@ async def mark_challenge_complete(
     import json
 
     challenge_row = await db.execute(
-        select(ClubChallenge).where(
-            ClubChallenge.id == completion_data.challenge_id
-        )
+        select(ClubChallenge).where(ClubChallenge.id == completion_data.challenge_id)
     )
     challenge = challenge_row.scalar_one_or_none()
     if not challenge:

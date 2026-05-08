@@ -224,12 +224,8 @@ def create_app() -> FastAPI:
     # ==================================================================
     # CLUBS PROXY (Members Service)
     # ==================================================================
-    @app.api_route(
-        "/api/v1/clubs", methods=["GET", "POST"]
-    )
-    @app.api_route(
-        "/api/v1/clubs/", methods=["GET", "POST"]
-    )
+    @app.api_route("/api/v1/clubs", methods=["GET", "POST"])
+    @app.api_route("/api/v1/clubs/", methods=["GET", "POST"])
     async def proxy_clubs_root(request: Request):
         """Proxy /api/v1/clubs and /api/v1/clubs/ to members service."""
         return await proxy_request(clients.members_client, "/clubs/", request)
@@ -240,9 +236,7 @@ def create_app() -> FastAPI:
     )
     async def proxy_clubs(path: str, request: Request):
         """Proxy all /api/v1/clubs/* requests to members service."""
-        return await proxy_request(
-            clients.members_client, f"/clubs/{path}", request
-        )
+        return await proxy_request(clients.members_client, f"/clubs/{path}", request)
 
     # ==================================================================
     # ATTENDANCE SERVICE PROXY

@@ -35,9 +35,7 @@ router = APIRouter(prefix="/clubs", tags=["clubs"])
 
 @router.get("/", response_model=List[ClubResponse])
 async def list_clubs(
-    active_only: bool = Query(
-        True, description="Hide inactive clubs (default true)."
-    ),
+    active_only: bool = Query(True, description="Hide inactive clubs (default true)."),
     db: AsyncSession = Depends(get_async_db),
 ):
     """List clubs. Public — used by the challenges admin form picker and
