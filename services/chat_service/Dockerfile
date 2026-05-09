@@ -23,4 +23,4 @@ COPY services/chat_service/alembic.ini .
 
 EXPOSE 8016
 
-CMD ["uvicorn", "services.chat_service.app.main:app", "--host", "0.0.0.0", "--port", "8016"]
+CMD ["uvicorn", "services.chat_service.app.main:app", "--host", "0.0.0.0", "--port", "8016", "--proxy-headers", "--forwarded-allow-ips=*"]

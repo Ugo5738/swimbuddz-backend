@@ -28,4 +28,4 @@ COPY services/reporting_service/alembic.ini .
 
 EXPOSE 8015
 
-CMD ["uvicorn", "services.reporting_service.app.main:app", "--host", "0.0.0.0", "--port", "8015"]
+CMD ["uvicorn", "services.reporting_service.app.main:app", "--host", "0.0.0.0", "--port", "8015", "--proxy-headers", "--forwarded-allow-ips=*"]

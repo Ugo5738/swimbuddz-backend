@@ -23,4 +23,4 @@ COPY services/wallet_service/alembic.ini .
 
 EXPOSE 8013
 
-CMD ["uvicorn", "services.wallet_service.app.main:app", "--host", "0.0.0.0", "--port", "8013"]
+CMD ["uvicorn", "services.wallet_service.app.main:app", "--host", "0.0.0.0", "--port", "8013", "--proxy-headers", "--forwarded-allow-ips=*"]

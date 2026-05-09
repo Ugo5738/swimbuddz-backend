@@ -23,4 +23,4 @@ COPY services/volunteer_service/alembic.ini .
 
 EXPOSE 8012
 
-CMD ["uvicorn", "services.volunteer_service.app.main:app", "--host", "0.0.0.0", "--port", "8012"]
+CMD ["uvicorn", "services.volunteer_service.app.main:app", "--host", "0.0.0.0", "--port", "8012", "--proxy-headers", "--forwarded-allow-ips=*"]

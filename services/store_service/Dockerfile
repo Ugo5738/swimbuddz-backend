@@ -23,4 +23,4 @@ COPY services/store_service/alembic.ini .
 
 EXPOSE 8010
 
-CMD ["uvicorn", "services.store_service.app.main:app", "--host", "0.0.0.0", "--port", "8010"]
+CMD ["uvicorn", "services.store_service.app.main:app", "--host", "0.0.0.0", "--port", "8010", "--proxy-headers", "--forwarded-allow-ips=*"]

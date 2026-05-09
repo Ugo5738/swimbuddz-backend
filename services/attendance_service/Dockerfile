@@ -23,4 +23,4 @@ COPY services/attendance_service/alembic.ini .
 
 EXPOSE 8003
 
-CMD ["uvicorn", "services.attendance_service.app.main:app", "--host", "0.0.0.0", "--port", "8003"]
+CMD ["uvicorn", "services.attendance_service.app.main:app", "--host", "0.0.0.0", "--port", "8003", "--proxy-headers", "--forwarded-allow-ips=*"]

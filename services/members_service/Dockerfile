@@ -23,4 +23,4 @@ COPY services/members_service/alembic.ini .
 
 EXPOSE 8001
 
-CMD ["uvicorn", "services.members_service.app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "services.members_service.app.main:app", "--host", "0.0.0.0", "--port", "8001", "--proxy-headers", "--forwarded-allow-ips=*"]

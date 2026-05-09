@@ -23,4 +23,4 @@ COPY services/ai_service/alembic.ini .
 
 EXPOSE 8011
 
-CMD ["uvicorn", "services.ai_service.app.main:app", "--host", "0.0.0.0", "--port", "8011"]
+CMD ["uvicorn", "services.ai_service.app.main:app", "--host", "0.0.0.0", "--port", "8011", "--proxy-headers", "--forwarded-allow-ips=*"]
