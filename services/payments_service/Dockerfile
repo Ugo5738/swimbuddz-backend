@@ -23,4 +23,4 @@ COPY services/payments_service/alembic.ini .
 
 EXPOSE 8005
 
-CMD ["uvicorn", "services.payments_service.app.main:app", "--host", "0.0.0.0", "--port", "8005"]
+CMD ["uvicorn", "services.payments_service.app.main:app", "--host", "0.0.0.0", "--port", "8005", "--proxy-headers", "--forwarded-allow-ips=*"]

@@ -34,4 +34,4 @@ COPY services/media_service/ services/media_service/
 
 EXPOSE 8008
 
-CMD ["uvicorn", "services.media_service.app.main:app", "--host", "0.0.0.0", "--port", "8008"]
+CMD ["uvicorn", "services.media_service.app.main:app", "--host", "0.0.0.0", "--port", "8008", "--proxy-headers", "--forwarded-allow-ips=*"]

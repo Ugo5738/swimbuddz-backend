@@ -23,4 +23,4 @@ COPY services/academy_service/alembic.ini .
 
 EXPOSE 8006
 
-CMD ["uvicorn", "services.academy_service.app.main:app", "--host", "0.0.0.0", "--port", "8006"]
+CMD ["uvicorn", "services.academy_service.app.main:app", "--host", "0.0.0.0", "--port", "8006", "--proxy-headers", "--forwarded-allow-ips=*"]

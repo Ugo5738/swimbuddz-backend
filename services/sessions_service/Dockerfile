@@ -23,4 +23,4 @@ COPY services/sessions_service/alembic.ini .
 
 EXPOSE 8002
 
-CMD ["uvicorn", "services.sessions_service.app.main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["uvicorn", "services.sessions_service.app.main:app", "--host", "0.0.0.0", "--port", "8002", "--proxy-headers", "--forwarded-allow-ips=*"]

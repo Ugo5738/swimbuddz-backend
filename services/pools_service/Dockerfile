@@ -23,4 +23,4 @@ COPY services/pools_service/alembic.ini .
 
 EXPOSE 8014
 
-CMD ["uvicorn", "services.pools_service.app.main:app", "--host", "0.0.0.0", "--port", "8014"]
+CMD ["uvicorn", "services.pools_service.app.main:app", "--host", "0.0.0.0", "--port", "8014", "--proxy-headers", "--forwarded-allow-ips=*"]

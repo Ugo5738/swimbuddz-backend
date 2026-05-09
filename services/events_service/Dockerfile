@@ -23,4 +23,4 @@ COPY services/events_service/alembic.ini .
 
 EXPOSE 8007
 
-CMD ["uvicorn", "services.events_service.app.main:app", "--host", "0.0.0.0", "--port", "8007"]
+CMD ["uvicorn", "services.events_service.app.main:app", "--host", "0.0.0.0", "--port", "8007", "--proxy-headers", "--forwarded-allow-ips=*"]

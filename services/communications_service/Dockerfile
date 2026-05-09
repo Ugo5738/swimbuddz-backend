@@ -23,4 +23,4 @@ COPY services/communications_service/alembic.ini .
 
 EXPOSE 8004
 
-CMD ["uvicorn", "services.communications_service.app.main:app", "--host", "0.0.0.0", "--port", "8004"]
+CMD ["uvicorn", "services.communications_service.app.main:app", "--host", "0.0.0.0", "--port", "8004", "--proxy-headers", "--forwarded-allow-ips=*"]

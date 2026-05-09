@@ -23,4 +23,4 @@ COPY services/transport_service/alembic.ini .
 
 EXPOSE 8009
 
-CMD ["uvicorn", "services.transport_service.app.main:app", "--host", "0.0.0.0", "--port", "8009"]
+CMD ["uvicorn", "services.transport_service.app.main:app", "--host", "0.0.0.0", "--port", "8009", "--proxy-headers", "--forwarded-allow-ips=*"]
