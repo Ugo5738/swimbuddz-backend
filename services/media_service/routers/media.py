@@ -85,6 +85,11 @@ MAX_UPLOAD_SIZES: dict[str, int] = {
     "milestone_video": 2 * 1024 * 1024 * 1024,
     "milestone_evidence": 2 * 1024 * 1024 * 1024,
     "product_video": 2 * 1024 * 1024 * 1024,
+    # Challenges: example demos and proof-of-attempt videos can be long;
+    # match milestone video budget. Badge images are small icons.
+    "challenge_example": 2 * 1024 * 1024 * 1024,
+    "challenge_proof": 2 * 1024 * 1024 * 1024,
+    "badge_image": 25 * 1024 * 1024,
     # Documents: 10 MB
     "coach_document": 10 * 1024 * 1024,
     "payment_proof": 10 * 1024 * 1024,
@@ -262,6 +267,10 @@ async def upload_file(
         "product_image",
         "product_video",
         "size_chart",
+        # Challenges (Phase 2)
+        "challenge_example",
+        "challenge_proof",
+        "badge_image",
     }
     if purpose not in allowed_purposes:
         raise HTTPException(
@@ -313,6 +322,18 @@ async def upload_file(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="File must be a PDF or image",
             )
+    elif purpose in ("challenge_example", "challenge_proof"):
+        if not (is_image or is_video):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be an image or video",
+            )
+    elif purpose == "badge_image":
+        if not is_image:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be an image",
+            )
     # "general" allows any file type
 
     file_data = await _read_file_with_limit(file, purpose)
@@ -340,6 +361,13 @@ async def upload_file(
         "product_image": "product-images",
         "product_video": "product-videos",
         "size_chart": "size-charts",
+        "challenge_example": (
+            f"challenge-examples/{linked_id}" if linked_id else "challenge-examples"
+        ),
+        "challenge_proof": (
+            f"challenge-proofs/{linked_id}" if linked_id else "challenge-proofs"
+        ),
+        "badge_image": "badge-images",
         "general": "uploads",
     }
     storage_prefix = storage_prefixes.get(purpose, "uploads")
@@ -441,6 +469,10 @@ async def register_external_url(
         "product_image",
         "product_video",
         "size_chart",
+        # Challenges (Phase 2)
+        "challenge_example",
+        "challenge_proof",
+        "badge_image",
     }
     if purpose not in allowed_purposes:
         raise HTTPException(

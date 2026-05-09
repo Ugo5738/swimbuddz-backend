@@ -45,6 +45,12 @@ PURPOSE_BUCKET_MAP = {
     "general": BucketType.PUBLIC,
     "media": BucketType.PUBLIC,  # Gallery/album items
     "audio_track": BucketType.PUBLIC,  # Audio overlay tracks
+    # Challenges (Phase 2 of the challenges revamp): public-bucket so the
+    # public landing-page surface can render example media + winner proofs
+    # without signed URL juggling.
+    "challenge_example": BucketType.PUBLIC,
+    "challenge_proof": BucketType.PUBLIC,
+    "badge_image": BucketType.PUBLIC,
     # Private bucket - restricted access content
     "coach_document": BucketType.PRIVATE,
     "payment_proof": BucketType.PRIVATE,
