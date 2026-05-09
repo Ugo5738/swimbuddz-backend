@@ -192,6 +192,10 @@ class ClubChallengeResponse(ClubChallengeBase):
     completion_count: Optional[int] = 0  # approved-only count
     submission_count: Optional[int] = 0  # all statuses
     example_media: List[ChallengeExampleMediaResponse] = Field(default_factory=list)
+    # Hydrated badge artwork URL — populated by the router when
+    # reward_badge_image_media_id is set so admin/member list views can
+    # render the actual badge instead of a fallback Trophy icon.
+    badge_image_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

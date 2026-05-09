@@ -467,6 +467,16 @@ async def _hydrate_challenge_response(
 
     example_media = await _load_challenge_example_media(challenge.id, db)
 
+    # Resolve the badge artwork URL once so both admin and member-facing
+    # list/detail views can render the actual badge instead of falling back
+    # to a generic Trophy icon. Single bulk HTTP call to media_service.
+    badge_image_url: Optional[str] = None
+    if challenge.reward_badge_image_media_id is not None:
+        url_map = await resolve_media_urls([challenge.reward_badge_image_media_id])
+        badge_image_url = url_map.get(
+            challenge.reward_badge_image_media_id
+        ) or url_map.get(str(challenge.reward_badge_image_media_id))
+
     challenge_dict = {
         column.name: getattr(challenge, column.name)
         for column in challenge.__table__.columns
@@ -477,6 +487,7 @@ async def _hydrate_challenge_response(
     challenge_dict["completion_count"] = approved_count
     challenge_dict["submission_count"] = submission_count
     challenge_dict["example_media"] = example_media
+    challenge_dict["badge_image_url"] = badge_image_url
 
     return ClubChallengeResponse.model_validate(challenge_dict)
 
