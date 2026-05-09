@@ -30,6 +30,7 @@ from services.wallet_service.schemas.balance import (  # noqa: F401
 from services.wallet_service.schemas.grant import (  # noqa: F401
     AdminScholarshipCreditRequest,
     BulkGrantPromotionalRequest,
+    ChallengeCompletionRewardRequest,
     GrantListResponse,
     GrantPromotionalRequest,
     GrantResponse,
@@ -121,6 +122,7 @@ __all__ = [
     "GrantWelcomeBonusRequest",
     "GrantWelcomeBonusResponse",
     "PoolSubmissionRewardRequest",
+    "ChallengeCompletionRewardRequest",
     # Admin
     "AdjustBalanceRequest",
     "AdminStatsResponse",

@@ -20,6 +20,11 @@ from libs.db.base import Base
 from services.members_service.models import (  # noqa: F401
     AcquisitionSource,
     AgreementVersion,
+    ChallengeBadgeAward,
+    ChallengeExampleMedia,
+    ChallengeSubmissionMedia,
+    ChallengeSubmissionMember,
+    Club,
     ClubChallenge,
     CoachAgreement,
     CoachBankAccount,

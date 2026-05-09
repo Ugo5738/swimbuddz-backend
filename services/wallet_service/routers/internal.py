@@ -28,6 +28,7 @@ from services.wallet_service.schemas import (
     GrantWelcomeBonusRequest,
     GrantWelcomeBonusResponse,
     InternalDebitCreditResponse,
+    ChallengeCompletionRewardRequest,
     PoolSubmissionRewardRequest,
     WalletCreateRequest,
     WalletResponse,
@@ -282,6 +283,44 @@ async def internal_pool_submission_reward(
         body.bubbles_amount,
         body.member_auth_id,
         body.submission_id,
+    )
+    return grant
+
+
+@router.post(
+    "/challenge-completion-reward",
+    response_model=GrantResponse,
+    status_code=201,
+)
+async def internal_challenge_completion_reward(
+    body: ChallengeCompletionRewardRequest,
+    caller: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Grant Bubbles for an approved challenge submission.
+
+    Called by members_service when an admin approves a challenge submission.
+    Idempotent via the per-member campaign code
+    `CHALLENGE_{submission_id}_{member_id}` — needed because team
+    submissions trigger one grant per member, all sharing submission_id.
+
+    Auth: service-role JWT only.
+    """
+    grant = await grant_promotional_bubbles(
+        db,
+        member_auth_id=body.member_auth_id,
+        bubbles_amount=body.bubbles_amount,
+        grant_type=GrantType.CAMPAIGN,
+        reason=f"Challenge submission approved: {body.submission_id}",
+        campaign_code=f"CHALLENGE_{body.submission_id}_{body.member_id}",
+        granted_by=body.granted_by or caller.user_id or "admin",
+    )
+    logger.info(
+        "Granted %d Bubbles to %s for challenge submission %s (member=%s)",
+        body.bubbles_amount,
+        body.member_auth_id,
+        body.submission_id,
+        body.member_id,
     )
     return grant
 

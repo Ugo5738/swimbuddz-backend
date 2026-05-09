@@ -85,6 +85,26 @@ class PoolSubmissionRewardRequest(BaseModel):
     granted_by: str = "admin"
 
 
+class ChallengeCompletionRewardRequest(BaseModel):
+    """Reward Bubbles for an approved challenge submission.
+
+    Called by members_service after an admin approves a challenge
+    submission. Idempotent via the per-member campaign code
+    `CHALLENGE_{submission_id}_{member_id}` so retries (and team submissions
+    where multiple members trigger the same submission_id) don't double-grant.
+    """
+
+    member_auth_id: str
+    bubbles_amount: int = Field(..., gt=0)
+    submission_id: str = Field(..., description="Challenge submission UUID")
+    member_id: str = Field(
+        ...,
+        description="Members-service Member.id of the recipient — disambiguates "
+        "team submissions where one submission grants to multiple members.",
+    )
+    granted_by: str = "admin"
+
+
 class GrantResponse(BaseModel):
     id: uuid.UUID
     wallet_id: uuid.UUID

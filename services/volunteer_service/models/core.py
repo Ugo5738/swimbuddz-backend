@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -352,6 +353,19 @@ class VolunteerHoursLog(Base):
     """Immutable audit trail of hours credited to volunteers."""
 
     __tablename__ = "volunteer_hours_log"
+    __table_args__ = (
+        # Partial unique index used for cross-service idempotency on
+        # grants like challenge_completion. Legacy rows leave
+        # external_reference_id NULL and are exempt.
+        Index(
+            "uq_volunteer_hours_external_ref",
+            "source",
+            "external_reference_id",
+            "member_id",
+            unique=True,
+            postgresql_where=text("external_reference_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -380,11 +394,19 @@ class VolunteerHoursLog(Base):
     )
     source: Mapped[str] = mapped_column(
         String(50), default="slot_completion"
-    )  # slot_completion, manual_entry, migration
+    )  # slot_completion, manual_entry, migration, challenge_completion
     logged_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # External reference id used for idempotent cross-service grants —
+    # e.g. members_service writes the challenge submission_id here when
+    # crediting hours for an approved attempt. A partial unique index on
+    # (source, external_reference_id, member_id) (created in the
+    # accompanying migration) prevents double-credits on retries.
+    external_reference_id: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )

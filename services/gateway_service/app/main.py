@@ -174,6 +174,17 @@ def create_app() -> FastAPI:
             clients.sessions_client, f"/sessions/{path}", request
         )
 
+    @app.api_route(
+        "/api/v1/admin/sessions/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_admin_sessions(path: str, request: Request):
+        """Proxy all /api/v1/admin/sessions/* requests to sessions service.
+        Currently used by the pods admin router (`/admin/sessions/pods/*`)."""
+        return await proxy_request(
+            clients.sessions_client, f"/admin/sessions/{path}", request
+        )
+
     # ==================================================================
     # VOLUNTEER SERVICE PROXY
     # ==================================================================
@@ -209,6 +220,23 @@ def create_app() -> FastAPI:
         return await proxy_request(
             clients.members_client, f"/challenges/{path}", request
         )
+
+    # ==================================================================
+    # CLUBS PROXY (Members Service)
+    # ==================================================================
+    @app.api_route("/api/v1/clubs", methods=["GET", "POST"])
+    @app.api_route("/api/v1/clubs/", methods=["GET", "POST"])
+    async def proxy_clubs_root(request: Request):
+        """Proxy /api/v1/clubs and /api/v1/clubs/ to members service."""
+        return await proxy_request(clients.members_client, "/clubs/", request)
+
+    @app.api_route(
+        "/api/v1/clubs/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_clubs(path: str, request: Request):
+        """Proxy all /api/v1/clubs/* requests to members service."""
+        return await proxy_request(clients.members_client, f"/clubs/{path}", request)
 
     # ==================================================================
     # ATTENDANCE SERVICE PROXY
