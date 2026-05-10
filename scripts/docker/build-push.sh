@@ -47,6 +47,7 @@ ALL_SERVICES=(
   wallet
   pools
   reporting
+  chat
 )
 
 # Parse service list from argument (comma-separated) or use all
