@@ -31,3 +31,8 @@ class SessionStatus(str, enum.Enum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+
+
+# Pod-related enums (PodVisibility, PodStatus, PodAssignmentSource) moved
+# to services.members_service.models.enums in May 2026 alongside the Pod
+# model itself. See docs/club/POD_OPERATIONS.md.

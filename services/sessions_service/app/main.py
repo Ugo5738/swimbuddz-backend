@@ -8,6 +8,8 @@ from services.sessions_service.routers.internal import router as internal_router
 from services.sessions_service.routers.member import router as sessions_router
 from services.sessions_service.routers.templates import router as templates_router
 
+# Pods moved to members_service in May 2026 — see docs/club/POD_OPERATIONS.md.
+
 
 def create_app() -> FastAPI:
     """Create and configure the Sessions Service FastAPI app."""

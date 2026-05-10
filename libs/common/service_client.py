@@ -413,6 +413,74 @@ async def get_eligible_coaches(
 
 
 # ---------------------------------------------------------------------------
+# Members Service — Pod helpers (sessions_service ↔ pods integration)
+# ---------------------------------------------------------------------------
+
+
+async def get_pod_by_id(pod_id: str, *, calling_service: str) -> Optional[dict]:
+    """Look up a single pod by id (with active member roster).
+
+    Used by sessions_service when scheduling a Club session that's scoped
+    to a specific pod — needs the pod's default schedule and member list.
+
+    Returns a dict matching ``PodInternalDetail``:
+        {
+            id, club_id, name, slug, handle,
+            pod_lead_id, assistant_pod_lead_id,
+            status, visibility, min_size, max_size, active_member_count,
+            default_session_day, default_session_time,
+            default_session_duration_minutes, default_pool_id,
+            active_member_ids: [...],
+        }
+    Or ``None`` if the pod doesn't exist.
+    """
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.MEMBERS_SERVICE_URL,
+        path=f"/internal/members/pods/{pod_id}",
+        calling_service=calling_service,
+    )
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def list_pods(
+    *,
+    calling_service: str,
+    club_id: Optional[str] = None,
+    status: Optional[str] = None,
+) -> list[dict]:
+    """List pods, optionally filtered by club and status.
+
+    Used by sessions_service for batch scheduling — e.g. "create this
+    Saturday's sessions for every active pod in club X". Defaults to
+    ``status='active'`` server-side; pass ``status='all'`` to include
+    dissolved pods.
+
+    Returns a list of dicts matching ``PodInternalSummary`` (no
+    ``active_member_ids`` — use :func:`get_pod_by_id` per pod when you
+    need the roster).
+    """
+    settings = get_settings()
+    params: dict = {}
+    if club_id is not None:
+        params["club_id"] = club_id
+    if status is not None:
+        params["status"] = status
+
+    resp = await internal_get(
+        service_url=settings.MEMBERS_SERVICE_URL,
+        path="/internal/members/pods",
+        calling_service=calling_service,
+        params=params or None,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+# ---------------------------------------------------------------------------
 # Wallet Service helpers
 # ---------------------------------------------------------------------------
 

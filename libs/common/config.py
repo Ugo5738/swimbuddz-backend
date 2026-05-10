@@ -1,8 +1,15 @@
+import os
 from functools import lru_cache
 from typing import Literal, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# One env file per environment, selected by the ENV_FILE shell var. Matches
+# the convention already in scripts/seed/all.sh, scripts/auth/*.py, and
+# scripts/wallet/*.py. Defaults to .env.dev — production processes set
+# ENV_FILE=.env.prod (or whatever the deploy decrypts to) before launch.
+_ENV_FILE = os.environ.get("ENV_FILE", ".env.dev")
 
 
 class Settings(BaseSettings):
@@ -112,7 +119,9 @@ class Settings(BaseSettings):
     DEFAULT_FROM_NAME: str = "SwimBuddz"
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=_ENV_FILE,
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     @field_validator("DATABASE_URL")

@@ -34,7 +34,16 @@ from services.members_service.routers.guardians import (
     internal_router as guardians_internal_router,
 )
 from services.members_service.routers.internal import router as internal_router
+from services.members_service.routers.internal_pods import (
+    router as internal_pods_router,
+)
 from services.members_service.routers.members import router as members_router
+from services.members_service.routers.pods import (
+    admin_router as pods_admin_router,
+)
+from services.members_service.routers.pods import (
+    member_router as pods_member_router,
+)
 from services.members_service.routers.registration import router as registration_router
 
 __all__ = [
@@ -56,4 +65,7 @@ __all__ = [
     "volunteer_router",
     "guardians_admin_router",
     "guardians_internal_router",
+    "pods_admin_router",
+    "pods_member_router",
+    "internal_pods_router",
 ]

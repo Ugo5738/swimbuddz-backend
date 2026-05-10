@@ -1,68 +1,93 @@
 # Chat Service
 
-Real-time, persistent, role-aware messaging across SwimBuddz.
+SwimBuddz Chat Service provides real-time, persistent, role-aware messaging across cohorts, pods, events, trips, and DMs.
 
-**Port:** 8016
-**Status:** Phase 0 — scaffolding (service boots with `/health` only)
+## Features
 
----
+- Cohort, event, and other group channels (membership derived from upstream services)
+- Mentions, reactions, replies, edits, soft-delete
+- Image attachment uploads with pre-deliver moderation (AWS Rekognition)
+- Pre-persist text moderation (OpenAI Moderation)
+- Push notifications fan out via communications_service
+- Reports queue + admin moderation (`/admin/chat/*`)
+- Internal s2s reconciliation API (`/internal/chat/*`)
+- Safeguarding: hard-delete in minor channels gated to `safeguarding_admin`
 
-## Overview
+## API Endpoints
 
-The Chat Service provides in-app chat for every SwimBuddz surface that needs group or direct communication: Academy cohort channels, Club pod channels, event channels, transport trip channels, coach ↔ parent DMs, support DMs, location/community channels, and alumni.
+### Channels (member)
+- `GET /chat/channels` - List my active channels
+- `GET /chat/channels/{id}` - Channel detail
+- `POST /chat/channels/{id}/read` - Mark-read up to message
+- `POST /chat/channels/{id}/mute` - Mute notifications
+- `POST /chat/channels/{id}/leave` - Leave (manual memberships only)
 
-It is **not** the notifications service — push notifications are dispatched via `communications_service`. Chat emits events that the notification dispatcher picks up.
+### Messages (member)
+- `GET /chat/channels/{id}/messages` - Cursor-paginated history
+- `POST /chat/channels/{id}/messages` - Send (idempotent via client UUID)
+- `PATCH /chat/messages/{id}` - Edit own
+- `DELETE /chat/messages/{id}` - Soft-delete own
+- `POST /chat/messages/{id}/reactions` - Add reaction
+- `DELETE /chat/messages/{id}/reactions/{emoji}` - Remove own reaction
+- `POST /chat/messages/{id}/reports` - Report message
 
-## Design doc
+### Attachments (member)
+- `POST /chat/attachments` - Upload image (pre-deliver moderation)
 
-Full architecture, data model, safeguarding rules, integration points with other services, and phased rollout are in:
+### Admin / Moderator
+- `GET /admin/chat/channels/{id}` - Inspect any channel
+- `POST /admin/chat/channels/{id}/archive` - Archive
+- `PATCH /admin/chat/channels/{id}/members/{mid}` - Change role
+- `DELETE /admin/chat/channels/{id}/members/{mid}` - Soft-remove
+- `DELETE /admin/chat/messages/{id}` - Hard-delete (gated for minor channels)
+- `GET /admin/chat/reports` - Reports queue
+- `PATCH /admin/chat/reports/{id}` - Resolve / dismiss / assign
+- `GET /admin/chat/audit` - Audit log
+- `GET /admin/chat/safeguarding/health` - Safeguarding-admin role check
 
-**[docs/design/CHAT_SERVICE_DESIGN.md](../../../docs/design/CHAT_SERVICE_DESIGN.md)**
+### Internal (service-to-service)
+- `POST /internal/chat/channels/ensure` - Idempotent create-or-fetch by parent entity
+- `POST /internal/chat/memberships/reconcile` - Add/remove member from upstream parent change
 
-Read it before making changes here.
+## Database Tables
 
-## Current state (Phase 0)
+- `chat_channels` - Channels (group / broadcast / direct)
+- `chat_channel_members` - Membership rows (soft-leave only)
+- `chat_messages` - Messages (soft-delete only)
+- `chat_message_reactions` - Reactions (composite PK)
+- `chat_message_reports` - Moderation queue
+- `chat_audit_log` - Append-only audit trail
 
-What exists:
+## Upstream Integrations
 
-- Service scaffold (`Dockerfile`, `app/main.py`, `alembic/`, empty `models/` `routers/` `schemas/` `services/` packages)
-- Registered in `docker-compose.yml` on port 8016
-- Proxied by `gateway_service` on `/api/v1/chat/*` and `/api/v1/admin/chat/*`
-- Alembic configured with an empty `SERVICE_TABLES` set, ready for Phase 1 models
-- `/health` endpoint
+- `academy_service` calls `channels/ensure` on cohort create and `memberships/reconcile` on enrollment / dropout
+- `events_service` calls `channels/ensure` on event create and `memberships/reconcile` on RSVP create / update
 
-What doesn't exist yet (Phase 1+):
+## Environment Variables
 
-- All chat models, routers, schemas
-- Real-time transport (Supabase Realtime)
-- Safeguarding enforcement
-- Moderation providers (OpenAI text, AWS Rekognition image)
-- Frontend integration
+See `.env.dev` for required configuration:
+- `DATABASE_URL` - PostgreSQL connection string
+- `OPENAI_API_KEY` - Optional; enables text moderation
+- `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` - Optional; enables image moderation
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` - Required for attachment uploads to `chat-attachments` bucket
 
-## Running locally
+## Running
 
 ```bash
-# From swimbuddz-backend/
-docker compose up chat-service
+# Via Docker
+docker-compose up chat-service
 
-# Health check
-curl http://localhost:8016/health
-# → {"status":"ok","service":"chat"}
+# Standalone (dev)
+cd services/chat_service
+uvicorn app.main:app --host 0.0.0.0 --port 8016 --reload
 ```
 
-## Migrations (Phase 1+)
+## Port
 
-Once models are added, generate migrations like every other service:
-
-```bash
-./scripts/db/migrate.sh chat_service "description"
-./scripts/db/reset.sh dev
-```
-
-**Remember:** when adding a new model, update `services/chat_service/alembic/env.py` — import the model AND add its table name to `SERVICE_TABLES`. Without this, Alembic won't detect the new table.
+Default: `8016`
 
 ## Related
 
 - Design: [docs/design/CHAT_SERVICE_DESIGN.md](../../../docs/design/CHAT_SERVICE_DESIGN.md)
-- Notifications (separate service): [docs/design/NOTIFICATION_ARCHITECTURE.md](../../../docs/design/NOTIFICATION_ARCHITECTURE.md)
-- Service registry: [docs/reference/SERVICE_REGISTRY.md](../../../docs/reference/SERVICE_REGISTRY.md)
+- Moderation lib: [libs/moderation/README.md](../../libs/moderation/README.md)
+- API endpoints: [docs/API_ENDPOINTS.md](../../docs/API_ENDPOINTS.md) §16

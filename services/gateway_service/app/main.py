@@ -180,7 +180,8 @@ def create_app() -> FastAPI:
     )
     async def proxy_admin_sessions(path: str, request: Request):
         """Proxy all /api/v1/admin/sessions/* requests to sessions service.
-        Currently used by the pods admin router (`/admin/sessions/pods/*`)."""
+        (Pods admin moved to `/admin/members/pods/*` in May 2026 — handled
+        by the existing /api/v1/admin/members/* wildcard proxy above.)"""
         return await proxy_request(
             clients.sessions_client, f"/admin/sessions/{path}", request
         )

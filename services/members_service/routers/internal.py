@@ -8,10 +8,11 @@ call them directly via Docker network.
 import uuid
 from datetime import date, datetime, time, timezone
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import case, or_, select
+from sqlalchemy import case, extract, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -267,6 +268,117 @@ async def get_approved_members_list(
             first_name=m.first_name,
             last_name=m.last_name,
             primary_tier=(m.membership.primary_tier if m.membership else None),
+        )
+        for m in members
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Birthdays + admin lookup
+# NOTE: These specific paths MUST be defined BEFORE /{member_id} to avoid
+# being interpreted as a UUID member_id by FastAPI.
+# ---------------------------------------------------------------------------
+
+
+_LAGOS_TZ = ZoneInfo("Africa/Lagos")
+# Roles that should receive the daily birthday WhatsApp-shoutout reminder.
+# Kept loose so any admin-flavoured role gets the reminder; tighten later
+# once a dedicated "comms_admin" role is rolled out.
+_ADMIN_REMINDER_ROLES = ("admin", "comms_admin", "community_manager")
+
+
+class BirthdayMember(BaseModel):
+    id: str
+    first_name: str
+    last_name: str
+    email: str
+    age: int
+
+
+class AdminMember(BaseModel):
+    id: str
+    first_name: str
+    last_name: str
+    email: str
+    roles: list[str]
+
+
+def _age_on(dob: datetime, on: date) -> int:
+    """Whole-year age on the given date, in the member's local birthday sense."""
+    born = dob.date() if isinstance(dob, datetime) else dob
+    years = on.year - born.year
+    if (on.month, on.day) < (born.month, born.day):
+        years -= 1
+    return max(0, years)
+
+
+@router.get("/birthdays-today", response_model=List[BirthdayMember])
+async def get_birthdays_today(
+    on: Optional[date] = Query(
+        None,
+        description="Override target date (ISO YYYY-MM-DD). Defaults to today in Africa/Lagos.",
+    ),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return active members whose date_of_birth falls on the given date.
+
+    Used by communications_service's daily birthday cron. The target date is
+    resolved in Africa/Lagos so the cron can fire from any UTC offset and
+    still match the human definition of "today" in Lagos.
+    """
+    target = on or datetime.now(_LAGOS_TZ).date()
+
+    result = await db.execute(
+        select(Member, MemberProfile)
+        .join(MemberProfile, MemberProfile.member_id == Member.id)
+        .where(
+            Member.is_active.is_(True),
+            Member.approval_status == "approved",
+            MemberProfile.date_of_birth.is_not(None),
+            extract("month", MemberProfile.date_of_birth) == target.month,
+            extract("day", MemberProfile.date_of_birth) == target.day,
+        )
+    )
+
+    rows = result.all()
+    return [
+        BirthdayMember(
+            id=str(member.id),
+            first_name=member.first_name,
+            last_name=member.last_name,
+            email=member.email,
+            age=_age_on(profile.date_of_birth, target),
+        )
+        for member, profile in rows
+    ]
+
+
+@router.get("/admins", response_model=List[AdminMember])
+async def get_admin_members(
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return active members whose roles overlap with admin-flavoured roles.
+
+    Used by communications_service to fan out admin-task notifications
+    (e.g. the daily birthday WhatsApp reminder). Currently includes
+    'admin', 'comms_admin', and 'community_manager'.
+    """
+    result = await db.execute(
+        select(Member).where(
+            Member.is_active.is_(True),
+            Member.roles.overlap(list(_ADMIN_REMINDER_ROLES)),
+        )
+    )
+    members = result.scalars().all()
+    return [
+        AdminMember(
+            id=str(m.id),
+            first_name=m.first_name,
+            last_name=m.last_name,
+            email=m.email,
+            roles=list(m.roles or []),
         )
         for m in members
     ]

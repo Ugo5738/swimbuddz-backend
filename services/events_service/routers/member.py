@@ -14,6 +14,10 @@ from libs.db.session import get_async_db
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.events_service.services.chat_sync import (
+    ensure_event_channel,
+    reconcile_event_membership,
+)
 from services.events_service.models import Event, EventRSVP, MemberRef
 from services.events_service.schemas import (
     EventCreate,
@@ -164,6 +168,13 @@ async def create_event(
     await db.commit()
     await db.refresh(event)
 
+    # Best-effort: provision the event chat channel with the creator as admin.
+    await ensure_event_channel(
+        event_id=event.id,
+        event_title=event.title,
+        created_by_member_id=current_member.id,
+    )
+
     return EventResponse.model_validate(_event_response_dict(event))
 
 
@@ -303,6 +314,14 @@ async def create_or_update_rsvp(
         existing_rsvp.updated_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(existing_rsvp)
+        # Sync chat membership to match new RSVP status.
+        await ensure_event_channel(event_id=event_id, event_title=event.title)
+        await reconcile_event_membership(
+            event_id=event_id,
+            member_id=member_id,
+            rsvp_id=existing_rsvp.id,
+            rsvp_status=existing_rsvp.status,
+        )
         return RSVPResponse.model_validate(existing_rsvp)
     else:
         # Create new RSVP
@@ -315,6 +334,13 @@ async def create_or_update_rsvp(
         db.add(rsvp)
         await db.commit()
         await db.refresh(rsvp)
+        await ensure_event_channel(event_id=event_id, event_title=event.title)
+        await reconcile_event_membership(
+            event_id=event_id,
+            member_id=member_id,
+            rsvp_id=rsvp.id,
+            rsvp_status=rsvp.status,
+        )
         return RSVPResponse.model_validate(rsvp)
 
 

@@ -1,5 +1,8 @@
 """Communications service tasks package."""
 
+from services.communications_service.tasks.birthdays import (
+    send_daily_birthday_celebrations,
+)
 from services.communications_service.tasks.content_images import generate_content_images
 from services.communications_service.tasks.content_publishing import (
     publish_scheduled_content,
@@ -18,6 +21,7 @@ __all__ = [
     "process_pending_notifications",
     "publish_scheduled_content",
     "schedule_session_notifications",
+    "send_daily_birthday_celebrations",
     "send_session_announcement",
     "send_weekly_session_digest",
 ]

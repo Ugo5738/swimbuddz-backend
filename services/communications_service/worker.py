@@ -46,6 +46,14 @@ async def task_generate_content_images(ctx: dict):
     await generate_content_images()
 
 
+async def task_send_daily_birthday_celebrations(ctx: dict):
+    """Send today's birthday emails + admin WhatsApp-shoutout reminder."""
+    from services.communications_service.tasks import send_daily_birthday_celebrations
+
+    logger.info("Running: send_daily_birthday_celebrations")
+    await send_daily_birthday_celebrations()
+
+
 # ── Worker configuration ──
 
 
@@ -61,6 +69,7 @@ class WorkerSettings:
         task_send_weekly_session_digest,
         task_publish_scheduled_content,
         task_generate_content_images,
+        task_send_daily_birthday_celebrations,
     ]
 
     cron_jobs = [
@@ -92,6 +101,13 @@ class WorkerSettings:
             task_generate_content_images,
             weekday=1,  # Tuesday
             hour=5,
+            minute=0,
+            run_at_startup=False,
+        ),
+        # Daily birthday celebrations (06:00 UTC = 07:00 WAT)
+        cron(
+            task_send_daily_birthday_celebrations,
+            hour=6,
             minute=0,
             run_at_startup=False,
         ),

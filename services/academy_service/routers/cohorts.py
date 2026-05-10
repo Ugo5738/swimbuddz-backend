@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from services.academy_service.services.chat_sync import ensure_cohort_channel
 from services.academy_service.routers._shared import (
     AsyncSession,
     AuthUser,
@@ -109,6 +110,19 @@ async def create_cohort(
             cohort.coach_id = ca_input.coach_id
 
     await db.commit()
+
+    # Provision the cohort's chat channel (best-effort — never fails the
+    # cohort create on chat downtime). The lead coach becomes channel admin
+    # via `created_by`; other coach assignments come in through reconcile
+    # when their enrollment-equivalent records exist (Phase 2).
+    channel_id = await ensure_cohort_channel(
+        cohort_id=cohort.id,
+        cohort_name=cohort.name,
+        created_by_member_id=cohort.coach_id,
+        has_minors=False,
+    )
+    if channel_id is not None:
+        logger.info("Chat channel %s provisioned for cohort %s", channel_id, cohort.id)
 
     query = (
         select(Cohort)

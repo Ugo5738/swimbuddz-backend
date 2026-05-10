@@ -595,3 +595,100 @@ class PromotionalGrantFactory:
         }
         defaults.update(overrides)
         return PromotionalBubbleGrant(**defaults)
+
+
+# ---------------------------------------------------------------------------
+# Members Service — Clubs & Pods
+# ---------------------------------------------------------------------------
+
+
+class ClubFactory:
+    @staticmethod
+    def create(**overrides):
+        from datetime import time
+
+        from services.members_service.models import Club, DayOfWeek
+
+        slug = overrides.pop("slug", None) or f"club-{uuid.uuid4().hex[:6]}"
+        defaults = {
+            "id": _uuid(),
+            "name": f"Test Club {slug}",
+            "slug": slug,
+            "description": None,
+            "location": "Lagos",
+            "is_active": True,
+            "default_session_day": DayOfWeek.SAT,
+            "default_session_time": time(9, 0),
+            "default_session_duration_minutes": 180,
+            "default_pool_id": None,
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+        defaults.update(overrides)
+        return Club(**defaults)
+
+
+class PodFactory:
+    """Build a Pod row directly. Bypasses the service-layer auto-naming
+    and chat-sync side effects — use the API for those flows."""
+
+    @staticmethod
+    def create(club_id=None, pod_lead_id=None, **overrides):
+        from datetime import time, timedelta
+
+        from services.members_service.models import (
+            DayOfWeek,
+            Pod,
+            PodStatus,
+            PodVisibility,
+        )
+
+        slug = overrides.pop("slug", None) or f"pod-{uuid.uuid4().hex[:6]}"
+        cycle_started = overrides.pop("cycle_started_at", None) or _now()
+        defaults = {
+            "id": _uuid(),
+            "club_id": club_id or _uuid(),
+            "name": f"Test Pod {slug}",
+            "slug": slug,
+            "handle": None,
+            "description": None,
+            "pod_lead_id": pod_lead_id or _uuid(),
+            "assistant_pod_lead_id": None,
+            "min_size": 2,
+            "max_size": 5,
+            "default_session_day": DayOfWeek.SAT,
+            "default_session_time": time(9, 0),
+            "default_session_duration_minutes": 180,
+            "default_pool_id": None,
+            "visibility": PodVisibility.PUBLIC,
+            "status": PodStatus.ACTIVE,
+            "cycle_started_at": cycle_started,
+            "review_due_at": cycle_started + timedelta(days=90),
+            "dissolved_at": None,
+            "created_by": _uuid(),
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+        defaults.update(overrides)
+        return Pod(**defaults)
+
+
+class PodAssignmentFactory:
+    @staticmethod
+    def create(pod_id=None, member_id=None, **overrides):
+        from services.members_service.models import (
+            PodAssignment,
+            PodAssignmentSource,
+        )
+
+        defaults = {
+            "id": _uuid(),
+            "pod_id": pod_id or _uuid(),
+            "member_id": member_id or _uuid(),
+            "joined_at": _now(),
+            "left_at": None,
+            "assigned_by": PodAssignmentSource.SELF,
+            "assigned_by_id": None,
+        }
+        defaults.update(overrides)
+        return PodAssignment(**defaults)

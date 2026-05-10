@@ -165,6 +165,15 @@ services:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
+  chat-service:
+    image: ${DOCKER_USERNAME}/swimbuddz-chat-service:latest
+    container_name: swimbuddz_chat
+    env_file:
+      - .env.prod
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
   # ==================================================================
   # API GATEWAY
   # ==================================================================
@@ -203,6 +212,8 @@ services:
       pools-service:
         condition: service_started
       reporting-service:
+        condition: service_started
+      chat-service:
         condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
