@@ -175,6 +175,27 @@ class ClubChallenge(Base):
         UUID(as_uuid=True), nullable=True
     )  # references member_challenge_completions.id; soft FK to avoid circular cascade
 
+    # Skill-ladder series (Phase B of the challenges revamp).
+    #
+    # When `series_slug` is set, this challenge is a step inside an ordered
+    # ladder rather than a one-off — a Club skill curriculum, an open-water
+    # progression, etc. Examples: "club-fundamentals", "open-water".
+    #
+    #   series_slug   = which ladder this belongs to (NULL = standalone)
+    #   series_order  = position in the ladder (1, 2, 3, ...)
+    #   requires_challenge_id = OPTIONAL hard-gating: members must have an
+    #                           approved badge for this prerequisite before
+    #                           they can submit. Soft progression (no
+    #                           requires_challenge_id) is the default — the
+    #                           ladder is guidance, not enforcement.
+    #
+    # See docs/club/POD_OPERATIONS.md and the challenges revamp plan.
+    series_slug: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    series_order: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    requires_challenge_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # soft FK to club_challenges.id; no DB-level FK to avoid circular cascade
+
     # Visibility
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_public: Mapped[bool] = mapped_column(

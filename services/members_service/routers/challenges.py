@@ -12,7 +12,7 @@ The challenges section was reshaped in Phase 1:
 """
 
 import uuid
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import get_current_user, require_admin
@@ -315,6 +315,56 @@ async def _resolve_member_id_from_auth(
     if not member:
         raise HTTPException(status_code=403, detail="Member profile not found")
     return member.id
+
+
+async def _enforce_prerequisite(
+    db: AsyncSession,
+    *,
+    prerequisite_id: uuid.UUID,
+    member_ids: List[uuid.UUID],
+) -> None:
+    """Reject the submission if any member is missing the prerequisite badge.
+
+    Used by the soft-progression-with-opt-in-hard-gating model: when a
+    challenge has `requires_challenge_id` set, every member on the
+    submission roster must have an approved badge for the prerequisite
+    challenge before they can attempt this one. Reads from the
+    denormalised `challenge_badge_awards` table for a fast indexed check.
+
+    Raises 400 with a list of member ids that are missing the badge so
+    the frontend can surface a helpful error.
+    """
+    if not member_ids:
+        return
+
+    # Pull award rows for any member on the roster that already has the
+    # prerequisite. Members not in this set are missing the badge.
+    rows = await db.execute(
+        select(ChallengeBadgeAward.member_id).where(
+            ChallengeBadgeAward.challenge_id == prerequisite_id,
+            ChallengeBadgeAward.member_id.in_(member_ids),
+        )
+    )
+    earned = {row[0] for row in rows.all()}
+    missing = [mid for mid in member_ids if mid not in earned]
+    if not missing:
+        return
+
+    # Resolve the prerequisite's title for a friendly message.
+    prereq_title_row = await db.execute(
+        select(ClubChallenge.title).where(ClubChallenge.id == prerequisite_id)
+    )
+    prereq_title = prereq_title_row.scalar_one_or_none() or "the prerequisite"
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"This challenge requires '{prereq_title}' to be completed first. "
+            f"{len(missing)} team member"
+            f"{'' if len(missing) == 1 else 's'} ha"
+            f"{'sn' if len(missing) == 1 else 'ven'}'t earned it yet."
+        ),
+    )
 
 
 async def _load_challenge_example_media(
@@ -671,6 +721,8 @@ async def _hydrate_public_challenge_response(
         example_media=example_media,
         winner=winner_info,
         is_finished=is_finished,
+        series_slug=challenge.series_slug,
+        series_order=challenge.series_order,
         created_at=challenge.created_at,
     )
 
@@ -1068,9 +1120,23 @@ async def list_club_challenges(
     active_only: bool = Query(True, description="Show only active challenges"),
     challenge_type: Optional[str] = Query(None, description="Filter by challenge type"),
     audience: Optional[str] = Query(None, description="Filter by audience"),
+    series_slug: Optional[str] = Query(
+        None,
+        description=(
+            "Filter by skill-ladder series. Pass an exact slug to fetch one "
+            "ladder; pass the literal value 'none' to fetch only standalone "
+            "(non-ladder) challenges."
+        ),
+    ),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """List club challenges with optional filters."""
+    """List club challenges with optional filters.
+
+    Skill-ladder behaviour:
+      * series_slug=<slug>  → returns just that ladder's steps, ordered
+      * series_slug='none'  → returns only standalone challenges
+      * series_slug omitted → returns everything (admin/list view)
+    """
     query = select(ClubChallenge)
 
     if active_only:
@@ -1079,13 +1145,68 @@ async def list_club_challenges(
         query = query.where(ClubChallenge.challenge_type == challenge_type)
     if audience:
         query = query.where(ClubChallenge.audience == audience)
+    if series_slug == "none":
+        query = query.where(ClubChallenge.series_slug.is_(None))
+    elif series_slug:
+        query = query.where(ClubChallenge.series_slug == series_slug)
 
-    query = query.order_by(ClubChallenge.created_at.desc())
+    # Within a single series, order by series_order ascending so the
+    # ladder reads top-to-bottom. Otherwise newest-first (admin queue feel).
+    if series_slug and series_slug != "none":
+        query = query.order_by(
+            ClubChallenge.series_order.asc().nulls_last(),
+            ClubChallenge.created_at.asc(),
+        )
+    else:
+        query = query.order_by(ClubChallenge.created_at.desc())
 
     result = await db.execute(query)
     challenges = result.scalars().all()
 
     return [await _hydrate_challenge_response(c, db) for c in challenges]
+
+
+@challenge_router.get(
+    "/series/list",
+    response_model=Dict[str, List[ClubChallengeResponse]],
+)
+async def list_challenges_by_series(
+    audience: Optional[str] = Query(
+        None,
+        description=(
+            "Filter to a single audience tier (e.g. 'club') so a tier-page "
+            "shows only the relevant ladders."
+        ),
+    ),
+    active_only: bool = Query(True, description="Hide inactive challenges"),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return all challenges that belong to a series, grouped by slug.
+
+    Powers the Club page's "skill ladders showcase". Standalone (no
+    `series_slug`) challenges are excluded — they show on the homepage
+    carousel instead. Within each series, steps are ordered by
+    `series_order`.
+    """
+    query = select(ClubChallenge).where(ClubChallenge.series_slug.is_not(None))
+    if active_only:
+        query = query.where(ClubChallenge.is_active.is_(True))
+    if audience:
+        query = query.where(ClubChallenge.audience == audience)
+    query = query.order_by(
+        ClubChallenge.series_slug.asc(),
+        ClubChallenge.series_order.asc().nulls_last(),
+        ClubChallenge.created_at.asc(),
+    )
+
+    rows = await db.execute(query)
+    challenges = rows.scalars().all()
+
+    out: Dict[str, List[ClubChallengeResponse]] = {}
+    for c in challenges:
+        slug = c.series_slug or "_unknown"
+        out.setdefault(slug, []).append(await _hydrate_challenge_response(c, db))
+    return out
 
 
 @challenge_router.get("/{challenge_id}", response_model=ClubChallengeResponse)
@@ -1338,6 +1459,18 @@ async def create_challenge_submission(
         raise HTTPException(
             status_code=400,
             detail="You already have a pending or approved submission for this challenge",
+        )
+
+    # Hard-gating: if requires_challenge_id is set on this challenge, ALL
+    # team members (including captain) must already have an approved badge
+    # for the prerequisite. Soft progression (no requires_challenge_id) is
+    # the default — admins opt INTO gating per challenge.
+    if challenge.requires_challenge_id is not None:
+        team_ids_to_check = [captain_member_id, *submission_data.team_member_ids]
+        await _enforce_prerequisite(
+            db,
+            prerequisite_id=challenge.requires_challenge_id,
+            member_ids=team_ids_to_check,
         )
 
     # Team validation

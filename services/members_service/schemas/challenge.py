@@ -147,6 +147,14 @@ class ClubChallengeBase(BaseModel):
     team_min_size: Optional[int] = Field(default=None, ge=1)
     team_max_size: Optional[int] = Field(default=None, ge=1)
 
+    # Skill-ladder series (Phase B). Set series_slug to group multiple
+    # challenges into an ordered ladder; series_order is the step number
+    # (1, 2, 3, ...). requires_challenge_id is OPTIONAL hard-gating —
+    # leave null for soft progression (the default).
+    series_slug: Optional[str] = Field(default=None, min_length=2, max_length=64)
+    series_order: Optional[int] = Field(default=None, ge=1)
+    requires_challenge_id: Optional[uuid.UUID] = None
+
 
 class ClubChallengeCreate(ClubChallengeBase):
     """Schema for creating a club challenge."""
@@ -181,6 +189,10 @@ class ClubChallengeUpdate(BaseModel):
     team_min_size: Optional[int] = Field(default=None, ge=1)
     team_max_size: Optional[int] = Field(default=None, ge=1)
     example_media: Optional[List[ChallengeExampleMediaItem]] = None
+    # Skill-ladder series (Phase B)
+    series_slug: Optional[str] = Field(default=None, min_length=2, max_length=64)
+    series_order: Optional[int] = Field(default=None, ge=1)
+    requires_challenge_id: Optional[uuid.UUID] = None
 
 
 class ClubChallengeResponse(ClubChallengeBase):
@@ -361,6 +373,10 @@ class ChallengePublicResponse(BaseModel):
     example_media: List[ChallengeExampleMediaResponse] = Field(default_factory=list)
     winner: Optional[ChallengeWinnerPublicInfo] = None
     is_finished: bool = False
+    # Skill-ladder series fields. The public Club page uses these to
+    # group challenges into ladders ("Club Fundamentals — 7 milestones").
+    series_slug: Optional[str] = None
+    series_order: Optional[int] = None
     created_at: datetime
 
 
