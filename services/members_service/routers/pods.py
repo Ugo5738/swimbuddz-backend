@@ -1,32 +1,39 @@
-"""Pod routes — admin/coach management + member self-selection.
+"""Pod routes — admin/lead management + member self-selection.
 
-Path conventions match the design doc (POD_MODEL_DESIGN.md §"API surface"):
+Path conventions (per ``docs/club/POD_OPERATIONS.md`` §"API surface"):
 
-  * `/admin/sessions/pods/*`      — admin / coach (require_admin)
-  * `/sessions/pods/*`            — member-facing
+  * ``/admin/members/pods/*``      — admin (require_admin)
+  * ``/members/pods/*``            — member-facing
 
 All pod-related side effects (chat-channel ensure, member reconcile)
-go through `services.chat_sync` so chat downtime never blocks pod flows.
+go through ``services.chat_sync`` so chat downtime never blocks pod flows.
+
+Note: when these routes lived in sessions_service we resolved the
+caller's member id over HTTP via ``get_member_by_auth_id``. Now that the
+router lives in members_service, we resolve locally with a direct
+SQLAlchemy query — same pattern used by ``routers/members.py``.
 """
 
 import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
-from libs.common.service_client import get_member_by_auth_id
 from libs.db.session import get_async_db
 
-from services.sessions_service.models import (
+from services.members_service.models import (
+    Member,
     Pod,
+    PodAssignment,
     PodAssignmentSource,
     PodStatus,
 )
-from services.sessions_service.schemas.pod import (
+from services.members_service.schemas.pod import (
     PodCreateRequest,
     PodDetail,
     PodMemberAddRequest,
@@ -35,35 +42,33 @@ from services.sessions_service.schemas.pod import (
     PodTransferRequest,
     PodUpdateRequest,
 )
-from services.sessions_service.services import pod_ops
-from services.sessions_service.services.chat_sync import (
+from services.members_service.services import pod_ops
+from services.members_service.services.chat_sync import (
     ensure_pod_channel,
     reconcile_pod_membership,
 )
 
 logger = get_logger(__name__)
 
-admin_router = APIRouter(prefix="/admin/sessions/pods", tags=["pods-admin"])
-member_router = APIRouter(prefix="/sessions/pods", tags=["pods"])
+admin_router = APIRouter(prefix="/admin/members/pods", tags=["pods-admin"])
+member_router = APIRouter(prefix="/members/pods", tags=["pods"])
 
 
-_CALLING_SERVICE = "sessions"
+async def _resolve_member_id(current_user: AuthUser, db: AsyncSession) -> uuid.UUID:
+    """auth_id → member_id, resolved locally (we ARE members_service).
 
-
-async def _resolve_member_id(current_user: AuthUser) -> uuid.UUID:
-    """auth_id → members-service member_id. Mirrors the chat router pattern.
-
-    Returns 403 if the caller doesn't have a member profile yet (a pod is a
-    member-domain object — anonymous callers can't have one)."""
-    member = await get_member_by_auth_id(
-        current_user.user_id, calling_service=_CALLING_SERVICE
+    Returns 403 if the caller doesn't have a member profile yet — a pod
+    is a member-domain object; anonymous callers can't have one."""
+    result = await db.execute(
+        select(Member.id).where(Member.auth_id == current_user.user_id)
     )
-    if not member or "id" not in member:
+    row = result.first()
+    if row is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Member profile not found",
         )
-    return uuid.UUID(member["id"])
+    return row[0]
 
 
 async def _summary(db: AsyncSession, pod: Pod) -> PodSummary:
@@ -78,7 +83,7 @@ async def _detail(db: AsyncSession, pod: Pod) -> PodDetail:
     return PodDetail.model_validate(base)
 
 
-# ─── Admin / coach ──────────────────────────────────────────────────
+# ─── Admin ──────────────────────────────────────────────────────────
 
 
 @admin_router.post("", response_model=PodSummary, status_code=status.HTTP_201_CREATED)
@@ -87,26 +92,31 @@ async def admin_create_pod(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    actor_id = await _resolve_member_id(current_user)
+    actor_id = await _resolve_member_id(current_user, db)
 
     pod = await pod_ops.create_pod(
         db,
         club_id=body.club_id,
         name=body.name,
+        handle=body.handle,
         description=body.description,
-        lead_coach_id=body.lead_coach_id,
-        assistant_coach_id=body.assistant_coach_id,
+        pod_lead_id=body.pod_lead_id,
+        assistant_pod_lead_id=body.assistant_pod_lead_id,
         min_size=body.min_size,
         max_size=body.max_size,
+        default_session_day=body.default_session_day,
+        default_session_time=body.default_session_time,
+        default_session_duration_minutes=body.default_session_duration_minutes,
+        default_pool_id=body.default_pool_id,
         visibility=body.visibility,
         created_by=actor_id,
     )
 
-    # Provision chat channel; lead coach becomes channel admin via `created_by`.
+    # Provision chat channel; Pod Lead becomes channel admin via `created_by`.
     await ensure_pod_channel(
         pod_id=pod.id,
-        pod_name=pod.name,
-        lead_coach_id=pod.lead_coach_id,
+        pod_name=pod.handle or pod.name,
+        pod_lead_id=pod.pod_lead_id,
     )
 
     return await _summary(db, pod)
@@ -117,7 +127,7 @@ async def admin_review_queue(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Pods past their 3-month review window — admin/coach decides
+    """Pods past their 3-month review window — admin/Pod Lead decides
     continue / rebalance / dissolve."""
     pods = await pod_ops.list_review_due(db)
     return [await _summary(db, p) for p in pods]
@@ -157,19 +167,33 @@ async def admin_dissolve_pod(
     """Dissolves the pod and soft-leaves every active member. Chat is
     NOT auto-archived from here — the chat admin API owns archival, and
     we don't want to baby-sit a side effect that may need a manual
-    review trail. Coach archives the channel from chat admin once the
+    review trail. Admin archives the channel from chat admin once the
     final messages settle."""
-    # Capture active membership BEFORE dissolve so we can reconcile chat.
+    # Capture active assignments BEFORE dissolve so we can reconcile chat.
+    # ``db.get(Pod, …)`` doesn't trigger the ``lazy="selectin"`` relationship
+    # eagerly, so we query the assignments directly instead of going through
+    # ``pod.assignments`` (which would lazy-load synchronously and explode
+    # under the async driver with MissingGreenlet).
     pod = await pod_ops.get_pod_or_404(db, pod_id)
-    active = [a for a in pod.assignments if a.left_at is None]
+    active_result = await db.execute(
+        select(PodAssignment).where(
+            PodAssignment.pod_id == pod_id,
+            PodAssignment.left_at.is_(None),
+        )
+    )
+    active = list(active_result.scalars().all())
+    # Snapshot the ids — after dissolve_pod commits and soft-leaves the
+    # assignments, ``a.left_at`` will be set, but ``a.id`` and
+    # ``a.member_id`` are simple columns and remain readable.
+    snapshot = [(a.id, a.member_id) for a in active]
 
     pod = await pod_ops.dissolve_pod(db, pod_id=pod_id)
 
-    for a in active:
+    for assignment_id, member_id in snapshot:
         await reconcile_pod_membership(
             pod_id=pod_id,
-            member_id=a.member_id,
-            assignment_id=a.id,
+            member_id=member_id,
+            assignment_id=assignment_id,
             action="remove",
         )
 
@@ -197,7 +221,7 @@ async def admin_add_member(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    actor_id = await _resolve_member_id(current_user)
+    actor_id = await _resolve_member_id(current_user, db)
     pod = await pod_ops.get_pod_or_404(db, pod_id)
     assignment = await pod_ops.add_member(
         db,
@@ -254,7 +278,7 @@ async def admin_transfer_member(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    actor_id = await _resolve_member_id(current_user)
+    actor_id = await _resolve_member_id(current_user, db)
     old_assignment, new_assignment = await pod_ops.transfer_member(
         db,
         source_pod_id=pod_id,
@@ -285,7 +309,7 @@ async def get_my_pod(
     db: AsyncSession = Depends(get_async_db),
 ):
     """My current pod, or null if I'm not in one. Used by the dashboard."""
-    member_id = await _resolve_member_id(current_user)
+    member_id = await _resolve_member_id(current_user, db)
     pod = await pod_ops.get_my_pod(db, member_id=member_id)
     if pod is None:
         return None
@@ -316,7 +340,7 @@ async def member_join_pod(
 ):
     """Self-join a public pod with capacity. Refuses for private pods —
     those go through admin assignment."""
-    member_id = await _resolve_member_id(current_user)
+    member_id = await _resolve_member_id(current_user, db)
     pod = await pod_ops.get_pod_or_404(db, pod_id)
 
     if pod.visibility.value != "public":
@@ -356,7 +380,7 @@ async def member_leave_pod(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Leave my current pod. No-op if I'm not in one."""
-    member_id = await _resolve_member_id(current_user)
+    member_id = await _resolve_member_id(current_user, db)
     pod = await pod_ops.get_my_pod(db, member_id=member_id)
     if pod is None:
         return  # no-op

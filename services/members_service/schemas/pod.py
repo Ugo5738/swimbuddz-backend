@@ -1,12 +1,13 @@
 """Pod request/response schemas."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, time
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from services.sessions_service.models.enums import (
+from services.members_service.models.enums import (
+    DayOfWeek,
     PodAssignmentSource,
     PodStatus,
     PodVisibility,
@@ -37,14 +38,19 @@ class PodSummary(BaseModel):
     club_id: uuid.UUID
     name: str
     slug: str
+    handle: Optional[str] = None
     description: Optional[str] = None
-    lead_coach_id: uuid.UUID
-    assistant_coach_id: Optional[uuid.UUID] = None
+    pod_lead_id: uuid.UUID
+    assistant_pod_lead_id: Optional[uuid.UUID] = None
     visibility: PodVisibility
     status: PodStatus
     min_size: int
     max_size: int
     active_member_count: int
+    default_session_day: DayOfWeek
+    default_session_time: time
+    default_session_duration_minutes: int
+    default_pool_id: Optional[uuid.UUID] = None
     cycle_started_at: datetime
     review_due_at: datetime
     dissolved_at: Optional[datetime] = None
@@ -65,28 +71,40 @@ class PodDetail(PodSummary):
 
 class PodCreateRequest(BaseModel):
     """Admin creates a pod for a Club. `name` is optional — if blank, the
-    server auto-names `{club_slug}-pod-{N}` (filled in by the service layer)."""
+    server auto-names ``{club_slug}-pod-{N}``. Schedule fields are also
+    optional — they inherit the parent Club's defaults when blank."""
 
     club_id: uuid.UUID
     name: Optional[str] = Field(default=None, max_length=120)
+    handle: Optional[str] = Field(default=None, max_length=60)
     description: Optional[str] = Field(default=None, max_length=2000)
-    lead_coach_id: uuid.UUID
-    assistant_coach_id: Optional[uuid.UUID] = None
-    min_size: int = Field(default=2, ge=1, le=20)
-    max_size: int = Field(default=5, ge=1, le=20)
+    pod_lead_id: uuid.UUID
+    assistant_pod_lead_id: Optional[uuid.UUID] = None
+    min_size: int = Field(default=2, ge=1, le=10)
+    max_size: int = Field(default=5, ge=1, le=10)
+    default_session_day: Optional[DayOfWeek] = None
+    default_session_time: Optional[time] = None
+    default_session_duration_minutes: Optional[int] = Field(default=None, ge=15, le=480)
+    default_pool_id: Optional[uuid.UUID] = None
     visibility: PodVisibility = PodVisibility.PUBLIC
 
 
 class PodUpdateRequest(BaseModel):
-    """Partial update — admins can rename, change visibility, swap coaches,
-    tune capacity. To extend the cycle, use the dedicated extend endpoint."""
+    """Partial update — admins can rename, change visibility, swap leads,
+    tune capacity, override schedule. To extend the cycle, use the
+    dedicated extend endpoint."""
 
     name: Optional[str] = Field(default=None, max_length=120)
+    handle: Optional[str] = Field(default=None, max_length=60)
     description: Optional[str] = Field(default=None, max_length=2000)
-    lead_coach_id: Optional[uuid.UUID] = None
-    assistant_coach_id: Optional[uuid.UUID] = None
-    min_size: Optional[int] = Field(default=None, ge=1, le=20)
-    max_size: Optional[int] = Field(default=None, ge=1, le=20)
+    pod_lead_id: Optional[uuid.UUID] = None
+    assistant_pod_lead_id: Optional[uuid.UUID] = None
+    min_size: Optional[int] = Field(default=None, ge=1, le=10)
+    max_size: Optional[int] = Field(default=None, ge=1, le=10)
+    default_session_day: Optional[DayOfWeek] = None
+    default_session_time: Optional[time] = None
+    default_session_duration_minutes: Optional[int] = Field(default=None, ge=15, le=480)
+    default_pool_id: Optional[uuid.UUID] = None
     visibility: Optional[PodVisibility] = None
 
 
@@ -95,7 +113,7 @@ class PodMemberAddRequest(BaseModel):
 
 
 class PodTransferRequest(BaseModel):
-    """Coach moves a member from this pod to another pod (typically within
-    the same Club)."""
+    """Pod Lead / admin moves a member from this pod to another pod
+    (typically within the same Club)."""
 
     target_pod_id: uuid.UUID

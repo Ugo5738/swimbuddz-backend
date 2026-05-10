@@ -3,6 +3,14 @@
 Capacity, "one active pod per member", and slug uniqueness are all
 enforced here (with the DB partial-unique index as defence in depth).
 HTTP routers stay thin — they orchestrate auth + call into these helpers.
+
+Ported from `sessions_service/services/pod_ops.py` in May 2026 with the
+following changes (see ``docs/club/POD_OPERATIONS.md``):
+
+  * `lead_coach_id`/`assistant_coach_id` → `pod_lead_id`/`assistant_pod_lead_id`
+  * `PodAssignmentSource.COACH_TRANSFER` → `LEAD_TRANSFER`
+  * Added: handle, default_session_{day,time,duration_minutes}, default_pool_id
+  * Schedule defaults inherit from the parent Club at creation
 """
 
 import re
@@ -18,7 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 
-from services.sessions_service.models import (
+from services.members_service.models import (
+    Club,
+    DayOfWeek,
     Pod,
     PodAssignment,
     PodAssignmentSource,
@@ -74,6 +84,15 @@ async def get_pod_or_404(db: AsyncSession, pod_id: uuid.UUID) -> Pod:
     return pod
 
 
+async def _get_club_or_404(db: AsyncSession, club_id: uuid.UUID) -> Club:
+    club = await db.get(Club, club_id)
+    if club is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Club not found"
+        )
+    return club
+
+
 # ─── Create / update / dissolve ──────────────────────────────────────
 
 
@@ -82,11 +101,16 @@ async def create_pod(
     *,
     club_id: uuid.UUID,
     name: Optional[str],
+    handle: Optional[str],
     description: Optional[str],
-    lead_coach_id: uuid.UUID,
-    assistant_coach_id: Optional[uuid.UUID],
+    pod_lead_id: uuid.UUID,
+    assistant_pod_lead_id: Optional[uuid.UUID],
     min_size: int,
     max_size: int,
+    default_session_day: Optional[DayOfWeek],
+    default_session_time,
+    default_session_duration_minutes: Optional[int],
+    default_pool_id: Optional[uuid.UUID],
     visibility: PodVisibility,
     created_by: uuid.UUID,
 ) -> Pod:
@@ -96,21 +120,34 @@ async def create_pod(
             detail="min_size must be >= 1 and <= max_size",
         )
 
+    club = await _get_club_or_404(db, club_id)
+
     if not name:
         n = await _next_pod_number(db, club_id)
-        name = f"pod-{n}"
+        name = f"{club.slug}-pod-{n}"
     slug = _slugify(name)
+
+    # Schedule defaults inherit from the parent Club when not specified.
+    eff_day = default_session_day or club.default_session_day
+    eff_time = default_session_time or club.default_session_time
+    eff_dur = default_session_duration_minutes or club.default_session_duration_minutes
+    eff_pool = default_pool_id if default_pool_id is not None else club.default_pool_id
 
     now = utc_now()
     pod = Pod(
         club_id=club_id,
         name=name,
         slug=slug,
+        handle=handle,
         description=description,
-        lead_coach_id=lead_coach_id,
-        assistant_coach_id=assistant_coach_id,
+        pod_lead_id=pod_lead_id,
+        assistant_pod_lead_id=assistant_pod_lead_id,
         min_size=min_size,
         max_size=max_size,
+        default_session_day=eff_day,
+        default_session_time=eff_time,
+        default_session_duration_minutes=eff_dur,
+        default_pool_id=eff_pool,
         visibility=visibility,
         status=PodStatus.ACTIVE,
         cycle_started_at=now,
@@ -123,12 +160,18 @@ async def create_pod(
     except IntegrityError as exc:
         # Slug clash within the same club — retry once with a numeric suffix.
         await db.rollback()
-        if "uq_pods_club_slug" not in str(exc):
+        if "uq_pods_club_slug" in str(exc):
+            suffix = await _next_pod_number(db, club_id)
+            pod.slug = f"{slug}-{suffix}"
+            db.add(pod)
+            await db.commit()
+        elif "uq_pods_club_handle" in str(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Handle is already taken in this club",
+            ) from None
+        else:
             raise
-        suffix = await _next_pod_number(db, club_id)
-        pod.slug = f"{slug}-{suffix}"
-        db.add(pod)
-        await db.commit()
 
     await db.refresh(pod)
     return pod
@@ -159,7 +202,16 @@ async def update_pod(
             setattr(pod, k, v)
 
     pod.updated_at = utc_now()
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if "uq_pods_club_handle" in str(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Handle is already taken in this club",
+            ) from None
+        raise
     await db.refresh(pod)
     return pod
 
@@ -194,8 +246,8 @@ async def dissolve_pod(db: AsyncSession, *, pod_id: uuid.UUID) -> Pod:
 
 
 async def extend_review(db: AsyncSession, *, pod_id: uuid.UUID) -> Pod:
-    """Resets the review window — coach/admin chose to continue this pod
-    for another 3 months."""
+    """Resets the review window — admin/Pod Lead chose to continue this
+    pod for another 3 months."""
     pod = await get_pod_or_404(db, pod_id)
     if pod.status == PodStatus.INACTIVE:
         raise HTTPException(
@@ -308,7 +360,7 @@ async def transfer_member(
     member_id: uuid.UUID,
     actor_id: uuid.UUID,
 ) -> tuple[PodAssignment, PodAssignment]:
-    """Coach moves a member from one pod to another.
+    """Pod Lead / admin moves a member from one pod to another.
 
     Returns (old_assignment, new_assignment) so the router can call chat
     reconcile twice — `remove` from old, `add` to new."""
@@ -348,7 +400,7 @@ async def transfer_member(
     new_assignment = PodAssignment(
         pod_id=target.id,
         member_id=member_id,
-        assigned_by=PodAssignmentSource.COACH_TRANSFER,
+        assigned_by=PodAssignmentSource.LEAD_TRANSFER,
         assigned_by_id=actor_id,
     )
     db.add(new_assignment)
@@ -369,14 +421,19 @@ async def serialize_pod_summary(db: AsyncSession, pod: Pod) -> dict:
         "club_id": pod.club_id,
         "name": pod.name,
         "slug": pod.slug,
+        "handle": pod.handle,
         "description": pod.description,
-        "lead_coach_id": pod.lead_coach_id,
-        "assistant_coach_id": pod.assistant_coach_id,
+        "pod_lead_id": pod.pod_lead_id,
+        "assistant_pod_lead_id": pod.assistant_pod_lead_id,
         "visibility": pod.visibility,
         "status": pod.status,
         "min_size": pod.min_size,
         "max_size": pod.max_size,
         "active_member_count": await _active_member_count(db, pod.id),
+        "default_session_day": pod.default_session_day,
+        "default_session_time": pod.default_session_time,
+        "default_session_duration_minutes": pod.default_session_duration_minutes,
+        "default_pool_id": pod.default_pool_id,
         "cycle_started_at": pod.cycle_started_at,
         "review_due_at": pod.review_due_at,
         "dissolved_at": pod.dissolved_at,
@@ -415,7 +472,7 @@ async def get_my_pod(db: AsyncSession, *, member_id: uuid.UUID) -> Optional[Pod]
 
 
 async def list_review_due(db: AsyncSession) -> list[Pod]:
-    """Pods past their review-due date — admin/coach attention queue."""
+    """Pods past their review-due date — admin/Pod Lead attention queue."""
     now = utc_now()
     result = await db.execute(
         select(Pod)

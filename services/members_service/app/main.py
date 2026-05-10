@@ -17,8 +17,11 @@ from services.members_service.routers import (
     coaches_router,
     guardians_admin_router,
     guardians_internal_router,
+    internal_pods_router,
     internal_router,
     members_router,
+    pods_admin_router,
+    pods_member_router,
     registration_router,
     volunteer_router,
 )
@@ -61,7 +64,16 @@ def create_app() -> FastAPI:
     app.include_router(guardians_admin_router)
     app.include_router(guardians_internal_router)
 
-    # Internal service-to-service endpoints (not exposed via gateway)
+    # Club pods — admin management + member self-selection
+    app.include_router(pods_admin_router)
+    app.include_router(pods_member_router)
+
+    # Internal service-to-service endpoints (not exposed via gateway).
+    # internal_pods_router MUST register BEFORE internal_router — otherwise
+    # the broader `/internal/members/{member_id}` route in internal_router
+    # eats requests to `/internal/members/pods*` as `member_id="pods"`,
+    # which then 422s on UUID validation.
+    app.include_router(internal_pods_router)
     app.include_router(internal_router)
 
     return app

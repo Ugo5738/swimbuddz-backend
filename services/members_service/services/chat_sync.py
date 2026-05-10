@@ -1,10 +1,13 @@
-"""Sessions → chat_service integration for pods.
+"""Members → chat_service integration for pods.
 
 Provisions one chat channel per pod and reconciles its membership against
 PodAssignment rows. Best-effort — chat downtime never blocks pod flows.
 
 See chat design doc §10.2 (pod hooks) and
-docs/design/POD_MODEL_DESIGN.md for the upstream contract.
+docs/club/POD_OPERATIONS.md for the upstream contract.
+
+Ported from `sessions_service/services/chat_sync.py` in May 2026 when
+pods moved to members_service. Calling-service header is now "members".
 """
 
 from __future__ import annotations
@@ -18,19 +21,19 @@ from libs.common.service_client import internal_post
 
 logger = get_logger(__name__)
 
-_CALLING_SERVICE = "sessions"
+_CALLING_SERVICE = "members"
 
 
 async def ensure_pod_channel(
     *,
     pod_id: uuid.UUID,
     pod_name: str,
-    lead_coach_id: Optional[uuid.UUID] = None,
+    pod_lead_id: Optional[uuid.UUID] = None,
     has_minors: bool = False,
 ) -> Optional[uuid.UUID]:
     """Idempotent: ensure a chat channel exists for this pod.
 
-    `lead_coach_id` becomes the channel's initial admin (chat already
+    `pod_lead_id` becomes the channel's initial admin (chat already
     promotes `created_by` to admin role on first creation). `has_minors`
     flips the safeguarding flag — admins/safeguarding admins can refine
     later via the chat admin API."""
@@ -41,7 +44,7 @@ async def ensure_pod_channel(
         "parent_entity_id": str(pod_id),
         "name": pod_name,
         "retention_policy": "pod",
-        "created_by": str(lead_coach_id) if lead_coach_id else None,
+        "created_by": str(pod_lead_id) if pod_lead_id else None,
         "safeguarding_flags": {"has_minors": has_minors},
     }
     try:

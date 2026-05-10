@@ -1526,7 +1526,7 @@ Not proxied by the gateway — called directly by upstream services with a servi
 - **`events_service`** — calls `channels/ensure` on event create and `memberships/reconcile` on RSVP create/update (`going` → add, anything else → remove).
 - **`transport_service`** — calls `channels/ensure` on RideBooking create (parent = `session_ride_config_id`) and `memberships/reconcile` to add the booker. When a member moves between configs on the same session, the old config is reconciled to `remove` before the new one is reconciled to `add`. Admin bulk-delete (`/transport/admin/members/{member_id}`) does NOT yet notify chat — known gap.
 
-- **`sessions_service`** — calls `channels/ensure` on pod create, `memberships/reconcile` on pod assignment add/remove (admin add, member self-join, coach transfer, member leave, dissolve). See pod endpoints in §17 below.
+- **`members_service`** — calls `channels/ensure` on pod create, `memberships/reconcile` on pod assignment add/remove (admin add, member self-join, lead transfer, member leave, dissolve). See pod endpoints in §17 below. (Pods moved from `sessions_service` to `members_service` in May 2026 — see [docs/club/POD_OPERATIONS.md](../../docs/club/POD_OPERATIONS.md).)
 
 ### Notifications (chat → communications_service)
 
@@ -1534,75 +1534,104 @@ On every successful `POST /api/v1/chat/channels/{id}/messages`, chat fans out a 
 
 ---
 
-## 17. Pods (Sessions Service)
+## 17. Pods (Members Service)
 
-A pod is a 2–5 member persistent training sub-group inside a Club, with one lead coach, optional assistant coach, and a 3-month review cycle. Pods get a chat channel automatically (`parent_entity_type=pod`). See [docs/design/POD_MODEL_DESIGN.md](../../docs/design/POD_MODEL_DESIGN.md) for the full design.
+A pod is a 2–5 member persistent training sub-group inside a Club, with one **Pod Lead** (required), optional **Assistant Pod Lead**, and a 3-month review cycle. Pods are peer-led — they have no coaches (coaches only exist in the Academy layer). Each pod has an optional public `handle` (Dolphins, Orcas, …) and a default session schedule (day, time, duration, pool) that inherits from the parent Club. Pods get a chat channel automatically (`parent_entity_type=pod`). See [docs/club/POD_OPERATIONS.md](../../docs/club/POD_OPERATIONS.md).
+
+> **Note:** Pods moved from `sessions_service` to `members_service` in May 2026. Endpoint paths changed from `/sessions/pods/*` to `/members/pods/*`. The earlier [POD_MODEL_DESIGN.md](../../docs/design/POD_MODEL_DESIGN.md) is superseded.
 
 ### Member Endpoints (Auth Required)
 
-#### `GET /api/v1/sessions/pods/me`
+#### `GET /api/v1/members/pods/me`
 
 - **Description:** My current pod, or `null` if I'm not in one.
 - **Response 200:** `PodSummary | null`.
 
-#### `GET /api/v1/sessions/pods/public`
+#### `GET /api/v1/members/pods/public`
 
 - **Query:** `club_id?` (filter to one club's pods)
 - **Description:** Public-directory listing — public+active pods only. Used by dashboard and registration picker.
 - **Response 200:** `PodSummary[]`.
 
-#### `POST /api/v1/sessions/pods/{pod_id}/join`
+#### `POST /api/v1/members/pods/{pod_id}/join`
 
 - **Description:** Self-join a public pod with capacity. 403 if pod is private; 400 if not active; 409 if pod full or member already in another pod.
 - **Response 201:** `PodMemberOut`.
 
-#### `POST /api/v1/sessions/pods/me/leave`
+#### `POST /api/v1/members/pods/me/leave`
 
 - **Description:** Leave my current pod (no-op if not in one). Triggers chat-channel reconcile remove.
 - **Response 204.**
 
 ### Admin Endpoints (Admin Auth Required)
 
-#### `POST /api/v1/admin/sessions/pods`
+#### `POST /api/v1/admin/members/pods`
 
-- **Body:** `PodCreateRequest` — `{ club_id, name?, description?, lead_coach_id, assistant_coach_id?, min_size?, max_size?, visibility? }`
-- **Description:** Create a pod. Auto-names `pod-{N}` if name omitted. Creates the chat channel and promotes lead coach to channel admin.
+- **Body:** `PodCreateRequest` — `{ club_id, name?, handle?, description?, pod_lead_id, assistant_pod_lead_id?, min_size?, max_size?, default_session_day?, default_session_time?, default_session_duration_minutes?, default_pool_id?, visibility? }`
+- **Description:** Create a pod. Auto-names `{club.slug}-pod-{N}` if name omitted. Schedule fields inherit from the parent Club when omitted. Creates the chat channel and promotes the Pod Lead to channel admin. 409 if `handle` is already taken in this club.
 - **Response 201:** `PodSummary`.
 
-#### `GET /api/v1/admin/sessions/pods/review-queue`
+#### `GET /api/v1/admin/members/pods/review-queue`
 
-- **Description:** Pods with `review_due_at <= now()` — coaches/admins decide continue / rebalance / dissolve.
+- **Description:** Pods with `review_due_at <= now()` — admin/Pod Lead decides continue / rebalance / dissolve.
 - **Response 200:** `PodSummary[]`.
 
-#### `GET /api/v1/admin/sessions/pods/{pod_id}` / `PATCH .../{pod_id}`
+#### `GET /api/v1/admin/members/pods/{pod_id}` / `PATCH .../{pod_id}`
 
-- **Description:** Inspect / partial update (name, description, coaches, sizes, visibility).
+- **Description:** Inspect / partial update (name, handle, description, leads, sizes, schedule, visibility).
 - **Response 200:** `PodDetail` / `PodSummary`.
 
-#### `POST /api/v1/admin/sessions/pods/{pod_id}/dissolve`
+#### `POST /api/v1/admin/members/pods/{pod_id}/dissolve`
 
 - **Description:** Mark inactive, soft-leave every active member, fire chat-channel reconcile remove for each. Chat channel archive is NOT automatic — admin archives via chat admin API once the final messages settle.
 - **Response 200:** `PodSummary`.
 
-#### `POST /api/v1/admin/sessions/pods/{pod_id}/extend`
+#### `POST /api/v1/admin/members/pods/{pod_id}/extend`
 
-- **Description:** Bump `cycle_started_at` to now and reset `review_due_at` to +90 days. Coach/admin chose to continue this pod for another cycle.
+- **Description:** Bump `cycle_started_at` to now and reset `review_due_at` to +90 days. Admin/Pod Lead chose to continue this pod for another cycle.
 - **Response 200:** `PodSummary`.
 
-#### `POST /api/v1/admin/sessions/pods/{pod_id}/members`
+#### `POST /api/v1/admin/members/pods/{pod_id}/members`
 
 - **Body:** `{ member_id }`
 - **Description:** Admin manually add a member. Refuses if pod full or member already in another active pod.
 - **Response 201:** `PodMemberOut`.
 
-#### `DELETE /api/v1/admin/sessions/pods/{pod_id}/members/{member_id}`
+#### `DELETE /api/v1/admin/members/pods/{pod_id}/members/{member_id}`
 
 - **Description:** Admin remove a member (soft-leave). 404 if member not in this pod.
 - **Response 204.**
 
-#### `POST /api/v1/admin/sessions/pods/{pod_id}/transfers`
+#### `POST /api/v1/admin/members/pods/{pod_id}/transfers`
 
 - **Query:** `member_id` (the member being moved — kept in query so the body stays focused on the move target).
 - **Body:** `{ target_pod_id }`
-- **Description:** Coach moves a member from this pod to another. Capacity check on target before the source leave commits.
+- **Description:** Pod Lead / admin moves a member from this pod to another. Capacity check on target before the source leave commits. Records `assigned_by=lead_transfer` on the new assignment.
 - **Response 204.**
+
+### Internal Endpoints (Service-to-Service Only)
+
+These power the Sessions ↔ Pods read-time integration. `sessions_service` calls them when scheduling a Club session that's scoped to a specific pod (needs the pod's default schedule and active member roster). Service-role JWT only — never exposed via the gateway.
+
+Use the helpers in `libs/common/service_client.py`:
+
+```python
+from libs.common.service_client import get_pod_by_id, list_pods
+
+pod = await get_pod_by_id(pod_id, calling_service="sessions")
+pods = await list_pods(calling_service="sessions", club_id=club_id)
+```
+
+#### `GET /internal/members/pods/{pod_id}`
+
+- **Auth:** Internal service header
+- **Description:** Single pod lookup. Returns the schedule fields and the list of active member ids — used by sessions_service when creating a Club session for the pod (so it knows when, where, and who to schedule).
+- **Response 200:** `PodInternalDetail` — `{ id, club_id, name, slug, handle, pod_lead_id, assistant_pod_lead_id, status, visibility, min_size, max_size, active_member_count, default_session_day, default_session_time, default_session_duration_minutes, default_pool_id, active_member_ids: [...] }`
+- **Response 404:** Pod not found.
+
+#### `GET /internal/members/pods`
+
+- **Auth:** Internal service header
+- **Query:** `club_id?` (filter to one club), `status?` (`active`|`inactive`|`all`, defaults to `active`).
+- **Description:** Batch listing — used by sessions_service for "create this Saturday's sessions for every active pod in club X". Omits the active-member-ids list (use the per-pod GET when you need it).
+- **Response 200:** `PodInternalSummary[]`.

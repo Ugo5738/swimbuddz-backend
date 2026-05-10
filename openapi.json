@@ -4522,6 +4522,747 @@
         }
       }
     },
+    "/api/v1/admin/members/pods": {
+      "post": {
+        "tags": [
+          "pods-admin"
+        ],
+        "summary": "Admin Create Pod",
+        "operationId": "admin_create_pod_admin_members_pods_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PodCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/members/pods/review-queue": {
+      "get": {
+        "tags": [
+          "pods-admin"
+        ],
+        "summary": "Admin Review Queue",
+        "description": "Pods past their 3-month review window \u2014 admin/Pod Lead decides\ncontinue / rebalance / dissolve.",
+        "operationId": "admin_review_queue_admin_members_pods_review_queue_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PodSummary"
+                  },
+                  "type": "array",
+                  "title": "Response Admin Review Queue Admin Members Pods Review Queue Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/members/pods/{pod_id}": {
+      "get": {
+        "tags": [
+          "pods-admin"
+        ],
+        "summary": "Admin Get Pod",
+        "operationId": "admin_get_pod_admin_members_pods__pod_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pod Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "pods-admin"
+        ],
+        "summary": "Admin Update Pod",
+        "operationId": "admin_update_pod_admin_members_pods__pod_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pod Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PodUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/members/pods/{pod_id}/dissolve": {
+      "post": {
+        "tags": [
+          "pods-admin"
+        ],
+        "summary": "Admin Dissolve Pod",
+        "description": "Dissolves the pod and soft-leaves every active member. Chat is\nNOT auto-archived from here \u2014 the chat admin API owns archival, and\nwe don't want to baby-sit a side effect that may need a manual\nreview trail. Admin archives the channel from chat admin once the\nfinal messages settle.",
+        "operationId": "admin_dissolve_pod_admin_members_pods__pod_id__dissolve_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pod Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/members/pods/{pod_id}/extend": {
+      "post": {
+        "tags": [
+          "pods-admin"
+        ],
+        "summary": "Admin Extend Pod",
+        "operationId": "admin_extend_pod_admin_members_pods__pod_id__extend_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pod Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/members/pods/{pod_id}/members": {
+      "post": {
+        "tags": [
+          "pods-admin"
+        ],
+        "summary": "Admin Add Member",
+        "operationId": "admin_add_member_admin_members_pods__pod_id__members_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pod Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PodMemberAddRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodMemberOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/members/pods/{pod_id}/members/{member_id}": {
+      "delete": {
+        "tags": [
+          "pods-admin"
+        ],
+        "summary": "Admin Remove Member",
+        "operationId": "admin_remove_member_admin_members_pods__pod_id__members__member_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/members/pods/{pod_id}/transfers": {
+      "post": {
+        "tags": [
+          "pods-admin"
+        ],
+        "summary": "Admin Transfer Member",
+        "operationId": "admin_transfer_member_admin_members_pods__pod_id__transfers_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Member being moved (kept in query so the body stays focused)",
+              "title": "Member Id"
+            },
+            "description": "Member being moved (kept in query so the body stays focused)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PodTransferRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/members/pods/me": {
+      "get": {
+        "tags": [
+          "pods"
+        ],
+        "summary": "Get My Pod",
+        "description": "My current pod, or null if I'm not in one. Used by the dashboard.",
+        "operationId": "get_my_pod_members_pods_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PodSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get My Pod Members Pods Me Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/members/pods/public": {
+      "get": {
+        "tags": [
+          "pods"
+        ],
+        "summary": "List Public Pods",
+        "description": "Public pod directory. Filter to a club if the caller knows which\none they're registering for.",
+        "operationId": "list_public_pods_members_pods_public_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "club_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Club Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PodSummary"
+                  },
+                  "title": "Response List Public Pods Members Pods Public Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/members/pods/{pod_id}/join": {
+      "post": {
+        "tags": [
+          "pods"
+        ],
+        "summary": "Member Join Pod",
+        "description": "Self-join a public pod with capacity. Refuses for private pods \u2014\nthose go through admin assignment.",
+        "operationId": "member_join_pod_members_pods__pod_id__join_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pod Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodMemberOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/members/pods/me/leave": {
+      "post": {
+        "tags": [
+          "pods"
+        ],
+        "summary": "Member Leave Pod",
+        "description": "Leave my current pod. No-op if I'm not in one.",
+        "operationId": "member_leave_pod_members_pods_me_leave_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/members/pods/{pod_id}": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Pod Internal",
+        "description": "Single pod lookup. Used by sessions_service when creating a\nClub session that's scoped to a specific pod \u2014 needs the schedule\nfields and the active member roster.",
+        "operationId": "get_pod_internal_internal_members_pods__pod_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pod Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodInternalDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/members/pods": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "List Pods Internal",
+        "description": "List pods. Used by sessions_service for batch scheduling \u2014 e.g.\n\"create this Saturday's sessions for every active pod in club X\".",
+        "operationId": "list_pods_internal_internal_members_pods_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "club_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Club Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by status (active|inactive). Defaults to active only.",
+              "title": "Status"
+            },
+            "description": "Filter by status (active|inactive). Defaults to active only."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PodInternalSummary"
+                  },
+                  "title": "Response List Pods Internal Internal Members Pods Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/members/by-auth/{auth_id}": {
       "get": {
         "tags": [
@@ -5533,620 +6274,6 @@
                 "schema": {}
               }
             }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/sessions/pods/me": {
-      "get": {
-        "tags": [
-          "pods"
-        ],
-        "summary": "Get My Pod",
-        "description": "My current pod, or null if I'm not in one. Used by the dashboard.",
-        "operationId": "get_my_pod_sessions_pods_me_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/PodSummary"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "title": "Response Get My Pod Sessions Pods Me Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/v1/sessions/pods/public": {
-      "get": {
-        "tags": [
-          "pods"
-        ],
-        "summary": "List Public Pods",
-        "description": "Public pod directory. Filter to a club if the caller knows which\none they're registering for.",
-        "operationId": "list_public_pods_sessions_pods_public_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "club_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Club Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/PodSummary"
-                  },
-                  "title": "Response List Public Pods Sessions Pods Public Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/sessions/pods/{pod_id}/join": {
-      "post": {
-        "tags": [
-          "pods"
-        ],
-        "summary": "Member Join Pod",
-        "description": "Self-join a public pod with capacity. Refuses for private pods \u2014\nthose go through admin assignment.",
-        "operationId": "member_join_pod_sessions_pods__pod_id__join_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "pod_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Pod Id"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PodMemberOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/sessions/pods/me/leave": {
-      "post": {
-        "tags": [
-          "pods"
-        ],
-        "summary": "Member Leave Pod",
-        "description": "Leave my current pod. No-op if I'm not in one.",
-        "operationId": "member_leave_pod_sessions_pods_me_leave_post",
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/v1/admin/sessions/pods": {
-      "post": {
-        "tags": [
-          "pods-admin"
-        ],
-        "summary": "Admin Create Pod",
-        "operationId": "admin_create_pod_admin_sessions_pods_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PodCreateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PodSummary"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/v1/admin/sessions/pods/review-queue": {
-      "get": {
-        "tags": [
-          "pods-admin"
-        ],
-        "summary": "Admin Review Queue",
-        "description": "Pods past their 3-month review window \u2014 admin/coach decides\ncontinue / rebalance / dissolve.",
-        "operationId": "admin_review_queue_admin_sessions_pods_review_queue_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/PodSummary"
-                  },
-                  "type": "array",
-                  "title": "Response Admin Review Queue Admin Sessions Pods Review Queue Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/v1/admin/sessions/pods/{pod_id}": {
-      "get": {
-        "tags": [
-          "pods-admin"
-        ],
-        "summary": "Admin Get Pod",
-        "operationId": "admin_get_pod_admin_sessions_pods__pod_id__get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "pod_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Pod Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PodDetail"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "pods-admin"
-        ],
-        "summary": "Admin Update Pod",
-        "operationId": "admin_update_pod_admin_sessions_pods__pod_id__patch",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "pod_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Pod Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PodUpdateRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PodSummary"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/sessions/pods/{pod_id}/dissolve": {
-      "post": {
-        "tags": [
-          "pods-admin"
-        ],
-        "summary": "Admin Dissolve Pod",
-        "description": "Dissolves the pod and soft-leaves every active member. Chat is\nNOT auto-archived from here \u2014 the chat admin API owns archival, and\nwe don't want to baby-sit a side effect that may need a manual\nreview trail. Coach archives the channel from chat admin once the\nfinal messages settle.",
-        "operationId": "admin_dissolve_pod_admin_sessions_pods__pod_id__dissolve_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "pod_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Pod Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PodSummary"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/sessions/pods/{pod_id}/extend": {
-      "post": {
-        "tags": [
-          "pods-admin"
-        ],
-        "summary": "Admin Extend Pod",
-        "operationId": "admin_extend_pod_admin_sessions_pods__pod_id__extend_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "pod_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Pod Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PodSummary"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/sessions/pods/{pod_id}/members": {
-      "post": {
-        "tags": [
-          "pods-admin"
-        ],
-        "summary": "Admin Add Member",
-        "operationId": "admin_add_member_admin_sessions_pods__pod_id__members_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "pod_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Pod Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PodMemberAddRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PodMemberOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/sessions/pods/{pod_id}/members/{member_id}": {
-      "delete": {
-        "tags": [
-          "pods-admin"
-        ],
-        "summary": "Admin Remove Member",
-        "operationId": "admin_remove_member_admin_sessions_pods__pod_id__members__member_id__delete",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "pod_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Pod Id"
-            }
-          },
-          {
-            "name": "member_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Member Id"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/sessions/pods/{pod_id}/transfers": {
-      "post": {
-        "tags": [
-          "pods-admin"
-        ],
-        "summary": "Admin Transfer Member",
-        "operationId": "admin_transfer_member_admin_sessions_pods__pod_id__transfers_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "pod_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Pod Id"
-            }
-          },
-          {
-            "name": "member_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Member being moved (kept in query so the body stays focused)",
-              "title": "Member Id"
-            },
-            "description": "Member being moved (kept in query so the body stays focused)"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PodTransferRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "204": {
-            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -15419,6 +15546,33 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/payments/coach/me/earnings/": {
+      "get": {
+        "tags": [
+          "coach-earnings"
+        ],
+        "summary": "Coach Earnings Summary",
+        "description": "Forward + backward looking earnings view for the calling coach.\n\nForward: for each ACTIVE recurring config the coach owns, compute the\nupcoming block payout (uses the same calculator the cron does, so the\nnumber matches what would actually be created when next_run_date hits).\n\nBackward: lifetime PAID totals + currently-in-flight totals + recent\n5 payout rows.\n\nAuth: any logged-in coach (filters server-side by their member_id).",
+        "operationId": "coach_earnings_summary_payments_coach_me_earnings__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachEarningsSummaryResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/announcements/": {
@@ -41037,6 +41191,20 @@
         "title": "CreateHandbookVersionRequest",
         "description": "Admin request to create a new handbook version."
       },
+      "DayOfWeek": {
+        "type": "string",
+        "enum": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri",
+          "sat",
+          "sun"
+        ],
+        "title": "DayOfWeek",
+        "description": "Day-of-week for a pod's default session schedule. Stored as the\nstandard 3-letter abbreviation so it round-trips cleanly to JSON\nand reads naturally in admin tooling."
+      },
       "EligibleCoachBasic": {
         "properties": {
           "member_id": {
@@ -44233,6 +44401,921 @@
         "title": "PendingRegistrationResponse",
         "description": "Response for pending registration."
       },
+      "PodAssignmentSource": {
+        "type": "string",
+        "enum": [
+          "admin",
+          "self",
+          "lead_transfer"
+        ],
+        "title": "PodAssignmentSource",
+        "description": "How a member came to be in a pod. Useful for understanding\nself-selection vs administrative-assignment behaviour."
+      },
+      "PodCreateRequest": {
+        "properties": {
+          "club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Club Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "pod_lead_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pod Lead Id"
+          },
+          "assistant_pod_lead_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant Pod Lead Id"
+          },
+          "min_size": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Min Size",
+            "default": 2
+          },
+          "max_size": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Size",
+            "default": 5
+          },
+          "default_session_day": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayOfWeek"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "default_session_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Session Time"
+          },
+          "default_session_duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 480.0,
+                "minimum": 15.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Session Duration Minutes"
+          },
+          "default_pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Pool Id"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/PodVisibility",
+            "default": "public"
+          }
+        },
+        "type": "object",
+        "required": [
+          "club_id",
+          "pod_lead_id"
+        ],
+        "title": "PodCreateRequest",
+        "description": "Admin creates a pod for a Club. `name` is optional \u2014 if blank, the\nserver auto-names ``{club_slug}-pod-{N}``. Schedule fields are also\noptional \u2014 they inherit the parent Club's defaults when blank."
+      },
+      "PodDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Club Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "pod_lead_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pod Lead Id"
+          },
+          "assistant_pod_lead_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant Pod Lead Id"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/PodVisibility"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PodStatus"
+          },
+          "min_size": {
+            "type": "integer",
+            "title": "Min Size"
+          },
+          "max_size": {
+            "type": "integer",
+            "title": "Max Size"
+          },
+          "active_member_count": {
+            "type": "integer",
+            "title": "Active Member Count"
+          },
+          "default_session_day": {
+            "$ref": "#/components/schemas/DayOfWeek"
+          },
+          "default_session_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Default Session Time"
+          },
+          "default_session_duration_minutes": {
+            "type": "integer",
+            "title": "Default Session Duration Minutes"
+          },
+          "default_pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Pool Id"
+          },
+          "cycle_started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Cycle Started At"
+          },
+          "review_due_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Review Due At"
+          },
+          "dissolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dissolved At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/PodMemberOut"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "club_id",
+          "name",
+          "slug",
+          "pod_lead_id",
+          "visibility",
+          "status",
+          "min_size",
+          "max_size",
+          "active_member_count",
+          "default_session_day",
+          "default_session_time",
+          "default_session_duration_minutes",
+          "cycle_started_at",
+          "review_due_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PodDetail",
+        "description": "Full pod view \u2014 includes the current assignment list."
+      },
+      "PodInternalDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "club_id": {
+            "type": "string",
+            "title": "Club Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "pod_lead_id": {
+            "type": "string",
+            "title": "Pod Lead Id"
+          },
+          "assistant_pod_lead_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant Pod Lead Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "visibility": {
+            "type": "string",
+            "title": "Visibility"
+          },
+          "min_size": {
+            "type": "integer",
+            "title": "Min Size"
+          },
+          "max_size": {
+            "type": "integer",
+            "title": "Max Size"
+          },
+          "active_member_count": {
+            "type": "integer",
+            "title": "Active Member Count"
+          },
+          "default_session_day": {
+            "type": "string",
+            "title": "Default Session Day"
+          },
+          "default_session_time": {
+            "type": "string",
+            "title": "Default Session Time"
+          },
+          "default_session_duration_minutes": {
+            "type": "integer",
+            "title": "Default Session Duration Minutes"
+          },
+          "default_pool_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Pool Id"
+          },
+          "active_member_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Active Member Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "club_id",
+          "name",
+          "slug",
+          "pod_lead_id",
+          "status",
+          "visibility",
+          "min_size",
+          "max_size",
+          "active_member_count",
+          "default_session_day",
+          "default_session_time",
+          "default_session_duration_minutes",
+          "active_member_ids"
+        ],
+        "title": "PodInternalDetail",
+        "description": "Same as summary, plus the active member ids \u2014 used by sessions\nservice when it needs to know \"who should I create attendance rows\nfor?\"."
+      },
+      "PodInternalSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "club_id": {
+            "type": "string",
+            "title": "Club Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "pod_lead_id": {
+            "type": "string",
+            "title": "Pod Lead Id"
+          },
+          "assistant_pod_lead_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant Pod Lead Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "visibility": {
+            "type": "string",
+            "title": "Visibility"
+          },
+          "min_size": {
+            "type": "integer",
+            "title": "Min Size"
+          },
+          "max_size": {
+            "type": "integer",
+            "title": "Max Size"
+          },
+          "active_member_count": {
+            "type": "integer",
+            "title": "Active Member Count"
+          },
+          "default_session_day": {
+            "type": "string",
+            "title": "Default Session Day"
+          },
+          "default_session_time": {
+            "type": "string",
+            "title": "Default Session Time"
+          },
+          "default_session_duration_minutes": {
+            "type": "integer",
+            "title": "Default Session Duration Minutes"
+          },
+          "default_pool_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Pool Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "club_id",
+          "name",
+          "slug",
+          "pod_lead_id",
+          "status",
+          "visibility",
+          "min_size",
+          "max_size",
+          "active_member_count",
+          "default_session_day",
+          "default_session_time",
+          "default_session_duration_minutes"
+        ],
+        "title": "PodInternalSummary",
+        "description": "The shape sessions_service uses when scheduling a pod's sessions."
+      },
+      "PodMemberAddRequest": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id"
+        ],
+        "title": "PodMemberAddRequest"
+      },
+      "PodMemberOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At"
+          },
+          "assigned_by": {
+            "$ref": "#/components/schemas/PodAssignmentSource"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "member_id",
+          "joined_at",
+          "assigned_by"
+        ],
+        "title": "PodMemberOut",
+        "description": "One active assignment row."
+      },
+      "PodStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "inactive"
+        ],
+        "title": "PodStatus",
+        "description": "Lifecycle marker. Active pods accept members and surface in the\nreview queue at the end of each 3-month cycle. Inactive pods are\ndissolved \u2014 chat archives, no new joins."
+      },
+      "PodSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Club Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "pod_lead_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pod Lead Id"
+          },
+          "assistant_pod_lead_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant Pod Lead Id"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/PodVisibility"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PodStatus"
+          },
+          "min_size": {
+            "type": "integer",
+            "title": "Min Size"
+          },
+          "max_size": {
+            "type": "integer",
+            "title": "Max Size"
+          },
+          "active_member_count": {
+            "type": "integer",
+            "title": "Active Member Count"
+          },
+          "default_session_day": {
+            "$ref": "#/components/schemas/DayOfWeek"
+          },
+          "default_session_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Default Session Time"
+          },
+          "default_session_duration_minutes": {
+            "type": "integer",
+            "title": "Default Session Duration Minutes"
+          },
+          "default_pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Pool Id"
+          },
+          "cycle_started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Cycle Started At"
+          },
+          "review_due_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Review Due At"
+          },
+          "dissolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dissolved At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "club_id",
+          "name",
+          "slug",
+          "pod_lead_id",
+          "visibility",
+          "status",
+          "min_size",
+          "max_size",
+          "active_member_count",
+          "default_session_day",
+          "default_session_time",
+          "default_session_duration_minutes",
+          "cycle_started_at",
+          "review_due_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PodSummary",
+        "description": "Compact pod shape used in list views (admin queue, public directory).\n\nCapacity counters are computed (not columns) \u2014 derived from the active\nassignments at read time."
+      },
+      "PodTransferRequest": {
+        "properties": {
+          "target_pod_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Pod Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_pod_id"
+        ],
+        "title": "PodTransferRequest",
+        "description": "Pod Lead / admin moves a member from this pod to another pod\n(typically within the same Club)."
+      },
+      "PodUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "pod_lead_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Lead Id"
+          },
+          "assistant_pod_lead_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant Pod Lead Id"
+          },
+          "min_size": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Size"
+          },
+          "max_size": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Size"
+          },
+          "default_session_day": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayOfWeek"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "default_session_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Session Time"
+          },
+          "default_session_duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 480.0,
+                "minimum": 15.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Session Duration Minutes"
+          },
+          "default_pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Pool Id"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PodVisibility"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "PodUpdateRequest",
+        "description": "Partial update \u2014 admins can rename, change visibility, swap leads,\ntune capacity, override schedule. To extend the cycle, use the\ndedicated extend endpoint."
+      },
+      "PodVisibility": {
+        "type": "string",
+        "enum": [
+          "public",
+          "private"
+        ],
+        "title": "PodVisibility",
+        "description": "Whether a pod appears in the public directory.\n\n`public` pods are listed for self-selection during registration and on\nthe member dashboard. `private` pods are admin-managed only."
+      },
       "ProgramCategoryEnum": {
         "type": "string",
         "enum": [
@@ -45130,505 +46213,6 @@
           "title"
         ],
         "title": "NextSessionResponse"
-      },
-      "PodAssignmentSource": {
-        "type": "string",
-        "enum": [
-          "admin",
-          "self",
-          "coach_transfer"
-        ],
-        "title": "PodAssignmentSource",
-        "description": "How a member came to be in a pod. Useful for understanding\nself-selection vs administrative-assignment behaviour."
-      },
-      "PodCreateRequest": {
-        "properties": {
-          "club_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Club Id"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 2000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "lead_coach_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Lead Coach Id"
-          },
-          "assistant_coach_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Assistant Coach Id"
-          },
-          "min_size": {
-            "type": "integer",
-            "maximum": 20.0,
-            "minimum": 1.0,
-            "title": "Min Size",
-            "default": 2
-          },
-          "max_size": {
-            "type": "integer",
-            "maximum": 20.0,
-            "minimum": 1.0,
-            "title": "Max Size",
-            "default": 5
-          },
-          "visibility": {
-            "$ref": "#/components/schemas/PodVisibility",
-            "default": "public"
-          }
-        },
-        "type": "object",
-        "required": [
-          "club_id",
-          "lead_coach_id"
-        ],
-        "title": "PodCreateRequest",
-        "description": "Admin creates a pod for a Club. `name` is optional \u2014 if blank, the\nserver auto-names `{club_slug}-pod-{N}` (filled in by the service layer)."
-      },
-      "PodDetail": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "club_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Club Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "slug": {
-            "type": "string",
-            "title": "Slug"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "lead_coach_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Lead Coach Id"
-          },
-          "assistant_coach_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Assistant Coach Id"
-          },
-          "visibility": {
-            "$ref": "#/components/schemas/PodVisibility"
-          },
-          "status": {
-            "$ref": "#/components/schemas/PodStatus"
-          },
-          "min_size": {
-            "type": "integer",
-            "title": "Min Size"
-          },
-          "max_size": {
-            "type": "integer",
-            "title": "Max Size"
-          },
-          "active_member_count": {
-            "type": "integer",
-            "title": "Active Member Count"
-          },
-          "cycle_started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Cycle Started At"
-          },
-          "review_due_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Review Due At"
-          },
-          "dissolved_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Dissolved At"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          },
-          "members": {
-            "items": {
-              "$ref": "#/components/schemas/PodMemberOut"
-            },
-            "type": "array",
-            "title": "Members"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "club_id",
-          "name",
-          "slug",
-          "lead_coach_id",
-          "visibility",
-          "status",
-          "min_size",
-          "max_size",
-          "active_member_count",
-          "cycle_started_at",
-          "review_due_at",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "PodDetail",
-        "description": "Full pod view \u2014 includes the current assignment list."
-      },
-      "PodMemberAddRequest": {
-        "properties": {
-          "member_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Member Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "member_id"
-        ],
-        "title": "PodMemberAddRequest"
-      },
-      "PodMemberOut": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "member_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Member Id"
-          },
-          "joined_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Joined At"
-          },
-          "assigned_by": {
-            "$ref": "#/components/schemas/PodAssignmentSource"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "member_id",
-          "joined_at",
-          "assigned_by"
-        ],
-        "title": "PodMemberOut",
-        "description": "One active assignment row."
-      },
-      "PodStatus": {
-        "type": "string",
-        "enum": [
-          "active",
-          "inactive"
-        ],
-        "title": "PodStatus",
-        "description": "Lifecycle marker. Active pods accept members and surface in the\nreview queue at the end of each 3-month cycle. Inactive pods are\ndissolved \u2014 chat archives, no new joins."
-      },
-      "PodSummary": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "club_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Club Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "slug": {
-            "type": "string",
-            "title": "Slug"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "lead_coach_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Lead Coach Id"
-          },
-          "assistant_coach_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Assistant Coach Id"
-          },
-          "visibility": {
-            "$ref": "#/components/schemas/PodVisibility"
-          },
-          "status": {
-            "$ref": "#/components/schemas/PodStatus"
-          },
-          "min_size": {
-            "type": "integer",
-            "title": "Min Size"
-          },
-          "max_size": {
-            "type": "integer",
-            "title": "Max Size"
-          },
-          "active_member_count": {
-            "type": "integer",
-            "title": "Active Member Count"
-          },
-          "cycle_started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Cycle Started At"
-          },
-          "review_due_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Review Due At"
-          },
-          "dissolved_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Dissolved At"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "club_id",
-          "name",
-          "slug",
-          "lead_coach_id",
-          "visibility",
-          "status",
-          "min_size",
-          "max_size",
-          "active_member_count",
-          "cycle_started_at",
-          "review_due_at",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "PodSummary",
-        "description": "Compact pod shape used in list views (admin queue, public directory).\n\nCapacity counters are computed (not columns) \u2014 derived from the active\nassignments at read time."
-      },
-      "PodTransferRequest": {
-        "properties": {
-          "target_pod_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Target Pod Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "target_pod_id"
-        ],
-        "title": "PodTransferRequest",
-        "description": "Coach moves a member from this pod to another pod (typically within\nthe same Club)."
-      },
-      "PodUpdateRequest": {
-        "properties": {
-          "name": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 2000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "lead_coach_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lead Coach Id"
-          },
-          "assistant_coach_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Assistant Coach Id"
-          },
-          "min_size": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 20.0,
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Min Size"
-          },
-          "max_size": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 20.0,
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Size"
-          },
-          "visibility": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PodVisibility"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "title": "PodUpdateRequest",
-        "description": "Partial update \u2014 admins can rename, change visibility, swap coaches,\ntune capacity. To extend the cycle, use the dedicated extend endpoint."
-      },
-      "PodVisibility": {
-        "type": "string",
-        "enum": [
-          "public",
-          "private"
-        ],
-        "title": "PodVisibility",
-        "description": "Whether a pod appears in the public directory.\n\n`public` pods are listed for self-selection during registration and on\nthe member dashboard. `private` pods are admin/coach-managed only."
       },
       "SessionBasic": {
         "properties": {
@@ -52679,6 +53263,208 @@
           "annual"
         ],
         "title": "ClubBillingCycle"
+      },
+      "CoachEarningsSummaryResponse": {
+        "properties": {
+          "coach_member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Coach Member Id"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "NGN"
+          },
+          "total_paid_kobo": {
+            "type": "integer",
+            "title": "Total Paid Kobo"
+          },
+          "total_pending_kobo": {
+            "type": "integer",
+            "title": "Total Pending Kobo"
+          },
+          "upcoming_payouts": {
+            "items": {
+              "$ref": "#/components/schemas/CoachUpcomingPayout"
+            },
+            "type": "array",
+            "title": "Upcoming Payouts"
+          },
+          "upcoming_total_kobo": {
+            "type": "integer",
+            "title": "Upcoming Total Kobo"
+          },
+          "recent_payouts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Recent Payouts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "coach_member_id",
+          "total_paid_kobo",
+          "total_pending_kobo",
+          "upcoming_payouts",
+          "upcoming_total_kobo",
+          "recent_payouts"
+        ],
+        "title": "CoachEarningsSummaryResponse",
+        "description": "Snapshot of a coach's payout situation across all their cohorts."
+      },
+      "CoachLineItem": {
+        "properties": {
+          "student_member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Member Id"
+          },
+          "student_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Student Name"
+          },
+          "sessions_delivered": {
+            "type": "integer",
+            "title": "Sessions Delivered"
+          },
+          "sessions_excused": {
+            "type": "integer",
+            "title": "Sessions Excused"
+          },
+          "makeups_completed_in_block": {
+            "type": "integer",
+            "title": "Makeups Completed In Block"
+          },
+          "subtotal_kobo": {
+            "type": "integer",
+            "title": "Subtotal Kobo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "student_member_id",
+          "sessions_delivered",
+          "sessions_excused",
+          "makeups_completed_in_block",
+          "subtotal_kobo"
+        ],
+        "title": "CoachLineItem",
+        "description": "Per-student contribution to an upcoming block payout \u2014 the same data\nsurfaced to admins on the preview, exposed to the coach so they can\naudit how their pay was computed."
+      },
+      "CoachUpcomingPayout": {
+        "properties": {
+          "config_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Config Id"
+          },
+          "cohort_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Cohort Id"
+          },
+          "cohort_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Name"
+          },
+          "band_percentage": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Band Percentage"
+          },
+          "block_index": {
+            "type": "integer",
+            "title": "Block Index"
+          },
+          "total_blocks": {
+            "type": "integer",
+            "title": "Total Blocks"
+          },
+          "next_block_index": {
+            "type": "integer",
+            "title": "Next Block Index"
+          },
+          "block_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Block Start"
+          },
+          "block_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Block End"
+          },
+          "next_run_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Next Run Date"
+          },
+          "expected_amount_kobo": {
+            "type": "integer",
+            "title": "Expected Amount Kobo"
+          },
+          "sessions_in_block": {
+            "type": "integer",
+            "title": "Sessions In Block"
+          },
+          "students_count": {
+            "type": "integer",
+            "title": "Students Count"
+          },
+          "cohort_price_amount": {
+            "type": "integer",
+            "title": "Cohort Price Amount"
+          },
+          "per_session_amount_kobo": {
+            "type": "integer",
+            "title": "Per Session Amount Kobo"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/CoachLineItem"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "config_id",
+          "cohort_id",
+          "band_percentage",
+          "block_index",
+          "total_blocks",
+          "next_block_index",
+          "block_start",
+          "block_end",
+          "next_run_date",
+          "expected_amount_kobo",
+          "sessions_in_block",
+          "students_count",
+          "cohort_price_amount",
+          "per_session_amount_kobo",
+          "lines"
+        ],
+        "title": "CoachUpcomingPayout",
+        "description": "One row per active recurring config \u2014 what the coach will earn at\nthe next block close based on what's been delivered so far.\n\nIncludes the inputs to the formula so the coach can see exactly why\nthe headline number is what it is:\n\n    per_session_per_student =\n        cohort_price_amount \u00d7 band_percentage\n        \u00f7 total_blocks \u00f7 sessions_in_block\n\n    expected_amount_kobo =\n        \u03a3 over students( (delivered + makeups_completed) \u00d7 per_session_rate )"
       },
       "CompletePaymentRequest": {
         "properties": {

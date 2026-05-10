@@ -33,30 +33,6 @@ class SessionStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
-class PodVisibility(str, enum.Enum):
-    """Whether a pod appears in the public directory.
-
-    `public` pods are listed for self-selection during registration and on
-    the member dashboard. `private` pods are admin/coach-managed only.
-    """
-
-    PUBLIC = "public"
-    PRIVATE = "private"
-
-
-class PodStatus(str, enum.Enum):
-    """Lifecycle marker. Active pods accept members and surface in the
-    review queue at the end of each 3-month cycle. Inactive pods are
-    dissolved — chat archives, no new joins."""
-
-    ACTIVE = "active"
-    INACTIVE = "inactive"
-
-
-class PodAssignmentSource(str, enum.Enum):
-    """How a member came to be in a pod. Useful for understanding
-    self-selection vs administrative-assignment behaviour."""
-
-    ADMIN = "admin"  # Admin manually placed the member
-    SELF = "self"  # Member self-selected (dashboard or registration)
-    COACH_TRANSFER = "coach_transfer"  # Coach moved them from another pod
+# Pod-related enums (PodVisibility, PodStatus, PodAssignmentSource) moved
+# to services.members_service.models.enums in May 2026 alongside the Pod
+# model itself. See docs/club/POD_OPERATIONS.md.

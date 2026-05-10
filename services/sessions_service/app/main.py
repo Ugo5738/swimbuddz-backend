@@ -6,11 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from services.sessions_service.routers.bundles import router as bundles_router
 from services.sessions_service.routers.internal import router as internal_router
 from services.sessions_service.routers.member import router as sessions_router
-from services.sessions_service.routers.pods import (
-    admin_router as pods_admin_router,
-    member_router as pods_member_router,
-)
 from services.sessions_service.routers.templates import router as templates_router
+
+# Pods moved to members_service in May 2026 — see docs/club/POD_OPERATIONS.md.
 
 
 def create_app() -> FastAPI:
@@ -43,10 +41,6 @@ def create_app() -> FastAPI:
     # Register templates router with  full path to avoid trailing slash issues
     # FastAPI is strict about trailing slashes - /sessions/templates != /sessions/templates/
     app.include_router(templates_router)
-    # Pods routers must register BEFORE the /sessions/{id} matcher in
-    # sessions_router — same reason as bundles below.
-    app.include_router(pods_member_router)
-    app.include_router(pods_admin_router)
     # Bundles must be registered BEFORE sessions_router — its /sessions/bundles path
     # would otherwise be swallowed by the sessions_router's /sessions/{id} matcher.
     app.include_router(bundles_router)

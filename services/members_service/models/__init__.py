@@ -10,6 +10,7 @@ Model definitions are split across:
   - models/coach.py    — Coach profile, agreements, handbook, bank accounts
   - models/volunteer.py   — Legacy volunteer roles and club challenges
   - models/assessment.py  — Swim readiness assessments
+  - models/pod.py      — Club pods and pod assignments
 """
 
 from services.members_service.models.assessment import SwimAssessment  # noqa: F401
@@ -25,7 +26,12 @@ from services.members_service.models.coach import (  # noqa: F401
 from services.members_service.models.enums import (  # noqa: F401
     AcquisitionSource,
     CoachGrade,
+    DayOfWeek,
+    PodAssignmentSource,
+    PodStatus,
+    PodVisibility,
 )
+from services.members_service.models.pod import Pod, PodAssignment  # noqa: F401
 from services.members_service.models.guardian import (  # noqa: F401
     GuardianLink,
     GuardianRelationship,
@@ -86,4 +92,10 @@ __all__ = [
     "HandbookVersion",
     "CoachBankAccount",
     "SwimAssessment",
+    "DayOfWeek",
+    "Pod",
+    "PodAssignment",
+    "PodAssignmentSource",
+    "PodStatus",
+    "PodVisibility",
 ]

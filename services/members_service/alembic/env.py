@@ -39,6 +39,8 @@ from services.members_service.models import (  # noqa: F401
     MemberPreferences,
     MemberProfile,
     PendingRegistration,
+    Pod,
+    PodAssignment,
     SwimAssessment,
     VolunteerInterest,
     VolunteerRole,

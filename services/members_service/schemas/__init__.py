@@ -51,6 +51,15 @@ from services.members_service.schemas.challenge import (  # noqa: F401
     VolunteerRoleResponse,
     VolunteerRoleUpdate,
 )
+from services.members_service.schemas.pod import (  # noqa: F401
+    PodCreateRequest,
+    PodDetail,
+    PodMemberAddRequest,
+    PodMemberOut,
+    PodSummary,
+    PodTransferRequest,
+    PodUpdateRequest,
+)
 from services.members_service.schemas.coach import (  # noqa: F401
     AdminApproveCoach,
     AdminCoachApplicationDetail,
