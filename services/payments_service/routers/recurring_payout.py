@@ -693,9 +693,33 @@ async def coach_schedule_makeup(
 # ---------------------------------------------------------------------------
 
 
+class CoachLineItem(BaseModel):
+    """Per-student contribution to an upcoming block payout — the same data
+    surfaced to admins on the preview, exposed to the coach so they can
+    audit how their pay was computed."""
+
+    student_member_id: uuid.UUID
+    student_name: Optional[str] = None
+    sessions_delivered: int  # default-present + LATE + ABSENT
+    sessions_excused: int  # excused absences (will become make-ups)
+    makeups_completed_in_block: int
+    subtotal_kobo: int  # (delivered + makeups_completed) × per_session_rate
+
+
 class CoachUpcomingPayout(BaseModel):
     """One row per active recurring config — what the coach will earn at
-    the next block close based on what's been delivered so far."""
+    the next block close based on what's been delivered so far.
+
+    Includes the inputs to the formula so the coach can see exactly why
+    the headline number is what it is:
+
+        per_session_per_student =
+            cohort_price_amount × band_percentage
+            ÷ total_blocks ÷ sessions_in_block
+
+        expected_amount_kobo =
+            Σ over students( (delivered + makeups_completed) × per_session_rate )
+    """
 
     config_id: uuid.UUID
     cohort_id: uuid.UUID
@@ -710,6 +734,12 @@ class CoachUpcomingPayout(BaseModel):
     expected_amount_kobo: int
     sessions_in_block: int
     students_count: int
+    # Formula inputs — let the frontend reconstruct the computation visibly
+    cohort_price_amount: int  # kobo per student
+    per_session_amount_kobo: (
+        int  # cohort_price × band / total_blocks / sessions_in_block
+    )
+    lines: List[CoachLineItem]
 
 
 class CoachEarningsSummaryResponse(BaseModel):
@@ -827,6 +857,19 @@ async def coach_earnings_summary(
                     expected_amount_kobo=computation.total_kobo,
                     sessions_in_block=computation.sessions_in_block,
                     students_count=len(computation.lines),
+                    cohort_price_amount=config.cohort_price_amount,
+                    per_session_amount_kobo=computation.per_session_amount_kobo,
+                    lines=[
+                        CoachLineItem(
+                            student_member_id=ln.student_member_id,
+                            student_name=ln.student_name,
+                            sessions_delivered=ln.sessions_delivered,
+                            sessions_excused=ln.sessions_excused,
+                            makeups_completed_in_block=ln.makeups_completed,
+                            subtotal_kobo=ln.student_total_kobo,
+                        )
+                        for ln in computation.lines
+                    ],
                 )
             )
             upcoming_total += computation.total_kobo
