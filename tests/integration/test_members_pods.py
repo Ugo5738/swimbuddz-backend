@@ -46,9 +46,7 @@ def _silence_chat_sync():
     don't try to talk to chat_service. Returns a dict of patchers."""
     return {
         "ensure": patch(_ENSURE_CHAT, new_callable=AsyncMock, return_value=None),
-        "reconcile": patch(
-            _RECONCILE_CHAT, new_callable=AsyncMock, return_value=True
-        ),
+        "reconcile": patch(_RECONCILE_CHAT, new_callable=AsyncMock, return_value=True),
     }
 
 
@@ -64,9 +62,7 @@ async def _setup_admin_with_member(db_session):
     ``admin@admin.com`` collides on the email unique index when a prior
     test (or seed data) already committed it outside our transaction."""
     unique = uuid.uuid4().hex[:8]
-    user = make_admin_user(
-        user_id=str(uuid.uuid4()), email=f"admin-{unique}@test.com"
-    )
+    user = make_admin_user(user_id=str(uuid.uuid4()), email=f"admin-{unique}@test.com")
     admin = MemberFactory.create(auth_id=user.user_id, email=user.email)
     db_session.add(admin)
     await db_session.commit()
@@ -357,9 +353,7 @@ async def test_admin_dissolve_pod_marks_inactive_and_reconciles_each_member(
         # Reset the mock so we only count the dissolve reconciles
         mock_reconcile.reset_mock()
 
-        response = await members_client.post(
-            f"/admin/members/pods/{pod.id}/dissolve"
-        )
+        response = await members_client.post(f"/admin/members/pods/{pod.id}/dissolve")
 
     assert response.status_code == 200, response.text
     data = response.json()
@@ -564,9 +558,7 @@ async def test_member_list_public_pods_filters_by_club(members_client, db_sessio
     from services.members_service.app.main import app
 
     with override_auth(app, user):
-        response = await members_client.get(
-            f"/members/pods/public?club_id={club_a.id}"
-        )
+        response = await members_client.get(f"/members/pods/public?club_id={club_a.id}")
 
     assert response.status_code == 200
     pod_ids = {p["id"] for p in response.json()}
@@ -605,8 +597,7 @@ async def test_admin_transfer_member_to_another_pod(members_client, db_session):
 
         # Transfer
         response = await members_client.post(
-            f"/admin/members/pods/{pod_src.id}/transfers"
-            f"?member_id={member.id}",
+            f"/admin/members/pods/{pod_src.id}/transfers" f"?member_id={member.id}",
             json={"target_pod_id": str(pod_tgt.id)},
         )
 
@@ -678,9 +669,7 @@ async def test_internal_get_pod_returns_schedule_and_active_members(
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_internal_get_pod_404_on_missing(members_client, db_session):
-    response = await members_client.get(
-        f"/internal/members/pods/{uuid.uuid4()}"
-    )
+    response = await members_client.get(f"/internal/members/pods/{uuid.uuid4()}")
     assert response.status_code == 404
 
 
@@ -706,9 +695,7 @@ async def test_internal_list_pods_filters_by_club_and_status(
     await db_session.commit()
 
     # Default: active pods in club_a only
-    response = await members_client.get(
-        f"/internal/members/pods?club_id={club_a.id}"
-    )
+    response = await members_client.get(f"/internal/members/pods?club_id={club_a.id}")
     assert response.status_code == 200, response.text
     ids = {p["id"] for p in response.json()}
     assert ids == {str(p1.id), str(p2.id)}
