@@ -19,6 +19,9 @@ from services.payments_service.routers.recurring_payout import (
 from services.payments_service.routers.recurring_payout import (
     makeups_coach_router as cohort_makeups_coach_router,
 )
+from services.payments_service.routers.recurring_payout import (
+    coach_earnings_router,
+)
 
 
 def create_app() -> FastAPI:
@@ -46,10 +49,11 @@ def create_app() -> FastAPI:
     app.include_router(payout_admin_router, prefix="/payments")
     app.include_router(payout_coach_router, prefix="/payments")
 
-    # Recurring payout config + make-up obligations
+    # Recurring payout config + make-up obligations + coach earnings
     app.include_router(recurring_payout_admin_router, prefix="/payments")
     app.include_router(cohort_makeups_admin_router, prefix="/payments")
     app.include_router(cohort_makeups_coach_router, prefix="/payments")
+    app.include_router(coach_earnings_router, prefix="/payments")
 
     return app
 
