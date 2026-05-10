@@ -75,20 +75,25 @@ async def test_no_birthdays_short_circuits():
         send_daily_birthday_celebrations,
     )
 
-    with patch(
-        "services.communications_service.tasks.birthdays.get_birthdays_today",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "services.communications_service.tasks.birthdays.get_admin_members",
-        new_callable=AsyncMock,
-    ) as get_admins, patch(
-        "services.communications_service.tasks.birthdays.send_birthday_email",
-        new_callable=AsyncMock,
-    ) as send_email, patch(
-        "services.communications_service.tasks.birthdays.dispatch_notification",
-        new_callable=AsyncMock,
-    ) as dispatch:
+    with (
+        patch(
+            "services.communications_service.tasks.birthdays.get_birthdays_today",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch(
+            "services.communications_service.tasks.birthdays.get_admin_members",
+            new_callable=AsyncMock,
+        ) as get_admins,
+        patch(
+            "services.communications_service.tasks.birthdays.send_birthday_email",
+            new_callable=AsyncMock,
+        ) as send_email,
+        patch(
+            "services.communications_service.tasks.birthdays.dispatch_notification",
+            new_callable=AsyncMock,
+        ) as dispatch,
+    ):
         await send_daily_birthday_celebrations()
 
     send_email.assert_not_called()
@@ -108,36 +113,44 @@ async def test_adult_with_no_prefs_gets_email_and_in_app_notif(db_session):
     adult = _adult(first="Ada", age=30)
     admin = _admin()
 
-    with _patch_db(db_session), patch(
-        "services.communications_service.tasks.birthdays.get_birthdays_today",
-        new_callable=AsyncMock,
-        return_value=[adult],
-    ), patch(
-        "services.communications_service.tasks.birthdays.get_admin_members",
-        new_callable=AsyncMock,
-        return_value=[admin],
-    ), patch(
-        "services.communications_service.tasks.birthdays.send_birthday_email",
-        new_callable=AsyncMock,
-        return_value=True,
-    ) as send_email, patch(
-        "services.communications_service.tasks.birthdays.dispatch_notification",
-        new_callable=AsyncMock,
-    ) as dispatch:
+    with (
+        _patch_db(db_session),
+        patch(
+            "services.communications_service.tasks.birthdays.get_birthdays_today",
+            new_callable=AsyncMock,
+            return_value=[adult],
+        ),
+        patch(
+            "services.communications_service.tasks.birthdays.get_admin_members",
+            new_callable=AsyncMock,
+            return_value=[admin],
+        ),
+        patch(
+            "services.communications_service.tasks.birthdays.send_birthday_email",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as send_email,
+        patch(
+            "services.communications_service.tasks.birthdays.dispatch_notification",
+            new_callable=AsyncMock,
+        ) as dispatch,
+    ):
         await send_daily_birthday_celebrations()
 
-    send_email.assert_awaited_once_with(
-        to_email=adult["email"], member_name="Ada"
-    )
+    send_email.assert_awaited_once_with(to_email=adult["email"], member_name="Ada")
 
     # in-app Notification row exists for the adult
     rows = (
-        await db_session.execute(
-            select(Notification).where(
-                Notification.member_id == uuid.UUID(adult["id"])
+        (
+            await db_session.execute(
+                select(Notification).where(
+                    Notification.member_id == uuid.UUID(adult["id"])
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].type == "birthday"
     assert rows[0].category == "announcements"
@@ -172,34 +185,44 @@ async def test_opted_out_adult_gets_no_email(db_session):
     )
     await db_session.commit()
 
-    with _patch_db(db_session), patch(
-        "services.communications_service.tasks.birthdays.get_birthdays_today",
-        new_callable=AsyncMock,
-        return_value=[adult],
-    ), patch(
-        "services.communications_service.tasks.birthdays.get_admin_members",
-        new_callable=AsyncMock,
-        return_value=[_admin()],
-    ), patch(
-        "services.communications_service.tasks.birthdays.send_birthday_email",
-        new_callable=AsyncMock,
-        return_value=True,
-    ) as send_email, patch(
-        "services.communications_service.tasks.birthdays.dispatch_notification",
-        new_callable=AsyncMock,
-    ) as dispatch:
+    with (
+        _patch_db(db_session),
+        patch(
+            "services.communications_service.tasks.birthdays.get_birthdays_today",
+            new_callable=AsyncMock,
+            return_value=[adult],
+        ),
+        patch(
+            "services.communications_service.tasks.birthdays.get_admin_members",
+            new_callable=AsyncMock,
+            return_value=[_admin()],
+        ),
+        patch(
+            "services.communications_service.tasks.birthdays.send_birthday_email",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as send_email,
+        patch(
+            "services.communications_service.tasks.birthdays.dispatch_notification",
+            new_callable=AsyncMock,
+        ) as dispatch,
+    ):
         await send_daily_birthday_celebrations()
 
     send_email.assert_not_called()
 
     # No Notification row for opted-out adult
     rows = (
-        await db_session.execute(
-            select(Notification).where(
-                Notification.member_id == uuid.UUID(adult["id"])
+        (
+            await db_session.execute(
+                select(Notification).where(
+                    Notification.member_id == uuid.UUID(adult["id"])
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert rows == []
 
     # Admin still gets a reminder, and Chidi is in the body
@@ -218,22 +241,28 @@ async def test_minor_does_not_get_email_but_appears_in_admin_reminder(db_session
     minor = _adult(first="Zara", age=10)
     adult = _adult(first="Ada", age=30)
 
-    with _patch_db(db_session), patch(
-        "services.communications_service.tasks.birthdays.get_birthdays_today",
-        new_callable=AsyncMock,
-        return_value=[minor, adult],
-    ), patch(
-        "services.communications_service.tasks.birthdays.get_admin_members",
-        new_callable=AsyncMock,
-        return_value=[_admin()],
-    ), patch(
-        "services.communications_service.tasks.birthdays.send_birthday_email",
-        new_callable=AsyncMock,
-        return_value=True,
-    ) as send_email, patch(
-        "services.communications_service.tasks.birthdays.dispatch_notification",
-        new_callable=AsyncMock,
-    ) as dispatch:
+    with (
+        _patch_db(db_session),
+        patch(
+            "services.communications_service.tasks.birthdays.get_birthdays_today",
+            new_callable=AsyncMock,
+            return_value=[minor, adult],
+        ),
+        patch(
+            "services.communications_service.tasks.birthdays.get_admin_members",
+            new_callable=AsyncMock,
+            return_value=[_admin()],
+        ),
+        patch(
+            "services.communications_service.tasks.birthdays.send_birthday_email",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as send_email,
+        patch(
+            "services.communications_service.tasks.birthdays.dispatch_notification",
+            new_callable=AsyncMock,
+        ) as dispatch,
+    ):
         await send_daily_birthday_celebrations()
 
     # Only the adult got an email
@@ -267,22 +296,28 @@ async def test_admin_title_pluralisation(db_session):
     ]
 
     for members, expected in [(one, "1 birthday today"), (many, "3 birthdays today")]:
-        with _patch_db(db_session), patch(
-            "services.communications_service.tasks.birthdays.get_birthdays_today",
-            new_callable=AsyncMock,
-            return_value=members,
-        ), patch(
-            "services.communications_service.tasks.birthdays.get_admin_members",
-            new_callable=AsyncMock,
-            return_value=[_admin()],
-        ), patch(
-            "services.communications_service.tasks.birthdays.send_birthday_email",
-            new_callable=AsyncMock,
-            return_value=True,
-        ), patch(
-            "services.communications_service.tasks.birthdays.dispatch_notification",
-            new_callable=AsyncMock,
-        ) as dispatch:
+        with (
+            _patch_db(db_session),
+            patch(
+                "services.communications_service.tasks.birthdays.get_birthdays_today",
+                new_callable=AsyncMock,
+                return_value=members,
+            ),
+            patch(
+                "services.communications_service.tasks.birthdays.get_admin_members",
+                new_callable=AsyncMock,
+                return_value=[_admin()],
+            ),
+            patch(
+                "services.communications_service.tasks.birthdays.send_birthday_email",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "services.communications_service.tasks.birthdays.dispatch_notification",
+                new_callable=AsyncMock,
+            ) as dispatch,
+        ):
             await send_daily_birthday_celebrations()
 
         title = dispatch.await_args.kwargs["title"]
@@ -300,32 +335,42 @@ async def test_email_failure_does_not_block_admin_reminder(db_session):
 
     adult = _adult(first="Tunde", age=33)
 
-    with _patch_db(db_session), patch(
-        "services.communications_service.tasks.birthdays.get_birthdays_today",
-        new_callable=AsyncMock,
-        return_value=[adult],
-    ), patch(
-        "services.communications_service.tasks.birthdays.get_admin_members",
-        new_callable=AsyncMock,
-        return_value=[_admin()],
-    ), patch(
-        "services.communications_service.tasks.birthdays.send_birthday_email",
-        new_callable=AsyncMock,
-        side_effect=RuntimeError("SMTP down"),
-    ), patch(
-        "services.communications_service.tasks.birthdays.dispatch_notification",
-        new_callable=AsyncMock,
-    ) as dispatch:
+    with (
+        _patch_db(db_session),
+        patch(
+            "services.communications_service.tasks.birthdays.get_birthdays_today",
+            new_callable=AsyncMock,
+            return_value=[adult],
+        ),
+        patch(
+            "services.communications_service.tasks.birthdays.get_admin_members",
+            new_callable=AsyncMock,
+            return_value=[_admin()],
+        ),
+        patch(
+            "services.communications_service.tasks.birthdays.send_birthday_email",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("SMTP down"),
+        ),
+        patch(
+            "services.communications_service.tasks.birthdays.dispatch_notification",
+            new_callable=AsyncMock,
+        ) as dispatch,
+    ):
         await send_daily_birthday_celebrations()
 
     # No Notification row created for failed-email adult
     rows = (
-        await db_session.execute(
-            select(Notification).where(
-                Notification.member_id == uuid.UUID(adult["id"])
+        (
+            await db_session.execute(
+                select(Notification).where(
+                    Notification.member_id == uuid.UUID(adult["id"])
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert rows == []
 
     # Admin reminder still fired
@@ -341,22 +386,28 @@ async def test_no_admins_skips_reminder(db_session):
         send_daily_birthday_celebrations,
     )
 
-    with _patch_db(db_session), patch(
-        "services.communications_service.tasks.birthdays.get_birthdays_today",
-        new_callable=AsyncMock,
-        return_value=[_adult(age=30)],
-    ), patch(
-        "services.communications_service.tasks.birthdays.get_admin_members",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "services.communications_service.tasks.birthdays.send_birthday_email",
-        new_callable=AsyncMock,
-        return_value=True,
-    ), patch(
-        "services.communications_service.tasks.birthdays.dispatch_notification",
-        new_callable=AsyncMock,
-    ) as dispatch:
+    with (
+        _patch_db(db_session),
+        patch(
+            "services.communications_service.tasks.birthdays.get_birthdays_today",
+            new_callable=AsyncMock,
+            return_value=[_adult(age=30)],
+        ),
+        patch(
+            "services.communications_service.tasks.birthdays.get_admin_members",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch(
+            "services.communications_service.tasks.birthdays.send_birthday_email",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "services.communications_service.tasks.birthdays.dispatch_notification",
+            new_callable=AsyncMock,
+        ) as dispatch,
+    ):
         await send_daily_birthday_celebrations()
 
     dispatch.assert_not_called()
