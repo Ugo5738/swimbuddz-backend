@@ -38828,6 +38828,53 @@
             ],
             "title": "Location"
           },
+          "default_session_day": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayOfWeek"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "default_session_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Session Time"
+          },
+          "default_session_duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 480.0,
+                "minimum": 15.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Session Duration Minutes"
+          },
+          "default_pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Pool Id"
+          },
           "is_active": {
             "type": "boolean",
             "title": "Is Active",
@@ -38877,6 +38924,30 @@
             ],
             "title": "Location"
           },
+          "default_session_day": {
+            "$ref": "#/components/schemas/DayOfWeek"
+          },
+          "default_session_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Default Session Time"
+          },
+          "default_session_duration_minutes": {
+            "type": "integer",
+            "title": "Default Session Duration Minutes"
+          },
+          "default_pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Pool Id"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -38901,6 +38972,9 @@
         "required": [
           "name",
           "slug",
+          "default_session_day",
+          "default_session_time",
+          "default_session_duration_minutes",
           "id",
           "is_active",
           "created_at",
@@ -38968,6 +39042,53 @@
               }
             ],
             "title": "Is Active"
+          },
+          "default_session_day": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayOfWeek"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "default_session_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Session Time"
+          },
+          "default_session_duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 480.0,
+                "minimum": 15.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Session Duration Minutes"
+          },
+          "default_pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Pool Id"
           }
         },
         "type": "object",
@@ -46491,6 +46612,18 @@
             ],
             "title": "Booking Id"
           },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
+          },
           "week_number": {
             "anyOf": [
               {
@@ -46799,6 +46932,18 @@
               }
             ],
             "title": "Booking Id"
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
           },
           "week_number": {
             "anyOf": [
@@ -47453,6 +47598,18 @@
               }
             ],
             "title": "Booking Id"
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
           },
           "week_number": {
             "anyOf": [
