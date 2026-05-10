@@ -283,6 +283,11 @@ class ChallengeSubmissionResponse(BaseModel):
     status: SubmissionStatus = "pending"
     reviewed_at: Optional[datetime] = None
     reviewed_by: Optional[uuid.UUID] = None
+    # Who reviewed this — populated by Phase 8b. Lets the admin oversight
+    # UI distinguish HQ approvals from delegated pod-lead approvals.
+    reviewed_by_kind: Optional[Literal["admin", "pod_lead", "assistant_pod_lead"]] = (
+        None
+    )
     review_note: Optional[str] = None
     rewards_distributed_at: Optional[datetime] = None
     completed_at: datetime

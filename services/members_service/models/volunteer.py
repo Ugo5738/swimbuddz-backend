@@ -300,7 +300,10 @@ class MemberChallengeCompletion(Base):
     )
     reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True
-    )  # admin auth UUID who reviewed
+    )  # auth UUID OR member UUID of reviewer; see reviewed_by_kind
+    reviewed_by_kind: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # "admin" | "pod_lead" | "assistant_pod_lead" — Phase 8b audit trail
     review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Reward distribution timestamp (per-member ledger lives in challenge_submission_members)

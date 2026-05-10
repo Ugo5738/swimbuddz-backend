@@ -37,9 +37,12 @@ from services.members_service.models import (
     ClubChallenge,
     Member,
     MemberChallengeCompletion,
+    Pod,
+    PodAssignment,
     VolunteerInterest,
     VolunteerRole,
 )
+from libs.auth.dependencies import is_admin_or_service
 from services.members_service.schemas import (
     ChallengeCompletionCreate,
     ChallengeCompletionResponse,
@@ -294,6 +297,132 @@ def _admin_uuid_or_none(admin: AuthUser) -> Optional[uuid.UUID]:
         return uuid.UUID(admin.user_id)
     except (ValueError, TypeError):
         return None
+
+
+async def _resolve_member_id_from_auth_optional(
+    auth_user: AuthUser, db: AsyncSession
+) -> Optional[uuid.UUID]:
+    """Same as _resolve_member_id_from_auth but returns None instead of 403
+    when the auth identity has no local member profile.
+
+    Used for the delegated-review path where SwimBuddz admins (whitelisted
+    by email, no member row) AND pod leads (always have a member row)
+    both pass through. Admins fall through this returning None and are
+    accepted by the upstream `is_admin_or_service` check; pod leads
+    continue with their resolved member id.
+    """
+    if not auth_user.user_id:
+        return None
+    member_row = await db.execute(
+        select(Member).where(Member.auth_id == auth_user.user_id)
+    )
+    member = member_row.scalar_one_or_none()
+    return member.id if member else None
+
+
+async def _pod_lead_kind_for_member(
+    *,
+    reviewer_member_id: uuid.UUID,
+    submitter_member_id: uuid.UUID,
+    db: AsyncSession,
+) -> Optional[Literal["pod_lead", "assistant_pod_lead"]]:
+    """Return the reviewer's role within the submitter's active pod, if any.
+
+    Looks up:
+      1. The submitter's currently-active pod (pod_assignments with
+         left_at IS NULL — the unique constraint enforces 'one pod per
+         member at a time' so this is exactly 0 or 1 row).
+      2. Whether the reviewer is the lead or assistant lead of that pod.
+
+    Returns None if:
+      * the submitter has no active pod (e.g. Community member, or
+        between pods)
+      * the reviewer isn't the lead/assistant lead of the submitter's pod
+      * the reviewer would be reviewing their OWN submission (they can't)
+
+    Pod leads can never approve their own submission — that guard is
+    here, not at the upstream auth check, because the lead may or may
+    not be a member of their own pod's roster (admins/coaches typically
+    aren't on the roster of the pod they lead).
+    """
+    if reviewer_member_id == submitter_member_id:
+        return None
+
+    # Find the submitter's active pod
+    assignment_row = await db.execute(
+        select(PodAssignment.pod_id).where(
+            PodAssignment.member_id == submitter_member_id,
+            PodAssignment.left_at.is_(None),
+        )
+    )
+    pod_id = assignment_row.scalar_one_or_none()
+    if pod_id is None:
+        return None
+
+    pod_row = await db.execute(
+        select(Pod.pod_lead_id, Pod.assistant_pod_lead_id).where(Pod.id == pod_id)
+    )
+    pod = pod_row.first()
+    if pod is None:
+        return None
+
+    if pod.pod_lead_id == reviewer_member_id:
+        return "pod_lead"
+    if pod.assistant_pod_lead_id == reviewer_member_id:
+        return "assistant_pod_lead"
+    return None
+
+
+async def _authorize_review(
+    *,
+    reviewer: AuthUser,
+    challenge: ClubChallenge,
+    submitter_member_id: uuid.UUID,
+    db: AsyncSession,
+) -> Literal["admin", "pod_lead", "assistant_pod_lead"]:
+    """Authorize a review action and return the reviewer's role kind.
+
+    Authority rules:
+      * SwimBuddz admins / service-role tokens — can review ANY submission.
+      * For competition-format challenges (high stakes, public winner
+        reveal) — admin only. Pod leads can't approve competitions.
+      * For everything else (participatory + ladder challenges) — the
+        Pod Lead or Assistant Pod Lead of the submitter's active pod
+        can approve.
+
+    Returns "admin" | "pod_lead" | "assistant_pod_lead" so the caller
+    can stamp `reviewed_by_kind` on the audit trail.
+    Raises 403 if neither path applies.
+    """
+    if is_admin_or_service(reviewer):
+        return "admin"
+
+    if challenge.format == "competition":
+        # Competitions stay HQ-only. Pod leads can't designate winners or
+        # approve competition entries — too easy to game otherwise.
+        raise HTTPException(
+            status_code=403,
+            detail="Only SwimBuddz admins can review competition submissions.",
+        )
+
+    reviewer_member_id = await _resolve_member_id_from_auth_optional(reviewer, db)
+    if reviewer_member_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Reviewer must be an admin or a Pod Lead.",
+        )
+
+    kind = await _pod_lead_kind_for_member(
+        reviewer_member_id=reviewer_member_id,
+        submitter_member_id=submitter_member_id,
+        db=db,
+    )
+    if kind is None:
+        raise HTTPException(
+            status_code=403,
+            detail=("You can only review submissions from members in a pod you lead."),
+        )
+    return kind
 
 
 async def _resolve_member_id_from_auth(
@@ -1580,7 +1709,7 @@ async def list_pending_submissions_legacy(
         None, description="Filter by challenge (optional)"
     ),
     db: AsyncSession = Depends(get_async_db),
-    _admin: AuthUser = Depends(require_admin),
+    reviewer: AuthUser = Depends(get_current_user),
 ):
     """LEGACY alias for /submissions/list?status=pending.
 
@@ -1591,6 +1720,7 @@ async def list_pending_submissions_legacy(
         status_filter="pending",
         challenge_id=challenge_id,
         db=db,
+        reviewer=reviewer,
     )
 
 
@@ -1607,17 +1737,20 @@ async def list_submissions(
         None, description="Filter by challenge (optional)"
     ),
     db: AsyncSession = Depends(get_async_db),
-    _admin: AuthUser = Depends(require_admin),
+    reviewer: AuthUser = Depends(get_current_user),
 ):
-    """Admin review queue: list submissions filtered by status.
+    """Review queue — admin sees everything, Pod Leads see only their own
+    pod's submissions.
 
-    Powers the approved/rejected tabs in the admin review UI in addition to
-    the default pending bucket.
+    Powers the approved/rejected tabs in the admin review UI in addition
+    to the default pending bucket. Pod Leads also use it via the same UI
+    so they can clear their pod's queue independent of HQ.
     """
     return await _list_submissions_impl(
         status_filter=status,
         challenge_id=challenge_id,
         db=db,
+        reviewer=reviewer,
     )
 
 
@@ -1626,9 +1759,21 @@ async def _list_submissions_impl(
     status_filter: str,
     challenge_id: Optional[uuid.UUID],
     db: AsyncSession,
+    reviewer: AuthUser,
 ) -> List[ChallengeSubmissionResponse]:
     """Shared implementation for the legacy `/submissions/pending` route
-    and the new `/submissions/list?status=` route. Order:
+    and the new `/submissions/list?status=` route.
+
+    Authorization:
+      * Admin / service-role → see ALL submissions across the platform
+      * Pod Lead / Assistant Pod Lead → see only submissions whose
+        member is currently assigned to one of THEIR pods (any role).
+        Excludes competition submissions because pod leads can't review
+        those anyway, so showing them in their queue would just be noise.
+      * Anyone else → 403 (the user has neither HQ admin nor pod-lead
+        authority over any submission)
+
+    Order:
       - approved  → newest reviewed_at first (most-recently approved)
       - rejected  → newest reviewed_at first
       - pending   → oldest created_at first (FIFO queue feel)
@@ -1639,6 +1784,54 @@ async def _list_submissions_impl(
         query = query.where(MemberChallengeCompletion.status == status_filter)
     if challenge_id:
         query = query.where(MemberChallengeCompletion.challenge_id == challenge_id)
+
+    if not is_admin_or_service(reviewer):
+        # Pod-lead path: scope to submitters in pods this user leads.
+        reviewer_member_id = await _resolve_member_id_from_auth_optional(reviewer, db)
+        if reviewer_member_id is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Reviewer must be an admin or a Pod Lead.",
+            )
+
+        # Pods led by this reviewer (lead OR assistant lead)
+        led_pods_q = select(Pod.id).where(
+            (Pod.pod_lead_id == reviewer_member_id)
+            | (Pod.assistant_pod_lead_id == reviewer_member_id)
+        )
+        led_pods_rows = await db.execute(led_pods_q)
+        led_pod_ids = [row[0] for row in led_pods_rows.all()]
+        if not led_pod_ids:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "You can only see submissions from members in a pod "
+                    "you lead, but you don't lead any pods yet."
+                ),
+            )
+
+        # Members currently assigned to one of those pods
+        member_ids_subq = (
+            select(PodAssignment.member_id)
+            .where(
+                PodAssignment.pod_id.in_(led_pod_ids),
+                PodAssignment.left_at.is_(None),
+            )
+            .subquery()
+        )
+        query = query.where(
+            MemberChallengeCompletion.member_id.in_(select(member_ids_subq))
+        )
+
+        # Exclude competitions — pod leads can't review them.
+        competition_ids_subq = (
+            select(ClubChallenge.id)
+            .where(ClubChallenge.format == "competition")
+            .subquery()
+        )
+        query = query.where(
+            MemberChallengeCompletion.challenge_id.notin_(select(competition_ids_subq))
+        )
 
     if status_filter == "pending":
         query = query.order_by(MemberChallengeCompletion.created_at.asc())
@@ -1662,9 +1855,15 @@ async def review_challenge_submission(
     submission_id: uuid.UUID,
     review: ChallengeSubmissionReview,
     db: AsyncSession = Depends(get_async_db),
-    admin: AuthUser = Depends(require_admin),
+    reviewer: AuthUser = Depends(get_current_user),
 ):
-    """Approve or reject a submission (admin only).
+    """Approve or reject a submission (admin OR Pod Lead).
+
+    Authorization (Phase 8b — delegated review):
+      * SwimBuddz admin → can review anything
+      * Pod Lead / Assistant Pod Lead → can review their own pod
+        members' submissions, EXCEPT competition-format challenges
+        (those stay HQ-only — too easy to game otherwise)
 
     Approve: writes a badge award per member (idempotent via unique
     (member_id, challenge_id) constraint). Bubbles + volunteer-hours
@@ -1692,10 +1891,20 @@ async def review_challenge_submission(
         # Should not happen given FK + soft constraints; defensive 404.
         raise HTTPException(status_code=404, detail="Linked challenge not found")
 
+    # Authorize the reviewer; gets back which kind of authority they have
+    # so we can stamp the audit trail. Raises 403 if neither path applies.
+    reviewer_kind = await _authorize_review(
+        reviewer=reviewer,
+        challenge=challenge,
+        submitter_member_id=submission.member_id,
+        db=db,
+    )
+
     submission.status = review.status
     submission.review_note = review.review_note
     submission.reviewed_at = utc_now()
-    submission.reviewed_by = _admin_uuid_or_none(admin)
+    submission.reviewed_by = _admin_uuid_or_none(reviewer)
+    submission.reviewed_by_kind = reviewer_kind
 
     if review.status == "approved":
         await _award_badge_and_members(submission, challenge, db)
@@ -1718,7 +1927,7 @@ async def review_challenge_submission(
             submission,
             challenge,
             db,
-            granted_by_auth=admin.user_id,
+            granted_by_auth=reviewer.user_id,
         )
         # Persist any grant ids returned during distribution.
         await db.commit()
@@ -1856,6 +2065,7 @@ async def mark_challenge_complete(
         status="approved",
         verified_by=admin_uuid,
         reviewed_by=admin_uuid,
+        reviewed_by_kind="admin",  # legacy admin path is HQ-only by definition
         reviewed_at=utc_now(),
     )
     db.add(completion)
