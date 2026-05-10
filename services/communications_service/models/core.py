@@ -2,13 +2,13 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from libs.common.datetime_utils import utc_now
-from libs.db.base import Base
 from sqlalchemy import Boolean, DateTime, Index, String, Text, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from libs.common.datetime_utils import utc_now
+from libs.db.base import Base
 from services.communications_service.models.enums import (
     AnnouncementAudience,
     AnnouncementCategory,
@@ -307,6 +307,9 @@ class NotificationPreferences(Base):
     email_payment_receipts: Mapped[bool] = mapped_column(Boolean, default=True)
     email_coach_messages: Mapped[bool] = mapped_column(Boolean, default=True)
     email_marketing: Mapped[bool] = mapped_column(Boolean, default=False)
+    email_birthday: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
 
     # Push notification preferences (for future mobile app)
     push_announcements: Mapped[bool] = mapped_column(Boolean, default=True)

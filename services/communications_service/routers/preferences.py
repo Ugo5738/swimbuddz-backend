@@ -135,6 +135,7 @@ async def check_notification_opt_in(
             "email_payment_receipts": True,
             "email_coach_messages": True,
             "email_marketing": False,
+            "email_birthday": True,
             "push_announcements": True,
             "push_session_reminders": True,
             "push_academy_updates": True,

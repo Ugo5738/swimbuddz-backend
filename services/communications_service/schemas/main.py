@@ -317,6 +317,7 @@ class NotificationPreferencesBase(BaseModel):
     email_payment_receipts: bool = True
     email_coach_messages: bool = True
     email_marketing: bool = False
+    email_birthday: bool = True
 
     # Push notification preferences
     push_announcements: bool = True
@@ -347,6 +348,7 @@ class NotificationPreferencesUpdate(BaseModel):
     email_payment_receipts: Optional[bool] = None
     email_coach_messages: Optional[bool] = None
     email_marketing: Optional[bool] = None
+    email_birthday: Optional[bool] = None
     push_announcements: Optional[bool] = None
     push_session_reminders: Optional[bool] = None
     push_academy_updates: Optional[bool] = None
