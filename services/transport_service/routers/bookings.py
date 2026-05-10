@@ -27,6 +27,10 @@ from services.transport_service.routers._helpers import (
     get_current_member,
     get_member_or_override,
 )
+from services.transport_service.services.chat_sync import (
+    ensure_trip_channel,
+    reconcile_trip_membership,
+)
 
 router = APIRouter(prefix="/transport", tags=["transport"])
 
@@ -135,6 +139,12 @@ async def create_ride_booking(
     if not cfg_for_cost:
         raise HTTPException(status_code=404, detail="Ride config not found")
 
+    # Track the previous ride config for chat-channel reconciliation if the
+    # member is moving between trips on the same session.
+    previous_config_id: Optional[uuid.UUID] = (
+        existing.session_ride_config_id if existing else None
+    )
+
     if existing:
         # Update existing booking (no re-charge) — allows changing location
         existing.session_ride_config_id = booking_in.session_ride_config_id
@@ -183,6 +193,33 @@ async def create_ride_booking(
         await db.refresh(booking)
 
     cfg, area, location = await _get_booking_details(db, booking)
+
+    # Sync chat membership for the trip channel. Best-effort — chat downtime
+    # never blocks the booking.
+    if (
+        previous_config_id is not None
+        and previous_config_id != booking.session_ride_config_id
+    ):
+        # Member moved trips on the same session — drop them from the old
+        # ride channel before adding to the new one.
+        await reconcile_trip_membership(
+            session_ride_config_id=previous_config_id,
+            member_id=booking.member_id,
+            booking_id=booking.id,
+            action="remove",
+        )
+
+    await ensure_trip_channel(
+        session_ride_config_id=booking.session_ride_config_id,
+        area_name=area.name if area else None,
+    )
+    await reconcile_trip_membership(
+        session_ride_config_id=booking.session_ride_config_id,
+        member_id=booking.member_id,
+        booking_id=booking.id,
+        action="add",
+    )
+
     return _build_response(booking, cfg, area, location)
 
 

@@ -19,6 +19,7 @@ from libs.auth.dependencies import (
     get_optional_user,
     require_admin,
     require_coach,
+    require_safeguarding_admin,
     require_service_role,
 )
 from libs.auth.models import AuthUser
@@ -327,6 +328,7 @@ def _wire_app(app, db_session):
     app.dependency_overrides[get_optional_user] = _admin_override()
     app.dependency_overrides[require_admin] = _admin_override()
     app.dependency_overrides[require_coach] = _admin_override()
+    app.dependency_overrides[require_safeguarding_admin] = _admin_override()
     app.dependency_overrides[require_service_role] = _service_role_override()
 
 
@@ -468,3 +470,17 @@ async def reporting_client(db_session):
     ) as client:
         yield client
     reporting_app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def chat_client(db_session):
+    """AsyncClient for the chat service with admin auth."""
+    from services.chat_service.app.main import app as chat_app
+
+    _wire_app(chat_app, db_session)
+    async with AsyncClient(
+        transport=ASGITransport(app=chat_app),
+        base_url="http://test",
+    ) as client:
+        yield client
+    chat_app.dependency_overrides.clear()

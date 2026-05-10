@@ -1,6 +1,10 @@
 import httpx
 from fastapi import APIRouter
 
+from services.academy_service.services.chat_sync import (
+    ensure_cohort_channel,
+    reconcile_cohort_membership,
+)
 from services.academy_service.routers._shared import (
     AdminDropoutActionRequest,
     AsyncSession,
@@ -140,6 +144,22 @@ async def enroll_student(
         },
         calling_service="academy",
     )
+
+    # Reconcile chat membership in the cohort channel. Best-effort — chat
+    # downtime never blocks enrollment. Channel is provisioned at cohort
+    # create time; we ensure here too in case the cohort predates chat.
+    if cohort is not None:
+        await ensure_cohort_channel(
+            cohort_id=cohort.id,
+            cohort_name=cohort.name,
+            created_by_member_id=cohort.coach_id,
+        )
+        await reconcile_cohort_membership(
+            cohort_id=cohort.id,
+            member_id=enrollment_in.member_id,
+            enrollment_id=enrollment.id,
+            action="add",
+        )
 
     return enrolled
 
@@ -909,6 +929,16 @@ async def admin_dropout_action(
         )
 
     await db.commit()
+
+    # Reflect the dropout decision in chat membership. Best-effort.
+    if enrollment.cohort_id is not None:
+        chat_action = "remove" if payload.action == "approve" else "add"
+        await reconcile_cohort_membership(
+            cohort_id=enrollment.cohort_id,
+            member_id=enrollment.member_id,
+            enrollment_id=enrollment.id,
+            action=chat_action,
+        )
 
     result = await db.execute(query)
     return result.scalar_one()

@@ -1,12 +1,13 @@
 """FastAPI application for the Chat Service.
 
-Phase 0 scaffolding — service boots with a health endpoint only.
-Real chat endpoints, models, and real-time transport are added in Phase 1.
-
 Design doc: docs/design/CHAT_SERVICE_DESIGN.md
 """
 
 from fastapi import FastAPI
+
+from services.chat_service.routers.admin import router as admin_router
+from services.chat_service.routers.internal import router as internal_router
+from services.chat_service.routers.member import router as member_router
 
 
 def create_app() -> FastAPI:
@@ -16,7 +17,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description=(
             "Real-time, persistent, role-aware messaging across SwimBuddz. "
-            "Phase 0 — scaffolding only. See docs/design/CHAT_SERVICE_DESIGN.md."
+            "See docs/design/CHAT_SERVICE_DESIGN.md."
         ),
     )
 
@@ -25,10 +26,12 @@ def create_app() -> FastAPI:
         """Health check endpoint."""
         return {"status": "ok", "service": "chat"}
 
-    # Phase 1 routers are registered here as they are built:
-    # - Member-facing:  /chat/*                (gateway: /api/v1/chat/*)
-    # - Admin/mod:      /admin/chat/*          (gateway: /api/v1/admin/chat/*)
-    # - Internal s2s:   /internal/chat/*       (not proxied by gateway)
+    # Member-facing routes: gateway proxies /api/v1/chat/* → /chat/*
+    app.include_router(member_router)
+    # Admin / moderator routes: gateway proxies /api/v1/admin/chat/* → /admin/chat/*
+    app.include_router(admin_router)
+    # Internal service-to-service routes (not proxied by gateway)
+    app.include_router(internal_router)
 
     return app
 

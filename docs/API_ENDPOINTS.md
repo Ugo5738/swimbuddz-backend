@@ -73,6 +73,23 @@ All endpoints assume Bearer authentication with a Supabase access token unless m
 
 - **Response 200:** Updated `MemberRead`
 
+### Internal Endpoints (Service-to-Service Only)
+
+These are mounted on the members service directly (not exposed through the gateway) and require an internal service-role JWT.
+
+#### `GET /internal/members/birthdays-today`
+
+- **Auth:** Internal service header
+- **Query:** `on` (optional ISO date `YYYY-MM-DD`). Defaults to today in `Africa/Lagos`.
+- **Description:** Active, approved members whose `date_of_birth` falls on the target date. Used by the communications-service daily birthday cron.
+- **Response 200:** `[{ id, first_name, last_name, email, age }]`. `age` is computed from DOB on the target date so the caller can filter minors without re-deriving it.
+
+#### `GET /internal/members/admins`
+
+- **Auth:** Internal service header
+- **Description:** Active members whose `roles` overlap any admin-flavoured role (`admin`, `comms_admin`, `community_manager`). Used to fan out admin-task notifications such as the daily birthday WhatsApp-shoutout reminder.
+- **Response 200:** `[{ id, first_name, last_name, email, roles }]`
+
 ---
 
 ## 3. Sessions
@@ -268,6 +285,16 @@ Announcements power the public noticeboard and admin share helpers.
 - **Auth:** Public
 - **Description:** Fetch the full announcement content.
 - **Response 200:** `AnnouncementRead`
+
+### Birthday Celebrations (Daily Cron)
+
+A scheduled ARQ task on the communications worker fires daily at 06:00 UTC (07:00 WAT). It pulls today's birthdays from `GET /internal/members/birthdays-today` and:
+
+1. Sends a branded birthday email to each adult (≥18) who has not opted out via `email_birthday` on their notification preferences.
+2. Creates an in-app `Notification` row (`type="birthday"`, `category="announcements"`) for each emailed member.
+3. Dispatches a single `birthday_admin_reminder` notification to all admin-flavoured roles (via `GET /internal/members/admins`) listing **everyone** with a birthday today (including minors) so a human can post the WhatsApp shoutout.
+
+The opt-out lives on `notification_preferences.email_birthday` (boolean, default `true`); members toggle it on the **Notification Settings** page.
 
 ---
 
@@ -1340,3 +1367,242 @@ The flywheel computation tasks call these prerequisite endpoints on academy, mem
 - **Query:** `from` (ISO date), `to` (ISO date)
 - **Description:** Aggregated wallet usage stats over the period. Cross-service user = ≥2 distinct `service_source` values in DEBIT transactions.
 - **Response 200:** `{ active_wallet_users, single_service_users, cross_service_users, total_bubbles_spent, total_topup_bubbles, spend_distribution: { sessions, academy, store, ... } }`
+
+---
+
+## 16. Chat (Real-time Messaging)
+
+In-app messaging across cohorts, pods, events, trips, DMs. Phase 1 backend ships member-facing CRUD, admin moderation, and internal s2s reconciliation. Real-time transport (Supabase Realtime), push notifications via communications_service, and frontend land in subsequent slices. See [docs/design/CHAT_SERVICE_DESIGN.md](../../docs/design/CHAT_SERVICE_DESIGN.md).
+
+**Auth model:** member endpoints use Supabase JWT (member-facing); admin endpoints use admin JWT (with `safeguarding_admin` role gate for hard-delete in minor channels); internal endpoints use service-role JWT.
+
+### Member Endpoints (Auth Required)
+
+#### `GET /api/v1/chat/channels`
+
+- **Description:** All my active (non-archived) channels with last-message preview, my role, mute state, and unread count.
+- **Response 200:** `List[ChannelSummary]`.
+
+#### `GET /api/v1/chat/channels/{channel_id}`
+
+- **Description:** Channel detail. 403 if not a member.
+- **Response 200:** `ChannelDetail`.
+
+#### `GET /api/v1/chat/channels/{channel_id}/messages`
+
+- **Query:** `before_id` (cursor — pass previous page's `next_before_id`), `limit` (default 50, max 100).
+- **Description:** Newest-first cursor page. 403 if not a member.
+- **Response 200:** `MessageListPage` — `{ items, next_before_id, has_more }`.
+
+#### `POST /api/v1/chat/channels/{channel_id}/messages`
+
+- **Body:** `{ body, attachments?, reply_to_id?, client_message_id (UUID) }`
+- **Description:** Send a message. `client_message_id` is the idempotency key — server uses it as the row PK; retries with the same id converge on one row. Body capped at 4,000 chars. Pre-persist text moderation runs via OpenAI Moderation API; flagged messages are still delivered but tagged for the safeguarding queue (design rule: never auto-delete).
+- **Response 201:** `MessageOut`.
+
+#### `PATCH /api/v1/chat/messages/{message_id}`
+
+- **Body:** `{ body }`
+- **Description:** Edit own message. 403 for others' messages; 400 if soft-deleted.
+- **Response 200:** `MessageOut`.
+
+#### `DELETE /api/v1/chat/messages/{message_id}`
+
+- **Description:** Soft-delete own message — body becomes `[deleted]`, row stays for audit. Hard-delete is admin-only.
+- **Response 200:** `MessageOut`.
+
+#### `POST /api/v1/chat/messages/{message_id}/reactions`
+
+- **Body:** `{ emoji }`
+- **Description:** Add reaction. Restricted set: 👍 ❤️ 😂 😮 😢 🎉 ✅. Idempotent.
+- **Response 201:** `MessageOut` (with updated reactions summary).
+
+#### `DELETE /api/v1/chat/messages/{message_id}/reactions/{emoji}`
+
+- **Description:** Remove own reaction. Idempotent.
+- **Response 200:** `MessageOut`.
+
+#### `POST /api/v1/chat/channels/{channel_id}/read`
+
+- **Body:** `{ message_id }`
+- **Description:** Mark-read up to message. Refuses to move pointer backward.
+- **Response 204.**
+
+#### `POST /api/v1/chat/channels/{channel_id}/mute`
+
+- **Body:** `{ muted_until: ISO datetime | null }`
+- **Description:** Mute notifications for this channel until the given time (or clear with null).
+- **Response 204.**
+
+#### `POST /api/v1/chat/channels/{channel_id}/leave`
+
+- **Description:** Soft-leave a manually-joined channel. Refuses for derived memberships (those follow the parent — leave the cohort/RSVP/pod instead).
+- **Response 204.**
+
+#### `POST /api/v1/chat/attachments`
+
+- **Content-Type:** `multipart/form-data`
+- **Form fields:** `file` (required, image/JPEG | PNG | WebP, ≤10 MB), `mime` (optional override).
+- **Description:** Upload an image attachment. Bytes are scanned by AWS Rekognition **before** they touch our storage. If the scan hits a category we never deliver under any circumstance (currently `SAFEGUARDING` — child-safety), the upload is rejected and the bytes are discarded. Otherwise the image lands in the `chat-attachments` bucket and a descriptor comes back. Attach the descriptor to a subsequent `POST /channels/{id}/messages` `attachments` array. Per-channel policy on non-safeguarding flags is applied at message-send time (minor channels reject; adult channels deliver-with-flag for safeguarding queue review).
+- **Response 201:** `AttachmentUploadResponse` — `{ descriptor: { type, storage_key, mime, size, width, height, public_url, moderation }, rejected, rejection_reason }`. On rejection, `descriptor=null` and `rejected=true`.
+
+#### `POST /api/v1/chat/messages/{message_id}/reports`
+
+- **Body:** `{ reason: safeguarding|harassment|spam|other, note? }`
+- **Description:** File a moderation report. Re-reporting an open report by the same reporter returns the existing one rather than duplicating the queue entry.
+- **Response 201:** `ReportOut`.
+
+### Admin Endpoints (Admin Auth Required)
+
+#### `GET /api/v1/admin/chat/channels/{channel_id}`
+
+- **Description:** Channel detail without requiring membership.
+- **Response 200:** `ChannelDetail`.
+
+#### `POST /api/v1/admin/chat/channels/{channel_id}/archive`
+
+- **Description:** Soft-archive (read-only). Idempotent.
+- **Response 200:** `ChannelDetail`.
+
+#### `PATCH /api/v1/admin/chat/channels/{channel_id}/members/{member_id}`
+
+- **Body:** `{ role: observer|member|moderator|admin }`
+- **Response 200:** `ChannelMemberOut`.
+
+#### `DELETE /api/v1/admin/chat/channels/{channel_id}/members/{member_id}`
+
+- **Description:** Soft-remove. Prefer the internal `memberships/reconcile` endpoint when removal is driven by an upstream parent change.
+- **Response 204.**
+
+#### `DELETE /api/v1/admin/chat/messages/{message_id}`
+
+- **Body:** `{ note }` (required — recorded in audit)
+- **Description:** Hard-delete. **Inline gate:** if the channel's `safeguarding_flags.has_minors=true`, the caller must additionally have the `safeguarding_admin` role (per design §6.1 rule 5).
+- **Response 204.**
+
+#### `GET /api/v1/admin/chat/reports`
+
+- **Query:** `status?`, `reason?`, `assigned_to?`, `skip` (default 0), `limit` (default 50, max 200).
+- **Description:** Moderator queue. FIFO by `created_at`. Each row attaches the reported message's channel/sender/preview.
+- **Response 200:** `List[ReportListItem]`.
+
+#### `PATCH /api/v1/admin/chat/reports/{report_id}`
+
+- **Body:** `{ status?, assigned_to?, resolution_note? }`
+- **Description:** Resolve / dismiss / assign. `resolved_at` stamped on transition to `resolved` or `dismissed`.
+- **Response 200:** `ReportOut`.
+
+#### `GET /api/v1/admin/chat/audit`
+
+- **Query:** `channel_id?`, `actor_id?`, `subject_member_id?`, `before_id?` (cursor), `limit` (default 100, max 500).
+- **Description:** Cursor-paginated audit log slice (newest-first).
+- **Response 200:** `AuditLogPage`.
+
+#### `GET /api/v1/admin/chat/safeguarding/health`
+
+- **Auth:** Safeguarding-admin role required.
+- **Description:** Trivial endpoint that returns 200 only for safeguarding admins. Used by the admin UI to decide whether to render safeguarding panels.
+- **Response 200:** `{ safeguarding_admin: true, user_id }`.
+
+### Internal Endpoints (Service-to-Service Only)
+
+Not proxied by the gateway — called directly by upstream services with a service-role JWT.
+
+#### `POST /internal/chat/channels/ensure`
+
+- **Body:** `{ type, parent_entity_type, parent_entity_id?, name, retention_policy, description?, created_by?, safeguarding_flags? }`
+- **Description:** Idempotent create-or-fetch keyed on `(type, parent_entity_type, parent_entity_id)`. Returns the existing row on subsequent calls. `created_by` is added as channel admin on first create.
+- **Response 200:** `{ channel_id, created }`.
+
+#### `POST /internal/chat/memberships/reconcile`
+
+- **Body:** `{ channel_id? | (parent_entity_type + parent_entity_id), member_id, action: add|remove, role?, derived_from?, derivation_ref? }`
+- **Description:** Add or soft-remove a member. Idempotent: re-adding an active member is a no-op (with role/derivation upgrade), re-removing a left member is a no-op.
+- **Response 200:** `ReconcileMembershipResponse`.
+
+### Upstream callers (currently wired)
+
+- **`academy_service`** — calls `channels/ensure` on cohort create and `memberships/reconcile` on admin enroll / dropout approve / dropout reverse.
+- **`events_service`** — calls `channels/ensure` on event create and `memberships/reconcile` on RSVP create/update (`going` → add, anything else → remove).
+- **`transport_service`** — calls `channels/ensure` on RideBooking create (parent = `session_ride_config_id`) and `memberships/reconcile` to add the booker. When a member moves between configs on the same session, the old config is reconciled to `remove` before the new one is reconciled to `add`. Admin bulk-delete (`/transport/admin/members/{member_id}`) does NOT yet notify chat — known gap.
+
+- **`sessions_service`** — calls `channels/ensure` on pod create, `memberships/reconcile` on pod assignment add/remove (admin add, member self-join, coach transfer, member leave, dissolve). See pod endpoints in §17 below.
+
+### Notifications (chat → communications_service)
+
+On every successful `POST /api/v1/chat/channels/{id}/messages`, chat fans out a notification to every active channel member except the sender, skipping anyone whose `muted_until` is in the future. The payload uses `type=chat_message`, `category=chat`, and `action_url=/account/chat/{channel_id}`. Delivery is best-effort — communications_service downtime never blocks the send.
+
+---
+
+## 17. Pods (Sessions Service)
+
+A pod is a 2–5 member persistent training sub-group inside a Club, with one lead coach, optional assistant coach, and a 3-month review cycle. Pods get a chat channel automatically (`parent_entity_type=pod`). See [docs/design/POD_MODEL_DESIGN.md](../../docs/design/POD_MODEL_DESIGN.md) for the full design.
+
+### Member Endpoints (Auth Required)
+
+#### `GET /api/v1/sessions/pods/me`
+
+- **Description:** My current pod, or `null` if I'm not in one.
+- **Response 200:** `PodSummary | null`.
+
+#### `GET /api/v1/sessions/pods/public`
+
+- **Query:** `club_id?` (filter to one club's pods)
+- **Description:** Public-directory listing — public+active pods only. Used by dashboard and registration picker.
+- **Response 200:** `PodSummary[]`.
+
+#### `POST /api/v1/sessions/pods/{pod_id}/join`
+
+- **Description:** Self-join a public pod with capacity. 403 if pod is private; 400 if not active; 409 if pod full or member already in another pod.
+- **Response 201:** `PodMemberOut`.
+
+#### `POST /api/v1/sessions/pods/me/leave`
+
+- **Description:** Leave my current pod (no-op if not in one). Triggers chat-channel reconcile remove.
+- **Response 204.**
+
+### Admin Endpoints (Admin Auth Required)
+
+#### `POST /api/v1/admin/sessions/pods`
+
+- **Body:** `PodCreateRequest` — `{ club_id, name?, description?, lead_coach_id, assistant_coach_id?, min_size?, max_size?, visibility? }`
+- **Description:** Create a pod. Auto-names `pod-{N}` if name omitted. Creates the chat channel and promotes lead coach to channel admin.
+- **Response 201:** `PodSummary`.
+
+#### `GET /api/v1/admin/sessions/pods/review-queue`
+
+- **Description:** Pods with `review_due_at <= now()` — coaches/admins decide continue / rebalance / dissolve.
+- **Response 200:** `PodSummary[]`.
+
+#### `GET /api/v1/admin/sessions/pods/{pod_id}` / `PATCH .../{pod_id}`
+
+- **Description:** Inspect / partial update (name, description, coaches, sizes, visibility).
+- **Response 200:** `PodDetail` / `PodSummary`.
+
+#### `POST /api/v1/admin/sessions/pods/{pod_id}/dissolve`
+
+- **Description:** Mark inactive, soft-leave every active member, fire chat-channel reconcile remove for each. Chat channel archive is NOT automatic — admin archives via chat admin API once the final messages settle.
+- **Response 200:** `PodSummary`.
+
+#### `POST /api/v1/admin/sessions/pods/{pod_id}/extend`
+
+- **Description:** Bump `cycle_started_at` to now and reset `review_due_at` to +90 days. Coach/admin chose to continue this pod for another cycle.
+- **Response 200:** `PodSummary`.
+
+#### `POST /api/v1/admin/sessions/pods/{pod_id}/members`
+
+- **Body:** `{ member_id }`
+- **Description:** Admin manually add a member. Refuses if pod full or member already in another active pod.
+- **Response 201:** `PodMemberOut`.
+
+#### `DELETE /api/v1/admin/sessions/pods/{pod_id}/members/{member_id}`
+
+- **Description:** Admin remove a member (soft-leave). 404 if member not in this pod.
+- **Response 204.**
+
+#### `POST /api/v1/admin/sessions/pods/{pod_id}/transfers`
+
+- **Query:** `member_id` (the member being moved — kept in query so the body stays focused on the move target).
+- **Body:** `{ target_pod_id }`
+- **Description:** Coach moves a member from this pod to another. Capacity check on target before the source leave commits.
+- **Response 204.**

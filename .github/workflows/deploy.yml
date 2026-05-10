@@ -131,6 +131,9 @@ jobs:
           - context: .
             dockerfile: ./services/reporting_service/Dockerfile
             image: swimbuddz-reporting-service
+          - context: .
+            dockerfile: ./services/chat_service/Dockerfile
+            image: swimbuddz-chat-service
 
     steps:
       - uses: actions/checkout@v4

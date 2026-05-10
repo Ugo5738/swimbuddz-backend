@@ -17,6 +17,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from libs.common.config import get_settings
 from libs.db.base import Base
 from services.sessions_service.models import (  # noqa: F401
+    Pod,
+    PodAssignment,
     Session,
     SessionBundleCart,
     SessionCoach,
