@@ -36,6 +36,10 @@ class SessionBase(BaseModel):
     cohort_id: Optional[uuid.UUID] = None
     event_id: Optional[uuid.UUID] = None
     booking_id: Optional[uuid.UUID] = None
+    # CLUB sessions can optionally be tied to a specific pod. NULL means
+    # a general Club session (open to any Club member). Cross-service
+    # ref → members_service.pods.id (no enforced FK).
+    pod_id: Optional[uuid.UUID] = None
 
     # Cohort-specific
     week_number: Optional[int] = None
@@ -70,6 +74,7 @@ class SessionUpdate(BaseModel):
     cohort_id: Optional[uuid.UUID] = None
     event_id: Optional[uuid.UUID] = None
     booking_id: Optional[uuid.UUID] = None
+    pod_id: Optional[uuid.UUID] = None
 
     week_number: Optional[int] = None
     lesson_title: Optional[str] = None
@@ -115,6 +120,7 @@ class SessionResponse(SessionBase):
             "cohort_id": obj.cohort_id,
             "event_id": obj.event_id,
             "booking_id": obj.booking_id,
+            "pod_id": getattr(obj, "pod_id", None),
             "week_number": obj.week_number,
             "lesson_title": obj.lesson_title,
             "template_id": obj.template_id,

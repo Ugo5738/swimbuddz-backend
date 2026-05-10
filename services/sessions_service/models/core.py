@@ -111,6 +111,15 @@ class Session(Base):
         nullable=True,
         index=True,
     )
+    # For CLUB sessions tied to a specific pod (cross-service ref →
+    # members_service.pods.id; not enforced as FK because the table
+    # lives in another service's schema). NULL means a general Club
+    # session not scoped to one pod. See docs/club/POD_OPERATIONS.md.
+    pod_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
 
     # === Cohort-Specific Fields ===
     week_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
