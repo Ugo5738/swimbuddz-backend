@@ -101,6 +101,10 @@ async def _count_sessions_in_block(
 
     Excludes sessions whose status is `cancelled` (they didn't happen).
     """
+    # `sessions.status` is a postgres enum (`session_status_enum`), so we
+    # can't COALESCE it against an empty string — the cast fails. Use
+    # `IS DISTINCT FROM` against an explicit cast instead, which also
+    # naturally handles the NULL case.
     rows = (
         (
             await db.execute(
@@ -111,7 +115,7 @@ async def _count_sessions_in_block(
                 WHERE cohort_id = :cohort_id
                   AND starts_at >= :start
                   AND starts_at < :end
-                  AND COALESCE(status, '') <> :cancelled
+                  AND status IS DISTINCT FROM CAST(:cancelled AS session_status_enum)
                 ORDER BY starts_at
                 """
                 ),
