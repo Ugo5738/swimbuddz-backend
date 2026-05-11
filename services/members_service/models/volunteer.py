@@ -306,6 +306,20 @@ class MemberChallengeCompletion(Base):
     )  # "admin" | "pod_lead" | "assistant_pod_lead" — Phase 8b audit trail
     review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Revocation (admin-only override). Set when SwimBuddz HQ overturns
+    # a previously-approved submission — e.g. spot-checking a Pod Lead's
+    # approval and finding it didn't meet the bar. Original review fields
+    # (reviewed_by, reviewed_by_kind, reviewed_at) are PRESERVED so the
+    # audit trail still shows who originally approved + when. Revocation
+    # is its own event with its own actor and timestamp.
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    revoke_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Reward distribution timestamp (per-member ledger lives in challenge_submission_members)
     rewards_distributed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -452,6 +466,12 @@ class ChallengeBadgeAward(Base):
 
     awarded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
+    )
+    # Set when an HQ admin revokes the underlying approval. The row stays
+    # for audit; profile / public surfaces filter `revoked_at IS NULL` so
+    # revoked badges stop being shown without losing history.
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     def __repr__(self):

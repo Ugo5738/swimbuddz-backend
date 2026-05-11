@@ -53,6 +53,7 @@ from services.members_service.schemas import (
     ChallengeSubmissionMemberResponse,
     ChallengeSubmissionResponse,
     ChallengeSubmissionReview,
+    ChallengeSubmissionRevokeRequest,
     ChallengeWinnerPublicInfo,
     ClubChallengeCreate,
     ClubChallengeResponse,
@@ -1736,6 +1737,23 @@ async def list_submissions(
     challenge_id: Optional[uuid.UUID] = Query(
         None, description="Filter by challenge (optional)"
     ),
+    reviewed_by_kind: Optional[
+        Literal["admin", "pod_lead", "assistant_pod_lead"]
+    ] = Query(
+        None,
+        description=(
+            "Filter to submissions reviewed by a specific actor type. "
+            "Powers the HQ audit page's 'just show Pod Lead approvals' view."
+        ),
+    ),
+    revoked: Optional[Literal["only", "exclude"]] = Query(
+        None,
+        description=(
+            "'only' = revoked submissions only. 'exclude' = hide revoked. "
+            "Default (omitted) = include both. Use with status=approved + "
+            "revoked=exclude on the audit page to see live approvals only."
+        ),
+    ),
     db: AsyncSession = Depends(get_async_db),
     reviewer: AuthUser = Depends(get_current_user),
 ):
@@ -1745,10 +1763,16 @@ async def list_submissions(
     Powers the approved/rejected tabs in the admin review UI in addition
     to the default pending bucket. Pod Leads also use it via the same UI
     so they can clear their pod's queue independent of HQ.
+
+    The `reviewed_by_kind` and `revoked` filters are intended for the HQ
+    audit page; Pod Leads can pass them too but they only narrow within
+    the per-pod scope they're already restricted to.
     """
     return await _list_submissions_impl(
         status_filter=status,
         challenge_id=challenge_id,
+        reviewed_by_kind=reviewed_by_kind,
+        revoked=revoked,
         db=db,
         reviewer=reviewer,
     )
@@ -1760,6 +1784,8 @@ async def _list_submissions_impl(
     challenge_id: Optional[uuid.UUID],
     db: AsyncSession,
     reviewer: AuthUser,
+    reviewed_by_kind: Optional[str] = None,
+    revoked: Optional[str] = None,
 ) -> List[ChallengeSubmissionResponse]:
     """Shared implementation for the legacy `/submissions/pending` route
     and the new `/submissions/list?status=` route.
@@ -1784,6 +1810,14 @@ async def _list_submissions_impl(
         query = query.where(MemberChallengeCompletion.status == status_filter)
     if challenge_id:
         query = query.where(MemberChallengeCompletion.challenge_id == challenge_id)
+    if reviewed_by_kind:
+        query = query.where(
+            MemberChallengeCompletion.reviewed_by_kind == reviewed_by_kind
+        )
+    if revoked == "only":
+        query = query.where(MemberChallengeCompletion.revoked_at.is_not(None))
+    elif revoked == "exclude":
+        query = query.where(MemberChallengeCompletion.revoked_at.is_(None))
 
     if not is_admin_or_service(reviewer):
         # Pod-lead path: scope to submitters in pods this user leads.
@@ -1941,6 +1975,124 @@ async def review_challenge_submission(
         status=review.status,
         review_note=review.review_note,
     )
+
+    return await _hydrate_submission_response(submission, db)
+
+
+@challenge_router.post(
+    "/submissions/{submission_id}/revoke",
+    response_model=ChallengeSubmissionResponse,
+)
+async def revoke_challenge_submission(
+    submission_id: uuid.UUID,
+    body: ChallengeSubmissionRevokeRequest,
+    db: AsyncSession = Depends(get_async_db),
+    admin: AuthUser = Depends(require_admin),
+):
+    """SwimBuddz HQ override — revoke a previously-approved submission.
+
+    Used when HQ spot-checks a Pod Lead's approval (or one of their
+    own legacy approvals) and finds it didn't actually meet the bar.
+    Strictly admin-only; Pod Leads cannot revoke each other.
+
+    Effects:
+      * Stamps the submission with revoked_at / revoked_by / revoke_note
+        (the original review fields stay intact for audit).
+      * Stamps the corresponding challenge_badge_awards row with
+        revoked_at so the badge stops showing on the member's profile,
+        but the row itself is preserved for the audit trail.
+      * Sends an in-app notification to every member on the submission's
+        roster so they know what happened (and can re-attempt).
+
+    What we DON'T do:
+      * Reverse Bubbles or volunteer-hours grants. Those are external
+        ledgers (wallet_service, volunteer_service); HQ should clawback
+        manually via the wallet adjust UI if the situation warrants it.
+        Doing it automatically here would invent a partial-refund flow
+        that's not backed by the existing reward grants' idempotency keys.
+
+    Idempotent on revoked_at: re-revoking just refreshes the note.
+    """
+    submission_row = await db.execute(
+        select(MemberChallengeCompletion).where(
+            MemberChallengeCompletion.id == submission_id
+        )
+    )
+    submission = submission_row.scalar_one_or_none()
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    if submission.status != "approved":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only approved submissions can be revoked. Reject pending "
+                "submissions instead."
+            ),
+        )
+
+    challenge_row = await db.execute(
+        select(ClubChallenge).where(ClubChallenge.id == submission.challenge_id)
+    )
+    challenge = challenge_row.scalar_one_or_none()
+    if not challenge:
+        raise HTTPException(status_code=404, detail="Linked challenge not found")
+
+    now = utc_now()
+    submission.revoked_at = now
+    submission.revoked_by = _admin_uuid_or_none(admin)
+    submission.revoke_note = body.revoke_note
+
+    # Mark every badge award produced by this submission as revoked.
+    # Awards may exist for a single member (solo sub) or every team
+    # roster member (team sub) — _award_badge_and_members iterates the
+    # roster on approval, so we mirror that here.
+    members_rows = await db.execute(
+        select(ChallengeSubmissionMember.member_id).where(
+            ChallengeSubmissionMember.submission_id == submission.id
+        )
+    )
+    target_member_ids = [row[0] for row in members_rows.all()]
+    if not target_member_ids:
+        target_member_ids = [submission.member_id]
+
+    if target_member_ids:
+        await db.execute(
+            ChallengeBadgeAward.__table__.update()
+            .where(
+                ChallengeBadgeAward.challenge_id == challenge.id,
+                ChallengeBadgeAward.member_id.in_(target_member_ids),
+                ChallengeBadgeAward.revoked_at.is_(None),
+            )
+            .values(revoked_at=now)
+        )
+
+    await db.commit()
+    await db.refresh(submission)
+
+    # Member notification (best-effort) — make sure they hear it from us
+    # before they spot the missing badge on their profile.
+    try:
+        await dispatch_notification(
+            type="challenge_submission_revoked",
+            category="challenges",
+            member_ids=[str(mid) for mid in target_member_ids],
+            title=f"Challenge approval revoked: {challenge.title}",
+            body=(
+                f'Your previous approval for "{challenge.title}" was '
+                f"reviewed by SwimBuddz HQ and revoked. Reason: "
+                f"{body.revoke_note} You can submit a new attempt anytime."
+            ),
+            action_url=f"/community/challenges/{challenge.id}",
+            icon="alert-triangle",
+            calling_service=CHALLENGES_CALLING_SERVICE,
+            metadata={
+                "challenge_id": str(challenge.id),
+                "submission_id": str(submission.id),
+            },
+        )
+    except Exception:
+        # dispatch_notification already swallows; defensive belt + braces.
+        logger.warning("challenge revoke notification failed", exc_info=True)
 
     return await _hydrate_submission_response(submission, db)
 

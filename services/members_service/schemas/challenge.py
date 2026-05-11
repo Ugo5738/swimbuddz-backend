@@ -289,6 +289,20 @@ class ChallengeSubmissionResponse(BaseModel):
         None
     )
     review_note: Optional[str] = None
+    # Revocation audit (admin-only override).
+    revoked_at: Optional[datetime] = None
+    revoked_by: Optional[uuid.UUID] = None
+    revoke_note: Optional[str] = None
+
+
+class ChallengeSubmissionRevokeRequest(BaseModel):
+    """Admin payload to revoke a previously-approved submission.
+
+    A note is required so the member always sees a human reason — and so
+    HQ has a clear paper trail when spot-checking Pod Lead approvals.
+    """
+
+    revoke_note: str = Field(..., min_length=5)
     rewards_distributed_at: Optional[datetime] = None
     completed_at: datetime
     result_data: Optional[dict] = None
