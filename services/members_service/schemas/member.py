@@ -49,6 +49,7 @@ class MemberProfileResponse(BaseModel):
 
     # Discovery
     how_found_us: Optional[str] = None
+    acquisition_source: Optional[str] = None
     previous_communities: Optional[str] = None
     hopes_from_swimbuddz: Optional[str] = None
 
@@ -402,6 +403,7 @@ class MemberProfileInput(BaseModel):
     interests: Optional[list[str]] = None
     personal_goals: Optional[str] = None
     how_found_us: Optional[str] = None
+    acquisition_source: Optional[str] = None
     previous_communities: Optional[str] = None
     hopes_from_swimbuddz: Optional[str] = None
     social_instagram: Optional[str] = None
