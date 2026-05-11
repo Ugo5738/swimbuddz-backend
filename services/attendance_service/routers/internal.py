@@ -184,10 +184,14 @@ async def get_member_attendance_stats(
             week_num = r.created_at.isocalendar()[1]
             weeks_attended[week_num] = True
 
-    # Build ordered list of weeks in the range
+    # Build ordered list of weeks in the range — cap at the current week so
+    # weeks that haven't happened yet don't reset the streak to 0.
+    from libs.common.datetime_utils import utc_now
+
+    end_iter = min(date_to, utc_now())
     weekly_attendance = []
     current = date_from
-    while current <= date_to:
+    while current <= end_iter:
         wk = current.isocalendar()[1]
         weekly_attendance.append(wk in weeks_attended)
         current += timedelta(weeks=1)
