@@ -316,6 +316,34 @@ async def get_my_pod(
     return await _summary(db, pod)
 
 
+@member_router.get("/i-lead", response_model=List[PodSummary])
+async def list_pods_i_lead(
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Pods where I am the lead OR assistant lead.
+
+    Powers two member-facing surfaces:
+      * The "Pod Lead Review" entry in the member sidebar — only shown
+        when this returns at least one pod.
+      * The Pod-Lead-side challenge review queue, which uses the list
+        for context (e.g. "you're reviewing as Pod Lead of {pod.name}").
+
+    Returns ALL pods the member leads regardless of status, so a recently
+    dissolved pod still shows up briefly before fading from the UI.
+    """
+    member_id = await _resolve_member_id(current_user, db)
+    rows = await db.execute(
+        select(Pod)
+        .where(
+            (Pod.pod_lead_id == member_id) | (Pod.assistant_pod_lead_id == member_id)
+        )
+        .order_by(Pod.created_at.desc())
+    )
+    pods = list(rows.scalars().all())
+    return [await _summary(db, p) for p in pods]
+
+
 @member_router.get("/public", response_model=List[PodSummary])
 async def list_public_pods(
     club_id: Optional[uuid.UUID] = Query(default=None),

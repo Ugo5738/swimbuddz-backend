@@ -100,7 +100,12 @@ async def list_my_badges(
 
     rows = await db.execute(
         select(ChallengeBadgeAward)
-        .where(ChallengeBadgeAward.member_id == member.id)
+        .where(
+            ChallengeBadgeAward.member_id == member.id,
+            # Hide badges revoked by HQ. The row stays in the DB for audit
+            # but doesn't surface on the member's profile/public pages.
+            ChallengeBadgeAward.revoked_at.is_(None),
+        )
         .order_by(ChallengeBadgeAward.awarded_at.desc())
     )
     awards = list(rows.scalars().all())

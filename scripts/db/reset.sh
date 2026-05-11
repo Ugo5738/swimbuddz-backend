@@ -61,6 +61,7 @@ SERVICES=(
   "wallet_service"
   "pools_service"
   "reporting_service"
+  "chat_service"
 )
 
 POST_RESET_TASKS=(

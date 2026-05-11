@@ -59,6 +59,7 @@ SERVICES=(
   "volunteer_service"
   "wallet_service"
   "pools_service"
+  "chat_service"
 )
 
 PRE_MIGRATION_TASKS=(

@@ -37,6 +37,7 @@ from services.members_service.schemas.challenge import (  # noqa: F401
     ChallengeSubmissionMemberResponse,
     ChallengeSubmissionResponse,
     ChallengeSubmissionReview,
+    ChallengeSubmissionRevokeRequest,
     ChallengeType,
     ChallengeWinnerPublicInfo,
     ClubChallengeBase,

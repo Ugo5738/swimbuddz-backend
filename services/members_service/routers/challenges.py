@@ -12,7 +12,7 @@ The challenges section was reshaped in Phase 1:
 """
 
 import uuid
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import get_current_user, require_admin
@@ -37,9 +37,12 @@ from services.members_service.models import (
     ClubChallenge,
     Member,
     MemberChallengeCompletion,
+    Pod,
+    PodAssignment,
     VolunteerInterest,
     VolunteerRole,
 )
+from libs.auth.dependencies import is_admin_or_service
 from services.members_service.schemas import (
     ChallengeCompletionCreate,
     ChallengeCompletionResponse,
@@ -50,6 +53,7 @@ from services.members_service.schemas import (
     ChallengeSubmissionMemberResponse,
     ChallengeSubmissionResponse,
     ChallengeSubmissionReview,
+    ChallengeSubmissionRevokeRequest,
     ChallengeWinnerPublicInfo,
     ClubChallengeCreate,
     ClubChallengeResponse,
@@ -296,6 +300,132 @@ def _admin_uuid_or_none(admin: AuthUser) -> Optional[uuid.UUID]:
         return None
 
 
+async def _resolve_member_id_from_auth_optional(
+    auth_user: AuthUser, db: AsyncSession
+) -> Optional[uuid.UUID]:
+    """Same as _resolve_member_id_from_auth but returns None instead of 403
+    when the auth identity has no local member profile.
+
+    Used for the delegated-review path where SwimBuddz admins (whitelisted
+    by email, no member row) AND pod leads (always have a member row)
+    both pass through. Admins fall through this returning None and are
+    accepted by the upstream `is_admin_or_service` check; pod leads
+    continue with their resolved member id.
+    """
+    if not auth_user.user_id:
+        return None
+    member_row = await db.execute(
+        select(Member).where(Member.auth_id == auth_user.user_id)
+    )
+    member = member_row.scalar_one_or_none()
+    return member.id if member else None
+
+
+async def _pod_lead_kind_for_member(
+    *,
+    reviewer_member_id: uuid.UUID,
+    submitter_member_id: uuid.UUID,
+    db: AsyncSession,
+) -> Optional[Literal["pod_lead", "assistant_pod_lead"]]:
+    """Return the reviewer's role within the submitter's active pod, if any.
+
+    Looks up:
+      1. The submitter's currently-active pod (pod_assignments with
+         left_at IS NULL — the unique constraint enforces 'one pod per
+         member at a time' so this is exactly 0 or 1 row).
+      2. Whether the reviewer is the lead or assistant lead of that pod.
+
+    Returns None if:
+      * the submitter has no active pod (e.g. Community member, or
+        between pods)
+      * the reviewer isn't the lead/assistant lead of the submitter's pod
+      * the reviewer would be reviewing their OWN submission (they can't)
+
+    Pod leads can never approve their own submission — that guard is
+    here, not at the upstream auth check, because the lead may or may
+    not be a member of their own pod's roster (admins/coaches typically
+    aren't on the roster of the pod they lead).
+    """
+    if reviewer_member_id == submitter_member_id:
+        return None
+
+    # Find the submitter's active pod
+    assignment_row = await db.execute(
+        select(PodAssignment.pod_id).where(
+            PodAssignment.member_id == submitter_member_id,
+            PodAssignment.left_at.is_(None),
+        )
+    )
+    pod_id = assignment_row.scalar_one_or_none()
+    if pod_id is None:
+        return None
+
+    pod_row = await db.execute(
+        select(Pod.pod_lead_id, Pod.assistant_pod_lead_id).where(Pod.id == pod_id)
+    )
+    pod = pod_row.first()
+    if pod is None:
+        return None
+
+    if pod.pod_lead_id == reviewer_member_id:
+        return "pod_lead"
+    if pod.assistant_pod_lead_id == reviewer_member_id:
+        return "assistant_pod_lead"
+    return None
+
+
+async def _authorize_review(
+    *,
+    reviewer: AuthUser,
+    challenge: ClubChallenge,
+    submitter_member_id: uuid.UUID,
+    db: AsyncSession,
+) -> Literal["admin", "pod_lead", "assistant_pod_lead"]:
+    """Authorize a review action and return the reviewer's role kind.
+
+    Authority rules:
+      * SwimBuddz admins / service-role tokens — can review ANY submission.
+      * For competition-format challenges (high stakes, public winner
+        reveal) — admin only. Pod leads can't approve competitions.
+      * For everything else (participatory + ladder challenges) — the
+        Pod Lead or Assistant Pod Lead of the submitter's active pod
+        can approve.
+
+    Returns "admin" | "pod_lead" | "assistant_pod_lead" so the caller
+    can stamp `reviewed_by_kind` on the audit trail.
+    Raises 403 if neither path applies.
+    """
+    if is_admin_or_service(reviewer):
+        return "admin"
+
+    if challenge.format == "competition":
+        # Competitions stay HQ-only. Pod leads can't designate winners or
+        # approve competition entries — too easy to game otherwise.
+        raise HTTPException(
+            status_code=403,
+            detail="Only SwimBuddz admins can review competition submissions.",
+        )
+
+    reviewer_member_id = await _resolve_member_id_from_auth_optional(reviewer, db)
+    if reviewer_member_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Reviewer must be an admin or a Pod Lead.",
+        )
+
+    kind = await _pod_lead_kind_for_member(
+        reviewer_member_id=reviewer_member_id,
+        submitter_member_id=submitter_member_id,
+        db=db,
+    )
+    if kind is None:
+        raise HTTPException(
+            status_code=403,
+            detail=("You can only review submissions from members in a pod you lead."),
+        )
+    return kind
+
+
 async def _resolve_member_id_from_auth(
     auth_user: AuthUser, db: AsyncSession
 ) -> uuid.UUID:
@@ -315,6 +445,56 @@ async def _resolve_member_id_from_auth(
     if not member:
         raise HTTPException(status_code=403, detail="Member profile not found")
     return member.id
+
+
+async def _enforce_prerequisite(
+    db: AsyncSession,
+    *,
+    prerequisite_id: uuid.UUID,
+    member_ids: List[uuid.UUID],
+) -> None:
+    """Reject the submission if any member is missing the prerequisite badge.
+
+    Used by the soft-progression-with-opt-in-hard-gating model: when a
+    challenge has `requires_challenge_id` set, every member on the
+    submission roster must have an approved badge for the prerequisite
+    challenge before they can attempt this one. Reads from the
+    denormalised `challenge_badge_awards` table for a fast indexed check.
+
+    Raises 400 with a list of member ids that are missing the badge so
+    the frontend can surface a helpful error.
+    """
+    if not member_ids:
+        return
+
+    # Pull award rows for any member on the roster that already has the
+    # prerequisite. Members not in this set are missing the badge.
+    rows = await db.execute(
+        select(ChallengeBadgeAward.member_id).where(
+            ChallengeBadgeAward.challenge_id == prerequisite_id,
+            ChallengeBadgeAward.member_id.in_(member_ids),
+        )
+    )
+    earned = {row[0] for row in rows.all()}
+    missing = [mid for mid in member_ids if mid not in earned]
+    if not missing:
+        return
+
+    # Resolve the prerequisite's title for a friendly message.
+    prereq_title_row = await db.execute(
+        select(ClubChallenge.title).where(ClubChallenge.id == prerequisite_id)
+    )
+    prereq_title = prereq_title_row.scalar_one_or_none() or "the prerequisite"
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"This challenge requires '{prereq_title}' to be completed first. "
+            f"{len(missing)} team member"
+            f"{'' if len(missing) == 1 else 's'} ha"
+            f"{'sn' if len(missing) == 1 else 'ven'}'t earned it yet."
+        ),
+    )
 
 
 async def _load_challenge_example_media(
@@ -671,6 +851,8 @@ async def _hydrate_public_challenge_response(
         example_media=example_media,
         winner=winner_info,
         is_finished=is_finished,
+        series_slug=challenge.series_slug,
+        series_order=challenge.series_order,
         created_at=challenge.created_at,
     )
 
@@ -1068,9 +1250,23 @@ async def list_club_challenges(
     active_only: bool = Query(True, description="Show only active challenges"),
     challenge_type: Optional[str] = Query(None, description="Filter by challenge type"),
     audience: Optional[str] = Query(None, description="Filter by audience"),
+    series_slug: Optional[str] = Query(
+        None,
+        description=(
+            "Filter by skill-ladder series. Pass an exact slug to fetch one "
+            "ladder; pass the literal value 'none' to fetch only standalone "
+            "(non-ladder) challenges."
+        ),
+    ),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """List club challenges with optional filters."""
+    """List club challenges with optional filters.
+
+    Skill-ladder behaviour:
+      * series_slug=<slug>  → returns just that ladder's steps, ordered
+      * series_slug='none'  → returns only standalone challenges
+      * series_slug omitted → returns everything (admin/list view)
+    """
     query = select(ClubChallenge)
 
     if active_only:
@@ -1079,13 +1275,68 @@ async def list_club_challenges(
         query = query.where(ClubChallenge.challenge_type == challenge_type)
     if audience:
         query = query.where(ClubChallenge.audience == audience)
+    if series_slug == "none":
+        query = query.where(ClubChallenge.series_slug.is_(None))
+    elif series_slug:
+        query = query.where(ClubChallenge.series_slug == series_slug)
 
-    query = query.order_by(ClubChallenge.created_at.desc())
+    # Within a single series, order by series_order ascending so the
+    # ladder reads top-to-bottom. Otherwise newest-first (admin queue feel).
+    if series_slug and series_slug != "none":
+        query = query.order_by(
+            ClubChallenge.series_order.asc().nulls_last(),
+            ClubChallenge.created_at.asc(),
+        )
+    else:
+        query = query.order_by(ClubChallenge.created_at.desc())
 
     result = await db.execute(query)
     challenges = result.scalars().all()
 
     return [await _hydrate_challenge_response(c, db) for c in challenges]
+
+
+@challenge_router.get(
+    "/series/list",
+    response_model=Dict[str, List[ClubChallengeResponse]],
+)
+async def list_challenges_by_series(
+    audience: Optional[str] = Query(
+        None,
+        description=(
+            "Filter to a single audience tier (e.g. 'club') so a tier-page "
+            "shows only the relevant ladders."
+        ),
+    ),
+    active_only: bool = Query(True, description="Hide inactive challenges"),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return all challenges that belong to a series, grouped by slug.
+
+    Powers the Club page's "skill ladders showcase". Standalone (no
+    `series_slug`) challenges are excluded — they show on the homepage
+    carousel instead. Within each series, steps are ordered by
+    `series_order`.
+    """
+    query = select(ClubChallenge).where(ClubChallenge.series_slug.is_not(None))
+    if active_only:
+        query = query.where(ClubChallenge.is_active.is_(True))
+    if audience:
+        query = query.where(ClubChallenge.audience == audience)
+    query = query.order_by(
+        ClubChallenge.series_slug.asc(),
+        ClubChallenge.series_order.asc().nulls_last(),
+        ClubChallenge.created_at.asc(),
+    )
+
+    rows = await db.execute(query)
+    challenges = rows.scalars().all()
+
+    out: Dict[str, List[ClubChallengeResponse]] = {}
+    for c in challenges:
+        slug = c.series_slug or "_unknown"
+        out.setdefault(slug, []).append(await _hydrate_challenge_response(c, db))
+    return out
 
 
 @challenge_router.get("/{challenge_id}", response_model=ClubChallengeResponse)
@@ -1340,6 +1591,18 @@ async def create_challenge_submission(
             detail="You already have a pending or approved submission for this challenge",
         )
 
+    # Hard-gating: if requires_challenge_id is set on this challenge, ALL
+    # team members (including captain) must already have an approved badge
+    # for the prerequisite. Soft progression (no requires_challenge_id) is
+    # the default — admins opt INTO gating per challenge.
+    if challenge.requires_challenge_id is not None:
+        team_ids_to_check = [captain_member_id, *submission_data.team_member_ids]
+        await _enforce_prerequisite(
+            db,
+            prerequisite_id=challenge.requires_challenge_id,
+            member_ids=team_ids_to_check,
+        )
+
     # Team validation
     is_team = bool(submission_data.team_member_ids)
     if is_team and not challenge.team_enabled:
@@ -1447,7 +1710,7 @@ async def list_pending_submissions_legacy(
         None, description="Filter by challenge (optional)"
     ),
     db: AsyncSession = Depends(get_async_db),
-    _admin: AuthUser = Depends(require_admin),
+    reviewer: AuthUser = Depends(get_current_user),
 ):
     """LEGACY alias for /submissions/list?status=pending.
 
@@ -1458,6 +1721,7 @@ async def list_pending_submissions_legacy(
         status_filter="pending",
         challenge_id=challenge_id,
         db=db,
+        reviewer=reviewer,
     )
 
 
@@ -1473,18 +1737,44 @@ async def list_submissions(
     challenge_id: Optional[uuid.UUID] = Query(
         None, description="Filter by challenge (optional)"
     ),
+    reviewed_by_kind: Optional[
+        Literal["admin", "pod_lead", "assistant_pod_lead"]
+    ] = Query(
+        None,
+        description=(
+            "Filter to submissions reviewed by a specific actor type. "
+            "Powers the HQ audit page's 'just show Pod Lead approvals' view."
+        ),
+    ),
+    revoked: Optional[Literal["only", "exclude"]] = Query(
+        None,
+        description=(
+            "'only' = revoked submissions only. 'exclude' = hide revoked. "
+            "Default (omitted) = include both. Use with status=approved + "
+            "revoked=exclude on the audit page to see live approvals only."
+        ),
+    ),
     db: AsyncSession = Depends(get_async_db),
-    _admin: AuthUser = Depends(require_admin),
+    reviewer: AuthUser = Depends(get_current_user),
 ):
-    """Admin review queue: list submissions filtered by status.
+    """Review queue — admin sees everything, Pod Leads see only their own
+    pod's submissions.
 
-    Powers the approved/rejected tabs in the admin review UI in addition to
-    the default pending bucket.
+    Powers the approved/rejected tabs in the admin review UI in addition
+    to the default pending bucket. Pod Leads also use it via the same UI
+    so they can clear their pod's queue independent of HQ.
+
+    The `reviewed_by_kind` and `revoked` filters are intended for the HQ
+    audit page; Pod Leads can pass them too but they only narrow within
+    the per-pod scope they're already restricted to.
     """
     return await _list_submissions_impl(
         status_filter=status,
         challenge_id=challenge_id,
+        reviewed_by_kind=reviewed_by_kind,
+        revoked=revoked,
         db=db,
+        reviewer=reviewer,
     )
 
 
@@ -1493,9 +1783,23 @@ async def _list_submissions_impl(
     status_filter: str,
     challenge_id: Optional[uuid.UUID],
     db: AsyncSession,
+    reviewer: AuthUser,
+    reviewed_by_kind: Optional[str] = None,
+    revoked: Optional[str] = None,
 ) -> List[ChallengeSubmissionResponse]:
     """Shared implementation for the legacy `/submissions/pending` route
-    and the new `/submissions/list?status=` route. Order:
+    and the new `/submissions/list?status=` route.
+
+    Authorization:
+      * Admin / service-role → see ALL submissions across the platform
+      * Pod Lead / Assistant Pod Lead → see only submissions whose
+        member is currently assigned to one of THEIR pods (any role).
+        Excludes competition submissions because pod leads can't review
+        those anyway, so showing them in their queue would just be noise.
+      * Anyone else → 403 (the user has neither HQ admin nor pod-lead
+        authority over any submission)
+
+    Order:
       - approved  → newest reviewed_at first (most-recently approved)
       - rejected  → newest reviewed_at first
       - pending   → oldest created_at first (FIFO queue feel)
@@ -1506,6 +1810,62 @@ async def _list_submissions_impl(
         query = query.where(MemberChallengeCompletion.status == status_filter)
     if challenge_id:
         query = query.where(MemberChallengeCompletion.challenge_id == challenge_id)
+    if reviewed_by_kind:
+        query = query.where(
+            MemberChallengeCompletion.reviewed_by_kind == reviewed_by_kind
+        )
+    if revoked == "only":
+        query = query.where(MemberChallengeCompletion.revoked_at.is_not(None))
+    elif revoked == "exclude":
+        query = query.where(MemberChallengeCompletion.revoked_at.is_(None))
+
+    if not is_admin_or_service(reviewer):
+        # Pod-lead path: scope to submitters in pods this user leads.
+        reviewer_member_id = await _resolve_member_id_from_auth_optional(reviewer, db)
+        if reviewer_member_id is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Reviewer must be an admin or a Pod Lead.",
+            )
+
+        # Pods led by this reviewer (lead OR assistant lead)
+        led_pods_q = select(Pod.id).where(
+            (Pod.pod_lead_id == reviewer_member_id)
+            | (Pod.assistant_pod_lead_id == reviewer_member_id)
+        )
+        led_pods_rows = await db.execute(led_pods_q)
+        led_pod_ids = [row[0] for row in led_pods_rows.all()]
+        if not led_pod_ids:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "You can only see submissions from members in a pod "
+                    "you lead, but you don't lead any pods yet."
+                ),
+            )
+
+        # Members currently assigned to one of those pods
+        member_ids_subq = (
+            select(PodAssignment.member_id)
+            .where(
+                PodAssignment.pod_id.in_(led_pod_ids),
+                PodAssignment.left_at.is_(None),
+            )
+            .subquery()
+        )
+        query = query.where(
+            MemberChallengeCompletion.member_id.in_(select(member_ids_subq))
+        )
+
+        # Exclude competitions — pod leads can't review them.
+        competition_ids_subq = (
+            select(ClubChallenge.id)
+            .where(ClubChallenge.format == "competition")
+            .subquery()
+        )
+        query = query.where(
+            MemberChallengeCompletion.challenge_id.notin_(select(competition_ids_subq))
+        )
 
     if status_filter == "pending":
         query = query.order_by(MemberChallengeCompletion.created_at.asc())
@@ -1529,9 +1889,15 @@ async def review_challenge_submission(
     submission_id: uuid.UUID,
     review: ChallengeSubmissionReview,
     db: AsyncSession = Depends(get_async_db),
-    admin: AuthUser = Depends(require_admin),
+    reviewer: AuthUser = Depends(get_current_user),
 ):
-    """Approve or reject a submission (admin only).
+    """Approve or reject a submission (admin OR Pod Lead).
+
+    Authorization (Phase 8b — delegated review):
+      * SwimBuddz admin → can review anything
+      * Pod Lead / Assistant Pod Lead → can review their own pod
+        members' submissions, EXCEPT competition-format challenges
+        (those stay HQ-only — too easy to game otherwise)
 
     Approve: writes a badge award per member (idempotent via unique
     (member_id, challenge_id) constraint). Bubbles + volunteer-hours
@@ -1559,10 +1925,20 @@ async def review_challenge_submission(
         # Should not happen given FK + soft constraints; defensive 404.
         raise HTTPException(status_code=404, detail="Linked challenge not found")
 
+    # Authorize the reviewer; gets back which kind of authority they have
+    # so we can stamp the audit trail. Raises 403 if neither path applies.
+    reviewer_kind = await _authorize_review(
+        reviewer=reviewer,
+        challenge=challenge,
+        submitter_member_id=submission.member_id,
+        db=db,
+    )
+
     submission.status = review.status
     submission.review_note = review.review_note
     submission.reviewed_at = utc_now()
-    submission.reviewed_by = _admin_uuid_or_none(admin)
+    submission.reviewed_by = _admin_uuid_or_none(reviewer)
+    submission.reviewed_by_kind = reviewer_kind
 
     if review.status == "approved":
         await _award_badge_and_members(submission, challenge, db)
@@ -1585,7 +1961,7 @@ async def review_challenge_submission(
             submission,
             challenge,
             db,
-            granted_by_auth=admin.user_id,
+            granted_by_auth=reviewer.user_id,
         )
         # Persist any grant ids returned during distribution.
         await db.commit()
@@ -1599,6 +1975,124 @@ async def review_challenge_submission(
         status=review.status,
         review_note=review.review_note,
     )
+
+    return await _hydrate_submission_response(submission, db)
+
+
+@challenge_router.post(
+    "/submissions/{submission_id}/revoke",
+    response_model=ChallengeSubmissionResponse,
+)
+async def revoke_challenge_submission(
+    submission_id: uuid.UUID,
+    body: ChallengeSubmissionRevokeRequest,
+    db: AsyncSession = Depends(get_async_db),
+    admin: AuthUser = Depends(require_admin),
+):
+    """SwimBuddz HQ override — revoke a previously-approved submission.
+
+    Used when HQ spot-checks a Pod Lead's approval (or one of their
+    own legacy approvals) and finds it didn't actually meet the bar.
+    Strictly admin-only; Pod Leads cannot revoke each other.
+
+    Effects:
+      * Stamps the submission with revoked_at / revoked_by / revoke_note
+        (the original review fields stay intact for audit).
+      * Stamps the corresponding challenge_badge_awards row with
+        revoked_at so the badge stops showing on the member's profile,
+        but the row itself is preserved for the audit trail.
+      * Sends an in-app notification to every member on the submission's
+        roster so they know what happened (and can re-attempt).
+
+    What we DON'T do:
+      * Reverse Bubbles or volunteer-hours grants. Those are external
+        ledgers (wallet_service, volunteer_service); HQ should clawback
+        manually via the wallet adjust UI if the situation warrants it.
+        Doing it automatically here would invent a partial-refund flow
+        that's not backed by the existing reward grants' idempotency keys.
+
+    Idempotent on revoked_at: re-revoking just refreshes the note.
+    """
+    submission_row = await db.execute(
+        select(MemberChallengeCompletion).where(
+            MemberChallengeCompletion.id == submission_id
+        )
+    )
+    submission = submission_row.scalar_one_or_none()
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    if submission.status != "approved":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only approved submissions can be revoked. Reject pending "
+                "submissions instead."
+            ),
+        )
+
+    challenge_row = await db.execute(
+        select(ClubChallenge).where(ClubChallenge.id == submission.challenge_id)
+    )
+    challenge = challenge_row.scalar_one_or_none()
+    if not challenge:
+        raise HTTPException(status_code=404, detail="Linked challenge not found")
+
+    now = utc_now()
+    submission.revoked_at = now
+    submission.revoked_by = _admin_uuid_or_none(admin)
+    submission.revoke_note = body.revoke_note
+
+    # Mark every badge award produced by this submission as revoked.
+    # Awards may exist for a single member (solo sub) or every team
+    # roster member (team sub) — _award_badge_and_members iterates the
+    # roster on approval, so we mirror that here.
+    members_rows = await db.execute(
+        select(ChallengeSubmissionMember.member_id).where(
+            ChallengeSubmissionMember.submission_id == submission.id
+        )
+    )
+    target_member_ids = [row[0] for row in members_rows.all()]
+    if not target_member_ids:
+        target_member_ids = [submission.member_id]
+
+    if target_member_ids:
+        await db.execute(
+            ChallengeBadgeAward.__table__.update()
+            .where(
+                ChallengeBadgeAward.challenge_id == challenge.id,
+                ChallengeBadgeAward.member_id.in_(target_member_ids),
+                ChallengeBadgeAward.revoked_at.is_(None),
+            )
+            .values(revoked_at=now)
+        )
+
+    await db.commit()
+    await db.refresh(submission)
+
+    # Member notification (best-effort) — make sure they hear it from us
+    # before they spot the missing badge on their profile.
+    try:
+        await dispatch_notification(
+            type="challenge_submission_revoked",
+            category="challenges",
+            member_ids=[str(mid) for mid in target_member_ids],
+            title=f"Challenge approval revoked: {challenge.title}",
+            body=(
+                f'Your previous approval for "{challenge.title}" was '
+                f"reviewed by SwimBuddz HQ and revoked. Reason: "
+                f"{body.revoke_note} You can submit a new attempt anytime."
+            ),
+            action_url=f"/community/challenges/{challenge.id}",
+            icon="alert-triangle",
+            calling_service=CHALLENGES_CALLING_SERVICE,
+            metadata={
+                "challenge_id": str(challenge.id),
+                "submission_id": str(submission.id),
+            },
+        )
+    except Exception:
+        # dispatch_notification already swallows; defensive belt + braces.
+        logger.warning("challenge revoke notification failed", exc_info=True)
 
     return await _hydrate_submission_response(submission, db)
 
@@ -1723,6 +2217,7 @@ async def mark_challenge_complete(
         status="approved",
         verified_by=admin_uuid,
         reviewed_by=admin_uuid,
+        reviewed_by_kind="admin",  # legacy admin path is HQ-only by definition
         reviewed_at=utc_now(),
     )
     db.add(completion)

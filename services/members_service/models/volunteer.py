@@ -175,6 +175,27 @@ class ClubChallenge(Base):
         UUID(as_uuid=True), nullable=True
     )  # references member_challenge_completions.id; soft FK to avoid circular cascade
 
+    # Skill-ladder series (Phase B of the challenges revamp).
+    #
+    # When `series_slug` is set, this challenge is a step inside an ordered
+    # ladder rather than a one-off — a Club skill curriculum, an open-water
+    # progression, etc. Examples: "club-fundamentals", "open-water".
+    #
+    #   series_slug   = which ladder this belongs to (NULL = standalone)
+    #   series_order  = position in the ladder (1, 2, 3, ...)
+    #   requires_challenge_id = OPTIONAL hard-gating: members must have an
+    #                           approved badge for this prerequisite before
+    #                           they can submit. Soft progression (no
+    #                           requires_challenge_id) is the default — the
+    #                           ladder is guidance, not enforcement.
+    #
+    # See docs/club/POD_OPERATIONS.md and the challenges revamp plan.
+    series_slug: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    series_order: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    requires_challenge_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )  # soft FK to club_challenges.id; no DB-level FK to avoid circular cascade
+
     # Visibility
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_public: Mapped[bool] = mapped_column(
@@ -279,8 +300,25 @@ class MemberChallengeCompletion(Base):
     )
     reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True
-    )  # admin auth UUID who reviewed
+    )  # auth UUID OR member UUID of reviewer; see reviewed_by_kind
+    reviewed_by_kind: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # "admin" | "pod_lead" | "assistant_pod_lead" — Phase 8b audit trail
     review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Revocation (admin-only override). Set when SwimBuddz HQ overturns
+    # a previously-approved submission — e.g. spot-checking a Pod Lead's
+    # approval and finding it didn't meet the bar. Original review fields
+    # (reviewed_by, reviewed_by_kind, reviewed_at) are PRESERVED so the
+    # audit trail still shows who originally approved + when. Revocation
+    # is its own event with its own actor and timestamp.
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    revoke_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Reward distribution timestamp (per-member ledger lives in challenge_submission_members)
     rewards_distributed_at: Mapped[Optional[datetime]] = mapped_column(
@@ -428,6 +466,12 @@ class ChallengeBadgeAward(Base):
 
     awarded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
+    )
+    # Set when an HQ admin revokes the underlying approval. The row stays
+    # for audit; profile / public surfaces filter `revoked_at IS NULL` so
+    # revoked badges stop being shown without losing history.
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     def __repr__(self):
