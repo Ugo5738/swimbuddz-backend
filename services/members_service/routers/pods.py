@@ -25,7 +25,6 @@ from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
-
 from services.members_service.models import (
     Member,
     Pod,
@@ -347,11 +346,18 @@ async def list_pods_i_lead(
 @member_router.get("/public", response_model=List[PodSummary])
 async def list_public_pods(
     club_id: Optional[uuid.UUID] = Query(default=None),
-    current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Public pod directory. Filter to a club if the caller knows which
-    one they're registering for."""
+    """Public pod directory — anonymous read.
+
+    Returns only pods with visibility='public' (set on the row). Pods
+    intentionally have a public-facing handle ("dolphins", "orcas") and
+    no member PII is exposed in PodSummary — the response is metadata
+    only (handle, lead/assistant UUIDs, capacity, schedule). Safe to
+    expose to the unauthenticated /club marketing page.
+
+    Private pods stay hidden — they go through admin assignment.
+    """
     pods = await pod_ops.list_public_pods(db, club_id=club_id)
     return [await _summary(db, p) for p in pods]
 

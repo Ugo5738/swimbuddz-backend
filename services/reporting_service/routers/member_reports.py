@@ -18,7 +18,10 @@ from services.reporting_service.schemas.reports import (
 from services.reporting_service.services.aggregator import compute_member_report
 from services.reporting_service.services.card_generator import generate_card_image
 from services.reporting_service.services.pdf_generator import generate_pdf_report
-from services.reporting_service.services.quarter_utils import quarter_label
+from services.reporting_service.services.quarter_utils import (
+    current_quarter,
+    quarter_label,
+)
 
 logger = get_logger(__name__)
 
@@ -45,8 +48,12 @@ async def get_my_quarterly_report(
     )
     report = result.scalar_one_or_none()
 
-    if report is None:
-        # Try real-time computation for the current/recent quarter
+    # Always recompute the current quarter so new attendance/payments/etc.
+    # surface immediately. Past quarters are frozen snapshots.
+    cur_year, cur_quarter = current_quarter()
+    is_current = (year, quarter) == (cur_year, cur_quarter)
+
+    if report is None or is_current:
         try:
             report = await compute_member_report(
                 member_auth_id=current_user.user_id,
@@ -56,10 +63,12 @@ async def get_my_quarterly_report(
             )
         except Exception as e:
             logger.error(f"Failed to compute report for {current_user.user_id}: {e}")
-            raise HTTPException(
-                status_code=404,
-                detail="Report not available for this quarter.",
-            )
+            if report is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Report not available for this quarter.",
+                )
+            # Stale row exists — fall through and return it rather than 404
 
     return report
 
@@ -119,7 +128,10 @@ async def get_my_quarterly_pdf(
     )
     report = result.scalar_one_or_none()
 
-    if report is None:
+    cur_year, cur_quarter = current_quarter()
+    is_current = (year, quarter) == (cur_year, cur_quarter)
+
+    if report is None or is_current:
         try:
             report = await compute_member_report(
                 member_auth_id=current_user.user_id,
@@ -129,10 +141,11 @@ async def get_my_quarterly_pdf(
             )
         except Exception as e:
             logger.error(f"Failed to compute report for PDF: {e}")
-            raise HTTPException(
-                status_code=404,
-                detail="Report not available for this quarter.",
-            )
+            if report is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Report not available for this quarter.",
+                )
 
     pdf_bytes = await generate_pdf_report(report)
 
