@@ -480,6 +480,7 @@ async def complete_pending_registration(
         personal_goals=profile_data.get("goals_narrative")
         or profile_data.get("personal_goals"),
         how_found_us=profile_data.get("how_found_us"),
+        acquisition_source=profile_data.get("acquisition_source"),
         previous_communities=profile_data.get("previous_communities"),
         hopes_from_swimbuddz=profile_data.get("hopes_from_swimbuddz"),
         social_instagram=profile_data.get("social_instagram"),
