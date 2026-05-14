@@ -1178,7 +1178,7 @@ disbursed, annotate the payment's metadata.refund_owed entry with
     )
 
     body_html = (
-        f"<p>A member has withdrawn from a cohort and is owed a refund.</p>"
+        "<p>A member has withdrawn from a cohort and is owed a refund.</p>"
         + detail_box(
             {
                 "Member": f"{member_name} ({member_email})",

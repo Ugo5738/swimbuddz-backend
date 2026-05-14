@@ -1,4 +1,3 @@
-import httpx
 from fastapi import APIRouter
 
 from services.academy_service.services.chat_sync import (
@@ -29,7 +28,6 @@ from services.academy_service.routers._shared import (
     StudentProgress,
     WithdrawEnrollmentRequest,
     WithdrawEnrollmentResponse,
-    _list_enrollment_installments,
     _resolve_enrollment_total_fee,
     _sync_installment_state_for_enrollment,
     compute_withdrawal_refund,
@@ -774,9 +772,7 @@ async def withdraw_my_enrollment(
     # if mail delivery fails — the obligation is already recorded on the
     # payment(s) and can be processed from the admin refund queue.
     try:
-        program_name = (
-            program.name if program else "Academy Program"
-        )
+        program_name = program.name if program else "Academy Program"
         member_data = await get_member_by_id(
             str(enrollment.member_id), calling_service="academy"
         )
@@ -1440,8 +1436,6 @@ async def get_cohort_analytics(
         "avg_score": avg_score,
         "students_at_risk": at_risk_count,
     }
-
-
 
 
 # ---------------------------------------------------------------------------
