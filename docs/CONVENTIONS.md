@@ -179,3 +179,41 @@ if existing_member:
 
 - Endpoints defined in `API_CONTRACT.md` are stable for this iteration.
 - Avoid breaking changes; if unavoidable, add a new versioned path and document the migration plan.
+
+---
+
+## 12. File Size Limits
+
+Large files hurt review velocity, IDE responsiveness, AI assistance, and test isolation. We aim for files that fit on one screen end-to-end and split anything beyond that into focused modules.
+
+**Targets (whole-file line counts):**
+
+| File kind | Soft target | Hard cap |
+|---|---:|---:|
+| Router (`services/*/routers/*.py`) | 500 | 800 |
+| Model (`services/*/models/*.py`) | 400 | 600 |
+| Schema (`services/*/schemas/*.py`) | 500 | 800 |
+| Service / domain logic (`services/*/services/*.py`) | 500 | 800 |
+| Shared library (`libs/**/*.py`, `mcp/**/*.py`) | 600 | 1000 |
+
+**Excluded from these limits** (do not flag, do not split):
+
+- Alembic migrations (`services/*/alembic/versions/`) — generated.
+- Seed data (`scripts/seed/*.py`) — data, not logic.
+- Email / notification templates (`services/*/templates/*.py`) — copy-heavy.
+- Tests — split by what they cover, not by line count.
+
+**How to split when you hit the cap:**
+
+- **Routers** — split by sub-resource and `include_router` from `app/main.py`. Example: `routers/payments/intents.py`, `routers/payments/webhooks.py`, `routers/payments/refunds.py` rather than one 2,000-line `intents.py`.
+- **Models** — split by aggregate root (`models/enrollment.py`, `models/cohort.py`) and re-export from `models/__init__.py`.
+- **Schemas** — split alongside the matching model file (`schemas/enrollment.py` mirrors `models/enrollment.py`).
+- **Shared libraries** — split by responsibility; if `service_client.py` is 1,000+ lines, it's doing too many things.
+
+**Enforcement:**
+
+```bash
+bash scripts/lint/check_file_sizes.sh
+```
+
+Prints every file in violation, classified `[soft]` or `[HARD]`. The script is non-blocking (always exits 0); treat results as a backlog. Once the hard-cap list is empty, wire the script into CI with `exit 1` on hard violations.
