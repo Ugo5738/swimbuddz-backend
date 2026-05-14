@@ -1329,6 +1329,64 @@
         }
       }
     },
+    "/api/v1/admin/members/by-auth/{auth_id}/club/extend": {
+      "post": {
+        "tags": [
+          "admin-members"
+        ],
+        "summary": "Admin Extend Club Membership By Auth",
+        "description": "Extend club membership by N months without eligibility checks.\n\nIntended for service-to-service grants such as the free 1-month\npost-academy club access bridge (see PRICING_STRATEGY.md). Skips the\nreadiness/requested-tier gates that ``/club/activate`` enforces because\nthe caller is the system, not the member self-upgrading.\n\nThe new ``club_paid_until`` becomes ``max(current, anchor) + months`` where\n``anchor = payload.from_date or now``. Idempotent: if club_paid_until is\nalready at or past the computed target, no change is made.",
+        "operationId": "admin_extend_club_membership_by_auth_admin_members_by_auth__auth_id__club_extend_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Auth Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtendClubRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/members/by-auth/{auth_id}/club/activate": {
       "post": {
         "tags": [
@@ -1363,6 +1421,54 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/members/by-auth/{auth_id}/academy/expire": {
+      "post": {
+        "tags": [
+          "admin-members"
+        ],
+        "summary": "Admin Expire Academy Membership By Auth",
+        "description": "Set academy_paid_until to NOW, effectively expiring academy access.\n\nUsed by academy_service after a member's withdrawal when they have no\nremaining ENROLLED cohorts. Subsequent reads via /members/me or the\ninternal membership endpoint will strip \"academy\" from active_tiers\nvia normalize_member_tiers since the date is no longer in the future.",
+        "operationId": "admin_expire_academy_membership_by_auth_admin_members_by_auth__auth_id__academy_expire_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Auth Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1614,7 +1720,7 @@
           "challenges"
         ],
         "summary": "List Club Challenges",
-        "description": "List club challenges with optional filters.",
+        "description": "List club challenges with optional filters.\n\nSkill-ladder behaviour:\n  * series_slug=<slug>  \u2192 returns just that ladder's steps, ordered\n  * series_slug='none'  \u2192 returns only standalone challenges\n  * series_slug omitted \u2192 returns everything (admin/list view)",
         "operationId": "list_club_challenges_challenges__get",
         "parameters": [
           {
@@ -1664,6 +1770,24 @@
               "title": "Audience"
             },
             "description": "Filter by audience"
+          },
+          {
+            "name": "series_slug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by skill-ladder series. Pass an exact slug to fetch one ladder; pass the literal value 'none' to fetch only standalone (non-ladder) challenges.",
+              "title": "Series Slug"
+            },
+            "description": "Filter by skill-ladder series. Pass an exact slug to fetch one ladder; pass the literal value 'none' to fetch only standalone (non-ladder) challenges."
           }
         ],
         "responses": {
@@ -1722,6 +1846,77 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ClubChallengeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/challenges/series/list": {
+      "get": {
+        "tags": [
+          "challenges"
+        ],
+        "summary": "List Challenges By Series",
+        "description": "Return all challenges that belong to a series, grouped by slug.\n\nPowers the Club page's \"skill ladders showcase\". Standalone (no\n`series_slug`) challenges are excluded \u2014 they show on the homepage\ncarousel instead. Within each series, steps are ordered by\n`series_order`.",
+        "operationId": "list_challenges_by_series_challenges_series_list_get",
+        "parameters": [
+          {
+            "name": "audience",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter to a single audience tier (e.g. 'club') so a tier-page shows only the relevant ladders.",
+              "title": "Audience"
+            },
+            "description": "Filter to a single audience tier (e.g. 'club') so a tier-page shows only the relevant ladders."
+          },
+          {
+            "name": "active_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Hide inactive challenges",
+              "default": true,
+              "title": "Active Only"
+            },
+            "description": "Hide inactive challenges"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ClubChallengeResponse"
+                    }
+                  },
+                  "title": "Response List Challenges By Series Challenges Series List Get"
                 }
               }
             }
@@ -2069,7 +2264,7 @@
           "challenges"
         ],
         "summary": "List Submissions",
-        "description": "Admin review queue: list submissions filtered by status.\n\nPowers the approved/rejected tabs in the admin review UI in addition to\nthe default pending bucket.",
+        "description": "Review queue \u2014 admin sees everything, Pod Leads see only their own\npod's submissions.\n\nPowers the approved/rejected tabs in the admin review UI in addition\nto the default pending bucket. Pod Leads also use it via the same UI\nso they can clear their pod's queue independent of HQ.\n\nThe `reviewed_by_kind` and `revoked` filters are intended for the HQ\naudit page; Pod Leads can pass them too but they only narrow within\nthe per-pod scope they're already restricted to.",
         "operationId": "list_submissions_challenges_submissions_list_get",
         "security": [
           {
@@ -2113,6 +2308,51 @@
               "title": "Challenge Id"
             },
             "description": "Filter by challenge (optional)"
+          },
+          {
+            "name": "reviewed_by_kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "admin",
+                    "pod_lead",
+                    "assistant_pod_lead"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter to submissions reviewed by a specific actor type. Powers the HQ audit page's 'just show Pod Lead approvals' view.",
+              "title": "Reviewed By Kind"
+            },
+            "description": "Filter to submissions reviewed by a specific actor type. Powers the HQ audit page's 'just show Pod Lead approvals' view."
+          },
+          {
+            "name": "revoked",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "only",
+                    "exclude"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "'only' = revoked submissions only. 'exclude' = hide revoked. Default (omitted) = include both. Use with status=approved + revoked=exclude on the audit page to see live approvals only.",
+              "title": "Revoked"
+            },
+            "description": "'only' = revoked submissions only. 'exclude' = hide revoked. Default (omitted) = include both. Use with status=approved + revoked=exclude on the audit page to see live approvals only."
           }
         ],
         "responses": {
@@ -2149,7 +2389,7 @@
           "challenges"
         ],
         "summary": "Review Challenge Submission",
-        "description": "Approve or reject a submission (admin only).\n\nApprove: writes a badge award per member (idempotent via unique\n(member_id, challenge_id) constraint). Bubbles + volunteer-hours\ndistribution lands in Phase 7.\n\nRe-approving an already-approved submission is a no-op (idempotent).\nA rejected submission can be re-approved to fix a mistaken rejection;\na previously-approved submission can be rejected to revoke (the badge\naward row remains \u2014 revocation logic, if needed, lands later).",
+        "description": "Approve or reject a submission (admin OR Pod Lead).\n\nAuthorization (Phase 8b \u2014 delegated review):\n  * SwimBuddz admin \u2192 can review anything\n  * Pod Lead / Assistant Pod Lead \u2192 can review their own pod\n    members' submissions, EXCEPT competition-format challenges\n    (those stay HQ-only \u2014 too easy to game otherwise)\n\nApprove: writes a badge award per member (idempotent via unique\n(member_id, challenge_id) constraint). Bubbles + volunteer-hours\ndistribution lands in Phase 7.\n\nRe-approving an already-approved submission is a no-op (idempotent).\nA rejected submission can be re-approved to fix a mistaken rejection;\na previously-approved submission can be rejected to revoke (the badge\naward row remains \u2014 revocation logic, if needed, lands later).",
         "operationId": "review_challenge_submission_challenges_submissions__submission_id__patch",
         "security": [
           {
@@ -2174,6 +2414,65 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ChallengeSubmissionReview"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChallengeSubmissionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/challenges/submissions/{submission_id}/revoke": {
+      "post": {
+        "tags": [
+          "challenges"
+        ],
+        "summary": "Revoke Challenge Submission",
+        "description": "SwimBuddz HQ override \u2014 revoke a previously-approved submission.\n\nUsed when HQ spot-checks a Pod Lead's approval (or one of their\nown legacy approvals) and finds it didn't actually meet the bar.\nStrictly admin-only; Pod Leads cannot revoke each other.\n\nEffects:\n  * Stamps the submission with revoked_at / revoked_by / revoke_note\n    (the original review fields stay intact for audit).\n  * Stamps the corresponding challenge_badge_awards row with\n    revoked_at so the badge stops showing on the member's profile,\n    but the row itself is preserved for the audit trail.\n  * Sends an in-app notification to every member on the submission's\n    roster so they know what happened (and can re-attempt).\n\nWhat we DON'T do:\n  * Reverse Bubbles or volunteer-hours grants. Those are external\n    ledgers (wallet_service, volunteer_service); HQ should clawback\n    manually via the wallet adjust UI if the situation warrants it.\n    Doing it automatically here would invent a partial-refund flow\n    that's not backed by the existing reward grants' idempotency keys.\n\nIdempotent on revoked_at: re-revoking just refreshes the note.",
+        "operationId": "revoke_challenge_submission_challenges_submissions__submission_id__revoke_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "submission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Submission Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeSubmissionRevokeRequest"
               }
             }
           }
@@ -5007,19 +5306,45 @@
         ]
       }
     },
+    "/api/v1/members/pods/i-lead": {
+      "get": {
+        "tags": [
+          "pods"
+        ],
+        "summary": "List Pods I Lead",
+        "description": "Pods where I am the lead OR assistant lead.\n\nPowers two member-facing surfaces:\n  * The \"Pod Lead Review\" entry in the member sidebar \u2014 only shown\n    when this returns at least one pod.\n  * The Pod-Lead-side challenge review queue, which uses the list\n    for context (e.g. \"you're reviewing as Pod Lead of {pod.name}\").\n\nReturns ALL pods the member leads regardless of status, so a recently\ndissolved pod still shows up briefly before fading from the UI.",
+        "operationId": "list_pods_i_lead_members_pods_i_lead_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PodSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Pods I Lead Members Pods I Lead Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/members/pods/public": {
       "get": {
         "tags": [
           "pods"
         ],
         "summary": "List Public Pods",
-        "description": "Public pod directory. Filter to a club if the caller knows which\none they're registering for.",
+        "description": "Public pod directory \u2014 anonymous read.\n\nReturns only pods with visibility='public' (set on the row). Pods\nintentionally have a public-facing handle (\"dolphins\", \"orcas\") and\nno member PII is exposed in PodSummary \u2014 the response is metadata\nonly (handle, lead/assistant UUIDs, capacity, schedule). Safe to\nexpose to the unauthenticated /club marketing page.\n\nPrivate pods stay hidden \u2014 they go through admin assignment.",
         "operationId": "list_public_pods_members_pods_public_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
         "parameters": [
           {
             "name": "club_id",
@@ -9650,6 +9975,65 @@
         }
       }
     },
+    "/api/v1/academy/my-enrollments/{enrollment_id}/withdraw": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Withdraw My Enrollment",
+        "description": "Member-initiated voluntary withdrawal from a cohort.\n\nRefund policy (docs/club/PRICING_STRATEGY.md, founder-confirmed May 2026):\n  - Before cohort start: 90% refund of paid amount.\n  - In mid-entry window (week 1 \u2192 mid_entry_cutoff_week): 50% of unused\n    prorated portion, capped at paid amount.\n  - After cutoff: no refund.\n\nIn all cases:\n  - All unpaid installments are WAIVED.\n  - Enrollment status \u2192 DROPPED, dropped_at = now.\n  - Member's academy_paid_until is recomputed from remaining ENROLLED\n    cohorts (multi-cohort safe). The post-academy free club month is\n    only granted at natural graduation (via the cron), NOT on withdrawal.\n  - Community membership and any pre-existing club access are preserved.\n\nThe refund itself is queued for admin disbursement \u2014 Paystack refund API\nis not invoked from this endpoint (Nigerian payment flows are commonly\nsettled via direct transfer). The refund obligation is written to the\nrelevant payments' metadata as ``refund_owed``.",
+        "operationId": "withdraw_my_enrollment_academy_my_enrollments__enrollment_id__withdraw_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawEnrollmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawEnrollmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/admin/enrollments/{enrollment_id}/mark-paid": {
       "post": {
         "tags": [
@@ -14025,6 +14409,62 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/internal/payments/{reference}/annotate-refund": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Annotate Refund Obligation",
+        "description": "Write a refund obligation to a payment's metadata.\n\nIdempotent: multiple calls for the same enrollment_id overwrite the prior\nentry rather than appending duplicates.",
+        "operationId": "annotate_refund_obligation_internal_payments__reference__annotate_refund_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Reference"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnnotateRefundRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/payments/{reference}/proof": {
@@ -37535,6 +37975,28 @@
             "title": "Is Finished",
             "default": false
           },
+          "series_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Slug"
+          },
+          "series_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Order"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -37860,6 +38322,22 @@
             ],
             "title": "Reviewed By"
           },
+          "reviewed_by_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "admin",
+                  "pod_lead",
+                  "assistant_pod_lead"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By Kind"
+          },
           "review_note": {
             "anyOf": [
               {
@@ -37870,6 +38348,87 @@
               }
             ],
             "title": "Review Note"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "revoked_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked By"
+          },
+          "revoke_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoke Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "challenge_id",
+          "member_id"
+        ],
+        "title": "ChallengeSubmissionResponse",
+        "description": "Submission as returned to admins / the submitter themselves."
+      },
+      "ChallengeSubmissionReview": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Status"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ChallengeSubmissionReview",
+        "description": "Admin-only payload to approve or reject a submission."
+      },
+      "ChallengeSubmissionRevokeRequest": {
+        "properties": {
+          "revoke_note": {
+            "type": "string",
+            "minLength": 5,
+            "title": "Revoke Note"
           },
           "rewards_distributed_at": {
             "anyOf": [
@@ -37922,43 +38481,12 @@
         },
         "type": "object",
         "required": [
-          "id",
-          "challenge_id",
-          "member_id",
+          "revoke_note",
           "completed_at",
           "created_at"
         ],
-        "title": "ChallengeSubmissionResponse",
-        "description": "Submission as returned to admins / the submitter themselves."
-      },
-      "ChallengeSubmissionReview": {
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "approved",
-              "rejected"
-            ],
-            "title": "Status"
-          },
-          "review_note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Review Note"
-          }
-        },
-        "type": "object",
-        "required": [
-          "status"
-        ],
-        "title": "ChallengeSubmissionReview",
-        "description": "Admin-only payload to approve or reject a submission."
+        "title": "ChallengeSubmissionRevokeRequest",
+        "description": "Admin payload to revoke a previously-approved submission.\n\nA note is required so the member always sees a human reason \u2014 and so\nHQ has a clear paper trail when spot-checking Pod Lead approvals."
       },
       "ChallengeWinnerPublicInfo": {
         "properties": {
@@ -38196,6 +38724,43 @@
             ],
             "title": "Team Max Size"
           },
+          "series_slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Slug"
+          },
+          "series_order": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Order"
+          },
+          "requires_challenge_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requires Challenge Id"
+          },
           "is_active": {
             "type": "boolean",
             "title": "Is Active",
@@ -38414,6 +38979,43 @@
               }
             ],
             "title": "Team Max Size"
+          },
+          "series_slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Slug"
+          },
+          "series_order": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Order"
+          },
+          "requires_challenge_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requires Challenge Id"
           },
           "id": {
             "type": "string",
@@ -38786,6 +39388,43 @@
               }
             ],
             "title": "Example Media"
+          },
+          "series_slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Slug"
+          },
+          "series_order": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Order"
+          },
+          "requires_challenge_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requires Challenge Id"
           }
         },
         "type": "object",
@@ -41435,6 +42074,46 @@
         "title": "EligibleCoachListItem",
         "description": "Coach item in eligible coaches list."
       },
+      "ExtendClubRequest": {
+        "properties": {
+          "months": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Months",
+            "default": 1
+          },
+          "from_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Date",
+            "description": "Anchor the new period at this date (defaults to NOW or current expiry, whichever is later). Pass the cohort end_date for post-academy free month grants."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Audit note describing why the extension was granted."
+          }
+        },
+        "type": "object",
+        "title": "ExtendClubRequest",
+        "description": "Request to extend club membership without eligibility checks.\n\nIntended for service-to-service grants (e.g. the free 1-month post-academy\nclub access from PRICING_STRATEGY.md). The optional ``from_date`` anchors\nthe new period \u2014 useful when granting at cohort.end_date rather than now."
+      },
       "ExtendCommunityRequest": {
         "properties": {
           "months": {
@@ -43440,6 +44119,17 @@
             ],
             "title": "How Found Us"
           },
+          "acquisition_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acquisition Source"
+          },
           "previous_communities": {
             "anyOf": [
               {
@@ -43719,6 +44409,17 @@
               }
             ],
             "title": "How Found Us"
+          },
+          "acquisition_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acquisition Source"
           },
           "previous_communities": {
             "anyOf": [
@@ -51514,6 +52215,18 @@
               }
             ],
             "title": "Paid At"
+          },
+          "amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Kobo"
           }
         },
         "type": "object",
@@ -53393,6 +54106,84 @@
         "title": "UpcomingSessionSummary",
         "description": "Summary of an upcoming session for dashboard."
       },
+      "WithdrawEnrollmentRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Optional reason for withdrawal (for admin visibility)."
+          }
+        },
+        "type": "object",
+        "title": "WithdrawEnrollmentRequest",
+        "description": "Member-initiated voluntary withdrawal from a cohort."
+      },
+      "WithdrawEnrollmentResponse": {
+        "properties": {
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Enrollment Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "window": {
+            "type": "string",
+            "title": "Window"
+          },
+          "refund_kobo": {
+            "type": "integer",
+            "title": "Refund Kobo"
+          },
+          "refund_percent": {
+            "type": "number",
+            "title": "Refund Percent"
+          },
+          "paid_kobo": {
+            "type": "integer",
+            "title": "Paid Kobo"
+          },
+          "waived_installment_count": {
+            "type": "integer",
+            "title": "Waived Installment Count"
+          },
+          "payment_references": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Payment References"
+          },
+          "refund_note": {
+            "type": "string",
+            "title": "Refund Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enrollment_id",
+          "status",
+          "window",
+          "refund_kobo",
+          "refund_percent",
+          "paid_kobo",
+          "waived_installment_count",
+          "payment_references",
+          "refund_note"
+        ],
+        "title": "WithdrawEnrollmentResponse",
+        "description": "Summary of a withdrawal action \u2014 what was refunded and waived."
+      },
       "AdminReviewRequest": {
         "properties": {
           "note": {
@@ -53411,6 +54202,41 @@
         "type": "object",
         "title": "AdminReviewRequest",
         "description": "Admin review action for a manual payment."
+      },
+      "AnnotateRefundRequest": {
+        "properties": {
+          "refund_kobo": {
+            "type": "integer",
+            "title": "Refund Kobo"
+          },
+          "enrollment_id": {
+            "type": "string",
+            "title": "Enrollment Id"
+          },
+          "window": {
+            "type": "string",
+            "title": "Window"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "refund_kobo",
+          "enrollment_id",
+          "window"
+        ],
+        "title": "AnnotateRefundRequest",
+        "description": "Refund obligation written to a payment's metadata by the academy service.\n\nThe Nigerian payment-flow reality: most refunds are settled via direct bank\ntransfer, not Paystack API. This endpoint records the *obligation*; an admin\ndisburses and stamps the payment via a separate manual step."
       },
       "ClubBillingCycle": {
         "type": "string",
@@ -53869,6 +54695,18 @@
               }
             ],
             "title": "Bubbles To Apply"
+          },
+          "amount_override_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Override Kobo"
           },
           "metadata": {
             "anyOf": [
