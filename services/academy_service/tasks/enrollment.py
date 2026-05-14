@@ -376,12 +376,10 @@ async def _emit_graduation_rewards(db, cohort: Cohort) -> None:
                     json={
                         "months": _settings.POST_ACADEMY_FREE_CLUB_MONTHS,
                         "from_date": (
-                            cohort.end_date.isoformat()
-                            if cohort.end_date else None
+                            cohort.end_date.isoformat() if cohort.end_date else None
                         ),
                         "reason": (
-                            f"Free post-academy club bridge "
-                            f"(cohort {cohort.id})"
+                            f"Free post-academy club bridge " f"(cohort {cohort.id})"
                         ),
                     },
                 )

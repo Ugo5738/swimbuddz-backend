@@ -1751,7 +1751,10 @@ async def create_payment_intent(
         # Member-initiated custom amount: must be >= next installment amount
         # and <= remaining balance (founder policy May 2026). Default behavior
         # without an override is unchanged — charge exactly the stipulated amount.
-        if payload.amount_override_kobo is not None and payload.amount_override_kobo > 0:
+        if (
+            payload.amount_override_kobo is not None
+            and payload.amount_override_kobo > 0
+        ):
             override_naira = payload.amount_override_kobo / KOBO_PER_NAIRA
             if override_naira < amount:
                 raise HTTPException(

@@ -41,9 +41,7 @@ class TestInstallmentCount:
 
     def test_over_threshold_caps_at_3(self):
         # Over NGN 150k → capped at 3 installments even with longer duration
-        assert (
-            installment_count(total_fee=20_000_000, duration_weeks=16) == 3
-        )
+        assert installment_count(total_fee=20_000_000, duration_weeks=16) == 3
 
 
 class TestSplitAmounts:
@@ -107,8 +105,10 @@ class TestApplyMemberPayment:
     """Member-initiated payment rolling across installments."""
 
     def _make_installments(self, amounts: list[int]) -> list[FakeInstallment]:
-        return [FakeInstallment(installment_number=i + 1, amount=a)
-                for i, a in enumerate(amounts)]
+        return [
+            FakeInstallment(installment_number=i + 1, amount=a)
+            for i, a in enumerate(amounts)
+        ]
 
     def test_exact_next_installment_amount(self):
         installments = self._make_installments([50, 50, 50])

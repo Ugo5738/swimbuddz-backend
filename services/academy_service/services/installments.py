@@ -169,7 +169,8 @@ def apply_member_payment_across_installments(
     """
     paid_statuses = {InstallmentStatus.PAID, InstallmentStatus.WAIVED}
     pending = [
-        i for i in sorted(installments, key=lambda i: i.installment_number)
+        i
+        for i in sorted(installments, key=lambda i: i.installment_number)
         if i.status not in paid_statuses
     ]
 
@@ -220,12 +221,16 @@ def compute_withdrawal_refund(
     is one of ``"before_start" | "mid_entry_window" | "after_cutoff"``.
     """
     if total_paid_kobo <= 0 or program_fee_kobo <= 0:
-        return _classify_window(
-            now=now,
-            cohort_start=cohort_start,
-            duration_weeks=duration_weeks,
-            mid_entry_cutoff_week=mid_entry_cutoff_week,
-        ), 0, 0.0
+        return (
+            _classify_window(
+                now=now,
+                cohort_start=cohort_start,
+                duration_weeks=duration_weeks,
+                mid_entry_cutoff_week=mid_entry_cutoff_week,
+            ),
+            0,
+            0.0,
+        )
 
     window = _classify_window(
         now=now,

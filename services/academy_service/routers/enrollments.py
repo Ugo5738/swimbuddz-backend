@@ -103,7 +103,9 @@ async def enroll_student(
         # but log it so the audit trail captures every over-capacity action.
         # Members hitting POST /enrollments/me are waitlisted instead.
         enrolled_count_result = await db.execute(
-            select(func.count()).select_from(Enrollment).where(
+            select(func.count())
+            .select_from(Enrollment)
+            .where(
                 Enrollment.cohort_id == cohort.id,
                 Enrollment.status.in_(
                     [EnrollmentStatus.ENROLLED, EnrollmentStatus.PENDING_APPROVAL]
@@ -986,7 +988,8 @@ async def admin_mark_enrollment_paid(
                 # The helper marks them PAID in order and reduces the trailing
                 # one if the amount doesn't cleanly cover whole installments.
                 payable = [
-                    i for i in installments
+                    i
+                    for i in installments
                     if i.installment_number >= target_installment.installment_number
                     and i.status not in paid_statuses
                 ]

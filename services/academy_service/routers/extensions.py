@@ -12,7 +12,7 @@ from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.config import get_settings
-from libs.common.service_client import get_member_by_auth_id, get_members_bulk, internal_post
+from libs.common.service_client import get_member_by_auth_id, internal_post
 from libs.db.session import get_async_db
 from services.academy_service.models import (
     Cohort,

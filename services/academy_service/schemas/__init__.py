@@ -170,4 +170,6 @@ __all__ = [
     "StudentProgressResponse",
     "StudentProgressUpdate",
     "UpcomingSessionSummary",
+    "WithdrawEnrollmentRequest",
+    "WithdrawEnrollmentResponse",
 ]

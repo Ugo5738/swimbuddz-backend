@@ -472,13 +472,12 @@ async def admin_extend_club_membership_by_auth(
         key=lambda t: tier_priority[t],
         reverse=True,
     )
-    if not member.membership.primary_tier or tier_priority.get(
-        member.membership.primary_tier, 0
-    ) < tier_priority["club"]:
+    if (
+        not member.membership.primary_tier
+        or tier_priority.get(member.membership.primary_tier, 0) < tier_priority["club"]
+    ):
         member.membership.primary_tier = (
-            "academy"
-            if "academy" in member.membership.active_tiers
-            else "club"
+            "academy" if "academy" in member.membership.active_tiers else "club"
         )
 
     db.add(member)
