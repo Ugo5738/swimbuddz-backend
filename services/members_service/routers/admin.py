@@ -1,9 +1,10 @@
 """Admin members router - approval and administrative operations."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import List
 
+from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
@@ -328,7 +329,7 @@ async def admin_activate_community_membership_by_auth(
         and member.membership.community_paid_until > now
         else now
     )
-    member.membership.community_paid_until = base + timedelta(days=365 * payload.years)
+    member.membership.community_paid_until = base + relativedelta(years=payload.years)
 
     if not member.membership.active_tiers:
         member.membership.active_tiers = ["community"]
@@ -386,7 +387,7 @@ async def admin_extend_community_membership_by_auth(
         and member.membership.community_paid_until > now
         else now
     )
-    member.membership.community_paid_until = base + timedelta(days=30 * payload.months)
+    member.membership.community_paid_until = base + relativedelta(months=payload.months)
 
     if not member.membership.active_tiers:
         member.membership.active_tiers = ["community"]
@@ -449,7 +450,7 @@ async def admin_extend_club_membership_by_auth(
 
     current_until = member.membership.club_paid_until
     base = current_until if current_until and current_until > anchor else anchor
-    new_until = base + timedelta(days=30 * payload.months)
+    new_until = base + relativedelta(months=payload.months)
 
     # Idempotency: don't shrink, don't no-op an already-covered period.
     if current_until is None or new_until > current_until:
@@ -571,7 +572,7 @@ async def admin_activate_club_membership_by_auth(
         if member.membership.club_paid_until and member.membership.club_paid_until > now
         else now
     )
-    member.membership.club_paid_until = base + timedelta(days=30 * payload.months)
+    member.membership.club_paid_until = base + relativedelta(months=payload.months)
 
     # Policy (founder-confirmed May 2026, see docs/club/PRICING_STRATEGY.md):
     # club purchase extends community_paid_until to max(current, NOW + 1 year).
@@ -580,8 +581,6 @@ async def admin_activate_club_membership_by_auth(
     # in the network. Skipped for bundles since the caller already activated
     # community via /community/activate (years param).
     if not payload.skip_community_check:
-        from dateutil.relativedelta import relativedelta
-
         one_year_out = now + relativedelta(years=1)
         current_community = member.membership.community_paid_until
         if current_community is None or current_community < one_year_out:

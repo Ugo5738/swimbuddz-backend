@@ -10258,65 +10258,6 @@
         }
       }
     },
-    "/api/v1/academy/enrollments/{enrollment_id}/installments/{installment_id}/pay-with-bubbles": {
-      "post": {
-        "tags": [
-          "academy"
-        ],
-        "summary": "Pay Installment With Bubbles",
-        "description": "Pay a pending enrollment installment using Bubbles wallet.\n\n- Deducts the installment amount from the member's wallet.\n- Marks the installment as PAID with the wallet transaction ID.\n- Re-syncs enrollment payment status (may lift suspension, unlock access).\n- Idempotent: repeated calls return the current state without double-charging.",
-        "operationId": "pay_installment_with_bubbles_academy_enrollments__enrollment_id__installments__installment_id__pay_with_bubbles_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "enrollment_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Enrollment Id"
-            }
-          },
-          {
-            "name": "installment_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Installment Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnrollmentResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/academy/my-enrollments/{enrollment_id}/onboarding": {
       "get": {
         "tags": [
@@ -14644,6 +14585,91 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AdminReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/refunds-owed": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "List Refunds Owed",
+        "description": "List outstanding refund obligations recorded against paid payments.\n\nRefund obligations are written to ``payment.payment_metadata.refund_owed``\nby the academy withdrawal flow. Each entry has a ``disbursed_at`` field\nthat's null until the admin marks it disbursed. This endpoint returns\nevery unresolved obligation across all payments, sorted oldest-first so\nops can disburse in FIFO order.",
+        "operationId": "list_refunds_owed_payments_admin_refunds_owed_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundQueueResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/payments/admin/refunds-owed/{reference}/mark-disbursed": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Mark Refund Disbursed",
+        "description": "Mark a specific refund obligation as disbursed.\n\nIdentified by (payment reference, enrollment_id) since a single payment\ncan theoretically have multiple refund obligations across enrollments.\nSets ``disbursed_at`` on the matching ``refund_owed`` entry. Idempotent:\nre-calling on an already-disbursed entry returns 200 without changing\nthe timestamp.",
+        "operationId": "mark_refund_disbursed_payments_admin_refunds_owed__reference__mark_disbursed_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Reference"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkRefundDisbursedRequest"
               }
             }
           }
@@ -55620,6 +55646,32 @@
         "title": "MakeupStatus",
         "description": "Lifecycle of a make-up obligation owed to a student."
       },
+      "MarkRefundDisbursedRequest": {
+        "properties": {
+          "enrollment_id": {
+            "type": "string",
+            "title": "Enrollment Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enrollment_id"
+        ],
+        "title": "MarkRefundDisbursedRequest",
+        "description": "Admin marks one refund obligation as disbursed (paid out)."
+      },
       "MemberPaymentSummary": {
         "properties": {
           "total_spent": {
@@ -56733,6 +56785,120 @@
         ],
         "title": "RecurringPayoutStatus",
         "description": "Lifecycle of a recurring payout configuration."
+      },
+      "RefundOwedItem": {
+        "properties": {
+          "payment_reference": {
+            "type": "string",
+            "title": "Payment Reference"
+          },
+          "payment_amount": {
+            "type": "number",
+            "title": "Payment Amount"
+          },
+          "payer_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Email"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "title": "Member Auth Id"
+          },
+          "refund_kobo": {
+            "type": "integer",
+            "title": "Refund Kobo"
+          },
+          "refund_naira": {
+            "type": "number",
+            "title": "Refund Naira"
+          },
+          "enrollment_id": {
+            "type": "string",
+            "title": "Enrollment Id"
+          },
+          "window": {
+            "type": "string",
+            "title": "Window"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "annotated_at": {
+            "type": "string",
+            "title": "Annotated At"
+          },
+          "disbursed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disbursed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_reference",
+          "payment_amount",
+          "member_auth_id",
+          "refund_kobo",
+          "refund_naira",
+          "enrollment_id",
+          "window",
+          "annotated_at"
+        ],
+        "title": "RefundOwedItem",
+        "description": "One refund obligation, derived from a payment's metadata.refund_owed."
+      },
+      "RefundQueueResponse": {
+        "properties": {
+          "total_owed_kobo": {
+            "type": "integer",
+            "title": "Total Owed Kobo"
+          },
+          "total_owed_naira": {
+            "type": "number",
+            "title": "Total Owed Naira"
+          },
+          "item_count": {
+            "type": "integer",
+            "title": "Item Count"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RefundOwedItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_owed_kobo",
+          "total_owed_naira",
+          "item_count",
+          "items"
+        ],
+        "title": "RefundQueueResponse",
+        "description": "Outstanding refund obligations across all payments."
       },
       "SessionAttendanceStatus": {
         "type": "string",

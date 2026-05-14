@@ -33,7 +33,6 @@ from services.academy_service.routers._shared import (
     _resolve_enrollment_total_fee,
     _sync_installment_state_for_enrollment,
     compute_withdrawal_refund,
-    debit_member_wallet,
     dispatch_notification,
     func,
     get_async_db,
@@ -45,7 +44,6 @@ from services.academy_service.routers._shared import (
     get_next_session_for_cohort,
     get_settings,
     internal_post,
-    kobo_to_bubbles,
     NextSessionInfo,
     OnboardingResponse,
     require_admin,
@@ -771,6 +769,69 @@ async def withdraw_my_enrollment(
             f"No refund per policy ({window}). All unpaid installments waived."
         )
 
+    # Notify the member that the withdrawal succeeded + admin about any
+    # refund obligation. Best-effort: don't block the withdrawal response
+    # if mail delivery fails — the obligation is already recorded on the
+    # payment(s) and can be processed from the admin refund queue.
+    try:
+        program_name = (
+            program.name if program else "Academy Program"
+        )
+        member_data = await get_member_by_id(
+            str(enrollment.member_id), calling_service="academy"
+        )
+        member_email = member_data.get("email") if member_data else None
+        member_first = (
+            member_data.get("first_name", "Member") if member_data else "Member"
+        )
+        member_full = (
+            f"{member_data.get('first_name', '')} {member_data.get('last_name', '')}".strip()
+            if member_data
+            else "Member"
+        )
+
+        email_client = get_email_client()
+
+        if member_email:
+            await email_client.send_template(
+                template_type="withdrawal_confirmation",
+                to_email=member_email,
+                template_data={
+                    "member_name": member_first,
+                    "program_name": program_name,
+                    "cohort_name": cohort.name,
+                    "window": window,
+                    "refund_naira": refund_naira,
+                    "waived_installment_count": waived_count,
+                    "refund_note": refund_note,
+                },
+            )
+
+        if refund_kobo > 0:
+            _settings = get_settings()
+            await email_client.send_template(
+                template_type="admin_refund_owed",
+                to_email=_settings.ADMIN_EMAIL,
+                template_data={
+                    "member_name": member_full,
+                    "member_email": member_email or "",
+                    "program_name": program_name,
+                    "cohort_name": cohort.name,
+                    "window": window,
+                    "refund_naira": refund_naira,
+                    "payment_references": payment_refs,
+                    "enrollment_id": str(enrollment.id),
+                    "reason": payload.reason,
+                },
+            )
+    except Exception:
+        logger.warning(
+            "Failed to send withdrawal/refund notification emails for "
+            "enrollment %s (best-effort)",
+            enrollment.id,
+            exc_info=True,
+        )
+
     return WithdrawEnrollmentResponse(
         enrollment_id=enrollment.id,
         status=enrollment.status.value,
@@ -1381,159 +1442,6 @@ async def get_cohort_analytics(
     }
 
 
-@router.post(
-    "/enrollments/{enrollment_id}/installments/{installment_id}/pay-with-bubbles",
-    response_model=EnrollmentResponse,
-)
-async def pay_installment_with_bubbles(
-    enrollment_id: uuid.UUID,
-    installment_id: uuid.UUID,
-    current_user: AuthUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """
-    Pay a pending enrollment installment using Bubbles wallet.
-
-    - Deducts the installment amount from the member's wallet.
-    - Marks the installment as PAID with the wallet transaction ID.
-    - Re-syncs enrollment payment status (may lift suspension, unlock access).
-    - Idempotent: repeated calls return the current state without double-charging.
-    """
-
-    # Load enrollment (member must own it)
-    member_data = await get_member_by_auth_id(
-        current_user.user_id, calling_service="academy"
-    )
-    if not member_data:
-        raise HTTPException(status_code=404, detail="Member profile not found")
-
-    result = await db.execute(
-        select(Enrollment)
-        .where(
-            Enrollment.id == enrollment_id,
-            Enrollment.member_id == member_data["id"],
-        )
-        .options(
-            selectinload(Enrollment.program),
-            selectinload(Enrollment.installments),
-            selectinload(Enrollment.progress_records),
-            selectinload(Enrollment.cohort).selectinload(Cohort.program),
-        )
-    )
-    enrollment = result.scalar_one_or_none()
-    if not enrollment:
-        raise HTTPException(status_code=404, detail="Enrollment not found")
-
-    # Load the specific installment
-    inst_result = await db.execute(
-        select(EnrollmentInstallment).where(
-            EnrollmentInstallment.id == installment_id,
-            EnrollmentInstallment.enrollment_id == enrollment_id,
-        )
-    )
-    installment = inst_result.scalar_one_or_none()
-    if not installment:
-        raise HTTPException(status_code=404, detail="Installment not found")
-
-    # Idempotency: already paid
-    paid_statuses = {InstallmentStatus.PAID, InstallmentStatus.WAIVED}
-    if installment.status in paid_statuses:
-        # Re-sync and return current state
-        all_installments = await _list_enrollment_installments(db, enrollment_id)
-        cohort = await db.get(Cohort, enrollment.cohort_id)
-        if cohort:
-            sync_enrollment_installment_state(
-                enrollment=enrollment,
-                installments=all_installments,
-                duration_weeks=cohort.duration_weeks,
-                cohort_start=cohort.start_date,
-                cohort_requires_approval=cohort.require_approval,
-            )
-        await db.commit()
-        # Re-load with all relationships for serialization
-        enrollment = (
-            await db.execute(
-                select(Enrollment)
-                .where(Enrollment.id == enrollment.id)
-                .options(
-                    selectinload(Enrollment.cohort).selectinload(Cohort.program),
-                    selectinload(Enrollment.program),
-                    selectinload(Enrollment.installments),
-                    selectinload(Enrollment.progress_records),
-                )
-            )
-        ).scalar_one()
-        return EnrollmentResponse.model_validate(enrollment)
-
-    fee_bubbles = kobo_to_bubbles(installment.amount)
-    if fee_bubbles <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Installment amount is too small to pay with Bubbles",
-        )
-
-    idempotency_key = f"installment-{installment.id}"
-    try:
-        txn_result = await debit_member_wallet(
-            current_user.user_id,
-            amount=fee_bubbles,
-            idempotency_key=idempotency_key,
-            description=f"Academy installment #{installment.installment_number} ({fee_bubbles} 🫧)",
-            calling_service="academy",
-            transaction_type="purchase",
-            reference_type="enrollment",
-            reference_id=str(enrollment_id),
-        )
-        wallet_txn_id = txn_result.get("transaction_id")
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 400:
-            detail = e.response.json().get("detail", "")
-            if "Insufficient" in detail:
-                raise HTTPException(
-                    status_code=402,
-                    detail="Insufficient Bubbles. Please top up your wallet.",
-                )
-            if "frozen" in detail.lower() or "suspended" in detail.lower():
-                raise HTTPException(
-                    status_code=403,
-                    detail="Wallet is inactive. Please contact support.",
-                )
-        raise HTTPException(
-            status_code=502, detail="Payment service error. Please try again."
-        )
-
-    # Mark installment as paid
-    installment.status = InstallmentStatus.PAID
-    installment.paid_at = utc_now()
-    installment.payment_reference = str(wallet_txn_id) if wallet_txn_id else "bubbles"
-
-    # Re-sync enrollment state
-    all_installments = await _list_enrollment_installments(db, enrollment_id)
-    cohort = await db.get(Cohort, enrollment.cohort_id)
-    if cohort:
-        sync_enrollment_installment_state(
-            enrollment=enrollment,
-            installments=all_installments,
-            duration_weeks=cohort.duration_weeks,
-            cohort_start=cohort.start_date,
-            cohort_requires_approval=cohort.require_approval,
-        )
-
-    await db.commit()
-    # Re-load with all relationships for serialization
-    enrollment = (
-        await db.execute(
-            select(Enrollment)
-            .where(Enrollment.id == enrollment.id)
-            .options(
-                selectinload(Enrollment.cohort).selectinload(Cohort.program),
-                selectinload(Enrollment.program),
-                selectinload(Enrollment.installments),
-                selectinload(Enrollment.progress_records),
-            )
-        )
-    ).scalar_one()
-    return EnrollmentResponse.model_validate(enrollment)
 
 
 # ---------------------------------------------------------------------------

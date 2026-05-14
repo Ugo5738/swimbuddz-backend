@@ -5,8 +5,10 @@ Pure functions with no database dependencies for easy testing.
 All datetime operations use timezone-aware UTC datetimes.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
+
+from dateutil.relativedelta import relativedelta
 
 # Tier priority for sorting and comparison
 TIER_PRIORITY = {"academy": 3, "club": 2, "community": 1}
@@ -73,44 +75,36 @@ def calculate_community_expiry(
     current_expiry: Optional[datetime],
     years: int,
 ) -> datetime:
-    """
-    Calculate new community tier expiry date.
+    """Calculate new community tier expiry date.
 
-    If the member has an active subscription, extends from current expiry.
-    Otherwise, starts from now.
-
-    Args:
-        current_expiry: Current community_paid_until value
-        years: Number of years to add (1-5)
-
-    Returns:
-        New expiry datetime
+    Calendar-correct: uses ``relativedelta(years=N)`` instead of
+    ``timedelta(days=365 * N)``. Active subscriptions extend from the current
+    expiry; lapsed/never-paid members start from now. Critically this means
+    cycle changes (e.g. switch from quarterly→annual mid-cycle) accumulate
+    fairly — the member doesn't lose the time they already paid for, and the
+    new period is an exact calendar offset of the base.
     """
     now = datetime.now(timezone.utc)
     base = current_expiry if current_expiry and current_expiry > now else now
-    return base + timedelta(days=365 * years)
+    return base + relativedelta(years=years)
 
 
 def calculate_club_expiry(
     current_expiry: Optional[datetime],
     months: int,
 ) -> datetime:
-    """
-    Calculate new club tier expiry date.
+    """Calculate new club tier expiry date.
 
-    If the member has an active subscription, extends from current expiry.
-    Otherwise, starts from now.
-
-    Args:
-        current_expiry: Current club_paid_until value
-        months: Number of months to add (1-12)
-
-    Returns:
-        New expiry datetime
+    Calendar-correct: uses ``relativedelta(months=N)`` instead of
+    ``timedelta(days=30 * N)``. Active subscriptions extend from the current
+    expiry; lapsed/never-paid members start from now. Cycle changes
+    (quarterly → biannual → annual) accumulate as exact calendar months on
+    top of the prior expiry, fixing the audit Path 6 concern that the old
+    30-day approximation was systematically short by 1-5 days per year.
     """
     now = datetime.now(timezone.utc)
     base = current_expiry if current_expiry and current_expiry > now else now
-    return base + timedelta(days=30 * months)
+    return base + relativedelta(months=months)
 
 
 def validate_club_readiness(

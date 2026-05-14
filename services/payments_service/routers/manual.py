@@ -14,7 +14,10 @@ from services.payments_service.models import Payment, PaymentStatus
 from services.payments_service.routers.intents import _apply_entitlement_with_tracking
 from services.payments_service.schemas import (
     AdminReviewRequest,
+    MarkRefundDisbursedRequest,
     PaymentResponse,
+    RefundOwedItem,
+    RefundQueueResponse,
     SubmitProofRequest,
 )
 from sqlalchemy import desc, select
@@ -179,6 +182,130 @@ async def reject_manual_payment(
     logger.info(f"Payment {reference} rejected by admin {current_user.email}")
 
     return payment
-    logger.info(f"Payment {reference} rejected by admin {current_user.email}")
 
+
+@router.get("/admin/refunds-owed", response_model=RefundQueueResponse)
+async def list_refunds_owed(
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List outstanding refund obligations recorded against paid payments.
+
+    Refund obligations are written to ``payment.payment_metadata.refund_owed``
+    by the academy withdrawal flow. Each entry has a ``disbursed_at`` field
+    that's null until the admin marks it disbursed. This endpoint returns
+    every unresolved obligation across all payments, sorted oldest-first so
+    ops can disburse in FIFO order.
+    """
+    # SQL-side filter: payments whose metadata has any refund_owed entry where
+    # disbursed_at is null. Using JSONB `@>` would let PG do the filter but
+    # then we'd still need to walk arrays — keep the loop in Python.
+    result = await db.execute(
+        select(Payment)
+        .where(
+            Payment.status == PaymentStatus.PAID,
+            Payment.payment_metadata.is_not(None),
+        )
+        .order_by(desc(Payment.paid_at))
+    )
+    payments = result.scalars().all()
+
+    items: list[RefundOwedItem] = []
+    total_kobo = 0
+    for payment in payments:
+        meta = payment.payment_metadata or {}
+        owed_list = meta.get("refund_owed") or []
+        for entry in owed_list:
+            if entry.get("disbursed_at"):
+                continue
+            refund_kobo = int(entry.get("refund_kobo") or 0)
+            if refund_kobo <= 0:
+                continue
+            total_kobo += refund_kobo
+            items.append(
+                RefundOwedItem(
+                    payment_reference=payment.reference,
+                    payment_amount=float(payment.amount or 0),
+                    payer_email=payment.payer_email,
+                    member_auth_id=payment.member_auth_id,
+                    refund_kobo=refund_kobo,
+                    refund_naira=refund_kobo / 100,
+                    enrollment_id=str(entry.get("enrollment_id") or ""),
+                    window=str(entry.get("window") or ""),
+                    reason=entry.get("reason"),
+                    annotated_at=str(entry.get("annotated_at") or ""),
+                    disbursed_at=None,
+                )
+            )
+
+    # Oldest annotated first — pay these out before newer ones
+    items.sort(key=lambda i: i.annotated_at)
+
+    return RefundQueueResponse(
+        total_owed_kobo=total_kobo,
+        total_owed_naira=total_kobo / 100,
+        item_count=len(items),
+        items=items,
+    )
+
+
+@router.post(
+    "/admin/refunds-owed/{reference}/mark-disbursed",
+    response_model=PaymentResponse,
+)
+async def mark_refund_disbursed(
+    reference: str,
+    payload: MarkRefundDisbursedRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Mark a specific refund obligation as disbursed.
+
+    Identified by (payment reference, enrollment_id) since a single payment
+    can theoretically have multiple refund obligations across enrollments.
+    Sets ``disbursed_at`` on the matching ``refund_owed`` entry. Idempotent:
+    re-calling on an already-disbursed entry returns 200 without changing
+    the timestamp.
+    """
+    from sqlalchemy.orm.attributes import flag_modified
+
+    result = await db.execute(select(Payment).where(Payment.reference == reference))
+    payment = result.scalar_one_or_none()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    meta = dict(payment.payment_metadata or {})
+    owed_list = list(meta.get("refund_owed") or [])
+    matched = False
+    for entry in owed_list:
+        if str(entry.get("enrollment_id")) == payload.enrollment_id:
+            if not entry.get("disbursed_at"):
+                entry["disbursed_at"] = datetime.now(timezone.utc).isoformat()
+                if payload.note:
+                    entry["disbursed_note"] = payload.note
+                entry["disbursed_by"] = current_user.email
+            matched = True
+            break
+
+    if not matched:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No refund obligation for enrollment {payload.enrollment_id} "
+                f"on payment {reference}"
+            ),
+        )
+
+    meta["refund_owed"] = owed_list
+    payment.payment_metadata = meta
+    flag_modified(payment, "payment_metadata")
+    await db.commit()
+    await db.refresh(payment)
+
+    logger.info(
+        "Refund disbursed: payment=%s enrollment=%s admin=%s",
+        reference,
+        payload.enrollment_id,
+        current_user.email,
+    )
     return payment

@@ -1635,3 +1635,134 @@ pods = await list_pods(calling_service="sessions", club_id=club_id)
 - **Query:** `club_id?` (filter to one club), `status?` (`active`|`inactive`|`all`, defaults to `active`).
 - **Description:** Batch listing — used by sessions_service for "create this Saturday's sessions for every active pod in club X". Omits the active-member-ids list (use the per-pod GET when you need it).
 - **Response 200:** `PodInternalSummary[]`.
+
+---
+
+## Audit Fixes & New Endpoints (May 2026)
+
+The endpoints below were added to close gaps surfaced by the May 2026 payment-paths audit and to ship two member features (1/3 deposit floor + member-initiated mid-cohort custom-amount payment). They're listed here as a coherent set — see commit history for the full design notes.
+
+### Academy — Withdrawal Flow
+
+#### `POST /api/v1/academy/my-enrollments/{enrollment_id}/withdraw`
+
+- **Auth:** Required (member must own the enrollment)
+- **Description:** Voluntary withdrawal from an active cohort. Refund policy: 90% before cohort start, 50% of unused prorated portion in the mid-entry window (week 1 → `cohort.mid_entry_cutoff_week`), 0 after the cutoff. Remaining unpaid installments are always waived. Multi-cohort safe: `academy_paid_until` is recomputed from the member's remaining ENROLLED cohorts.
+- **Request Body** – `WithdrawEnrollmentRequest`
+
+```json
+{ "reason": "Optional, max 500 chars" }
+```
+
+- **Response 200** – `WithdrawEnrollmentResponse`
+
+```json
+{
+  "enrollment_id": "uuid",
+  "status": "DROPPED",
+  "window": "before_start | mid_entry_window | after_cutoff",
+  "refund_kobo": 6250000,
+  "refund_percent": 0.9,
+  "paid_kobo": 6250000,
+  "waived_installment_count": 1,
+  "payment_references": ["PAY-XXXXX"],
+  "refund_note": "Human-readable explanation for the member"
+}
+```
+
+- **Side effects:** Records refund obligation on each related payment's `metadata.refund_owed`. Sends a withdrawal-confirmation email to the member and an `admin_refund_owed` email to `settings.ADMIN_EMAIL` when `refund_kobo > 0`. Disbursement is manual (typically direct bank transfer) — see `/payments/admin/refunds-owed`.
+
+#### `POST /api/v1/academy/admin/enrollments/{enrollment_id}/mark-paid`
+
+- **Auth:** Service role
+- **New optional field on `EnrollmentMarkPaidRequest`:** `amount_kobo` — when set and larger than the target installment's amount, the payment is applied across multiple installments via `apply_member_payment_across_installments`. Partial leftovers reduce the next installment's stipulated amount.
+
+### Members — Tier Lifecycle
+
+#### `POST /admin/members/by-auth/{auth_id}/club/extend`
+
+- **Auth:** Service role / admin
+- **Description:** Extend club membership without eligibility checks. Intended for service-to-service grants such as the free 1-month post-academy club bridge (PRICING_STRATEGY.md). Skips readiness/requested-tier gates that `/club/activate` enforces. `club_paid_until` becomes `max(current, anchor) + months`, calendar-correct via `relativedelta`.
+- **Request Body** – `ExtendClubRequest`
+
+```json
+{ "months": 1, "from_date": "2026-07-11T00:00:00Z", "reason": "Free post-academy club bridge (cohort X)" }
+```
+
+- **Response 200:** `MemberResponse`.
+
+#### `POST /admin/members/by-auth/{auth_id}/academy/expire`
+
+- **Auth:** Admin
+- **Description:** Set `academy_paid_until` to `NOW`, effectively expiring academy access. Used by academy_service after a withdrawal when the member has no remaining ENROLLED cohorts. Subsequent reads strip "academy" from `active_tiers` via `normalize_member_tiers`.
+- **Response 200:** `MemberResponse`.
+
+### Payments — Refund Queue
+
+#### `POST /internal/payments/{reference}/annotate-refund`
+
+- **Auth:** Service role
+- **Description:** Write a refund obligation to a payment's `payment_metadata.refund_owed` list. Idempotent: re-calls for the same `enrollment_id` overwrite the prior entry rather than appending.
+- **Request Body** – `AnnotateRefundRequest`
+
+```json
+{
+  "refund_kobo": 6250000,
+  "enrollment_id": "uuid",
+  "window": "before_start",
+  "reason": "Optional"
+}
+```
+
+#### `GET /api/v1/payments/admin/refunds-owed`
+
+- **Auth:** Admin
+- **Description:** List outstanding refund obligations across all paid payments (`disbursed_at IS NULL`). Sorted oldest-first for FIFO disbursement.
+- **Response 200** – `RefundQueueResponse`
+
+```json
+{
+  "total_owed_kobo": 6250000,
+  "total_owed_naira": 62500,
+  "item_count": 1,
+  "items": [{
+    "payment_reference": "PAY-XXXXX",
+    "payment_amount": 62500,
+    "payer_email": "member@example.com",
+    "member_auth_id": "supabase-uuid",
+    "refund_kobo": 6250000,
+    "refund_naira": 62500,
+    "enrollment_id": "uuid",
+    "window": "before_start",
+    "reason": "Optional member reason",
+    "annotated_at": "2026-05-14T02:22:36+00:00",
+    "disbursed_at": null
+  }]
+}
+```
+
+#### `POST /api/v1/payments/admin/refunds-owed/{reference}/mark-disbursed`
+
+- **Auth:** Admin
+- **Description:** Mark one refund obligation as disbursed. Identified by `(reference, enrollment_id)` since a payment may have multiple obligations across enrollments. Idempotent.
+- **Request Body** – `MarkRefundDisbursedRequest`
+
+```json
+{ "enrollment_id": "uuid", "note": "UBA transfer ref ABC123, sent 2026-05-15" }
+```
+
+- **Response 200:** `PaymentResponse`.
+
+### Payments — Member Custom-Amount Payment
+
+#### `POST /api/v1/payments/intents` (academy_cohort purpose)
+
+- **New optional field on `CreatePaymentIntentRequest`:** `amount_override_kobo` — member-initiated custom amount. Validated as `>= next_installment_amount` and `<= remaining_balance`. Used to pay ahead or recover from a missed auto-collection. Threaded through the webhook → mark-paid chain via the `amount_kobo` field on `EnrollmentMarkPaidRequest`.
+
+### Removed Endpoints
+
+#### `POST /api/v1/academy/enrollments/{id}/installments/{installment_id}/pay-with-bubbles` — **REMOVED**
+
+Per founder policy (May 2026), academy cohort installments must be paid in real money (card/bank transfer). Bubbles wallet remains usable for session fees and ride share via the existing `bubbles_to_apply` field on `CreatePaymentIntentRequest`. The cron task `attempt_wallet_auto_deduction` was updated in the same change to skip the wallet-debit branch and only email Paystack checkout links.
+
+---

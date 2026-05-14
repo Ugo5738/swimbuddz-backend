@@ -5,6 +5,8 @@ These tests verify the pure business logic functions without database dependenci
 
 from datetime import datetime, timedelta, timezone
 
+from dateutil.relativedelta import relativedelta
+
 from services.members_service import service as member_service
 
 
@@ -111,33 +113,45 @@ class TestCalculateExpiry:
     """Tests for expiry date calculations."""
 
     def test_community_expiry_from_now(self):
-        """New subscription should start from now."""
+        """New subscription should start from now and add exact calendar years."""
         result = member_service.calculate_community_expiry(
             current_expiry=None,
             years=1,
         )
-        expected = datetime.now(timezone.utc) + timedelta(days=365)
+        expected = datetime.now(timezone.utc) + relativedelta(years=1)
         # Allow 2 second tolerance for test execution time
         assert abs((result - expected).total_seconds()) < 2
 
     def test_community_expiry_extends_active(self):
-        """Active subscription should extend from current expiry."""
+        """Active subscription should extend from current expiry by calendar years."""
         current = datetime.now(timezone.utc) + timedelta(days=30)
         result = member_service.calculate_community_expiry(
             current_expiry=current,
             years=1,
         )
-        expected = current + timedelta(days=365)
+        expected = current + relativedelta(years=1)
         assert abs((result - expected).total_seconds()) < 2
 
     def test_club_expiry_from_now(self):
-        """New club subscription should start from now."""
+        """New club subscription should start from now and add exact calendar months."""
         result = member_service.calculate_club_expiry(
             current_expiry=None,
             months=3,
         )
-        expected = datetime.now(timezone.utc) + timedelta(days=90)
+        expected = datetime.now(timezone.utc) + relativedelta(months=3)
         assert abs((result - expected).total_seconds()) < 2
+
+    def test_club_expiry_annual_is_full_calendar_year(self):
+        """Audit Path 6: club annual (12 months) should be a calendar year,
+        not the old timedelta(days=30*12)=360-day approximation (5 days short)."""
+        start = datetime.now(timezone.utc)
+        result = member_service.calculate_club_expiry(
+            current_expiry=None,
+            months=12,
+        )
+        # Sanity: at least 364 days from start time (calendar year >= 365 days,
+        # minus a tiny clock-tick slack)
+        assert (result - start).total_seconds() >= 364 * 86400
 
 
 class TestClubReadinessValidation:

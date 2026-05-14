@@ -1049,3 +1049,162 @@ Early intervention can help keep students engaged and on track!
     )
 
     return await send_email(to_email, subject, body, html_body)
+
+
+async def send_withdrawal_confirmation_email(
+    to_email: str,
+    member_name: str,
+    program_name: str,
+    cohort_name: str,
+    window: str,  # "before_start" | "mid_entry_window" | "after_cutoff"
+    refund_naira: float,
+    waived_installment_count: int,
+    refund_note: str,
+) -> bool:
+    """Send a confirmation that a member has withdrawn from a cohort.
+
+    Names exactly what happened: the cohort they left, the refund (if any) we
+    owe them, how many unpaid installments were waived, and what comes next.
+    No upsell or "come back" framing — withdrawal is a clean exit.
+    """
+    subject = f"Withdrawal confirmed: {cohort_name}"
+
+    refund_line = (
+        f"Refund: ₦{refund_naira:,.0f}\n"
+        if refund_naira > 0
+        else "Refund: None per our withdrawal policy.\n"
+    )
+    waived_line = (
+        f"Unpaid installments waived: {waived_installment_count}\n"
+        if waived_installment_count > 0
+        else ""
+    )
+
+    body = f"""Hi {member_name},
+
+Your withdrawal from {program_name} ({cohort_name}) is confirmed.
+
+{refund_line}{waived_line}
+{refund_note}
+
+Your Community membership remains active. You can re-enroll in a future
+cohort at any time from your account.
+
+If anything looks wrong, reply to this email and we'll sort it out.
+
+— The SwimBuddz Team
+"""
+
+    details: dict = {
+        "Program": program_name,
+        "Cohort": cohort_name,
+        "Refund": f"₦{refund_naira:,.0f}" if refund_naira > 0 else "None",
+        "Waived installments": str(waived_installment_count),
+    }
+
+    body_html = (
+        f"<p>Hi {member_name},</p>"
+        "<p>Your withdrawal from this cohort is confirmed. The details below"
+        " show what we owe you and what's been cleared from your account.</p>"
+        + detail_box(details, accent_color="#64748b")
+        + info_box(
+            f"<strong>What's next:</strong> {refund_note}<br/><br/>"
+            "Your Community membership stays active. You're welcome back in any"
+            " future cohort whenever you're ready.",
+            bg_color="#f8fafc",
+            border_color="#cbd5e1",
+        )
+        + sign_off()
+    )
+
+    html_body = wrap_html(
+        title="Withdrawal Confirmed",
+        subtitle=f"{program_name} — {cohort_name}",
+        body_html=body_html,
+        header_gradient=GRADIENT_PURPLE,
+        preheader=f"Your withdrawal from {cohort_name} is confirmed.",
+    )
+
+    return await send_email(to_email, subject, body, html_body)
+
+
+async def send_admin_refund_owed_email(
+    to_email: str,
+    member_name: str,
+    member_email: str,
+    program_name: str,
+    cohort_name: str,
+    window: str,  # "before_start" | "mid_entry_window" | "after_cutoff"
+    refund_naira: float,
+    payment_references: list[str],
+    enrollment_id: str,
+    reason: Optional[str] = None,
+) -> bool:
+    """Notify admin that a refund is owed after a member withdrawal.
+
+    Sent to the operations admin address when ``refund_kobo > 0`` on a
+    withdrawal. Includes the payment references the obligation is recorded
+    against so admin can disburse via the original channel.
+    """
+    subject = f"💸 Refund owed: ₦{refund_naira:,.0f} for {member_name}"
+
+    refs_text = ", ".join(payment_references) if payment_references else "—"
+    reason_line = f"\nMember's reason: {reason}\n" if reason else ""
+
+    body = f"""A member has withdrawn from a cohort and is owed a refund.
+
+Member: {member_name} ({member_email})
+Program: {program_name}
+Cohort: {cohort_name}
+Withdrawal window: {window}
+Refund owed: ₦{refund_naira:,.0f}
+Payment references: {refs_text}
+Enrollment ID: {enrollment_id}
+{reason_line}
+Action: disburse the refund via the original payment channel (typically
+direct bank transfer for Paystack-originated payments in Nigeria). Once
+disbursed, annotate the payment's metadata.refund_owed entry with
+"disbursed_at" so this obligation isn't double-paid.
+
+— The SwimBuddz System
+"""
+
+    alert_html = info_box(
+        f"<strong>Refund owed:</strong> ₦{refund_naira:,.0f}<br/>"
+        f"<strong>Payments to draw from:</strong> {refs_text}<br/>"
+        f"<strong>Enrollment ID:</strong> {enrollment_id}",
+        bg_color="#fef3c7",
+        border_color="#f59e0b",
+    )
+
+    body_html = (
+        f"<p>A member has withdrawn from a cohort and is owed a refund.</p>"
+        + detail_box(
+            {
+                "Member": f"{member_name} ({member_email})",
+                "Program": program_name,
+                "Cohort": cohort_name,
+                "Withdrawal window": window.replace("_", " "),
+                "Refund owed": f"₦{refund_naira:,.0f}",
+                "Reason": reason or "—",
+            },
+            accent_color="#f59e0b",
+        )
+        + alert_html
+        + "<p style='font-size:13px;color:#64748b;'>"
+        "Disburse via the original payment channel (typically direct bank "
+        "transfer for Paystack-originated NG payments). Once disbursed, "
+        "annotate the payment's <code>metadata.refund_owed</code> entry with "
+        "<code>disbursed_at</code> so this obligation isn't double-paid."
+        "</p>"
+    )
+
+    html_body = wrap_html(
+        title="💸 Refund Owed",
+        subtitle=f"{member_name} — ₦{refund_naira:,.0f}",
+        body_html=body_html,
+        header_gradient=GRADIENT_AMBER,
+        preheader=f"Refund ₦{refund_naira:,.0f} owed to {member_name}",
+    )
+
+    return await send_email(to_email, subject, body, html_body)
