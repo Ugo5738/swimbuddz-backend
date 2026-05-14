@@ -5,8 +5,10 @@ Pure functions with no database dependencies for easy testing.
 All datetime operations use timezone-aware UTC datetimes.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
+
+from dateutil.relativedelta import relativedelta
 
 # Tier priority for sorting and comparison
 TIER_PRIORITY = {"academy": 3, "club": 2, "community": 1}
@@ -20,48 +22,50 @@ def normalize_member_tiers(
     academy_paid_until: Optional[datetime] = None,
 ) -> tuple[str, list[str], bool]:
     """
-    Normalize membership tiers based on paid entitlements.
+    Compute member tier state derived from paid entitlements.
+
+    Tiers are computed FRESH from ``*_paid_until`` columns each call — stored
+    ``current_tiers`` and ``current_tier`` are ignored as authoritative inputs
+    and only used to detect whether the result is a change. Per the tier
+    hierarchy in docs/club/PRICING_STRATEGY.md every tier includes the ones
+    below it, so an active club grants community and an active academy
+    grants club + community.
 
     Rules:
-    - Everyone has community.
-    - Add club if club_paid_until is in the future.
-    - Add academy if academy_paid_until is in the future.
+    - Add academy + club + community if academy_paid_until is in the future.
+    - Add club + community if club_paid_until is in the future.
+    - Add community if community_paid_until is in the future.
+    - If nothing paid, fall back to community as the persistent baseline (matches
+      "where club members land if they pause" framing in PRICING_STRATEGY.md).
     - Sort by priority (academy > club > community).
+    - Expired tiers are stripped — this is the source of truth, not the
+      stored value.
+
     Returns (primary_tier, tiers_list, changed_flag).
     """
     now = datetime.now(timezone.utc)
-    tiers = set(current_tiers or [])
+    tiers: set[str] = set()
 
-    if current_tier:
-        tiers.add(current_tier)
-
-    # Apply entitlements based on payment dates
+    if academy_paid_until and academy_paid_until > now:
+        tiers.update({"academy", "club", "community"})
     if club_paid_until and club_paid_until > now:
         tiers.update({"club", "community"})
     if community_paid_until and community_paid_until > now:
         tiers.add("community")
-    if academy_paid_until and academy_paid_until > now:
-        tiers.update({"academy", "club", "community"})
 
-    # Default to community if empty
     if not tiers:
         tiers.add("community")
 
-    # Sort by priority (highest first)
     sorted_tiers = sorted(
         [t for t in tiers if t in TIER_PRIORITY],
         key=lambda t: TIER_PRIORITY[t],
         reverse=True,
     )
 
-    # Determine if changes occurred
-    old_tiers_set = set(current_tiers or [])
     new_primary = sorted_tiers[0] if sorted_tiers else "community"
 
-    # Check if either the tier set changed or the primary tier changed
-    tiers_changed = set(sorted_tiers) != old_tiers_set
+    tiers_changed = set(sorted_tiers) != set(current_tiers or [])
     primary_changed = new_primary != current_tier
-
     changed = tiers_changed or primary_changed
 
     return new_primary, sorted_tiers, changed
@@ -71,44 +75,36 @@ def calculate_community_expiry(
     current_expiry: Optional[datetime],
     years: int,
 ) -> datetime:
-    """
-    Calculate new community tier expiry date.
+    """Calculate new community tier expiry date.
 
-    If the member has an active subscription, extends from current expiry.
-    Otherwise, starts from now.
-
-    Args:
-        current_expiry: Current community_paid_until value
-        years: Number of years to add (1-5)
-
-    Returns:
-        New expiry datetime
+    Calendar-correct: uses ``relativedelta(years=N)`` instead of
+    ``timedelta(days=365 * N)``. Active subscriptions extend from the current
+    expiry; lapsed/never-paid members start from now. Critically this means
+    cycle changes (e.g. switch from quarterly→annual mid-cycle) accumulate
+    fairly — the member doesn't lose the time they already paid for, and the
+    new period is an exact calendar offset of the base.
     """
     now = datetime.now(timezone.utc)
     base = current_expiry if current_expiry and current_expiry > now else now
-    return base + timedelta(days=365 * years)
+    return base + relativedelta(years=years)
 
 
 def calculate_club_expiry(
     current_expiry: Optional[datetime],
     months: int,
 ) -> datetime:
-    """
-    Calculate new club tier expiry date.
+    """Calculate new club tier expiry date.
 
-    If the member has an active subscription, extends from current expiry.
-    Otherwise, starts from now.
-
-    Args:
-        current_expiry: Current club_paid_until value
-        months: Number of months to add (1-12)
-
-    Returns:
-        New expiry datetime
+    Calendar-correct: uses ``relativedelta(months=N)`` instead of
+    ``timedelta(days=30 * N)``. Active subscriptions extend from the current
+    expiry; lapsed/never-paid members start from now. Cycle changes
+    (quarterly → biannual → annual) accumulate as exact calendar months on
+    top of the prior expiry, fixing the audit Path 6 concern that the old
+    30-day approximation was systematically short by 1-5 days per year.
     """
     now = datetime.now(timezone.utc)
     base = current_expiry if current_expiry and current_expiry > now else now
-    return base + timedelta(days=30 * months)
+    return base + relativedelta(months=months)
 
 
 def validate_club_readiness(

@@ -449,6 +449,11 @@ class EnrollmentMarkPaidRequest(BaseModel):
     clear_installments: bool = False
     payment_reference: Optional[str] = None
     paid_at: Optional[datetime] = None
+    # Member-initiated custom amount (kobo). When provided AND larger than the
+    # target installment's amount, the payment is applied across multiple
+    # installments via apply_member_payment_across_installments. Founder policy
+    # May 2026 — see services/academy_service/services/installments.py.
+    amount_kobo: Optional[int] = Field(default=None, ge=0)
 
 
 class AdminDropoutActionRequest(BaseModel):
@@ -456,6 +461,32 @@ class AdminDropoutActionRequest(BaseModel):
 
     action: str  # "approve" → confirm drop, "reverse" → reinstate to ENROLLED
     note: Optional[str] = None  # Optional admin note for the record
+
+
+class WithdrawEnrollmentRequest(BaseModel):
+    """Member-initiated voluntary withdrawal from a cohort."""
+
+    reason: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Optional reason for withdrawal (for admin visibility).",
+    )
+
+
+class WithdrawEnrollmentResponse(BaseModel):
+    """Summary of a withdrawal action — what was refunded and waived."""
+
+    enrollment_id: UUID
+    status: str
+    window: str  # "before_start", "mid_entry_window", "after_cutoff"
+    refund_kobo: int
+    refund_percent: float
+    paid_kobo: int
+    waived_installment_count: int
+    payment_references: List[str]  # Payments tagged with refund obligation
+    refund_note: str  # Human-readable refund instruction for admin to action
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EnrollmentResponse(EnrollmentBase):

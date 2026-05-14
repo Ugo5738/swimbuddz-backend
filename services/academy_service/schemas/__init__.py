@@ -84,6 +84,8 @@ from services.academy_service.schemas.main import (
     StudentProgressResponse,
     StudentProgressUpdate,
     UpcomingSessionSummary,
+    WithdrawEnrollmentRequest,
+    WithdrawEnrollmentResponse,
 )
 from services.academy_service.schemas.self_enroll import SelfEnrollRequest
 
@@ -168,4 +170,6 @@ __all__ = [
     "StudentProgressResponse",
     "StudentProgressUpdate",
     "UpcomingSessionSummary",
+    "WithdrawEnrollmentRequest",
+    "WithdrawEnrollmentResponse",
 ]

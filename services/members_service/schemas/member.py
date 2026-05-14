@@ -553,6 +553,30 @@ class ExtendCommunityRequest(BaseModel):
     months: int = Field(default=1, ge=1, le=24)
 
 
+class ExtendClubRequest(BaseModel):
+    """Request to extend club membership without eligibility checks.
+
+    Intended for service-to-service grants (e.g. the free 1-month post-academy
+    club access from PRICING_STRATEGY.md). The optional ``from_date`` anchors
+    the new period — useful when granting at cohort.end_date rather than now.
+    """
+
+    months: int = Field(default=1, ge=1, le=12)
+    from_date: Optional[datetime] = Field(
+        default=None,
+        description=(
+            "Anchor the new period at this date (defaults to NOW or current "
+            "expiry, whichever is later). Pass the cohort end_date for "
+            "post-academy free month grants."
+        ),
+    )
+    reason: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Audit note describing why the extension was granted.",
+    )
+
+
 class ActivateClubRequest(BaseModel):
     """Request to activate club membership."""
 

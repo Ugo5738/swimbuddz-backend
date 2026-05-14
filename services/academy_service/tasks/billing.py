@@ -4,15 +4,12 @@ import secrets
 from datetime import timedelta
 
 from libs.common.config import get_settings
-from libs.common.currency import KOBO_PER_BUBBLE, KOBO_PER_NAIRA, kobo_to_bubbles
+from libs.common.currency import KOBO_PER_NAIRA
 from libs.common.datetime_utils import utc_now
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.common.service_client import (
-    check_wallet_balance,
-    debit_member_wallet,
     get_member_by_id,
-    get_wallet_balance,
     internal_post,
 )
 from libs.db.session import get_async_db
@@ -231,29 +228,12 @@ async def send_installment_payment_reminders():
                 if not member:
                     continue
 
-                # Fetch wallet balance to calculate shortfall for one-tap top-up link
-                amount_bubbles = kobo_to_bubbles(installment.amount)
-                wallet_balance_bubbles = 0
-                shortfall_bubbles = amount_bubbles
-                try:
-                    wallet = await get_wallet_balance(
-                        member["auth_id"], calling_service="academy"
-                    )
-                    if wallet:
-                        wallet_balance_bubbles = wallet.get("balance", 0)
-                        shortfall_bubbles = max(
-                            0, amount_bubbles - wallet_balance_bubbles
-                        )
-                except Exception as wallet_err:
-                    logger.warning(
-                        f"Could not fetch wallet balance for member {enrollment.member_id}: {wallet_err}"
-                    )
-
+                # Cohort fees are real-money only (founder policy May 2026) —
+                # the reminder no longer mentions Bubbles or top-up flows.
                 settings = get_settings()
-                enrollment_url = f"{settings.FRONTEND_URL}/account/academy/enrollments/{enrollment.id}"
-                topup_url = (
-                    f"{settings.FRONTEND_URL}/account/wallet/topup"
-                    f"?prefill={shortfall_bubbles}&return_to=/account/academy/enrollments/{enrollment.id}"
+                enrollment_url = (
+                    f"{settings.FRONTEND_URL}/account/academy/enrollments/"
+                    f"{enrollment.id}"
                 )
 
                 email_client = get_email_client()
@@ -267,14 +247,10 @@ async def send_installment_payment_reminders():
                         "installment_number": installment.installment_number,
                         "total_installments": enrollment.total_installments,
                         "amount": installment.amount,
-                        "amount_bubbles": amount_bubbles,
                         "currency": enrollment.currency_snapshot or "NGN",
                         "due_date": installment.due_at.strftime("%A, %B %d, %Y"),
                         "days_until": days_until,
-                        "wallet_balance_bubbles": wallet_balance_bubbles,
-                        "shortfall_bubbles": shortfall_bubbles,
-                        "has_sufficient_balance": shortfall_bubbles == 0,
-                        "topup_url": topup_url,
+                        "has_sufficient_balance": False,
                         "enrollment_url": enrollment_url,
                     },
                 )
@@ -302,17 +278,16 @@ async def send_installment_payment_reminders():
 
 
 async def attempt_wallet_auto_deduction():
-    """Attempt automatic wallet deduction for installments due today.
+    """Send a Paystack checkout link for installments due today.
 
-    On the installment due date (Monday 00:00 WAT), this task:
-    1. Checks if the member's wallet has sufficient Bubbles for the installment.
-    2. If yes → debits the wallet atomically and calls academy mark-paid.
-    3. If no  → generates a Paystack checkout link and emails it to the student,
-               so they can pay manually before the 24h grace window closes.
+    Per founder policy (May 2026), academy cohort fees must be paid in real
+    money — Bubbles can no longer be used to pay installments. This task used
+    to attempt a wallet debit first and only fall back to Paystack if the
+    balance was insufficient; now it always generates and emails a Paystack
+    checkout link.
 
-    Idempotency key ``wallet-installment-{enrollment_id}-{installment_number}``
-    ensures the wallet debit is safe to retry even if the task runs multiple times
-    within the same hour window.
+    Function name retained for cron compatibility — see the
+    "installment_payment_reminder" email template used below.
     """
     settings_obj = get_settings()
 
@@ -362,14 +337,15 @@ async def attempt_wallet_auto_deduction():
                 if not cohort or not program:
                     continue
 
-                # Skip if wallet deduction was already attempted for this installment
-                deduction_key = f"wallet_deduction_{installment.installment_number}"
+                # Idempotency: don't re-send a payment-due reminder twice for the
+                # same installment within the same window. Key name kept stable
+                # for backwards compatibility with already-emitted records.
+                reminder_key = f"wallet_deduction_{installment.installment_number}"
                 reminders_sent = enrollment.reminders_sent or []
-                if deduction_key in reminders_sent:
+                if reminder_key in reminders_sent:
                     continue
 
                 member_auth_id = enrollment.member_auth_id
-                idempotency_key = f"wallet-installment-{enrollment.id}-{installment.installment_number}"
                 program_name = program.name if program else "Academy Program"
                 cohort_name = cohort.name
 
@@ -381,174 +357,76 @@ async def attempt_wallet_auto_deduction():
                     member.get("first_name", "Student") if member else "Student"
                 )
 
-                # Convert installment amount (kobo) to Bubbles.
-                # 1 Bubble = ₦100 = 10,000 kobo; round up to ensure full coverage.
-                bubbles_needed = (
-                    installment.amount + KOBO_PER_BUBBLE - 1
-                ) // KOBO_PER_BUBBLE
-
-                # --- Attempt wallet deduction ---
-                wallet_debited = False
-                try:
-                    balance_check = await check_wallet_balance(
-                        member_auth_id,
-                        required_amount=bubbles_needed,
-                        calling_service="academy",
-                    )
-                    if balance_check and balance_check.get("sufficient"):
-                        # Debit the wallet
-                        await debit_member_wallet(
-                            member_auth_id,
-                            amount=bubbles_needed,
-                            idempotency_key=idempotency_key,
-                            description=(
-                                f"Academy installment {installment.installment_number} "
-                                f"for {program_name} – {cohort_name}"
-                            ),
-                            calling_service="academy",
-                            transaction_type="purchase",
-                            reference_type="enrollment_installment",
-                            reference_id=str(installment.id),
-                        )
-                        wallet_debited = True
-                        logger.info(
-                            "Wallet auto-deduction successful for installment %s "
-                            "(enrollment %s, %d Bubbles / ₦%.2f)",
-                            installment.id,
-                            enrollment.id,
-                            bubbles_needed,
-                            installment.amount / KOBO_PER_NAIRA,
-                        )
-                except Exception as wallet_err:
-                    logger.warning(
-                        "Wallet deduction failed for installment %s: %s",
-                        installment.id,
-                        wallet_err,
-                    )
-
-                if wallet_debited:
-                    # Mark installment as paid via academy mark-paid endpoint
+                # Per founder policy (May 2026): generate a Paystack checkout
+                # link and email it to the student. Wallet deduction is no
+                # longer attempted — cohort fees are real-money only.
+                if member_email:
                     try:
-                        mark_resp = await internal_post(
-                            service_url=settings_obj.ACADEMY_SERVICE_URL,
-                            path=f"/academy/admin/enrollments/{enrollment.id}/mark-paid",
+                        payment_ref = f"PAY-{secrets.token_hex(3).upper()}"
+                        init_resp = await internal_post(
+                            service_url=settings_obj.PAYMENTS_SERVICE_URL,
+                            path="/internal/payments/initialize",
                             calling_service="academy",
                             json={
-                                "installment_id": str(installment.id),
-                                "installment_number": installment.installment_number,
-                                "payment_reference": idempotency_key,
-                                "paid_at": now.isoformat(),
+                                "reference": payment_ref,
+                                "member_auth_id": member_auth_id,
+                                "amount": float(installment.amount) / KOBO_PER_NAIRA,
+                                "currency": enrollment.currency_snapshot or "NGN",
+                                "purpose": "academy_cohort",
+                                "callback_url": (
+                                    f"/account/academy/enrollment-success"
+                                    f"?enrollment_id={enrollment.id}"
+                                ),
+                                "metadata": {
+                                    "payer_email": member_email,
+                                    "enrollment_id": str(enrollment.id),
+                                    "cohort_id": str(cohort.id),
+                                    "installment_id": str(installment.id),
+                                    "installment_number": installment.installment_number,
+                                    "total_installments": enrollment.total_installments,
+                                },
                             },
                         )
-                        if mark_resp.status_code >= 400:
-                            logger.error(
-                                "Failed to mark installment %s as paid after wallet deduction: %s",
-                                installment.id,
-                                mark_resp.text,
-                            )
-                    except Exception as mark_err:
-                        logger.error(
-                            "mark-paid call failed for installment %s: %s",
+
+                        checkout_url = None
+                        if init_resp.status_code < 400:
+                            init_data = init_resp.json()
+                            checkout_url = init_data.get("authorization_url")
+
+                        email_client = get_email_client()
+                        await email_client.send_template(
+                            template_type="installment_payment_reminder",
+                            to_email=member_email,
+                            template_data={
+                                "member_name": member_name,
+                                "program_name": program_name,
+                                "cohort_name": cohort_name,
+                                "installment_number": installment.installment_number,
+                                "total_installments": enrollment.total_installments,
+                                "amount": installment.amount,
+                                "currency": enrollment.currency_snapshot or "NGN",
+                                "due_date": installment.due_at.strftime(
+                                    "%A, %B %d, %Y"
+                                ),
+                                "days_until": 0,  # Due today — urgent prompt
+                                "checkout_url": checkout_url,
+                                "insufficient_wallet": False,
+                            },
+                        )
+                        logger.info(
+                            "Sent Paystack payment link to %s for installment %s",
+                            member_email,
                             installment.id,
-                            mark_err,
+                        )
+                    except Exception as paystack_err:
+                        logger.error(
+                            "Failed to generate Paystack link for installment %s: %s",
+                            installment.id,
+                            paystack_err,
                         )
 
-                    # Send wallet payment confirmation email
-                    if member_email:
-                        try:
-                            email_client = get_email_client()
-                            await email_client.send_template(
-                                template_type="installment_payment_confirmation",
-                                to_email=member_email,
-                                template_data={
-                                    "member_name": member_name,
-                                    "installment_number": installment.installment_number,
-                                    "total_installments": enrollment.total_installments,
-                                    "amount": float(installment.amount)
-                                    / KOBO_PER_NAIRA,
-                                    "currency": enrollment.currency_snapshot or "NGN",
-                                    "payment_reference": idempotency_key,
-                                    "paid_at": now.strftime("%B %d, %Y"),
-                                    "payment_method": "wallet",
-                                },
-                            )
-                        except Exception as email_err:
-                            logger.error(
-                                "Failed to send wallet deduction confirmation to %s: %s",
-                                member_email,
-                                email_err,
-                            )
-                else:
-                    # Insufficient wallet balance → generate Paystack checkout link
-                    # and send to student so they can pay manually within the grace window.
-                    if member_email:
-                        try:
-                            payment_ref = f"PAY-{secrets.token_hex(3).upper()}"
-                            init_resp = await internal_post(
-                                service_url=settings_obj.PAYMENTS_SERVICE_URL,
-                                path="/internal/payments/initialize",
-                                calling_service="academy",
-                                json={
-                                    "reference": payment_ref,
-                                    "member_auth_id": member_auth_id,
-                                    "amount": float(installment.amount)
-                                    / KOBO_PER_NAIRA,
-                                    "currency": enrollment.currency_snapshot or "NGN",
-                                    "purpose": "academy_cohort",
-                                    "callback_url": (
-                                        f"/account/academy/enrollment-success"
-                                        f"?enrollment_id={enrollment.id}"
-                                    ),
-                                    "metadata": {
-                                        "payer_email": member_email,
-                                        "enrollment_id": str(enrollment.id),
-                                        "cohort_id": str(cohort.id),
-                                        "installment_id": str(installment.id),
-                                        "installment_number": installment.installment_number,
-                                        "total_installments": enrollment.total_installments,
-                                    },
-                                },
-                            )
-
-                            checkout_url = None
-                            if init_resp.status_code < 400:
-                                init_data = init_resp.json()
-                                checkout_url = init_data.get("authorization_url")
-
-                            email_client = get_email_client()
-                            await email_client.send_template(
-                                template_type="installment_payment_reminder",
-                                to_email=member_email,
-                                template_data={
-                                    "member_name": member_name,
-                                    "program_name": program_name,
-                                    "cohort_name": cohort_name,
-                                    "installment_number": installment.installment_number,
-                                    "total_installments": enrollment.total_installments,
-                                    "amount": installment.amount,
-                                    "currency": enrollment.currency_snapshot or "NGN",
-                                    "due_date": installment.due_at.strftime(
-                                        "%A, %B %d, %Y"
-                                    ),
-                                    "days_until": 0,  # Due today — urgent prompt
-                                    "checkout_url": checkout_url,
-                                    "insufficient_wallet": True,
-                                },
-                            )
-                            logger.info(
-                                "Sent Paystack fallback link to %s for installment %s",
-                                member_email,
-                                installment.id,
-                            )
-                        except Exception as paystack_err:
-                            logger.error(
-                                "Failed to generate Paystack fallback for installment %s: %s",
-                                installment.id,
-                                paystack_err,
-                            )
-
-                # Record that wallet deduction was attempted (prevents re-processing)
-                enrollment.reminders_sent = reminders_sent + [deduction_key]
+                # Record that the reminder was sent (prevents re-processing)
+                enrollment.reminders_sent = reminders_sent + [reminder_key]
 
             await db.commit()
 

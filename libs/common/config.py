@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     CLUB_BIANNUAL_FEE_NGN: int = 80000
     CLUB_ANNUAL_FEE_NGN: int = 150000
     WELCOME_BONUS_INCLUDE_COACHES: bool = False
+    # Free club access granted to academy graduates (cohort end + N months).
+    # Per docs/club/PRICING_STRATEGY.md: bridges the academy→club gap so habit
+    # doesn't break. Admins can override per-member via /club/extend admin endpoint.
+    POST_ACADEMY_FREE_CLUB_MONTHS: int = 1
 
     # Paystack (optional; used by payments_service)
     PAYSTACK_SECRET_KEY: str = ""

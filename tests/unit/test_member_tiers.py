@@ -5,6 +5,8 @@ These tests verify the pure business logic functions without database dependenci
 
 from datetime import datetime, timedelta, timezone
 
+from dateutil.relativedelta import relativedelta
+
 from services.members_service import service as member_service
 
 
@@ -49,26 +51,49 @@ class TestNormalizeMemberTiers:
         assert "community" in tiers
         assert changed is True
 
-    def test_expired_club_keeps_existing_tiers(self):
-        """Expired club subscription should keep existing tiers (additive model).
-
-        Note: The tier normalization is additive - it doesn't remove tiers when
-        payments expire. This is intentional to avoid accidental tier loss.
-        Tier removal should be done through explicit admin action.
-        """
+    def test_expired_club_is_stripped(self):
+        """Expired club tier must be stripped — tiers are derived from paid_until."""
         past = datetime.now(timezone.utc) - timedelta(days=1)
         future = datetime.now(timezone.utc) + timedelta(days=30)
         primary, tiers, changed = member_service.normalize_member_tiers(
             current_tier="club",
             current_tiers=["club", "community"],
             community_paid_until=future,
-            club_paid_until=past,  # Expired - but doesn't remove club from existing tiers
+            club_paid_until=past,
         )
-        # Club is kept because it's in current_tiers (additive model)
+        assert "club" not in tiers
+        assert "community" in tiers
+        assert primary == "community"
+        assert changed is True
+
+    def test_expired_academy_falls_back_to_paid_lower_tier(self):
+        """Expired academy with active club drops to club tier."""
+        past = datetime.now(timezone.utc) - timedelta(days=1)
+        future = datetime.now(timezone.utc) + timedelta(days=30)
+        primary, tiers, _ = member_service.normalize_member_tiers(
+            current_tier="academy",
+            current_tiers=["academy", "club", "community"],
+            community_paid_until=future,
+            club_paid_until=future,
+            academy_paid_until=past,
+        )
+        assert "academy" not in tiers
         assert "club" in tiers
         assert "community" in tiers
-        # Primary stays club since it's the highest in the set
         assert primary == "club"
+
+    def test_all_expired_falls_back_to_community_baseline(self):
+        """When everything has expired, fall back to community as persistent baseline."""
+        past = datetime.now(timezone.utc) - timedelta(days=1)
+        primary, tiers, _ = member_service.normalize_member_tiers(
+            current_tier="academy",
+            current_tiers=["academy", "club", "community"],
+            community_paid_until=past,
+            club_paid_until=past,
+            academy_paid_until=past,
+        )
+        assert tiers == ["community"]
+        assert primary == "community"
 
     def test_tiers_sorted_by_priority(self):
         """Tiers should be sorted by priority (academy > club > community)."""
@@ -78,6 +103,7 @@ class TestNormalizeMemberTiers:
             current_tiers=["community", "academy", "club"],
             community_paid_until=future,
             club_paid_until=future,
+            academy_paid_until=future,
         )
         assert tiers == ["academy", "club", "community"]
         assert primary == "academy"
@@ -87,33 +113,45 @@ class TestCalculateExpiry:
     """Tests for expiry date calculations."""
 
     def test_community_expiry_from_now(self):
-        """New subscription should start from now."""
+        """New subscription should start from now and add exact calendar years."""
         result = member_service.calculate_community_expiry(
             current_expiry=None,
             years=1,
         )
-        expected = datetime.now(timezone.utc) + timedelta(days=365)
+        expected = datetime.now(timezone.utc) + relativedelta(years=1)
         # Allow 2 second tolerance for test execution time
         assert abs((result - expected).total_seconds()) < 2
 
     def test_community_expiry_extends_active(self):
-        """Active subscription should extend from current expiry."""
+        """Active subscription should extend from current expiry by calendar years."""
         current = datetime.now(timezone.utc) + timedelta(days=30)
         result = member_service.calculate_community_expiry(
             current_expiry=current,
             years=1,
         )
-        expected = current + timedelta(days=365)
+        expected = current + relativedelta(years=1)
         assert abs((result - expected).total_seconds()) < 2
 
     def test_club_expiry_from_now(self):
-        """New club subscription should start from now."""
+        """New club subscription should start from now and add exact calendar months."""
         result = member_service.calculate_club_expiry(
             current_expiry=None,
             months=3,
         )
-        expected = datetime.now(timezone.utc) + timedelta(days=90)
+        expected = datetime.now(timezone.utc) + relativedelta(months=3)
         assert abs((result - expected).total_seconds()) < 2
+
+    def test_club_expiry_annual_is_full_calendar_year(self):
+        """Audit Path 6: club annual (12 months) should be a calendar year,
+        not the old timedelta(days=30*12)=360-day approximation (5 days short)."""
+        start = datetime.now(timezone.utc)
+        result = member_service.calculate_club_expiry(
+            current_expiry=None,
+            months=12,
+        )
+        # Sanity: at least 364 days from start time (calendar year >= 365 days,
+        # minus a tiny clock-tick slack)
+        assert (result - start).total_seconds() >= 364 * 86400
 
 
 class TestClubReadinessValidation:

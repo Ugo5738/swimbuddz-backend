@@ -106,6 +106,7 @@ from services.members_service.schemas.member import (  # noqa: F401
     ActivateCommunityRequest,
     ApprovalAction,
     CoachProfileResponse,
+    ExtendClubRequest,
     ExtendCommunityRequest,
     MemberAvailabilityInput,
     MemberAvailabilityResponse,

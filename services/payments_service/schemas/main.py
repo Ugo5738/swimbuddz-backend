@@ -59,6 +59,14 @@ class CreatePaymentIntentRequest(BaseModel):
     # 1 Bubble = ₦100. Only supported for SESSION_FEE, SESSION_BUNDLE, RIDE_SHARE.
     bubbles_to_apply: Optional[int] = Field(default=None, ge=0)
 
+    # Member-initiated mid-cohort payment override (ACADEMY_COHORT only).
+    # Default behavior charges the exact stipulated next-installment amount.
+    # Members can opt to pay a CUSTOM amount that must be >= the next
+    # installment amount and <= the remaining balance. Used when a member
+    # wants to get ahead, or to recover from a missed auto-collection.
+    # Founder policy May 2026.
+    amount_override_kobo: Optional[int] = Field(default=None, ge=0)
+
     # Accept "metadata" for backwards-compat, store internally as payment_metadata.
     payment_metadata: Optional[dict] = Field(default=None, alias="metadata")
 
@@ -127,6 +135,42 @@ class SubmitProofRequest(BaseModel):
 class AdminReviewRequest(BaseModel):
     """Admin review action for a manual payment."""
 
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class RefundOwedItem(BaseModel):
+    """One refund obligation, derived from a payment's metadata.refund_owed."""
+
+    payment_reference: str
+    payment_amount: float  # NGN amount of the underlying payment
+    payer_email: Optional[str] = None
+    member_auth_id: str
+    refund_kobo: int
+    refund_naira: float
+    enrollment_id: str
+    window: str  # before_start | mid_entry_window | after_cutoff
+    reason: Optional[str] = None
+    annotated_at: str
+    disbursed_at: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RefundQueueResponse(BaseModel):
+    """Outstanding refund obligations across all payments."""
+
+    total_owed_kobo: int
+    total_owed_naira: float
+    item_count: int
+    items: list[RefundOwedItem]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MarkRefundDisbursedRequest(BaseModel):
+    """Admin marks one refund obligation as disbursed (paid out)."""
+
+    enrollment_id: str
     note: Optional[str] = Field(default=None, max_length=500)
 
 

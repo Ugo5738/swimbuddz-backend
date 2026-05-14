@@ -320,6 +320,28 @@ async def send_templated_email(
             cohort_name=d.get("cohort_name", ""),
             missed_count=d.get("missed_count", 2),
         ),
+        "withdrawal_confirmation": lambda d: academy.send_withdrawal_confirmation_email(
+            to_email=request.to_email,
+            member_name=d.get("member_name", ""),
+            program_name=d.get("program_name", ""),
+            cohort_name=d.get("cohort_name", ""),
+            window=d.get("window", ""),
+            refund_naira=d.get("refund_naira", 0),
+            waived_installment_count=d.get("waived_installment_count", 0),
+            refund_note=d.get("refund_note", ""),
+        ),
+        "admin_refund_owed": lambda d: academy.send_admin_refund_owed_email(
+            to_email=request.to_email,
+            member_name=d.get("member_name", ""),
+            member_email=d.get("member_email", ""),
+            program_name=d.get("program_name", ""),
+            cohort_name=d.get("cohort_name", ""),
+            window=d.get("window", ""),
+            refund_naira=d.get("refund_naira", 0),
+            payment_references=d.get("payment_references", []),
+            enrollment_id=d.get("enrollment_id", ""),
+            reason=d.get("reason"),
+        ),
         # --- Coaching templates ---
         "coach_agreement_signed": lambda d: coaching.send_coach_agreement_signed_email(
             to_email=request.to_email,
