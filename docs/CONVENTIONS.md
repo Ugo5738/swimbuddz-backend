@@ -210,6 +210,36 @@ Large files hurt review velocity, IDE responsiveness, AI assistance, and test is
 - **Schemas** — split alongside the matching model file (`schemas/enrollment.py` mirrors `models/enrollment.py`).
 - **Shared libraries** — split by responsibility; if `service_client.py` is 1,000+ lines, it's doing too many things.
 
+### 12.1 Split patterns — pick one, document why
+
+Two layouts are both acceptable; pick by directory context.
+
+**Pattern A — sibling modules in an existing directory.** Use when the parent dir already aggregates several files via its own `__init__.py` (e.g. `services/*/schemas/`, `services/*/routers/` with multiple existing routers). Add new sibling files for the split content; if the original file was a re-export hub (e.g. `schemas/main.py`), keep it as a thin re-export shim so external import paths don't break.
+
+Example: `services/academy_service/schemas/main.py` (965 lines) → 10 sibling files (`program.py`, `cohort.py`, …) + a 159-line `main.py` shim that re-exports everything. `services/academy_service/schemas/__init__.py` still imports from `.main`.
+
+**Pattern B — convert the file to a package directory of the same name.** Use when the original file is a self-contained unit, exports more than one top-level router, or its split produces ≥4 tightly cohesive submodules that benefit from namespace isolation. The original `<name>.py` is replaced by `<name>/__init__.py` which exposes the same public names.
+
+Example: `services/members_service/routers/admin.py` (804 lines) → `services/members_service/routers/admin/` package with 6 submodules + `__init__.py` exposing `router`. The existing `from services.members_service.routers.admin import router as admin_router` keeps working.
+
+Both patterns require that the public surface (every name any caller imports) survives unchanged. Verify with the four-step ritual in §12.3.
+
+### 12.2 Internal naming + structure (applies to both patterns)
+
+- **Private files** start with `_`: `_shared.py` (helpers), `_schemas.py` (Pydantic shapes used by multiple submodules), `_helpers.py` (pure functions + constants), `_constants.py` (literals only), `_milestones.py` etc. for narrowly-scoped private modules.
+- **Sub-routers** are declared as `router = APIRouter()` **without a prefix**. The aggregator's `__init__.py` declares the prefixed router (`router = APIRouter(prefix="/coaches", ...)`) and calls `router.include_router(_submodule.router)` once per sub-router.
+- **Aggregator imports** use the `from . import submodule as _submodule` pattern so cross-submodule name collisions (e.g. multiple `router` exports) don't bleed into the package namespace.
+- **Cross-submodule imports** use relative paths: `from ._shared import X`, `from ._schemas import Y`. External imports remain absolute.
+- **Route ordering matters** when sub-routers carry routes that could match the same path under different segment counts. If any sub-router has a `/{member_id}` catch-all, sub-routers with static-prefix routes (`/active`, `/search`, etc.) MUST be `include_router`'d first. Document this in the aggregator's docstring (see `routers/internal/__init__.py` for an example).
+- **`__all__`** in the aggregator lists exactly what callers can import. For schema shims, list every re-exported class. For router packages, list `router` (and `admin_router` if applicable).
+
+### 12.3 Verification ritual (do all four, in order, every time)
+
+1. **AST byte-equality** of every top-level function/class against `git show HEAD:<original-path>`. Any divergence beyond cosmetic Unicode escaping is a bug; investigate before continuing.
+2. **`python3 -m py_compile`** every new file. Catches indent and import-name typos that AST equality can't.
+3. **`docker compose restart <service> gateway`** — wait for `Application startup complete` in the logs. A boot failure here means a runtime import or initialization bug.
+4. **Integration tests + endpoint smoke** for the affected service. Hit at least one endpoint per public sub-router via the gateway to confirm route registration and prefix wiring. Compare OpenAPI route count before/after — should be exactly equal.
+
 **Enforcement:**
 
 ```bash
