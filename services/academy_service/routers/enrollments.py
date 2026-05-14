@@ -27,9 +27,12 @@ from services.academy_service.routers._shared import (
     PaymentStatus,
     Program,
     StudentProgress,
+    WithdrawEnrollmentRequest,
+    WithdrawEnrollmentResponse,
     _list_enrollment_installments,
     _resolve_enrollment_total_fee,
     _sync_installment_state_for_enrollment,
+    compute_withdrawal_refund,
     debit_member_wallet,
     dispatch_notification,
     func,
@@ -94,6 +97,29 @@ async def enroll_student(
         if cohort.program_id != enrollment_in.program_id:
             raise HTTPException(
                 status_code=400, detail="Cohort does not belong to the selected program"
+            )
+
+        # Admin force-enroll is intentionally allowed past capacity (overrides),
+        # but log it so the audit trail captures every over-capacity action.
+        # Members hitting POST /enrollments/me are waitlisted instead.
+        enrolled_count_result = await db.execute(
+            select(func.count()).select_from(Enrollment).where(
+                Enrollment.cohort_id == cohort.id,
+                Enrollment.status.in_(
+                    [EnrollmentStatus.ENROLLED, EnrollmentStatus.PENDING_APPROVAL]
+                ),
+            )
+        )
+        enrolled_count = enrolled_count_result.scalar_one()
+        if cohort.capacity is not None and enrolled_count >= cohort.capacity:
+            logger.warning(
+                "Admin enrollment exceeds cohort capacity: cohort=%s capacity=%s "
+                "enrolled=%s admin_auth_id=%s member_id=%s",
+                cohort.id,
+                cohort.capacity,
+                enrolled_count,
+                current_user.user_id,
+                enrollment_in.member_id,
             )
 
     price_snapshot = _resolve_enrollment_total_fee(program, cohort)
@@ -595,6 +621,268 @@ async def get_my_enrollment(
 
 
 @router.post(
+    "/my-enrollments/{enrollment_id}/withdraw",
+    response_model=WithdrawEnrollmentResponse,
+)
+async def withdraw_my_enrollment(
+    enrollment_id: uuid.UUID,
+    payload: WithdrawEnrollmentRequest,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Member-initiated voluntary withdrawal from a cohort.
+
+    Refund policy (docs/club/PRICING_STRATEGY.md, founder-confirmed May 2026):
+      - Before cohort start: 90% refund of paid amount.
+      - In mid-entry window (week 1 → mid_entry_cutoff_week): 50% of unused
+        prorated portion, capped at paid amount.
+      - After cutoff: no refund.
+
+    In all cases:
+      - All unpaid installments are WAIVED.
+      - Enrollment status → DROPPED, dropped_at = now.
+      - Member's academy_paid_until is recomputed from remaining ENROLLED
+        cohorts (multi-cohort safe). The post-academy free club month is
+        only granted at natural graduation (via the cron), NOT on withdrawal.
+      - Community membership and any pre-existing club access are preserved.
+
+    The refund itself is queued for admin disbursement — Paystack refund API
+    is not invoked from this endpoint (Nigerian payment flows are commonly
+    settled via direct transfer). The refund obligation is written to the
+    relevant payments' metadata as ``refund_owed``.
+    """
+    query = (
+        select(Enrollment)
+        .where(
+            Enrollment.id == enrollment_id,
+            Enrollment.member_auth_id == current_user.user_id,
+        )
+        .options(
+            selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            selectinload(Enrollment.program),
+            selectinload(Enrollment.installments),
+        )
+    )
+    result = await db.execute(query)
+    enrollment = result.scalar_one_or_none()
+
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    if enrollment.status in (EnrollmentStatus.DROPPED, EnrollmentStatus.GRADUATED):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Enrollment is already in terminal state: {enrollment.status.value}",
+        )
+
+    cohort = enrollment.cohort
+    program = enrollment.program
+    if cohort is None or program is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Enrollment is missing cohort/program — cannot compute refund",
+        )
+
+    now = utc_now()
+    cohort_start = cohort.start_date
+    if cohort_start.tzinfo is None:
+        cohort_start = cohort_start.replace(tzinfo=__import__("datetime").timezone.utc)
+
+    # Sum paid installments (kobo)
+    installments = enrollment.installments or []
+    paid_kobo = sum(
+        i.amount for i in installments if i.status == InstallmentStatus.PAID
+    )
+    program_fee_kobo = (
+        enrollment.price_snapshot_amount
+        or _resolve_enrollment_total_fee(program, cohort)
+        or 0
+    )
+
+    window, refund_kobo, refund_percent = compute_withdrawal_refund(
+        now=now,
+        cohort_start=cohort_start,
+        duration_weeks=int(program.duration_weeks or 12),
+        mid_entry_cutoff_week=int(cohort.mid_entry_cutoff_week or 2),
+        total_paid_kobo=paid_kobo,
+        program_fee_kobo=program_fee_kobo,
+    )
+
+    # Waive all unpaid installments
+    waived_count = 0
+    for inst in installments:
+        if inst.status == InstallmentStatus.PENDING:
+            inst.status = InstallmentStatus.WAIVED
+            waived_count += 1
+
+    # Flip enrollment to DROPPED with withdrawal anchor
+    enrollment.status = EnrollmentStatus.DROPPED
+    enrollment.dropped_at = now
+    enrollment.access_suspended = True
+
+    # Annotate the paid payments with refund obligation. We split the refund
+    # across paid installments proportionally so each payment record shows
+    # what's owed against it — admins can reconcile via the payment list.
+    payment_refs: list[str] = []
+    if refund_kobo > 0 and paid_kobo > 0:
+        remaining_refund_kobo = refund_kobo
+        paid_installments = [
+            i for i in installments if i.status == InstallmentStatus.PAID
+        ]
+        for idx, inst in enumerate(paid_installments):
+            if not inst.payment_reference:
+                continue
+            payment_refs.append(inst.payment_reference)
+            # Last installment absorbs any rounding remainder
+            if idx == len(paid_installments) - 1:
+                share_kobo = remaining_refund_kobo
+            else:
+                share_kobo = int(round(refund_kobo * (inst.amount / paid_kobo)))
+                share_kobo = min(share_kobo, remaining_refund_kobo)
+            remaining_refund_kobo -= share_kobo
+            await _annotate_payment_with_refund(
+                payment_reference=inst.payment_reference,
+                refund_kobo=share_kobo,
+                enrollment_id=str(enrollment.id),
+                window=window,
+                reason=payload.reason,
+                calling_service="academy",
+            )
+
+    # Recompute academy_paid_until from remaining ENROLLED cohorts
+    await _recompute_member_academy_until(
+        member_auth_id=current_user.user_id,
+        member_id=enrollment.member_id,
+        db=db,
+    )
+
+    await db.commit()
+
+    refund_naira = refund_kobo / 100
+    if refund_kobo > 0:
+        refund_note = (
+            f"Refund of ₦{refund_naira:,.2f} owed (paid via {', '.join(payment_refs)}). "
+            f"Admin: disburse via original payment channel."
+        )
+    else:
+        refund_note = (
+            f"No refund per policy ({window}). All unpaid installments waived."
+        )
+
+    return WithdrawEnrollmentResponse(
+        enrollment_id=enrollment.id,
+        status=enrollment.status.value,
+        window=window,
+        refund_kobo=refund_kobo,
+        refund_percent=refund_percent,
+        paid_kobo=paid_kobo,
+        waived_installment_count=waived_count,
+        payment_references=payment_refs,
+        refund_note=refund_note,
+    )
+
+
+async def _annotate_payment_with_refund(
+    *,
+    payment_reference: str,
+    refund_kobo: int,
+    enrollment_id: str,
+    window: str,
+    reason: Optional[str],
+    calling_service: str,
+) -> None:
+    """Best-effort: annotate a payment with refund obligation in its metadata.
+
+    Calls payments_service internal endpoint. If it fails, the withdrawal
+    still completes — admins can manually reconcile from the academy-side
+    record (enrollment + installments).
+    """
+    try:
+        _settings = get_settings()
+        await internal_post(
+            service_url=_settings.PAYMENTS_SERVICE_URL,
+            path=f"/internal/payments/{payment_reference}/annotate-refund",
+            calling_service=calling_service,
+            json={
+                "refund_kobo": refund_kobo,
+                "enrollment_id": enrollment_id,
+                "window": window,
+                "reason": reason,
+            },
+        )
+    except Exception:
+        logger.warning(
+            "Failed to annotate payment %s with refund obligation (best-effort)",
+            payment_reference,
+            exc_info=True,
+        )
+
+
+async def _recompute_member_academy_until(
+    *,
+    member_auth_id: str,
+    member_id,
+    db: AsyncSession,
+) -> None:
+    """After a withdrawal, recompute academy_paid_until from remaining cohorts.
+
+    Multi-cohort safe: the member may be enrolled in other cohorts whose end
+    dates extend past the withdrawn one. We pick the LATEST end_date across
+    all remaining ENROLLED enrollments and call the existing academy/activate
+    endpoint (which is idempotent and keeps the later of stored/supplied).
+
+    If no remaining enrolled cohorts exist, expire academy access immediately
+    by setting academy_paid_until to now — handled by a direct call to a
+    members_service helper since the activate endpoint never shrinks.
+    """
+    remaining_query = (
+        select(Cohort.end_date)
+        .join(Enrollment, Enrollment.cohort_id == Cohort.id)
+        .where(
+            Enrollment.member_id == member_id,
+            Enrollment.status == EnrollmentStatus.ENROLLED,
+        )
+        .order_by(Cohort.end_date.desc())
+    )
+    result = await db.execute(remaining_query)
+    latest_end = result.scalar()
+
+    _settings = get_settings()
+    if latest_end:
+        # Reuse academy/activate (idempotent, keeps later date)
+        try:
+            await internal_post(
+                service_url=_settings.MEMBERS_SERVICE_URL,
+                path=f"/admin/members/by-auth/{member_auth_id}/academy/activate",
+                calling_service="academy",
+                json={"cohort_end_date": latest_end.isoformat()},
+            )
+        except Exception:
+            logger.warning(
+                "Failed to refresh academy_paid_until after withdrawal "
+                "(best-effort) for auth_id=%s",
+                member_auth_id,
+                exc_info=True,
+            )
+    else:
+        # No remaining enrolled cohorts — expire academy access now.
+        try:
+            await internal_post(
+                service_url=_settings.MEMBERS_SERVICE_URL,
+                path=f"/admin/members/by-auth/{member_auth_id}/academy/expire",
+                calling_service="academy",
+                json={},
+            )
+        except Exception:
+            logger.warning(
+                "Failed to expire academy access after withdrawal "
+                "(best-effort) for auth_id=%s",
+                member_auth_id,
+                exc_info=True,
+            )
+
+
+@router.post(
     "/admin/enrollments/{enrollment_id}/mark-paid", response_model=EnrollmentResponse
 )
 async def admin_mark_enrollment_paid(
@@ -681,7 +969,34 @@ async def admin_mark_enrollment_paid(
             )
 
         if not mark_payload.clear_installments:
-            if target_installment and target_installment.status not in paid_statuses:
+            # Member-initiated custom amount: if amount_kobo is provided AND
+            # exceeds the target installment's amount, roll the overage
+            # forward across subsequent installments. This is the "pay ahead"
+            # / "recover missed auto-collection" flow (founder policy May 2026).
+            if (
+                target_installment
+                and mark_payload.amount_kobo is not None
+                and mark_payload.amount_kobo > target_installment.amount
+            ):
+                from services.academy_service.services.installments import (
+                    apply_member_payment_across_installments,
+                )
+
+                # Apply across all PENDING installments starting from target.
+                # The helper marks them PAID in order and reduces the trailing
+                # one if the amount doesn't cleanly cover whole installments.
+                payable = [
+                    i for i in installments
+                    if i.installment_number >= target_installment.installment_number
+                    and i.status not in paid_statuses
+                ]
+                apply_member_payment_across_installments(
+                    amount_kobo=mark_payload.amount_kobo,
+                    installments=payable,
+                    now=now_dt,
+                    payment_reference=mark_payload.payment_reference,
+                )
+            elif target_installment and target_installment.status not in paid_statuses:
                 target_installment.status = InstallmentStatus.PAID
                 target_installment.paid_at = now_dt
                 target_installment.payment_reference = mark_payload.payment_reference

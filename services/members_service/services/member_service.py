@@ -20,48 +20,50 @@ def normalize_member_tiers(
     academy_paid_until: Optional[datetime] = None,
 ) -> tuple[str, list[str], bool]:
     """
-    Normalize membership tiers based on paid entitlements.
+    Compute member tier state derived from paid entitlements.
+
+    Tiers are computed FRESH from ``*_paid_until`` columns each call — stored
+    ``current_tiers`` and ``current_tier`` are ignored as authoritative inputs
+    and only used to detect whether the result is a change. Per the tier
+    hierarchy in docs/club/PRICING_STRATEGY.md every tier includes the ones
+    below it, so an active club grants community and an active academy
+    grants club + community.
 
     Rules:
-    - Everyone has community.
-    - Add club if club_paid_until is in the future.
-    - Add academy if academy_paid_until is in the future.
+    - Add academy + club + community if academy_paid_until is in the future.
+    - Add club + community if club_paid_until is in the future.
+    - Add community if community_paid_until is in the future.
+    - If nothing paid, fall back to community as the persistent baseline (matches
+      "where club members land if they pause" framing in PRICING_STRATEGY.md).
     - Sort by priority (academy > club > community).
+    - Expired tiers are stripped — this is the source of truth, not the
+      stored value.
+
     Returns (primary_tier, tiers_list, changed_flag).
     """
     now = datetime.now(timezone.utc)
-    tiers = set(current_tiers or [])
+    tiers: set[str] = set()
 
-    if current_tier:
-        tiers.add(current_tier)
-
-    # Apply entitlements based on payment dates
+    if academy_paid_until and academy_paid_until > now:
+        tiers.update({"academy", "club", "community"})
     if club_paid_until and club_paid_until > now:
         tiers.update({"club", "community"})
     if community_paid_until and community_paid_until > now:
         tiers.add("community")
-    if academy_paid_until and academy_paid_until > now:
-        tiers.update({"academy", "club", "community"})
 
-    # Default to community if empty
     if not tiers:
         tiers.add("community")
 
-    # Sort by priority (highest first)
     sorted_tiers = sorted(
         [t for t in tiers if t in TIER_PRIORITY],
         key=lambda t: TIER_PRIORITY[t],
         reverse=True,
     )
 
-    # Determine if changes occurred
-    old_tiers_set = set(current_tiers or [])
     new_primary = sorted_tiers[0] if sorted_tiers else "community"
 
-    # Check if either the tier set changed or the primary tier changed
-    tiers_changed = set(sorted_tiers) != old_tiers_set
+    tiers_changed = set(sorted_tiers) != set(current_tiers or [])
     primary_changed = new_primary != current_tier
-
     changed = tiers_changed or primary_changed
 
     return new_primary, sorted_tiers, changed

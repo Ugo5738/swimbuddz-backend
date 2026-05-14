@@ -642,6 +642,10 @@ async def _apply_entitlement(payment: Payment) -> None:
                 if payment.paid_at
                 else datetime.now(timezone.utc).isoformat()
             ),
+            # Pass the actual amount paid (kobo). When this exceeds the target
+            # installment's stipulated amount (member chose a custom amount),
+            # the academy mark-paid endpoint rolls forward across installments.
+            "amount_kobo": int(round((payment.amount or 0) * KOBO_PER_NAIRA)),
         }
         if payment.amount <= 0:
             # Fully discounted enrollment should not retain installment obligations.
@@ -1743,6 +1747,35 @@ async def create_payment_intent(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="All required academy installments are already paid",
                 )
+
+        # Member-initiated custom amount: must be >= next installment amount
+        # and <= remaining balance (founder policy May 2026). Default behavior
+        # without an override is unchanged — charge exactly the stipulated amount.
+        if payload.amount_override_kobo is not None and payload.amount_override_kobo > 0:
+            override_naira = payload.amount_override_kobo / KOBO_PER_NAIRA
+            if override_naira < amount:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Custom amount NGN {override_naira:,.2f} is less than the "
+                        f"next stipulated installment NGN {amount:,.2f}"
+                    ),
+                )
+            remaining_balance_kobo = sum(
+                int(i.get("amount") or 0)
+                for i in installments
+                if str(i.get("status") or "").lower() not in paid_statuses
+            )
+            remaining_balance_naira = remaining_balance_kobo / KOBO_PER_NAIRA
+            if override_naira > remaining_balance_naira:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Custom amount NGN {override_naira:,.2f} exceeds remaining "
+                        f"balance NGN {remaining_balance_naira:,.2f}"
+                    ),
+                )
+            amount = override_naira
 
         if amount <= 0:
             raise HTTPException(

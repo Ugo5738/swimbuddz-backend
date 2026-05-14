@@ -537,3 +537,59 @@ async def internal_paystack_create_recipient(req: _CreateRecipientRequest):
         bank_code=recipient.bank_code,
         bank_name=recipient.bank_name,
     )
+
+
+class AnnotateRefundRequest(BaseModel):
+    """Refund obligation written to a payment's metadata by the academy service.
+
+    The Nigerian payment-flow reality: most refunds are settled via direct bank
+    transfer, not Paystack API. This endpoint records the *obligation*; an admin
+    disburses and stamps the payment via a separate manual step.
+    """
+
+    refund_kobo: int
+    enrollment_id: str
+    window: str  # "before_start" | "mid_entry_window" | "after_cutoff"
+    reason: Optional[str] = None
+
+
+@router.post(
+    "/{reference}/annotate-refund",
+    dependencies=[Depends(require_service_role)],
+)
+async def annotate_refund_obligation(
+    reference: str,
+    payload: AnnotateRefundRequest,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Write a refund obligation to a payment's metadata.
+
+    Idempotent: multiple calls for the same enrollment_id overwrite the prior
+    entry rather than appending duplicates.
+    """
+    result = await db.execute(select(Payment).where(Payment.reference == reference))
+    payment = result.scalar_one_or_none()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    existing = payment.payment_metadata or {}
+    refunds = existing.get("refund_owed") or []
+    # Drop any prior entry for the same enrollment_id (idempotent overwrite)
+    refunds = [r for r in refunds if r.get("enrollment_id") != payload.enrollment_id]
+    refunds.append(
+        {
+            "refund_kobo": payload.refund_kobo,
+            "enrollment_id": payload.enrollment_id,
+            "window": payload.window,
+            "reason": payload.reason,
+            "annotated_at": utc_now().isoformat(),
+            "disbursed_at": None,
+        }
+    )
+    payment.payment_metadata = {**existing, "refund_owed": refunds}
+    # SQLAlchemy needs a hint that the JSONB column was mutated in place
+    from sqlalchemy.orm.attributes import flag_modified
+
+    flag_modified(payment, "payment_metadata")
+    await db.commit()
+    return {"reference": reference, "refund_obligations": len(refunds)}

@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
+from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
@@ -13,6 +14,7 @@ from libs.common.service_client import (
     dispatch_notification,
     emit_rewards_event,
     get_members_bulk,
+    internal_post,
 )
 from libs.db.session import get_async_db
 from services.academy_service.models import (
@@ -361,6 +363,37 @@ async def _emit_graduation_rewards(db, cohort: Cohort) -> None:
                 idempotency_key=f"academy-graduated-{enrollment.id}",
                 calling_service="academy",
             )
+
+            # Grant the free post-academy club bridge per PRICING_STRATEGY.md.
+            # The /club/extend endpoint is idempotent (don't shrink), so it's
+            # safe to re-run if the cron fires twice for the same cohort.
+            try:
+                _settings = get_settings()
+                await internal_post(
+                    service_url=_settings.MEMBERS_SERVICE_URL,
+                    path=f"/admin/members/by-auth/{auth_id}/club/extend",
+                    calling_service="academy",
+                    json={
+                        "months": _settings.POST_ACADEMY_FREE_CLUB_MONTHS,
+                        "from_date": (
+                            cohort.end_date.isoformat()
+                            if cohort.end_date else None
+                        ),
+                        "reason": (
+                            f"Free post-academy club bridge "
+                            f"(cohort {cohort.id})"
+                        ),
+                    },
+                )
+            except Exception:
+                # Best-effort: graduation should still complete if extend fails.
+                # The admin can run it manually via the same endpoint later.
+                logger.warning(
+                    "Failed to grant post-academy club bridge for "
+                    "enrollment %s (best-effort)",
+                    enrollment.id,
+                    exc_info=True,
+                )
 
         logger.info(
             "Emitted graduation reward events for %d students in cohort %s",

@@ -11,11 +11,14 @@ from libs.auth.dependencies import get_current_user, require_admin, require_coac
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-from libs.common.service_client import get_member_by_auth_id
+from libs.common.config import get_settings
+from libs.common.service_client import get_member_by_auth_id, get_members_bulk, internal_post
 from libs.db.session import get_async_db
 from services.academy_service.models import (
     Cohort,
     CohortExtensionRequest,
+    Enrollment,
+    EnrollmentStatus,
     ExtensionRequestStatus,
 )
 from services.academy_service.schemas import (
@@ -207,6 +210,53 @@ async def approve_extension_request(
 
     await db.commit()
     await db.refresh(ext_request)
+
+    # Propagate the new end_date to enrolled members' academy_paid_until.
+    # The members /academy/activate endpoint is idempotent (keeps the later
+    # of stored/supplied), so multi-cohort members are safe — their access
+    # never shrinks. Best-effort: if any single member fails, log and
+    # continue rather than blocking the whole approval.
+    try:
+        enrolled_result = await db.execute(
+            select(Enrollment.member_id, Enrollment.member_auth_id).where(
+                Enrollment.cohort_id == ext_request.cohort_id,
+                Enrollment.status == EnrollmentStatus.ENROLLED,
+            )
+        )
+        enrolled_rows = enrolled_result.all()
+        _settings = get_settings()
+        new_end_iso = ext_request.proposed_end_date.isoformat()
+        for _member_id, member_auth_id in enrolled_rows:
+            if not member_auth_id:
+                continue
+            try:
+                await internal_post(
+                    service_url=_settings.MEMBERS_SERVICE_URL,
+                    path=f"/admin/members/by-auth/{member_auth_id}/academy/activate",
+                    calling_service="academy",
+                    json={"cohort_end_date": new_end_iso},
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to propagate cohort extension to member "
+                    "(best-effort): auth_id=%s cohort=%s",
+                    member_auth_id,
+                    ext_request.cohort_id,
+                    exc_info=True,
+                )
+        logger.info(
+            "Cohort extension propagated to %d enrolled members for cohort %s",
+            len(enrolled_rows),
+            ext_request.cohort_id,
+        )
+    except Exception:
+        # Don't fail the approval if propagation fails entirely.
+        logger.warning(
+            "Failed to propagate cohort extension to members (best-effort): "
+            "cohort=%s",
+            ext_request.cohort_id,
+            exc_info=True,
+        )
 
     logger.info(
         "Extension request approved",

@@ -59,6 +59,14 @@ class CreatePaymentIntentRequest(BaseModel):
     # 1 Bubble = ₦100. Only supported for SESSION_FEE, SESSION_BUNDLE, RIDE_SHARE.
     bubbles_to_apply: Optional[int] = Field(default=None, ge=0)
 
+    # Member-initiated mid-cohort payment override (ACADEMY_COHORT only).
+    # Default behavior charges the exact stipulated next-installment amount.
+    # Members can opt to pay a CUSTOM amount that must be >= the next
+    # installment amount and <= the remaining balance. Used when a member
+    # wants to get ahead, or to recover from a missed auto-collection.
+    # Founder policy May 2026.
+    amount_override_kobo: Optional[int] = Field(default=None, ge=0)
+
     # Accept "metadata" for backwards-compat, store internally as payment_metadata.
     payment_metadata: Optional[dict] = Field(default=None, alias="metadata")
 

@@ -28,6 +28,7 @@ from services.members_service.models import (
     MemberMembership,
     MemberProfile,
 )
+from services.members_service.services.member_service import normalize_member_tiers
 
 router = APIRouter(prefix="/internal/members", tags=["internal"])
 
@@ -493,10 +494,26 @@ async def get_member_membership(
     membership = result.scalar_one_or_none()
     if not membership:
         raise HTTPException(status_code=404, detail="Membership not found")
+
+    # Strip expired tiers on read — stored column is a cache that may have
+    # drifted past expiry dates. Write back if it changed so future reads
+    # (and other services reading the column directly) see fresh values.
+    new_primary, new_tiers, changed = normalize_member_tiers(
+        current_tier=membership.primary_tier,
+        current_tiers=membership.active_tiers,
+        community_paid_until=membership.community_paid_until,
+        club_paid_until=membership.club_paid_until,
+        academy_paid_until=membership.academy_paid_until,
+    )
+    if changed:
+        membership.primary_tier = new_primary
+        membership.active_tiers = new_tiers
+        await db.commit()
+
     return MemberMembershipResponse(
         member_id=str(membership.member_id),
-        primary_tier=membership.primary_tier,
-        active_tiers=membership.active_tiers,
+        primary_tier=new_primary,
+        active_tiers=new_tiers,
         community_paid_until=(
             membership.community_paid_until.isoformat()
             if membership.community_paid_until

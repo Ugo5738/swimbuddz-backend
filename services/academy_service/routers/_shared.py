@@ -105,9 +105,12 @@ from services.academy_service.schemas import (
     StudentProgressResponse,
     StudentProgressUpdate,
     UpcomingSessionSummary,
+    WithdrawEnrollmentRequest,
+    WithdrawEnrollmentResponse,
 )
 from services.academy_service.services.installments import (
     build_schedule,
+    compute_withdrawal_refund,
     mark_overdue_installments,
     sync_enrollment_installment_state,
 )
@@ -225,8 +228,11 @@ __all__ = [
     "StudentProgressResponse",
     "StudentProgressUpdate",
     "UpcomingSessionSummary",
+    "WithdrawEnrollmentRequest",
+    "WithdrawEnrollmentResponse",
     # ── services ──────────────────────────────────────────────────────────
     "build_schedule",
+    "compute_withdrawal_refund",
     "mark_overdue_installments",
     "sync_enrollment_installment_state",
     "calculate_complexity_score",

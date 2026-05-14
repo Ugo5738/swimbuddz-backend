@@ -18,6 +18,12 @@ THREE_INSTALLMENT_CAP_THRESHOLD_KOBO = 150_000 * 100
 MAX_INSTALLMENTS_OVER_CAP = 3
 WAT_TZ = ZoneInfo("Africa/Lagos")
 
+# Founder-confirmed policy (May 2026): when a custom deposit amount is used for
+# installment plans, it must be at least one-third of the total program fee.
+# This prevents thinly-funded deposits that leave the member exposed to large
+# late-cycle balances and protects the school's cash flow.
+MIN_DEPOSIT_RATIO = 1 / 3
+
 # Payment window: installment is MISSED only after this many hours past due Monday 00:00 WAT.
 # This gives students until Monday 23:59 WAT to pay before the miss is recorded.
 GRACE_HOURS = 24
@@ -88,6 +94,15 @@ def build_schedule(
     )
 
     if deposit_override is not None and deposit_override > 0 and count >= 2:
+        # Enforce the 1/3 floor on custom deposits (founder policy May 2026).
+        # Use ceil-ish via integer math: deposit * 3 >= total_fee.
+        if deposit_override * 3 < total_fee:
+            min_kobo = (total_fee + 2) // 3  # round up
+            raise ValueError(
+                f"Custom deposit too small: NGN {deposit_override / 100:.2f} "
+                f"is less than 1/3 of the program fee "
+                f"(minimum NGN {min_kobo / 100:.2f})."
+            )
         # Admin set a specific deposit; split remaining fee evenly
         remaining = total_fee - deposit_override
         subsequent_base = remaining // (count - 1)
@@ -129,6 +144,127 @@ def current_block_number(
     elapsed_days = (now_wat - start_wat).days
     current = (elapsed_days // (FOUR_WEEK_BLOCK_WEEKS * 7)) + 1
     return max(1, min(current, blocks))
+
+
+def apply_member_payment_across_installments(
+    *,
+    amount_kobo: int,
+    installments: list,
+    now: datetime,
+    payment_reference: str | None = None,
+) -> tuple[list, int]:
+    """Apply a member-initiated payment across one or more installments.
+
+    Founder-confirmed policy (May 2026): a member can pay manually at any
+    time. The minimum is the stipulated amount of the next unpaid installment;
+    the maximum is the full remaining balance. Custom amounts between roll
+    forward through subsequent installments — marking each one PAID in turn
+    until the amount is consumed. Any remainder that does not cover the next
+    installment's full amount is applied as a *reduction* to that installment,
+    so the member sees a smaller amount due next time.
+
+    Mutates the installments in place. Returns ``(modified_installments,
+    overshoot_kobo)`` — overshoot is the amount the caller asked to apply
+    beyond the total remaining balance (should be 0 if the caller validated).
+    """
+    paid_statuses = {InstallmentStatus.PAID, InstallmentStatus.WAIVED}
+    pending = [
+        i for i in sorted(installments, key=lambda i: i.installment_number)
+        if i.status not in paid_statuses
+    ]
+
+    remaining = amount_kobo
+    modified: list = []
+    for inst in pending:
+        if remaining <= 0:
+            break
+        if remaining >= inst.amount:
+            # Pay this installment in full and move on
+            inst.status = InstallmentStatus.PAID
+            inst.paid_at = now
+            if payment_reference is not None:
+                inst.payment_reference = payment_reference
+            remaining -= inst.amount
+            modified.append(inst)
+        else:
+            # Partial: reduce this installment's stipulated amount by the
+            # leftover so the next payment is smaller. The installment stays
+            # PENDING — the member hasn't fully covered it yet.
+            inst.amount -= remaining
+            remaining = 0
+            modified.append(inst)
+            break
+
+    return modified, remaining
+
+
+def compute_withdrawal_refund(
+    *,
+    now: datetime,
+    cohort_start: datetime,
+    duration_weeks: int,
+    mid_entry_cutoff_week: int,
+    total_paid_kobo: int,
+    program_fee_kobo: int,
+) -> tuple[str, int, float]:
+    """Compute refund amount per the SwimBuddz withdrawal policy.
+
+    Policy (per founder, May 2026):
+      - Before cohort starts: 90% of what was paid (10% admin fee).
+      - Week 1 → mid_entry_cutoff_week: 50% of the unused prorated portion,
+        capped at what was paid.
+      - After mid_entry_cutoff_week: no refund.
+    Remaining unpaid installments are waived in all cases (handled by caller).
+
+    Returns ``(window, refund_kobo, refund_percent_of_paid)`` where ``window``
+    is one of ``"before_start" | "mid_entry_window" | "after_cutoff"``.
+    """
+    if total_paid_kobo <= 0 or program_fee_kobo <= 0:
+        return _classify_window(
+            now=now,
+            cohort_start=cohort_start,
+            duration_weeks=duration_weeks,
+            mid_entry_cutoff_week=mid_entry_cutoff_week,
+        ), 0, 0.0
+
+    window = _classify_window(
+        now=now,
+        cohort_start=cohort_start,
+        duration_weeks=duration_weeks,
+        mid_entry_cutoff_week=mid_entry_cutoff_week,
+    )
+
+    if window == "before_start":
+        refund = (total_paid_kobo * 9) // 10  # 90% refund
+    elif window == "mid_entry_window":
+        # 50% of the unused-by-time portion of the FULL program fee,
+        # capped at what was actually paid.
+        elapsed_days = max(0, (now - cohort_start).days)
+        total_days = duration_weeks * 7
+        elapsed_frac = min(1.0, elapsed_days / total_days) if total_days else 1.0
+        unused_kobo = int(round(program_fee_kobo * (1 - elapsed_frac)))
+        refund = min(unused_kobo // 2, total_paid_kobo)
+    else:
+        refund = 0
+
+    percent = (refund / total_paid_kobo) if total_paid_kobo else 0.0
+    return window, refund, percent
+
+
+def _classify_window(
+    *,
+    now: datetime,
+    cohort_start: datetime,
+    duration_weeks: int,
+    mid_entry_cutoff_week: int,
+) -> str:
+    if now < cohort_start:
+        return "before_start"
+    elapsed_days = (now - cohort_start).days
+    elapsed_weeks = elapsed_days // 7 + 1  # week 1 = first 7 days, etc.
+    if elapsed_weeks <= max(1, mid_entry_cutoff_week):
+        return "mid_entry_window"
+    return "after_cutoff"
 
 
 def mark_overdue_installments(
