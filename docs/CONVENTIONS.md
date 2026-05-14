@@ -210,19 +210,48 @@ Large files hurt review velocity, IDE responsiveness, AI assistance, and test is
 - **Schemas** — split alongside the matching model file (`schemas/enrollment.py` mirrors `models/enrollment.py`).
 - **Shared libraries** — split by responsibility; if `service_client.py` is 1,000+ lines, it's doing too many things.
 
-### 12.1 Split patterns — pick one, document why
+### 12.1 The split pattern (single canonical form)
 
-Two layouts are both acceptable; pick by directory context.
+**Convert the file to a package directory of the same name.** The original `<name>.py` is replaced by `<name>/__init__.py` exposing the same public names; the split content lives in sibling files inside the package.
 
-**Pattern A — sibling modules in an existing directory.** Use when the parent dir already aggregates several files via its own `__init__.py` (e.g. `services/*/schemas/`, `services/*/routers/` with multiple existing routers). Add new sibling files for the split content; if the original file was a re-export hub (e.g. `schemas/main.py`), keep it as a thin re-export shim so external import paths don't break.
+This is the only pattern we use. Picking one form removes context-dependent judgment and makes every split look identical.
 
-Example: `services/academy_service/schemas/main.py` (965 lines) → 10 sibling files (`program.py`, `cohort.py`, …) + a 159-line `main.py` shim that re-exports everything. `services/academy_service/schemas/__init__.py` still imports from `.main`.
+Why this form:
 
-**Pattern B — convert the file to a package directory of the same name.** Use when the original file is a self-contained unit, exports more than one top-level router, or its split produces ≥4 tightly cohesive submodules that benefit from namespace isolation. The original `<name>.py` is replaced by `<name>/__init__.py` which exposes the same public names.
+1. **Public import path is preserved exactly.** `from X.Y.foo import Bar` keeps working whether `foo` is a `.py` file or a `foo/` package — Python resolves them identically. No consumer changes.
+2. **The original filename survives as a namespace** — `foo/` makes it obvious where the code originated. Submodule files cluster with their natural cohort, not scattered across the parent directory.
+3. **Scales without crowding.** Splitting `routers/admin.py` into `routers/admin/` doesn't add 6 new files to `routers/`. The parent directory stays the same size; each split adds exactly one directory.
+4. **Sibling files inside the package can be ergonomic.** `from .foo.program import ProgramBase` is one segment longer than the equivalent flat layout, but the namespace makes the relationship explicit.
 
-Example: `services/members_service/routers/admin.py` (804 lines) → `services/members_service/routers/admin/` package with 6 submodules + `__init__.py` exposing `router`. The existing `from services.members_service.routers.admin import router as admin_router` keeps working.
+**Example layout** (`services/members_service/routers/admin/`):
 
-Both patterns require that the public surface (every name any caller imports) survives unchanged. Verify with the four-step ritual in §12.3.
+```
+admin/
+├── __init__.py     # creates the prefixed router, includes each sub-router
+├── _shared.py      # private helpers used by multiple sub-routers
+├── approval.py     # one sub-router
+├── community.py    # one sub-router
+├── …
+```
+
+**Example layout for schemas with a `main.py` catch-all** (`services/academy_service/schemas/main/`):
+
+```
+schemas/
+├── __init__.py            # aggregator (unchanged from before the split)
+├── coach_assignment.py    # pre-existing peer (not in scope for the split)
+├── curriculum.py          # pre-existing peer
+├── main/                  # the split lives here
+│   ├── __init__.py        # was main.py; re-exports every class
+│   ├── program.py
+│   ├── cohort.py
+│   └── …
+└── self_enroll.py
+```
+
+The public path `from services.academy_service.schemas.main import ProgramBase` works identically before and after.
+
+The aggregator (`__init__.py`) is the only file that needs to change shape: it gathers the sub-files and exposes the public surface. Everything else is `git mv`.
 
 ### 12.2 Internal naming + structure (applies to both patterns)
 
