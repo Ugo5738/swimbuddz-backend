@@ -256,8 +256,10 @@ The aggregator (`__init__.py`) is the only file that needs to change shape: it g
 ### 12.2 Internal naming + structure (applies to both patterns)
 
 - **Private files** start with `_`: `_shared.py` (helpers), `_schemas.py` (Pydantic shapes used by multiple submodules), `_helpers.py` (pure functions + constants), `_constants.py` (literals only), `_milestones.py` etc. for narrowly-scoped private modules.
-- **Sub-routers** are declared as `router = APIRouter()` **without a prefix**. The aggregator's `__init__.py` declares the prefixed router (`router = APIRouter(prefix="/coaches", ...)`) and calls `router.include_router(_submodule.router)` once per sub-router.
-- **Aggregator imports** use the `from . import submodule as _submodule` pattern so cross-submodule name collisions (e.g. multiple `router` exports) don't bleed into the package namespace.
+- **Sub-routers** are declared as `router = APIRouter()` **without a prefix** (a `tags=` argument is fine — it only affects OpenAPI grouping). The aggregator's `__init__.py` declares the prefixed router (`router = APIRouter(prefix="/coaches", ...)`) and calls `router.include_router(_submodule.router)` once per sub-router.
+- **Aggregator import style depends on what the submodules expose:**
+  - **Router packages** (every submodule exports its own `router`) use `from . import submodule as _submodule` so the aggregator can call `_submodule.router.include_router(...)` without name collisions when multiple submodules each declare `router`.
+  - **Schema packages** (submodules export classes, no `router`) use `from .submodule import (ClassA, ClassB, ...)` to re-export the classes into the package namespace.
 - **Cross-submodule imports** use relative paths: `from ._shared import X`, `from ._schemas import Y`. External imports remain absolute.
 - **Route ordering matters** when sub-routers carry routes that could match the same path under different segment counts. If any sub-router has a `/{member_id}` catch-all, sub-routers with static-prefix routes (`/active`, `/search`, etc.) MUST be `include_router`'d first. Document this in the aggregator's docstring (see `routers/internal/__init__.py` for an example).
 - **`__all__`** in the aggregator lists exactly what callers can import. For schema shims, list every re-exported class. For router packages, list `router` (and `admin_router` if applicable).
