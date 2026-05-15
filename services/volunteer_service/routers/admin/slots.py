@@ -141,8 +141,8 @@ async def checkin_slot(
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "This opportunity has already ended. Use 'Mark No-Show' "
-                    "or 'Bulk Complete' with the actual hours instead."
+                    "This opportunity has already ended. Use 'No-Show' "
+                    "or 'Complete All' with the actual hours instead."
                 ),
             )
 
