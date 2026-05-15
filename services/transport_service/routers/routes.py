@@ -6,6 +6,8 @@ from typing import Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from libs.auth.dependencies import require_admin
+from libs.auth.models import AuthUser
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -114,6 +116,7 @@ async def list_routes(
 async def create_route(
     route_in: RouteInfoCreate,
     db: AsyncSession = Depends(get_async_db),
+    _admin: AuthUser = Depends(require_admin),
 ):
     route = RouteInfo(**route_in.model_dump())
     db.add(route)
@@ -127,6 +130,7 @@ async def update_route(
     route_id: uuid.UUID,
     route_in: RouteInfoUpdate,
     db: AsyncSession = Depends(get_async_db),
+    _admin: AuthUser = Depends(require_admin),
 ):
     query = select(RouteInfo).where(RouteInfo.id == route_id)
     result = await db.execute(query)
@@ -147,6 +151,7 @@ async def update_route(
 async def delete_route(
     route_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
+    _admin: AuthUser = Depends(require_admin),
 ):
     query = select(RouteInfo).where(RouteInfo.id == route_id)
     result = await db.execute(query)
@@ -166,6 +171,7 @@ async def attach_ride_areas_to_session(
     session_id: uuid.UUID,
     configs_in: List[SessionRideConfigCreate],
     db: AsyncSession = Depends(get_async_db),
+    _admin: AuthUser = Depends(require_admin),
 ):
     """Attach ride areas to a session with session-specific configuration."""
     # Delete existing configs (replace strategy)

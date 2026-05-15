@@ -4,6 +4,8 @@ from typing import List
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from libs.auth.dependencies import require_admin
+from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.sessions_service.models import Session, SessionTemplate
 from services.sessions_service.schemas.templates import (
@@ -30,6 +32,7 @@ router = APIRouter(prefix="/sessions/templates", tags=["session-templates"])
 async def list_templates(
     active_only: bool = True,
     db: AsyncSession = Depends(get_async_db),
+    _admin: AuthUser = Depends(require_admin),
 ):
     """List all session templates."""
     query = select(SessionTemplate)
@@ -45,6 +48,7 @@ async def list_templates(
 async def get_template(
     template_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
+    _admin: AuthUser = Depends(require_admin),
 ):
     """Get a specific template."""
     query = select(SessionTemplate).where(SessionTemplate.id == template_id)
@@ -64,6 +68,7 @@ async def get_template(
 async def create_template(
     template_in: SessionTemplateCreate,
     db: AsyncSession = Depends(get_async_db),
+    _admin: AuthUser = Depends(require_admin),
 ):
     """Create a new session template."""
     template_data = template_in.model_dump()
@@ -84,6 +89,7 @@ async def update_template(
     template_id: uuid.UUID,
     template_in: SessionTemplateUpdate,
     db: AsyncSession = Depends(get_async_db),
+    _admin: AuthUser = Depends(require_admin),
 ):
     """Update a session template."""
     query = select(SessionTemplate).where(SessionTemplate.id == template_id)
@@ -115,6 +121,7 @@ async def update_template(
 async def delete_template(
     template_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
+    _admin: AuthUser = Depends(require_admin),
 ):
     """Delete a session template."""
     query = select(SessionTemplate).where(SessionTemplate.id == template_id)
@@ -135,6 +142,7 @@ async def generate_sessions(
     template_id: uuid.UUID,
     request: GenerateSessionsRequest,
     db: AsyncSession = Depends(get_async_db),
+    _admin: AuthUser = Depends(require_admin),
 ):
     """Generate sessions from a template for the specified number of weeks."""
     # Get the template
