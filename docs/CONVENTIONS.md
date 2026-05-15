@@ -83,6 +83,27 @@ async def sign_in_to_session(session_id: UUID, member_id: UUID) -> SessionAttend
 - Dependencies:
   - `get_async_db()` (or equivalent) returns an async SQLAlchemy session.
   - `get_current_user()` / `require_admin()` enforce auth/roles.
+- **Health check** — every service registers its `/health` endpoint via `libs.common.health.register_health_check(app, "<service_name>")`. Do not hand-define the handler.
+- **Pagination** — list endpoints that paginate use `libs.common.pagination.PaginatedResponse[T]` as the response model and the `pagination_params` FastAPI dependency + `paginate(db, query, pagination)` helper. See `services/ai_service/routers/member.py::list_ai_requests` for the reference implementation.
+
+### Router prefix convention
+
+Two valid patterns exist in the codebase; both work. Pick one per service and apply it consistently:
+
+1. **Prefix in the router** (members_service style):
+   ```python
+   router = APIRouter(prefix="/members", tags=["members"])
+   ...
+   app.include_router(router)
+   ```
+2. **Prefix at include_router** (academy_service style):
+   ```python
+   router = APIRouter(tags=["academy"])
+   ...
+   app.include_router(router, prefix="/academy")
+   ```
+
+When **adding a new service**, prefer pattern (1) — routes self-describe their path, which makes them easier to grep for. Don't mix the two patterns inside one service.
 
 Example:
 

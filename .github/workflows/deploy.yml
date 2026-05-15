@@ -67,6 +67,22 @@ jobs:
         run: |
           pytest tests/unit/ -v
 
+      # Guards against the frontend's TypeScript types drifting from backend
+      # schemas. The husky pre-commit hook regenerates these locally; this
+      # step ensures a hard fail in CI if anyone bypasses the hook with
+      # --no-verify or commits from an env without husky configured.
+      - name: Verify openapi.json is up to date
+        run: |
+          python scripts/api/generate-openapi.py > /tmp/openapi.json.generated
+          if ! diff -q openapi.json /tmp/openapi.json.generated > /dev/null; then
+            echo "::error::openapi.json is stale. Regenerate with:"
+            echo "  python scripts/api/generate-openapi.py > openapi.json"
+            echo "Then re-run 'npm run generate:types' in swimbuddz-frontend."
+            echo "--- diff ---"
+            diff openapi.json /tmp/openapi.json.generated | head -100
+            exit 1
+          fi
+
       # - name: Run full test suite with coverage
       #   run: |
       #     pytest tests/ --cov=services --cov=libs --cov-report=term-missing --cov-report=xml -v
