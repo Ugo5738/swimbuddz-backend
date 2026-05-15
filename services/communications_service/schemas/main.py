@@ -372,7 +372,7 @@ class NotificationPreferencesResponse(NotificationPreferencesBase):
     """Response schema for notification preferences."""
 
     id: uuid.UUID
-    member_id: uuid.UUID
+    member_auth_id: str
     created_at: datetime
     updated_at: datetime
 

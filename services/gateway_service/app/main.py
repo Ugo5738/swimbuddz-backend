@@ -299,9 +299,15 @@ def create_app() -> FastAPI:
             clients.communications_client, f"/email/{path}", request
         )
 
-    @app.api_route("/api/v1/preferences/{path:path}", methods=["GET", "POST", "PATCH"])
+    @app.api_route("/api/v1/preferences/{path:path}", methods=["GET", "PATCH"])
     async def proxy_preferences(path: str, request: Request):
-        """Proxy all /api/v1/preferences/* requests to communications service."""
+        """Proxy all /api/v1/preferences/* requests to communications service.
+
+        POST was previously allowed for the public /preferences/check-opt-in
+        endpoint, which has been removed (no auth, no callers — see
+        communications_service/routers/preferences.py). Only the
+        member-facing GET/PATCH /preferences/me remain.
+        """
         return await proxy_request(
             clients.communications_client, f"/preferences/{path}", request
         )

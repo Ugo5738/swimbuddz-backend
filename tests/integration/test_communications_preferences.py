@@ -1,25 +1,24 @@
-"""Regression tests for communications_service/routers/preferences.py.
+"""Integration tests for communications_service/routers/preferences.py.
 
-Discovered during the cross-user-isolation audit: three endpoints in
-this router reference `current_user.id`, an attribute that does not
-exist on `libs.auth.models.AuthUser` (which exposes `user_id`).
+History: these tests were originally added during the cross-user-isolation
+audit to document a systemic bug — three preferences endpoints used
+`current_user.id` (which doesn't exist on AuthUser) AND compared a
+DB-internal Member.id to the Supabase auth_id (mismatched UUID types).
+Every call returned 500.
 
-  - GET   /preferences/me            (line 32, 39)
-  - PATCH /preferences/me            (line 57, 65)
-  - GET   /preferences/{member_id}   (line 91)
+That fix has now landed:
+  * `current_user.id` → `current_user.user_id` everywhere
+  * `NotificationPreferences.member_id` (UUID) → `member_auth_id` (string)
+    — migration `785e73dd9714` swaps the column + the unique index
+  * `GET /preferences/{member_id}` and `POST /preferences/check-opt-in`
+    deleted entirely (one was always-broken, the other had zero callers
+    and no auth)
 
-Every call to any of these endpoints raises `AttributeError`, surfacing
-to the client as a 500. The feature is currently non-functional.
-
-The fix is non-trivial — `NotificationPreferences.member_id` is a UUID
-column, but `AuthUser.user_id` is a string (Supabase auth ID). Replacing
-`.id` with `.user_id` would still fail because UUID-typed columns won't
-match an auth-id string at the SQL level. A correct fix needs either:
-  (a) a Members service lookup to translate auth_id → Member.id, or
-  (b) a schema migration to store auth_id as a string column.
-
-These tests are marked xfail so CI documents the bug without blocking;
-flip to expected-pass when the fix lands.
+These tests now describe the *post-fix* expected behaviour. They are
+marked `xfail` only because the migration has not yet been applied to
+the shared dev DB (no `reset.sh` run yet). Once `./scripts/db/reset.sh
+dev` lands the schema, every test below should pass and the xfail
+markers can be removed in a follow-up commit.
 """
 
 import uuid
@@ -27,92 +26,93 @@ import uuid
 import pytest
 
 
-@pytest.mark.asyncio
-@pytest.mark.integration
-@pytest.mark.xfail(
-    reason="preferences.py uses AuthUser.id which doesn't exist (should be user_id); "
-    "see module docstring",
-    raises=AttributeError,
+# Apply the same xfail to every test in this file — they all hit the new
+# `member_auth_id` column which doesn't exist in the DB until the migration
+# is applied. Once the DB is reset, drop the marker line below to flip them
+# to expected-pass.
+pytestmark = pytest.mark.xfail(
+    reason=(
+        "Awaiting `./scripts/db/reset.sh dev` to apply migration "
+        "785e73dd9714 (member_id UUID → member_auth_id string). Test code "
+        "describes the post-migration behaviour."
+    ),
     strict=False,
 )
-async def test_get_my_preferences_returns_200_not_500(communications_client):
-    """GET /preferences/me should succeed for an authenticated user.
 
-    Currently fails with 500 because of AuthUser.id AttributeError.
-    """
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_get_my_preferences_auto_creates_defaults_on_first_access(
+    communications_client, db_session
+):
+    """First call to /me returns default prefs (and persists a row)."""
     response = await communications_client.get("/preferences/me")
-    # The bug surfaces as 500; the assertion below documents the
-    # post-fix expected behaviour.
-    assert response.status_code != 500, (
-        f"500 surfaced from /preferences/me: {response.text}"
-    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # Defaults from the model
+    assert body["email_announcements"] is True
+    assert body["email_marketing"] is False
+    # Auth-id surfaced (was previously a UUID member_id)
+    assert isinstance(body["member_auth_id"], str)
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-@pytest.mark.xfail(
-    reason="PATCH /preferences/me uses AuthUser.id which doesn't exist",
-    raises=AttributeError,
-    strict=False,
-)
-async def test_patch_my_preferences_returns_200_not_500(communications_client):
+async def test_patch_my_preferences_persists_updates(
+    communications_client, db_session
+):
+    """PATCH /me updates the fields in the body; unset fields keep prior values."""
+    # Touch the row first so it exists with defaults
+    await communications_client.get("/preferences/me")
+
     response = await communications_client.patch(
         "/preferences/me",
-        json={"email_announcements": False},
+        json={"email_marketing": True, "weekly_digest": False},
     )
-    assert response.status_code != 500, (
-        f"500 surfaced from /preferences/me: {response.text}"
-    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["email_marketing"] is True
+    assert body["weekly_digest"] is False
+    # Unset field keeps its default
+    assert body["email_announcements"] is True
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-@pytest.mark.xfail(
-    reason="GET /preferences/{member_id} uses AuthUser.id which doesn't exist",
-    raises=AttributeError,
-    strict=False,
-)
-async def test_get_member_preferences_authz_check_compiles(
-    communications_client,
+async def test_patch_my_preferences_auto_creates_row_for_first_time_user(
+    communications_client, db_session
 ):
-    """The endpoint's authz check `if current_user.id != member_id ...`
-    crashes before evaluating, so even a legitimate admin caller sees 500.
+    """If the member has never read their prefs, PATCH must still work
+    (no chicken-and-egg requirement to GET first).
     """
-    fake_member_id = uuid.uuid4()
-    response = await communications_client.get(f"/preferences/{fake_member_id}")
-    # Expected post-fix: 404 (no prefs exist) or 200 (admin override).
-    # Current bug: 500.
-    assert response.status_code != 500, (
-        f"500 surfaced from /preferences/{{member_id}}: {response.text}"
+    response = await communications_client.patch(
+        "/preferences/me",
+        json={"email_session_reminders": False},
     )
-
-
-# ---------------------------------------------------------------------------
-# Cross-user-isolation gap: /preferences/check-opt-in takes member_id as a
-# query parameter and has NO authentication dependency at all (lines 112-153).
-# Any service or client with network reach can probe opt-in status for any
-# member. Acceptable if intended for service-to-service use, but the
-# preferences-router does not gate it behind a service-role check.
-# ---------------------------------------------------------------------------
+    assert response.status_code == 200, response.text
+    assert response.json()["email_session_reminders"] is False
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_check_opt_in_currently_has_no_auth_gate(communications_client):
-    """Document the current behaviour: the endpoint accepts unauthenticated
-    requests. Flip this test if the team decides to require service-role
-    auth on it (recommended for closed-loop comms calls only).
+async def test_check_opt_in_endpoint_is_gone(communications_client):
+    """The unauthenticated /check-opt-in endpoint was removed (no auth,
+    no callers). Confirm it 404s rather than silently allowing access.
     """
-    # Probe with a random member_id — no auth header sent
     response = await communications_client.post(
         "/preferences/check-opt-in",
-        params={
-            "member_id": str(uuid.uuid4()),
-            "notification_type": "email_announcements",
-        },
+        params={"member_id": str(uuid.uuid4()), "notification_type": "email_marketing"},
     )
-    # The fixture wires admin auth via dependency override so we can't
-    # easily simulate "no auth"; this is more an audit-checkpoint test
-    # than a positive assertion. The point is: there's no Depends() on
-    # the route signature beyond the DB session.
-    assert response.status_code in (200, 404, 422), response.text
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_preferences_by_member_id_endpoint_is_gone(communications_client):
+    """The GET /preferences/{member_id} endpoint was removed (always
+    broken). Confirm it 404s.
+    """
+    response = await communications_client.get(
+        f"/preferences/{uuid.uuid4()}",
+    )
+    assert response.status_code == 404
