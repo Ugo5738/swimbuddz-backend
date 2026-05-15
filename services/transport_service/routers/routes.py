@@ -4,15 +4,15 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from libs.auth.dependencies import require_admin
+from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.currency import naira_to_kobo
+from libs.common.service_client.sessions import get_session_by_id
 from libs.db.session import get_async_db
 from services.transport_service.models import (
     PickupLocation,
@@ -94,6 +94,7 @@ async def list_routes(
     destination: Optional[str] = None,
     destination_pool_id: Optional[uuid.UUID] = None,
     db: AsyncSession = Depends(get_async_db),
+    _user: AuthUser = Depends(get_current_user),
 ):
     query = select(RouteInfo)
     if origin_area_id:
@@ -271,6 +272,7 @@ class BatchRideConfigsResponse(BaseModel):
 async def get_ride_configs_batch(
     body: BatchRideConfigsRequest,
     db: AsyncSession = Depends(get_async_db),
+    _user: AuthUser = Depends(get_current_user),
 ):
     """Batch-fetch ride configs for multiple sessions in a single request.
 
@@ -351,33 +353,24 @@ async def get_ride_configs_batch(
 async def get_session_ride_configs(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
+    _user: AuthUser = Depends(get_current_user),
 ):
     """Get ride configurations for a session with route info and pickup location
     availability."""
-    # Get session info via API call to sessions service to maintain service decoupling
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            # Call sessions service directly (without /api/v1 prefix which is only
-            # for gateway)
-            response = await client.get(
-                f"http://sessions-service:8002/sessions/{session_id}"
-            )
-            response.raise_for_status()
-            session_data = response.json()
+    # Fetch session via the shared service_client. Goes through
+    # libs/common/service_client → /internal/sessions/{id} on sessions-service,
+    # keeping the cross-service URL and auth concerns in one place.
+    session_data = await get_session_by_id(str(session_id), calling_service="transport")
+    if session_data is None:
+        raise HTTPException(status_code=404, detail="Session not found")
 
-            # Extract needed fields - sessions service uses starts_at, not start_time
-            start_time_str = session_data.get("starts_at") or session_data.get(
-                "start_time"
-            )
-            session_start_time = datetime.fromisoformat(
-                start_time_str.replace("Z", "+00:00")
-            )
-            # Prefer the pool_id link (post-registry); fall back to the legacy
-            # location enum string for pre-registry sessions.
-            session_pool_id = session_data.get("pool_id")
-            session_location = session_data.get("location")
-        except httpx.HTTPError:
-            raise HTTPException(status_code=404, detail="Session not found")
+    # Extract needed fields - sessions service uses starts_at, not start_time
+    start_time_str = session_data.get("starts_at") or session_data.get("start_time")
+    session_start_time = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
+    # Prefer the pool_id link (post-registry); fall back to the legacy
+    # location enum string for pre-registry sessions.
+    session_pool_id = session_data.get("pool_id")
+    session_location = session_data.get("location")
 
     # Get session ride configs
     query = select(SessionRideConfig).where(SessionRideConfig.session_id == session_id)
