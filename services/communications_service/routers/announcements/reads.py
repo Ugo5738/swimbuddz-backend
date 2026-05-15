@@ -3,7 +3,7 @@
 """Communications announcements router: announcements, read tracking, comments."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import List, Optional, Set
 
 import httpx
@@ -16,6 +16,7 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
 from libs.common.member_utils import resolve_members_basic
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.communications_service.models import (
     Announcement,
@@ -42,6 +43,7 @@ settings = get_settings()
 logger = get_logger(__name__)
 
 router = APIRouter()
+
 
 @router.post(
     "/{announcement_id}/read", response_model=AnnouncementReadResponse, status_code=201
@@ -74,7 +76,7 @@ async def mark_announcement_read(
         # Update acknowledged status if provided
         if read_data.acknowledged and not existing.acknowledged:
             existing.acknowledged = True
-            existing.acknowledged_at = datetime.now(timezone.utc)
+            existing.acknowledged_at = utc_now()
             await db.commit()
             await db.refresh(existing)
         return existing
@@ -84,12 +86,13 @@ async def mark_announcement_read(
         announcement_id=announcement_id,
         member_id=member_id,
         acknowledged=read_data.acknowledged,
-        acknowledged_at=datetime.now(timezone.utc) if read_data.acknowledged else None,
+        acknowledged_at=utc_now() if read_data.acknowledged else None,
     )
     db.add(read_record)
     await db.commit()
     await db.refresh(read_record)
     return read_record
+
 
 @router.get("/{announcement_id}/read-status", response_model=AnnouncementReadResponse)
 async def get_announcement_read_status(
@@ -111,6 +114,7 @@ async def get_announcement_read_status(
         raise HTTPException(status_code=404, detail="Read status not found")
 
     return read_record
+
 
 @router.get("/{announcement_id}/read-stats")
 async def get_announcement_read_stats(

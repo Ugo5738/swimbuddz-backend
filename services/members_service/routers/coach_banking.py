@@ -7,8 +7,6 @@ PAYSTACK_SECRET_KEY. This keeps service boundaries clean and lets the
 payments-service env be the sole holder of the live secret.
 """
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
@@ -19,6 +17,7 @@ from libs.common.service_client import (
     paystack_list_banks,
     paystack_resolve_account,
 )
+from libs.common.datetime_utils import utc_now
 from libs.db.config import AsyncSessionLocal
 from services.members_service.models import CoachBankAccount, Member
 from services.members_service.schemas import (
@@ -131,7 +130,7 @@ async def create_or_update_bank_account(
         bank_account.account_number = data.account_number
         bank_account.account_name = account_name
         bank_account.is_verified = True
-        bank_account.verified_at = datetime.now(timezone.utc)
+        bank_account.verified_at = utc_now()
         bank_account.verified_by = "paystack_api"
 
         # Create Paystack transfer recipient (best-effort; can be retried later)

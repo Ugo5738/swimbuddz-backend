@@ -1,12 +1,13 @@
 """Admin: dashboard summary + reliability report."""
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.member_utils import resolve_members_basic
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.volunteer_service.models import (
     OpportunityStatus,
@@ -42,7 +43,7 @@ async def admin_dashboard(
     ).scalar() or 0
 
     # Hours this month
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     hours_this_month = (
         await db.execute(

@@ -1,11 +1,12 @@
 """Academy-tier admin activate/expire endpoints."""
 
-from datetime import datetime, timezone
+from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
+from libs.common.datetime_utils import utc_now
 from services.members_service.models import Member, MemberMembership
 from services.members_service.routers._helpers import member_eager_load_options
 from services.members_service.schemas import ActivateAcademyRequest, MemberResponse
@@ -45,7 +46,7 @@ async def admin_expire_academy_membership_by_auth(
         # Nothing to expire — return member unchanged.
         return member
 
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     member.membership.academy_paid_until = now
 
     # Recompute active_tiers + primary_tier from the new state

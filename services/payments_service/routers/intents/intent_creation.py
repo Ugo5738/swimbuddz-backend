@@ -9,7 +9,7 @@ authorization URL.
 
 import hashlib
 import hmac
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -30,6 +30,7 @@ from libs.common.service_client import (
     get_member_by_auth_id,
     internal_post,
 )
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.payments_service.models import (
     Discount,
@@ -58,7 +59,11 @@ BASE_FULFILLMENT_RETRY_MINUTES = 2
 
 from ._discounts import _validate_and_apply_discount
 from ._entitlement import _mark_paid_and_apply
-from ._helpers import _require_attendance_status, _resolve_club_amount, _update_pending_payment_reference
+from ._helpers import (
+    _require_attendance_status,
+    _resolve_club_amount,
+    _update_pending_payment_reference,
+)
 from ._paystack import _initialize_paystack, _paystack_enabled
 
 router = APIRouter()
@@ -108,8 +113,6 @@ async def create_payment_intent(
 
                     if community_until_str:
                         from dateutil.relativedelta import relativedelta
-
-                        from libs.common.datetime_utils import utc_now
 
                         community_until = datetime.fromisoformat(
                             community_until_str.replace("Z", "+00:00")
@@ -526,7 +529,7 @@ async def create_payment_intent(
             payment=payment,
             provider="discount",
             provider_reference=f"discount:{discount_ref}",
-            paid_at=datetime.now(timezone.utc),
+            paid_at=utc_now(),
             provider_payload={
                 "discount_code": discount_code_used or payload.discount_code,
                 "discount_applied": discount_applied,

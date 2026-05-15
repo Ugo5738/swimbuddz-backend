@@ -1,11 +1,10 @@
 """Coach-facing application + onboarding endpoints."""
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.db.config import AsyncSessionLocal
+from libs.common.datetime_utils import utc_now
 from services.members_service.models import CoachProfile, Member
 from services.members_service.schemas import (
     CoachApplicationCreate,
@@ -101,7 +100,7 @@ async def apply_as_coach(
 
         # Set application status
         coach_profile.status = "pending_review"
-        coach_profile.application_submitted_at = datetime.now(timezone.utc)
+        coach_profile.application_submitted_at = utc_now()
         coach_profile.rejection_reason = None  # Clear any previous rejection
 
         # Add coach role if not already present

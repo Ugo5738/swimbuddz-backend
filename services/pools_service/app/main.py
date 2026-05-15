@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from libs.common.health import register_health_check
 from services.pools_service.routers import (
     admin_related_router,
     admin_router,
@@ -19,10 +20,7 @@ def create_app() -> FastAPI:
         description="Pool registry and partnership CRM for SwimBuddz.",
     )
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "ok", "service": "pools"}
+    register_health_check(app, "pools")
 
     # Member-facing submission routes (auth required)
     # Registered before admin routes so the gateway can proxy /pools/submissions

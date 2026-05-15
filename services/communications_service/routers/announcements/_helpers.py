@@ -3,7 +3,7 @@
 """Communications announcements router: announcements, read tracking, comments."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import List, Optional, Set
 
 import httpx
@@ -16,6 +16,7 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
 from libs.common.member_utils import resolve_members_basic
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.communications_service.models import (
     Announcement,
@@ -41,6 +42,7 @@ from services.communications_service.templates.messaging import send_message_ema
 settings = get_settings()
 logger = get_logger(__name__)
 
+
 def _is_admin(user: Optional[AuthUser]) -> bool:
     if not user:
         return False
@@ -53,7 +55,7 @@ def _is_admin(user: Optional[AuthUser]) -> bool:
 
 
 def _default_expiry(category: AnnouncementCategory) -> Optional[datetime]:
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     if category in (
         AnnouncementCategory.RAIN_UPDATE,
         AnnouncementCategory.SCHEDULE_CHANGE,

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from libs.common.member_utils import resolve_member_basic
 from libs.common.service_client import emit_rewards_event, get_member_by_id
+from libs.common.datetime_utils import utc_now
 from services.volunteer_service.models import (
     SlotStatus,
     VolunteerHoursLog,
@@ -94,7 +95,7 @@ async def _auto_checkout_if_past(
         return False
 
     end_dt = datetime.combine(opp.date, opp.end_time, tzinfo=timezone.utc)
-    if datetime.now(timezone.utc) <= end_dt:
+    if utc_now() <= end_dt:
         return False
 
     if slot.checked_in_at >= end_dt:

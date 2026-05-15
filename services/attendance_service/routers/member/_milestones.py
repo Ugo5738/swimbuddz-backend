@@ -7,6 +7,7 @@ the user's flow.
 import uuid
 
 from libs.common.service_client import emit_rewards_event
+from libs.common.datetime_utils import utc_now
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,10 +26,8 @@ async def _check_attendance_milestones(
     thresholds (4, 8+) are first crossed.  Also checks consecutive-week
     streaks and emits ``attendance.streak`` at 4-week marks.
     """
-    from datetime import datetime, timezone
-
     try:
-        now = datetime.now(timezone.utc)
+        now = utc_now()
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
         # Count sessions attended this month

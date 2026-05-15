@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 from libs.common.member_utils import resolve_members_basic, resolve_members_with_photos
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.volunteer_service.models import (
     RecognitionTier,
@@ -26,7 +27,7 @@ router = APIRouter()
 @router.get("/spotlight", response_model=SpotlightResponse)
 async def get_spotlight(db: AsyncSession = Depends(get_async_db)):
     """Public volunteer spotlight: featured volunteer, stats, milestones."""
-    now = datetime.now(timezone.utc)
+    now = utc_now()
 
     def _is_paid(info) -> bool:
         """Check if member has active community payment."""

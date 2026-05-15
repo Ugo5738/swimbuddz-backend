@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.service_client import get_member_by_auth_id
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.volunteer_service.models import (
     SlotStatus,
@@ -85,7 +86,7 @@ async def update_slot(
 
     if data.status == SlotStatus.APPROVED:
         slot.status = SlotStatus.APPROVED
-        slot.approved_at = datetime.now(timezone.utc)
+        slot.approved_at = utc_now()
         _admin = await get_member_by_auth_id(admin.user_id, calling_service="volunteer")
         admin_member_id = uuid.UUID(_admin["id"]) if _admin else None
         slot.approved_by = admin_member_id
@@ -137,7 +138,7 @@ async def checkin_slot(
     ).scalar_one_or_none()
     if opp and opp.end_time:
         end_dt = datetime.combine(opp.date, opp.end_time, tzinfo=timezone.utc)
-        if datetime.now(timezone.utc) > end_dt:
+        if utc_now() > end_dt:
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -146,7 +147,7 @@ async def checkin_slot(
                 ),
             )
 
-    slot.checked_in_at = datetime.now(timezone.utc)
+    slot.checked_in_at = utc_now()
     await db.commit()
     await db.refresh(slot)
     return await _enrich_slot(slot)
@@ -167,7 +168,7 @@ async def checkout_slot(
     if not slot.checked_in_at:
         raise HTTPException(status_code=400, detail="Must check in before checking out")
 
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     slot.checked_out_at = now
     slot.status = SlotStatus.COMPLETED
 
@@ -267,7 +268,7 @@ async def bulk_complete(
         if not slot:
             continue
 
-        now = datetime.now(timezone.utc)
+        now = utc_now()
         slot.checked_out_at = now
         slot.status = SlotStatus.COMPLETED
         slot.hours_logged = data.hours or 2.0  # Default 2 hours if not specified

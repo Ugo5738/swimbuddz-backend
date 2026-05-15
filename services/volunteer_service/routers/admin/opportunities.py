@@ -2,13 +2,14 @@
 
 import secrets
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.service_client import get_member_by_auth_id
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.volunteer_service.models import (
     OpportunityStatus,
@@ -191,7 +192,7 @@ async def cancel_opportunity(
     )
     for slot in active_slots:
         slot.status = SlotStatus.CANCELLED
-        slot.cancelled_at = datetime.now(timezone.utc)
+        slot.cancelled_at = utc_now()
         slot.cancellation_reason = "Opportunity cancelled by admin"
 
     opp.status = OpportunityStatus.CANCELLED

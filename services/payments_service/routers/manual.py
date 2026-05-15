@@ -1,7 +1,6 @@
 """Manual/bank transfer payment endpoints: proof submission and admin review."""
 
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
@@ -9,6 +8,7 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.payments_service.models import Payment, PaymentStatus
 from services.payments_service.routers.intents import _apply_entitlement_with_tracking
@@ -116,7 +116,7 @@ async def approve_manual_payment(
 
     payment.status = PaymentStatus.PAID
     payment.provider = "manual_transfer"
-    payment.paid_at = datetime.now(timezone.utc)
+    payment.paid_at = utc_now()
     payment.admin_review_note = payload.note
 
     await db.commit()
@@ -281,7 +281,7 @@ async def mark_refund_disbursed(
     for entry in owed_list:
         if str(entry.get("enrollment_id")) == payload.enrollment_id:
             if not entry.get("disbursed_at"):
-                entry["disbursed_at"] = datetime.now(timezone.utc).isoformat()
+                entry["disbursed_at"] = utc_now().isoformat()
                 if payload.note:
                     entry["disbursed_note"] = payload.note
                 entry["disbursed_by"] = current_user.email

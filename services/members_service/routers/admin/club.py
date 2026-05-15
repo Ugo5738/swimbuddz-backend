@@ -1,12 +1,13 @@
 """Club-tier admin activate/extend endpoints."""
 
-from datetime import datetime, timezone
+from datetime import timezone
 
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.members_service.models import Member, MemberMembership
 from services.members_service.routers._helpers import member_eager_load_options
@@ -53,7 +54,7 @@ async def admin_extend_club_membership_by_auth(
             status_code=status.HTTP_404_NOT_FOUND, detail="Member not found"
         )
 
-    now = datetime.now(timezone.utc)
+    now = utc_now()
 
     if not member.membership:
         member.membership = MemberMembership(member_id=member.id)
@@ -130,7 +131,7 @@ async def admin_activate_club_membership_by_auth(
             status_code=status.HTTP_404_NOT_FOUND, detail="Member not found"
         )
 
-    now = datetime.now(timezone.utc)
+    now = utc_now()
 
     if not member.membership:
         member.membership = MemberMembership(member_id=member.id)

@@ -9,7 +9,7 @@ exercising `_try_qualify_referral`.
 
 import hashlib
 import hmac
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -30,6 +30,7 @@ from libs.common.service_client import (
     get_member_by_auth_id,
     internal_post,
 )
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.payments_service.models import (
     Discount,
@@ -96,7 +97,7 @@ async def _update_pending_payment_reference(
 def _next_retry_time(attempts: int) -> datetime:
     # Exponential backoff capped at 60 minutes.
     delay = min(60, BASE_FULFILLMENT_RETRY_MINUTES * (2 ** max(attempts - 1, 0)))
-    return datetime.now(timezone.utc) + timedelta(minutes=delay)
+    return utc_now() + timedelta(minutes=delay)
 
 
 def _fulfillment_meta(payment: Payment) -> dict:

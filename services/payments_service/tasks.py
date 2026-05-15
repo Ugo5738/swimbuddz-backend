@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
@@ -48,7 +48,7 @@ async def reconcile_pending_paystack_payments() -> None:
         _verify_paystack_transaction,
     )
 
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=2)
+    cutoff = utc_now() - timedelta(minutes=2)
     processed = 0
 
     async with AsyncSessionLocal() as db:
@@ -118,7 +118,7 @@ async def retry_failed_entitlement_fulfillment() -> None:
         _apply_entitlement_with_tracking,
     )
 
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     processed = 0
 
     async with AsyncSessionLocal() as db:

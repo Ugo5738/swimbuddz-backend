@@ -50,11 +50,13 @@ class EnrollmentSource(str, enum.Enum):
     PARTNER = "partner"
 
 
-class PaymentStatus(str, enum.Enum):
-    PENDING = "pending"
-    PAID = "paid"
-    FAILED = "failed"
-    WAIVED = "waived"
+# PaymentStatus is the canonical cross-service payment lifecycle enum and
+# lives in libs/common/enums.py. Academy only writes PENDING / PAID / WAIVED /
+# FAILED today; the canonical class also defines PENDING_REVIEW (used by
+# payments_service) but academy's ``academy_payment_status_enum`` DB type
+# does not carry that value, so academy code must not assign it without an
+# accompanying migration.
+from libs.common.enums import PaymentStatus  # noqa: F401
 
 
 class InstallmentStatus(str, enum.Enum):

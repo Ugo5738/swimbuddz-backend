@@ -1,6 +1,8 @@
 """FastAPI application for the AI Service."""
 
 from fastapi import FastAPI
+
+from libs.common.health import register_health_check
 from services.ai_service.routers.member import admin_router, router
 
 
@@ -12,10 +14,7 @@ def create_app() -> FastAPI:
         description="AI-assisted scoring and intelligence service for SwimBuddz.",
     )
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "ok", "service": "ai"}
+    register_health_check(app, "ai")
 
     # Include scoring + service endpoints
     app.include_router(router, prefix="/ai")

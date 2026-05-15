@@ -2,23 +2,16 @@
 
 import enum
 
+# PaymentStatus is the canonical cross-service payment lifecycle enum and
+# lives in libs/common/enums.py. Re-exported here so existing imports like
+# ``from services.payments_service.models.enums import PaymentStatus`` keep
+# working unchanged.
+from libs.common.enums import PaymentStatus  # noqa: F401
+
 
 def enum_values(enum_cls):
     """Return persistent DB values for SAEnum mappings."""
     return [member.value for member in enum_cls]
-
-
-class PaymentStatus(str, enum.Enum):
-    PENDING = "pending"
-    PENDING_REVIEW = "pending_review"
-    PAID = "paid"
-    WAIVED = "waived"
-    FAILED = "failed"
-
-
-class PaymentMethod(str, enum.Enum):
-    PAYSTACK = "paystack"
-    MANUAL_TRANSFER = "manual_transfer"
 
 
 class PaymentPurpose(str, enum.Enum):

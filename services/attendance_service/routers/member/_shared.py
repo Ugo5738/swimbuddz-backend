@@ -19,6 +19,7 @@ from libs.common.service_client import (
     get_session_by_id,
     internal_get,
 )
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -126,7 +127,7 @@ async def validate_session_access(
     - community/event: any member with an active membership
     - one_on_one/group_booking: no tier check (future booking system)
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     session_type = session_data.get("session_type")
 
@@ -177,7 +178,7 @@ async def validate_session_access(
         if club_paid_until:
             try:
                 paid_until = datetime.fromisoformat(club_paid_until)
-                club_current = paid_until > datetime.now(timezone.utc)
+                club_current = paid_until > utc_now()
             except (ValueError, TypeError):
                 pass
 

@@ -3,7 +3,7 @@
 """Communications announcements router: announcements, read tracking, comments."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import List, Optional, Set
 
 import httpx
@@ -16,6 +16,7 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
 from libs.common.member_utils import resolve_members_basic
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.communications_service.models import (
     Announcement,
@@ -40,9 +41,16 @@ from services.communications_service.templates.messaging import send_message_ema
 
 settings = get_settings()
 logger = get_logger(__name__)
-from ._helpers import _default_expiry, _default_notification_flags, _get_allowed_audiences, _is_admin, _send_announcement_emails
+from ._helpers import (
+    _default_expiry,
+    _default_notification_flags,
+    _get_allowed_audiences,
+    _is_admin,
+    _send_announcement_emails,
+)
 
 router = APIRouter()
+
 
 @router.get("/", response_model=List[AnnouncementResponse])
 async def list_announcements(
@@ -70,7 +78,7 @@ async def list_announcements(
 
     query = select(Announcement)
     if not include_all:
-        now = datetime.now(timezone.utc)
+        now = utc_now()
         allowed_audiences = await _get_allowed_audiences(
             request.headers.get("authorization")
         )
@@ -98,6 +106,7 @@ async def list_announcements(
     result = await db.execute(query)
     return result.scalars().all()
 
+
 @router.get("/stats")
 async def get_announcement_stats(
     request: Request,
@@ -118,7 +127,7 @@ async def get_announcement_stats(
 
     query = select(func.count(Announcement.id))
     if not include_all:
-        now = datetime.now(timezone.utc)
+        now = utc_now()
         allowed_audiences = await _get_allowed_audiences(
             request.headers.get("authorization")
         )
@@ -132,6 +141,7 @@ async def get_announcement_stats(
 
     return {"recent_announcements_count": recent_announcements_count}
 
+
 @router.get("/unread-count")
 async def get_unread_count(
     request: Request,
@@ -139,7 +149,7 @@ async def get_unread_count(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Return the number of published, non-expired announcements the member has not read."""
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     allowed_audiences = await _get_allowed_audiences(
         request.headers.get("authorization")
     )
@@ -159,6 +169,7 @@ async def get_unread_count(
     )
     result = await db.execute(query)
     return {"unread_count": result.scalar_one() or 0}
+
 
 @router.get("/{announcement_id}", response_model=AnnouncementResponse)
 async def get_announcement(
@@ -180,7 +191,7 @@ async def get_announcement(
 
     query = select(Announcement).where(Announcement.id == announcement_id)
     if not include_all:
-        now = datetime.now(timezone.utc)
+        now = utc_now()
         allowed_audiences = await _get_allowed_audiences(
             request.headers.get("authorization")
         )
@@ -199,6 +210,7 @@ async def get_announcement(
         )
     return announcement
 
+
 @router.post("/", response_model=AnnouncementResponse, status_code=201)
 async def create_announcement(
     announcement_data: AnnouncementCreate,
@@ -213,7 +225,7 @@ async def create_announcement(
 
     published_at = payload.get("published_at")
     if status_value == AnnouncementStatus.PUBLISHED and not published_at:
-        published_at = datetime.now(timezone.utc)
+        published_at = utc_now()
     elif status_value == AnnouncementStatus.DRAFT:
         published_at = None
 
@@ -247,6 +259,7 @@ async def create_announcement(
     await _send_announcement_emails(announcement, db)
     return announcement
 
+
 @router.patch("/{announcement_id}", response_model=AnnouncementResponse)
 async def update_announcement(
     announcement_id: uuid.UUID,
@@ -273,7 +286,7 @@ async def update_announcement(
             update_data["status"] == AnnouncementStatus.PUBLISHED
             and not announcement.published_at
         ):
-            announcement.published_at = datetime.now(timezone.utc)
+            announcement.published_at = utc_now()
         elif update_data["status"] == AnnouncementStatus.DRAFT:
             announcement.published_at = None
         if (
@@ -295,6 +308,7 @@ async def update_announcement(
     ):
         await _send_announcement_emails(announcement, db)
     return announcement
+
 
 @router.delete("/{announcement_id}", status_code=204)
 async def delete_announcement(

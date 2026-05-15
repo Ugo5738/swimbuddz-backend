@@ -12,6 +12,7 @@ from services.volunteer_service.models import (
     VolunteerSlot,
     VolunteerTier,
 )
+from libs.common.datetime_utils import utc_now
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,7 +59,7 @@ def is_late_cancellation(
     cancellation_deadline_hours: int,
 ) -> bool:
     """Check if cancellation is within the deadline window."""
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     if opportunity_start_time:
         opp_dt = datetime.combine(
             opportunity_date, opportunity_start_time, tzinfo=timezone.utc

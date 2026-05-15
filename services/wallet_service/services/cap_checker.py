@@ -4,13 +4,13 @@ Checks lifetime and periodic caps before granting a reward to a member.
 """
 
 import logging
-from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.wallet_service.models.enums import RewardPeriod
 from services.wallet_service.models.rewards import MemberRewardHistory, RewardRule
+from libs.common.datetime_utils import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ def compute_period_key(period: RewardPeriod) -> str:
     Returns a string like "2026-02-27" (day), "2026-W09" (week),
     "2026-02" (month), or "2026" (year).
     """
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     if period == RewardPeriod.DAY:
         return now.strftime("%Y-%m-%d")
     if period == RewardPeriod.WEEK:

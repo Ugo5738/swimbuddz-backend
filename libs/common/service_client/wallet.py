@@ -7,11 +7,11 @@ rewards-engine event emitter.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
+from libs.common.datetime_utils import utc_now
 
 from .core import internal_get, internal_post
 
@@ -226,7 +226,7 @@ async def emit_rewards_event(
                 "member_auth_id": member_auth_id,
                 "member_id": member_id,
                 "service_source": service_source,
-                "occurred_at": occurred_at or datetime.now(timezone.utc).isoformat(),
+                "occurred_at": occurred_at or utc_now().isoformat(),
                 "event_data": event_data,
                 "idempotency_key": idempotency_key,
             },

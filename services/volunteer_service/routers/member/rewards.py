@@ -1,13 +1,13 @@
 """Member-facing reward listing + redemption."""
 
 import uuid
-from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.service_client import get_member_by_auth_id
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.volunteer_service.models import VolunteerReward
 from services.volunteer_service.schemas import VolunteerRewardResponse
@@ -64,11 +64,11 @@ async def redeem_reward(
         raise HTTPException(status_code=404, detail="Reward not found")
     if reward.is_redeemed:
         raise HTTPException(status_code=400, detail="Reward already redeemed")
-    if reward.expires_at and reward.expires_at < datetime.now(timezone.utc):
+    if reward.expires_at and reward.expires_at < utc_now():
         raise HTTPException(status_code=400, detail="Reward has expired")
 
     reward.is_redeemed = True
-    reward.redeemed_at = datetime.now(timezone.utc)
+    reward.redeemed_at = utc_now()
     await db.commit()
     await db.refresh(reward)
     return reward

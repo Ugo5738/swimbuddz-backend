@@ -1,6 +1,5 @@
 """Payout API routes for coach payout management."""
 
-from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -9,6 +8,7 @@ from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.common.service_client import get_member_by_auth_id, internal_get
+from libs.common.datetime_utils import utc_now
 from libs.db.config import AsyncSessionLocal
 from services.payments_service.models import CoachPayout, PayoutMethod, PayoutStatus
 from services.payments_service.schemas import (
@@ -236,7 +236,7 @@ async def approve_payout(
 
         payout.status = PayoutStatus.APPROVED
         payout.approved_by = admin.email or admin.user_id
-        payout.approved_at = datetime.now(timezone.utc)
+        payout.approved_at = utc_now()
         if data.admin_notes:
             payout.admin_notes = data.admin_notes
 
@@ -358,14 +358,14 @@ async def complete_manual_payout(
         payout.status = PayoutStatus.PAID
         payout.payout_method = data.payout_method
         payout.payment_reference = data.payment_reference
-        payout.paid_at = datetime.now(timezone.utc)
+        payout.paid_at = utc_now()
         if data.admin_notes:
             payout.admin_notes = data.admin_notes
 
         # Ensure approved fields are set
         if not payout.approved_by:
             payout.approved_by = admin.email or admin.user_id
-            payout.approved_at = datetime.now(timezone.utc)
+            payout.approved_at = utc_now()
 
         await session.commit()
         await session.refresh(payout)

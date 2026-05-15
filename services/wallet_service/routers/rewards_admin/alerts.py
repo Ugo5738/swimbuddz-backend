@@ -4,13 +4,13 @@
 
 import logging
 import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
+from libs.common.datetime_utils import utc_now
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
 @router.get("/alerts", response_model=RewardAlertListResponse)
 async def list_alerts(
     status_filter: Optional[str] = Query(None, alias="status"),
@@ -79,6 +80,7 @@ async def list_alerts(
         items=[RewardAlertResponse.model_validate(a) for a in alerts],
         total=total,
     )
+
 
 @router.get("/alerts/summary", response_model=RewardAlertSummaryResponse)
 async def get_alert_summary(
@@ -122,6 +124,7 @@ async def get_alert_summary(
         by_severity=by_severity,
     )
 
+
 @router.get("/alerts/{alert_id}", response_model=RewardAlertResponse)
 async def get_alert(
     alert_id: uuid.UUID,
@@ -134,6 +137,7 @@ async def get_alert(
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
     return RewardAlertResponse.model_validate(alert)
+
 
 @router.patch("/alerts/{alert_id}", response_model=RewardAlertResponse)
 async def update_alert(
@@ -161,7 +165,7 @@ async def update_alert(
         alert.resolution_notes = body.resolution_notes
     if new_status in (AlertStatus.RESOLVED, AlertStatus.DISMISSED):
         alert.resolved_by = admin.user_id
-        alert.resolved_at = datetime.now(timezone.utc)
+        alert.resolved_at = utc_now()
 
     await db.flush()
     await db.commit()

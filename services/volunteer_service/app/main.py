@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from libs.common.health import register_health_check
 from services.volunteer_service.routers.admin import router as admin_router
 from services.volunteer_service.routers.internal import router as internal_router
 from services.volunteer_service.routers.member import router as volunteer_router
@@ -15,10 +16,7 @@ def create_app() -> FastAPI:
         description="Volunteer management service for SwimBuddz — roles, opportunities, scheduling, hours tracking, and rewards.",
     )
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "ok", "service": "volunteer"}
+    register_health_check(app, "volunteer")
 
     app.include_router(volunteer_router)
     app.include_router(admin_router)

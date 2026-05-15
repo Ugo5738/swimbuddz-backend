@@ -1,12 +1,12 @@
 """Coach-facing agreement endpoints (get / status / sign / history)."""
 
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
+from libs.common.datetime_utils import utc_now
 from libs.db.config import AsyncSessionLocal
 from services.members_service.models import AgreementVersion, CoachAgreement, Member
 from services.members_service.schemas import (
@@ -207,7 +207,7 @@ async def sign_agreement(
         # For checkbox, auto-set signature_data
         sig_data = data.signature_data
         if data.signature_type == SignatureTypeEnum.CHECKBOX:
-            sig_data = f"CHECKBOX_AGREE:{datetime.now(timezone.utc).isoformat()}"
+            sig_data = f"CHECKBOX_AGREE:{utc_now().isoformat()}"
 
         # Create new agreement
         new_agreement = CoachAgreement(
@@ -219,7 +219,7 @@ async def sign_agreement(
             signature_media_id=(
                 uuid.UUID(data.signature_media_id) if data.signature_media_id else None
             ),
-            signed_at=datetime.now(timezone.utc),
+            signed_at=utc_now(),
             handbook_acknowledged=True,
             handbook_version=data.handbook_version,
             ip_address=None,  # Would get from request in production
@@ -232,7 +232,7 @@ async def sign_agreement(
         for old_agreement in existing_agreements:
             old_agreement.is_active = False
             old_agreement.superseded_by_id = new_agreement.id
-            old_agreement.superseded_at = datetime.now(timezone.utc)
+            old_agreement.superseded_at = utc_now()
 
         await session.commit()
         await session.refresh(new_agreement)

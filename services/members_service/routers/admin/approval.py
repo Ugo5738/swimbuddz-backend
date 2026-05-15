@@ -1,13 +1,13 @@
 """Pending-member listing, lookup, and approve/reject/upgrade flows."""
 
 import uuid
-from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.emails.client import get_email_client
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.members_service.models import Member
 from services.members_service.routers._helpers import member_eager_load_options
@@ -91,7 +91,7 @@ async def approve_member(
         )
 
     member.approval_status = "approved"
-    member.approved_at = datetime.now(timezone.utc)
+    member.approved_at = utc_now()
     member.approved_by = current_user.email
     if action.notes:
         member.approval_notes = action.notes
@@ -151,7 +151,7 @@ async def reject_member(
         )
 
     member.approval_status = "rejected"
-    member.approved_at = datetime.now(timezone.utc)
+    member.approved_at = utc_now()
     member.approved_by = current_user.email
     if action.notes:
         member.approval_notes = action.notes
@@ -218,7 +218,7 @@ async def approve_member_upgrade(
 
     member.membership.requested_tiers = None
     member.approved_by = current_user.email
-    member.approved_at = datetime.now(timezone.utc)
+    member.approved_at = utc_now()
     if action.notes:
         member.approval_notes = action.notes
 

@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from libs.common.health import register_health_check
 from services.store_service.routers import (
     admin_catalog_router,
     admin_credits_router,
@@ -26,10 +27,7 @@ def create_app() -> FastAPI:
         description="E-commerce service for SwimBuddz - product catalog, cart, checkout, orders.",
     )
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "ok", "service": "store"}
+    register_health_check(app, "store")
 
     # Public store routes (catalog, cart, checkout, orders)
     app.include_router(catalog_router, prefix="/store")

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.service_client import get_member_by_auth_id
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.volunteer_service.models import (
     SlotStatus,
@@ -59,7 +60,7 @@ async def qr_checkin(
         raise HTTPException(status_code=404, detail="Invalid or expired QR code")
 
     # 2. Validate time window
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     if opp.start_time:
         opp_start = datetime.combine(opp.date, opp.start_time, tzinfo=timezone.utc)
         window_open = opp_start - timedelta(minutes=_QR_CHECKIN_BEFORE_MINUTES)

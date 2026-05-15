@@ -1,13 +1,13 @@
 """Volunteer-slot claim + cancel endpoints."""
 
 import uuid
-from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.service_client import get_member_by_auth_id
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.volunteer_service.models import (
     OpportunityStatus,
@@ -106,11 +106,7 @@ async def claim_slot(
         opportunity_id=opp_id,
         member_id=member_id,
         status=initial_status,
-        approved_at=(
-            datetime.now(timezone.utc)
-            if initial_status == SlotStatus.APPROVED
-            else None
-        ),
+        approved_at=(utc_now() if initial_status == SlotStatus.APPROVED else None),
     )
     db.add(slot)
 
@@ -167,7 +163,7 @@ async def cancel_my_claim(
             profile.total_late_cancellations += 1
 
     slot.status = SlotStatus.CANCELLED
-    slot.cancelled_at = datetime.now(timezone.utc)
+    slot.cancelled_at = utc_now()
 
     # Decrement slots_filled
     if opp and opp.slots_filled > 0:

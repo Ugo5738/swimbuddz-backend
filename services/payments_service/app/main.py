@@ -1,6 +1,8 @@
 """FastAPI application for the Payments Service."""
 
 from fastapi import FastAPI
+
+from libs.common.health import register_health_check
 from services.payments_service.routers import (
     discounts_router,
     intents_router,
@@ -32,10 +34,7 @@ def create_app() -> FastAPI:
         description="Payment processing service for SwimBuddz.",
     )
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "ok", "service": "payments"}
+    register_health_check(app, "payments")
 
     # Include split payments routers
     app.include_router(intents_router)

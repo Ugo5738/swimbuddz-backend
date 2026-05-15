@@ -13,9 +13,9 @@ from libs.auth.dependencies import _service_role_jwt
 from libs.common.config import get_settings
 from libs.common.currency import KOBO_PER_NAIRA
 from libs.common.logging import get_logger
-from datetime import datetime, timezone
 from libs.common.emails.client import get_email_client
 from libs.common.service_client import internal_post
+from libs.common.datetime_utils import utc_now
 from services.payments_service.models import (
     Payment,
     PaymentPurpose,
@@ -35,6 +35,7 @@ from .._helpers import (
 settings = get_settings()
 logger = get_logger(__name__)
 
+
 async def apply_academy_cohort(payment: Payment) -> None:
     enrollment_id = (payment.payment_metadata or {}).get("enrollment_id")
     if not enrollment_id:
@@ -49,9 +50,7 @@ async def apply_academy_cohort(payment: Payment) -> None:
     mark_paid_payload = {
         "payment_reference": payment.reference,
         "paid_at": (
-            payment.paid_at.isoformat()
-            if payment.paid_at
-            else datetime.now(timezone.utc).isoformat()
+            payment.paid_at.isoformat() if payment.paid_at else utc_now().isoformat()
         ),
         # Pass the actual amount paid (kobo). When this exceeds the target
         # installment's stipulated amount (member chose a custom amount),
@@ -148,7 +147,7 @@ async def apply_academy_cohort(payment: Payment) -> None:
                         "paid_at": (
                             payment.paid_at.strftime("%B %d, %Y")
                             if payment.paid_at
-                            else datetime.now(timezone.utc).strftime("%B %d, %Y")
+                            else utc_now().strftime("%B %d, %Y")
                         ),
                     },
                 )

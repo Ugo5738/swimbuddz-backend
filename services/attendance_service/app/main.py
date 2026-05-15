@@ -1,6 +1,8 @@
 """FastAPI application for the Attendance Service."""
 
 from fastapi import FastAPI
+
+from libs.common.health import register_health_check
 from services.attendance_service.routers.internal import router as internal_router
 from services.attendance_service.routers.member import router as attendance_router
 
@@ -13,10 +15,7 @@ def create_app() -> FastAPI:
         description="Attendance tracking service for SwimBuddz.",
     )
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "ok", "service": "attendance"}
+    register_health_check(app, "attendance")
 
     # Include attendance router
     app.include_router(attendance_router, prefix="/attendance")

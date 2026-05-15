@@ -116,7 +116,7 @@ class ProgramCurriculum(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     program_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("programs.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("programs.id"), nullable=False, index=True
     )
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     is_active: Mapped[bool] = mapped_column(
@@ -148,7 +148,10 @@ class CurriculumWeek(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     curriculum_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("program_curricula.id"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("program_curricula.id"),
+        nullable=False,
+        index=True,
     )
     week_number: Mapped[int] = mapped_column(Integer, nullable=False)
     theme: Mapped[str] = mapped_column(String, nullable=False)
@@ -177,7 +180,10 @@ class CurriculumLesson(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     week_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("curriculum_weeks.id"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("curriculum_weeks.id"),
+        nullable=False,
+        index=True,
     )
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -224,10 +230,13 @@ class LessonSkill(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     lesson_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("curriculum_lessons.id"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("curriculum_lessons.id"),
+        nullable=False,
+        index=True,
     )
     skill_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("skills.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("skills.id"), nullable=False, index=True
     )
 
     # Relationships

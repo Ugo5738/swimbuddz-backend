@@ -12,13 +12,14 @@ to `intents/__init__.py` for the retry worker and route modules):
     SELECT ... FOR UPDATE lock and triggers fulfillment.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.logging import get_logger
+from libs.common.datetime_utils import utc_now
 from services.payments_service.models import (
     Payment,
     PaymentPurpose,
@@ -67,7 +68,7 @@ _PURPOSE_HANDLERS = {
 
 
 async def _apply_entitlement_with_tracking(payment: Payment) -> None:
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     existing = _fulfillment_meta(payment)
     attempts = int(existing.get("attempts") or 0) + 1
 
@@ -185,7 +186,7 @@ async def _mark_paid_and_apply(
     payment.status = PaymentStatus.PAID
     payment.provider = provider
     payment.provider_reference = provider_reference
-    payment.paid_at = paid_at or datetime.now(timezone.utc)
+    payment.paid_at = paid_at or utc_now()
     if provider_payload:
         payment.payment_metadata = {
             **(payment.payment_metadata or {}),

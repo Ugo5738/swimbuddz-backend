@@ -27,11 +27,8 @@ class AIRequestResponse(BaseModel):
     created_at: datetime
 
 
-class AIRequestListResponse(BaseModel):
-    items: list[AIRequestResponse]
-    total: int
-    page: int
-    page_size: int
+# Pagination response uses the canonical `PaginatedResponse[AIRequestResponse]`
+# from libs/common/pagination.py. No service-local list-response class needed.
 
 
 # ============================================================================

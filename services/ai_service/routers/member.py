@@ -6,6 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import require_admin, require_service_role
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
+from libs.common.pagination import (
+    PaginatedResponse,
+    PaginationParams,
+    paginate,
+    pagination_params,
+)
 from libs.db.session import get_async_db
 from services.ai_service.models import AIModelConfig, AIPromptTemplate, AIRequest
 from services.ai_service.schemas import (
@@ -13,7 +19,6 @@ from services.ai_service.schemas import (
     AIModelConfigResponse,
     AIPromptTemplateCreate,
     AIPromptTemplateResponse,
-    AIRequestListResponse,
     AIRequestResponse,
     CoachGradeScoringRequest,
     CoachGradeScoringResponse,
@@ -222,32 +227,21 @@ async def suggest_coach_endpoint(
 # ── Admin Endpoints ──
 
 
-@admin_router.get("/requests", response_model=AIRequestListResponse)
+@admin_router.get("/requests", response_model=PaginatedResponse[AIRequestResponse])
 async def list_ai_requests(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
     request_type: Optional[str] = None,
+    pagination: PaginationParams = Depends(pagination_params),
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """List AI request logs (admin only)."""
-    from sqlalchemy import func
-
     query = select(AIRequest).order_by(AIRequest.created_at.desc())
-    count_query = select(func.count(AIRequest.id))
-
     if request_type:
         query = query.where(AIRequest.request_type == request_type)
-        count_query = count_query.where(AIRequest.request_type == request_type)
 
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
+    rows, total = await paginate(db, query, pagination)
 
-    query = query.offset((page - 1) * page_size).limit(page_size)
-    result = await db.execute(query)
-    items = result.scalars().all()
-
-    return AIRequestListResponse(
+    return PaginatedResponse[AIRequestResponse](
         items=[
             AIRequestResponse(
                 id=str(r.id),
@@ -265,11 +259,11 @@ async def list_ai_requests(
                 langfuse_trace_id=r.langfuse_trace_id,
                 created_at=r.created_at,
             )
-            for r in items
+            for r in rows
         ],
         total=total,
-        page=page,
-        page_size=page_size,
+        page=pagination.page,
+        page_size=pagination.page_size,
     )
 
 

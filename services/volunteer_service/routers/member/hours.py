@@ -9,6 +9,7 @@ from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.member_utils import resolve_members_basic
 from libs.common.service_client import get_member_by_auth_id
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.volunteer_service.models import (
     VolunteerHoursLog,
@@ -74,7 +75,7 @@ async def my_hours_summary(
         raise HTTPException(status_code=404, detail="Volunteer profile not found")
 
     # Hours this month
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     hours_this_month = (
         await db.execute(
@@ -138,7 +139,7 @@ async def leaderboard(
 ):
     """Top volunteers by hours."""
     if period == "this_month":
-        now = datetime.now(timezone.utc)
+        now = utc_now()
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         q = (
             select(
@@ -169,7 +170,7 @@ async def leaderboard(
     all_member_ids = [row[0] for row in rows]
     member_map = await resolve_members_basic(all_member_ids) if all_member_ids else {}
 
-    now = datetime.now(timezone.utc)
+    now = utc_now()
 
     def _is_paid(info) -> bool:
         if not info or not info.community_paid_until:

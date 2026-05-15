@@ -1,13 +1,13 @@
 """Admin: profile listing, lookup, update + spotlight feature/unfeature."""
 
 import uuid
-from datetime import datetime, timezone
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.member_utils import resolve_member_basic, resolve_members_basic
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.volunteer_service.models import VolunteerProfile, VolunteerTier
 from services.volunteer_service.schemas import (
@@ -128,7 +128,7 @@ async def feature_volunteer(
         raise HTTPException(status_code=404, detail="Profile not found")
 
     profile.is_featured = True
-    profile.featured_from = datetime.now(timezone.utc)
+    profile.featured_from = utc_now()
     profile.featured_until = data.featured_until
     if data.spotlight_quote is not None:
         profile.spotlight_quote = data.spotlight_quote

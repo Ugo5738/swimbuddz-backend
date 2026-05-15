@@ -1,7 +1,6 @@
 """Coach assignment and shadow evaluation API routes."""
 
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin, require_coach
@@ -33,7 +32,6 @@ from sqlalchemy.orm import selectinload
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/coach-assignments", tags=["coach-assignments"])
-
 
 # ── Helpers ──
 
@@ -407,7 +405,7 @@ async def get_coach_readiness(
         from datetime import datetime as dt
 
         cpr_expiry = dt.fromisoformat(cpr_expiry_str)
-        cpr_valid = cpr_expiry >= datetime.now(timezone.utc)
+        cpr_valid = cpr_expiry >= utc_now()
     else:
         cpr_valid = True
     cpr = bool(cpr_training and cpr_valid)

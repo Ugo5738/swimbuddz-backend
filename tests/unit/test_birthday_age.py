@@ -2,7 +2,7 @@
 
 from datetime import date, datetime, timezone
 
-from services.members_service.routers.internal import _age_on
+from services.members_service.routers.internal._helpers import _age_on
 
 
 class TestAgeOn:

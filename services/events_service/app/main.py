@@ -1,6 +1,8 @@
 """FastAPI application for the Events Service."""
 
 from fastapi import FastAPI
+
+from libs.common.health import register_health_check
 from services.events_service.routers.member import router as events_router
 
 
@@ -12,10 +14,7 @@ def create_app() -> FastAPI:
         description="Community events and RSVP management service for SwimBuddz.",
     )
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "ok", "service": "events"}
+    register_health_check(app, "events")
 
     # Include events router
     app.include_router(events_router)

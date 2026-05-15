@@ -4,13 +4,13 @@
 
 import logging
 import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
+from libs.common.datetime_utils import utc_now
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
 @router.get("/events", response_model=RewardEventListResponse)
 async def list_reward_events(
     event_type: Optional[str] = Query(None),
@@ -78,6 +79,7 @@ async def list_reward_events(
         total=total,
     )
 
+
 @router.get("/events/failed", response_model=RewardEventListResponse)
 async def list_failed_events(
     skip: int = Query(0, ge=0),
@@ -105,6 +107,7 @@ async def list_failed_events(
         items=[RewardEventListItem.model_validate(e) for e in events],
         total=total,
     )
+
 
 @router.post("/events/submit", response_model=EventIngestResponse)
 async def admin_submit_event(
@@ -141,7 +144,7 @@ async def admin_submit_event(
         event_data["admin_notes"] = body.description
     event_data["submitted_by"] = admin.user_id
 
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     event_id = uuid.uuid4()
     idempotency_key = f"admin-event-{body.event_type}-{body.member_auth_id}-{event_id}"
 

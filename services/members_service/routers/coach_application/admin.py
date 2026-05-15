@@ -1,7 +1,6 @@
 """Admin coach-application review endpoints."""
 
 import asyncio
-from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,6 +11,7 @@ from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_url
 from libs.common.supabase import get_supabase_admin_client
+from libs.common.datetime_utils import utc_now
 from libs.db.config import AsyncSessionLocal
 from services.members_service.models import CoachBankAccount, CoachProfile, Member
 from services.members_service.schemas import (
@@ -213,7 +213,7 @@ async def approve_coach_application(
             )
 
         coach.status = "approved"
-        coach.application_reviewed_at = datetime.now(timezone.utc)
+        coach.application_reviewed_at = utc_now()
         coach.application_reviewed_by = admin_email
         coach.rejection_reason = None
         if data.admin_notes:
@@ -308,7 +308,7 @@ async def reject_coach_application(
             )
 
         coach.status = "rejected"
-        coach.application_reviewed_at = datetime.now(timezone.utc)
+        coach.application_reviewed_at = utc_now()
         coach.application_reviewed_by = admin_email
         coach.rejection_reason = data.rejection_reason
         if data.admin_notes:

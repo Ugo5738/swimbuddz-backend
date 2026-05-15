@@ -1,13 +1,13 @@
 """Communications content router: content posts and comments."""
 
 import uuid
-from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.common.member_utils import resolve_members_basic
 from libs.common.service_client import emit_rewards_event
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +22,6 @@ from services.communications_service.schemas import (
 )
 
 content_router = APIRouter(prefix="/content", tags=["content"])
-
 
 # ============================================================================
 # CONTENT POST ENDPOINTS
@@ -114,7 +113,7 @@ async def create_content_post(
         **post_data.model_dump(exclude={"is_published"}),
         created_by=created_by,
         is_published=post_data.is_published,
-        published_at=datetime.now(timezone.utc) if post_data.is_published else None,
+        published_at=utc_now() if post_data.is_published else None,
     )
 
     db.add(post)
@@ -176,7 +175,7 @@ async def update_content_post(
         and update_data["is_published"]
         and not post.published_at
     ):
-        post.published_at = datetime.now(timezone.utc)
+        post.published_at = utc_now()
 
     for field, value in update_data.items():
         setattr(post, field, value)
@@ -242,7 +241,7 @@ async def publish_content_post(
         raise HTTPException(status_code=400, detail="Post is already published")
 
     post.is_published = True
-    post.published_at = datetime.now(timezone.utc)
+    post.published_at = utc_now()
 
     await db.commit()
     await db.refresh(post)

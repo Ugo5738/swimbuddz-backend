@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from libs.common.health import register_health_check
 from services.members_service.routers import (
     admin_router,
     assessments_router,
@@ -35,10 +36,7 @@ def create_app() -> FastAPI:
         description="Member management service for SwimBuddz.",
     )
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "ok", "service": "members"}
+    register_health_check(app, "members")
 
     # Include routers
     app.include_router(assessments_router)  # Public swim readiness assessment

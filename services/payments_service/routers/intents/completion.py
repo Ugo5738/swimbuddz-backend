@@ -7,7 +7,7 @@ payments. Idempotent: already-PAID payments are returned unchanged.
 
 import hashlib
 import hmac
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -28,6 +28,7 @@ from libs.common.service_client import (
     get_member_by_auth_id,
     internal_post,
 )
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.payments_service.models import (
     Discount,
@@ -97,7 +98,7 @@ async def complete_payment(
     payment.status = PaymentStatus.PAID
     payment.provider = payload.provider
     payment.provider_reference = payload.provider_reference
-    payment.paid_at = payload.paid_at or datetime.now(timezone.utc)
+    payment.paid_at = payload.paid_at or utc_now()
     payment.entitlement_error = None
 
     if payload.note:

@@ -1,6 +1,6 @@
 """Coach grades and progression routes."""
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
@@ -8,6 +8,7 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
 from libs.common.service_client import internal_post
+from libs.common.datetime_utils import utc_now
 from libs.db.config import AsyncSessionLocal
 from services.members_service.models import CoachGrade, CoachProfile, Member
 from services.members_service.schemas import (
@@ -234,7 +235,7 @@ async def update_coach_grades(
         # Update admin notes if provided
         if data.admin_notes:
             existing_notes = coach.admin_notes or ""
-            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            timestamp = utc_now().strftime("%Y-%m-%d %H:%M UTC")
             new_note = (
                 f"\n[{timestamp}] Grade update by {admin_email}: {data.admin_notes}"
             )

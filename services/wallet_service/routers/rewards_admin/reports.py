@@ -4,13 +4,14 @@
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
+from libs.common.datetime_utils import utc_now
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,6 +49,7 @@ from services.wallet_service.services.rewards_engine import process_event
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
 
 @router.get("/stats", response_model=RewardStatsResponse)
 async def get_reward_stats(
@@ -137,6 +139,7 @@ async def get_reward_stats(
         top_rules_by_usage=top_rules,
     )
 
+
 @router.get("/analytics", response_model=RewardAnalyticsResponse)
 async def get_reward_analytics(
     period_start: Optional[datetime] = Query(None),
@@ -147,7 +150,7 @@ async def get_reward_analytics(
     """Detailed rewards analytics with category breakdown."""
     from datetime import timedelta
 
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     if not period_end:
         period_end = now
     if not period_start:

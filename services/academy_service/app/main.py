@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from libs.common.health import register_health_check
 from services.academy_service.routers.admin_tasks import router as admin_tasks_router
 from services.academy_service.routers.coach_assignment import (
     router as assignment_router,
@@ -29,10 +30,7 @@ def create_app() -> FastAPI:
         description="Academy management service for SwimBuddz.",
     )
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "ok", "service": "academy"}
+    register_health_check(app, "academy")
 
     # Domain routers (all prefixed /academy)
     app.include_router(programs_router, prefix="/academy")
