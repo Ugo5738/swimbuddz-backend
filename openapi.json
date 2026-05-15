@@ -5932,6 +5932,218 @@
         }
       }
     },
+    "/api/v1/internal/members/coaches/eligible": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Eligible Coaches",
+        "description": "Get eligible coaches filtered by grade column and allowed grades.\n\nThe grade_column must be one of the valid category grade columns on CoachProfile.\neligible_grades is a comma-separated list like 'grade_1,grade_2,grade_3'.",
+        "operationId": "get_eligible_coaches_internal_members_coaches_eligible_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "grade_column",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Coach profile grade column name",
+              "title": "Grade Column"
+            },
+            "description": "Coach profile grade column name"
+          },
+          {
+            "name": "eligible_grades",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated eligible grade values",
+              "title": "Eligible Grades"
+            },
+            "description": "Comma-separated eligible grade values"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EligibleCoachBasic"
+                  },
+                  "title": "Response Get Eligible Coaches Internal Members Coaches Eligible Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/members/coaches/{member_id}/profile": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Coach Profile",
+        "description": "Look up a coach profile by member_id.",
+        "operationId": "get_coach_profile_internal_members_coaches__member_id__profile_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachProfileBasic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/members/coaches/{member_id}/readiness": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Coach Readiness Data",
+        "description": "Get extended coach profile data for readiness assessment.\n\nReturns profile fields + whether an active agreement exists.",
+        "operationId": "get_coach_readiness_data_internal_members_coaches__member_id__readiness_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachReadinessData"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/members/{member_id}/bank-account": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Member Bank Account",
+        "description": "Look up a coach's bank account by member_id.",
+        "operationId": "get_member_bank_account_internal_members__member_id__bank_account_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachBankAccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/members/{member_id}/membership": {
       "get": {
         "tags": [
@@ -5963,7 +6175,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/services__members_service__routers__internal__MemberMembershipResponse"
+                  "$ref": "#/components/schemas/services__members_service__routers__internal___schemas__MemberMembershipResponse"
                 }
               }
             }
@@ -6128,218 +6340,6 @@
             "HTTPBearer": []
           }
         ]
-      }
-    },
-    "/api/v1/internal/members/coaches/{member_id}/profile": {
-      "get": {
-        "tags": [
-          "internal"
-        ],
-        "summary": "Get Coach Profile",
-        "description": "Look up a coach profile by member_id.",
-        "operationId": "get_coach_profile_internal_members_coaches__member_id__profile_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "member_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Member Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoachProfileBasic"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/internal/members/{member_id}/bank-account": {
-      "get": {
-        "tags": [
-          "internal"
-        ],
-        "summary": "Get Member Bank Account",
-        "description": "Look up a coach's bank account by member_id.",
-        "operationId": "get_member_bank_account_internal_members__member_id__bank_account_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "member_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Member Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoachBankAccountResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/internal/members/coaches/eligible": {
-      "get": {
-        "tags": [
-          "internal"
-        ],
-        "summary": "Get Eligible Coaches",
-        "description": "Get eligible coaches filtered by grade column and allowed grades.\n\nThe grade_column must be one of the valid category grade columns on CoachProfile.\neligible_grades is a comma-separated list like 'grade_1,grade_2,grade_3'.",
-        "operationId": "get_eligible_coaches_internal_members_coaches_eligible_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "grade_column",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Coach profile grade column name",
-              "title": "Grade Column"
-            },
-            "description": "Coach profile grade column name"
-          },
-          {
-            "name": "eligible_grades",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Comma-separated eligible grade values",
-              "title": "Eligible Grades"
-            },
-            "description": "Comma-separated eligible grade values"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/EligibleCoachBasic"
-                  },
-                  "title": "Response Get Eligible Coaches Internal Members Coaches Eligible Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/internal/members/coaches/{member_id}/readiness": {
-      "get": {
-        "tags": [
-          "internal"
-        ],
-        "summary": "Get Coach Readiness Data",
-        "description": "Get extended coach profile data for readiness assessment.\n\nReturns profile fields + whether an active agreement exists.",
-        "operationId": "get_coach_readiness_data_internal_members_coaches__member_id__readiness_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "member_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Member Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoachReadinessData"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
       }
     },
     "/api/v1/sessions/templates": {
@@ -8882,50 +8882,6 @@
       }
     },
     "/api/v1/academy/cohorts": {
-      "post": {
-        "tags": [
-          "academy"
-        ],
-        "summary": "Create Cohort",
-        "operationId": "create_cohort_academy_cohorts_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CohortCreate"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CohortResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
       "get": {
         "tags": [
           "academy"
@@ -8970,30 +8926,16 @@
             }
           }
         }
-      }
-    },
-    "/api/v1/academy/cohorts/{cohort_id}": {
-      "put": {
+      },
+      "post": {
         "tags": [
           "academy"
         ],
-        "summary": "Update Cohort",
-        "operationId": "update_cohort_academy_cohorts__cohort_id__put",
+        "summary": "Create Cohort",
+        "operationId": "create_cohort_academy_cohorts_post",
         "security": [
           {
             "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "cohort_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Cohort Id"
-            }
           }
         ],
         "requestBody": {
@@ -9001,91 +8943,11 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CohortUpdate"
+                "$ref": "#/components/schemas/CohortCreate"
               }
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CohortResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "academy"
-        ],
-        "summary": "Delete Cohort",
-        "operationId": "delete_cohort_academy_cohorts__cohort_id__delete",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "cohort_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Cohort Id"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "tags": [
-          "academy"
-        ],
-        "summary": "Get Cohort",
-        "operationId": "get_cohort_academy_cohorts__cohort_id__get",
-        "parameters": [
-          {
-            "name": "cohort_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Cohort Id"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -9261,6 +9123,144 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/academy/cohorts/{cohort_id}": {
+      "put": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Update Cohort",
+        "operationId": "update_cohort_academy_cohorts__cohort_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CohortUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Delete Cohort",
+        "operationId": "delete_cohort_academy_cohorts__cohort_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Get Cohort",
+        "operationId": "get_cohort_academy_cohorts__cohort_id__get",
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/academy/cohorts/{cohort_id}/enrollment-stats": {
@@ -13419,52 +13419,6 @@
         ]
       }
     },
-    "/api/v1/payments/admin/members/by-auth/{auth_id}": {
-      "delete": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "Admin Delete Member Payments",
-        "description": "Delete payments for a member by auth ID (Admin only).",
-        "operationId": "admin_delete_member_payments_payments_admin_members_by_auth__auth_id__delete",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "auth_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Auth Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/payments/me": {
       "get": {
         "tags": [
@@ -13585,6 +13539,52 @@
                 "schema": {
                   "$ref": "#/components/schemas/PaymentResponse"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/members/by-auth/{auth_id}": {
+      "delete": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Admin Delete Member Payments",
+        "description": "Delete payments for a member by auth ID (Admin only).",
+        "operationId": "admin_delete_member_payments_payments_admin_members_by_auth__auth_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -46614,7 +46614,7 @@
         "title": "VolunteerRoleUpdate",
         "description": "Schema for updating a volunteer role."
       },
-      "services__members_service__routers__internal__MemberMembershipResponse": {
+      "services__members_service__routers__internal___schemas__MemberMembershipResponse": {
         "properties": {
           "member_id": {
             "type": "string",
@@ -47779,9 +47779,39 @@
             ],
             "title": "Description"
           },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
           "location": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Location"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
           },
           "session_type": {
             "$ref": "#/components/schemas/SessionType",
@@ -47842,7 +47872,6 @@
         "type": "object",
         "required": [
           "title",
-          "location",
           "day_of_week",
           "start_time",
           "duration_minutes"
@@ -47866,9 +47895,39 @@
             ],
             "title": "Description"
           },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
           "location": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Location"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
           },
           "session_type": {
             "$ref": "#/components/schemas/SessionType",
@@ -47955,7 +48014,6 @@
         "type": "object",
         "required": [
           "title",
-          "location",
           "day_of_week",
           "start_time",
           "duration_minutes",
@@ -47990,6 +48048,18 @@
             ],
             "title": "Description"
           },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
           "location": {
             "anyOf": [
               {
@@ -48000,6 +48070,17 @@
               }
             ],
             "title": "Location"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
           },
           "pool_fee": {
             "anyOf": [

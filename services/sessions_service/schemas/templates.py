@@ -2,14 +2,19 @@ import uuid
 from datetime import datetime, time
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from services.sessions_service.models import SessionType
 
 
 class SessionTemplateBase(BaseModel):
     title: str
     description: Optional[str] = None
-    location: str
+    # Pool reference — at least one of pool_id / location must be supplied.
+    # New templates send pool_id (the pools-registry UUID); legacy templates
+    # may only have the `location` string.
+    pool_id: Optional[uuid.UUID] = None
+    location: Optional[str] = None
+    location_name: Optional[str] = None
     session_type: SessionType = SessionType.COMMUNITY
     # API uses naira (float); DB stores kobo (int). Routers handle conversion.
     pool_fee: float = 0.0
@@ -23,13 +28,19 @@ class SessionTemplateBase(BaseModel):
 
 
 class SessionTemplateCreate(SessionTemplateBase):
-    pass
+    @model_validator(mode="after")
+    def _require_pool_reference(self) -> "SessionTemplateCreate":
+        if not self.pool_id and not self.location:
+            raise ValueError("Either pool_id or location must be provided")
+        return self
 
 
 class SessionTemplateUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    pool_id: Optional[uuid.UUID] = None
     location: Optional[str] = None
+    location_name: Optional[str] = None
     pool_fee: Optional[float] = None  # naira — router converts to kobo on write
     ride_share_fee: Optional[float] = None  # naira — router converts to kobo on write
     capacity: Optional[int] = None
@@ -62,7 +73,9 @@ class SessionTemplateResponse(SessionTemplateBase):
             "id": obj.id,
             "title": obj.title,
             "description": obj.description,
+            "pool_id": obj.pool_id,
             "location": obj.location,
+            "location_name": obj.location_name,
             "session_type": obj.session_type,
             "pool_fee": (obj.pool_fee or 0) / 100.0,
             "ride_share_fee": (obj.ride_share_fee or 0) / 100.0,

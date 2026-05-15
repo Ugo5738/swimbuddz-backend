@@ -195,12 +195,20 @@ async def generate_sessions(
                 continue
 
         # Create the session
+        # New templates carry pool_id + location_name; legacy templates only
+        # have the `location` enum string, which we fall back to via the
+        # display-name map.
+        if template.pool_id:
+            session_location_name = template.location_name
+        else:
+            session_location_name = LOCATION_DISPLAY_NAMES.get(
+                template.location, template.location
+            )
         session = Session(
             title=template.title,
             description=template.description,
-            location_name=LOCATION_DISPLAY_NAMES.get(
-                template.location, template.location
-            ),
+            pool_id=template.pool_id,
+            location_name=session_location_name,
             session_type=template.session_type,
             pool_fee=template.pool_fee,  # both are kobo integers after migration
             capacity=template.capacity,

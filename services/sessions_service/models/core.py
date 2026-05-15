@@ -208,8 +208,18 @@ class SessionTemplate(Base):
         default=SessionType.COMMUNITY,
     )
 
-    # Location - string for flexibility (can be predefined or custom)
-    location: Mapped[str] = mapped_column(String, nullable=False)
+    # Location
+    # Preferred: pool_id → references a row in the pools registry
+    # (pools_service). Stored as a plain UUID (no cross-service FK).
+    # Sessions generated from this template inherit pool_id directly.
+    # The legacy `location` string remains for templates created before
+    # the pools registry existed; new templates leave it NULL and rely on
+    # pool_id + location_name instead.
+    pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    location_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Capacity & Fees
     capacity: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
