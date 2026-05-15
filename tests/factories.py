@@ -237,6 +237,32 @@ class CohortFactory:
     def create(program_id=None, **overrides):
         from services.academy_service.models import Cohort, CohortStatus, LocationType
 
+        # Normalize `status` and `location_type` overrides to the enum
+        # MEMBER (not the .value string). Existing call-sites pass uppercase
+        # enum NAMES (`"OPEN"`, `"ACTIVE"`); SAEnum's bind processor would
+        # forward the raw string verbatim and the DB enum (which stores
+        # lowercase values) rejects them. Returning the enum member lets
+        # SAEnum bind via `.value` AND keeps `c.status.value` working in
+        # route handlers that read the row back from the same session.
+        def _to_member(value, enum_cls):
+            if isinstance(value, enum_cls):
+                return value
+            if isinstance(value, str):
+                if value in enum_cls.__members__:        # e.g. "OPEN"
+                    return enum_cls[value]
+                try:
+                    return enum_cls(value)                # e.g. "open"
+                except ValueError:
+                    return value  # let SQLAlchemy raise the proper error
+            return value
+
+        if "status" in overrides:
+            overrides["status"] = _to_member(overrides["status"], CohortStatus)
+        if "location_type" in overrides:
+            overrides["location_type"] = _to_member(
+                overrides["location_type"], LocationType
+            )
+
         start = _tomorrow()
         defaults = {
             "id": _uuid(),
