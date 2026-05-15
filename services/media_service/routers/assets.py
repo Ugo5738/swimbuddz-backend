@@ -27,7 +27,7 @@ from services.media_service.services.storage import storage_service
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter(prefix="/api/v1/media", tags=["media"])
+router = APIRouter(prefix="/media", tags=["media"])
 
 
 # ============================================================================

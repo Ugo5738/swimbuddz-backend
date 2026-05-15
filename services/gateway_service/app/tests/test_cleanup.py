@@ -88,8 +88,8 @@ async def test_cleanup_hard_mode_handles_204_responses(client):
     )
     clients.media_client = RoutingClient(
         {
-            ("DELETE", f"/api/v1/media/admin/members/{member_id}"): make_response(
-                204, None, "DELETE", f"/api/v1/media/admin/members/{member_id}"
+            ("DELETE", f"/media/admin/members/{member_id}"): make_response(
+                204, None, "DELETE", f"/media/admin/members/{member_id}"
             )
         }
     )

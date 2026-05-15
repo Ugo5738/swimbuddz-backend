@@ -78,7 +78,7 @@ async def _generate_and_upload_image(prompt: str, title: str) -> str | None:
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             upload_response = await client.post(
-                f"{media_url}/api/v1/media/uploads",
+                f"{media_url}/media/uploads",
                 headers={"Authorization": f"Bearer {token}"},
                 files={
                     "file": (

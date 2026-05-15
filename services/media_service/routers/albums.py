@@ -23,7 +23,7 @@ from services.media_service.schemas import (
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter(prefix="/api/v1/media", tags=["media"])
+router = APIRouter(prefix="/media", tags=["media"])
 
 
 @router.post("/albums", response_model=AlbumResponse)

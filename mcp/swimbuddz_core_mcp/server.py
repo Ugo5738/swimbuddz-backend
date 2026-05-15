@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from typing import Any, Dict
 from pydantic import BaseModel
 
+from libs.auth.dependencies import validate_token
 from mcp.swimbuddz_core_mcp import tools
 
 app = FastAPI(title="SwimBuddz MCP Server")
@@ -79,6 +80,12 @@ async def list_tools():
 @app.post("/tools/{tool_name}/call")
 async def call_tool(tool_name: str, request: ToolCallRequest):
     """Call a specific tool."""
+    # Validate the bearer token before dispatching the tool. Raises 401 if the
+    # JWT is missing/invalid/expired. Without this the MCP would happily forward
+    # any string as a Bearer header to the gateway, which is a token-oracle
+    # primitive even though the gateway itself rejects bad tokens.
+    await validate_token(request.token)
+
     if not hasattr(tools, tool_name):
         raise HTTPException(status_code=404, detail=f"Tool {tool_name} not found")
 

@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse, Response
 from slowapi.errors import RateLimitExceeded
 
 from libs.common.error_handler import add_exception_handlers
+from libs.common.health import register_health_check
 from libs.common.logging import get_request_id
 from libs.common.middleware import add_observability_middleware
 from libs.common.rate_limit import limiter, rate_limit_exceeded_handler
@@ -39,8 +40,11 @@ def create_app() -> FastAPI:
             "https://www.swimbuddz.com",
         ],
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        # With allow_credentials=True, wildcard methods/headers materially broaden
+        # the attack surface (any allowed origin can fire any custom-headered
+        # request). Enumerate the verbs and headers we actually use.
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "Accept"],
     )
 
     # Add observability (structured logging + request tracing)
@@ -49,10 +53,7 @@ def create_app() -> FastAPI:
     # Add global exception handlers for consistent error responses
     add_exception_handlers(app)
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Simple readiness endpoint."""
-        return {"status": "ok"}
+    register_health_check(app, "gateway")
 
     # ==================================================================
     # MEMBERS SERVICE PROXY
@@ -103,15 +104,34 @@ def create_app() -> FastAPI:
     # ==================================================================
     # ASSESSMENTS PROXY (routed to members service)
     # ==================================================================
-    @app.api_route("/api/v1/assessments", methods=["GET", "POST"])
-    @app.api_route("/api/v1/assessments/", methods=["GET", "POST"])
-    async def proxy_assessments_root(request: Request):
-        """Proxy assessment root requests to members service."""
+    # Reads are unrestricted; submissions are rate-limited because the
+    # assessment POST accepts anonymous users (see _optional_member_id in
+    # members_service/routers/assessments.py) and is a marketing-funnel
+    # endpoint that would otherwise be trivial to spam.
+    @app.api_route("/api/v1/assessments", methods=["GET"])
+    @app.api_route("/api/v1/assessments/", methods=["GET"])
+    async def proxy_assessments_root_get(request: Request):
+        """Proxy assessment list/read requests to members service."""
         return await proxy_request(clients.members_client, "/assessments/", request)
 
-    @app.api_route("/api/v1/assessments/{path:path}", methods=["GET", "POST"])
-    async def proxy_assessments(path: str, request: Request):
-        """Proxy all /api/v1/assessments/* requests to members service."""
+    @app.api_route("/api/v1/assessments", methods=["POST"])
+    @app.api_route("/api/v1/assessments/", methods=["POST"])
+    @limiter.limit("5/minute")
+    async def proxy_assessments_root_post(request: Request):
+        """Proxy assessment submissions to members service (rate-limited)."""
+        return await proxy_request(clients.members_client, "/assessments/", request)
+
+    @app.api_route("/api/v1/assessments/{path:path}", methods=["GET"])
+    async def proxy_assessments_get(path: str, request: Request):
+        """Proxy assessment sub-resource reads to members service."""
+        return await proxy_request(
+            clients.members_client, f"/assessments/{path}", request
+        )
+
+    @app.api_route("/api/v1/assessments/{path:path}", methods=["POST"])
+    @limiter.limit("5/minute")
+    async def proxy_assessments_post(path: str, request: Request):
+        """Proxy assessment sub-resource writes to members service (rate-limited)."""
         return await proxy_request(
             clients.members_client, f"/assessments/{path}", request
         )
@@ -348,21 +368,23 @@ def create_app() -> FastAPI:
     # ==================================================================
     # MEDIA SERVICE PROXY
     # ==================================================================
-    # Handle media root endpoint (both with and without trailing slash)
+    # media_service routers now live under a service-local `/media` prefix
+    # (matching every other service); the gateway adds the public
+    # `/api/v1/` namespace. The bare path maps to the list/create endpoint
+    # at `@router.post("/media")` / `@router.get("/media")`, which is why
+    # the proxy target is `/media/media`.
     @app.api_route("/api/v1/media", methods=["GET", "POST"])
     @app.api_route("/api/v1/media/", methods=["GET", "POST"])
     async def proxy_media_root(request: Request):
         """Proxy media root requests (list and upload) to media service."""
-        return await proxy_request(clients.media_client, "/api/v1/media/media", request)
+        return await proxy_request(clients.media_client, "/media/media", request)
 
     @app.api_route(
         "/api/v1/media/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
     )
     async def proxy_media(path: str, request: Request):
         """Proxy all /api/v1/media/* requests to media service."""
-        return await proxy_request(
-            clients.media_client, f"/api/v1/media/{path}", request
-        )
+        return await proxy_request(clients.media_client, f"/media/{path}", request)
 
     # ==================================================================
     # TRANSPORT SERVICE PROXY

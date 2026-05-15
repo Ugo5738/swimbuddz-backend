@@ -37,7 +37,7 @@ from services.media_service.services.storage import (
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/media", tags=["media"])
+router = APIRouter(prefix="/media", tags=["media"])
 
 # ── Lazy ARQ Redis pool for enqueuing video processing jobs ──
 _redis_pool = None

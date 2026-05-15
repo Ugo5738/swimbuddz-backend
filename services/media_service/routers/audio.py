@@ -25,7 +25,7 @@ from services.media_service.services.storage import BucketType, storage_service
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/media", tags=["audio"])
+router = APIRouter(prefix="/media", tags=["audio"])
 
 # ── Upload size limit for audio files ──
 MAX_AUDIO_SIZE = 50 * 1024 * 1024  # 50 MB

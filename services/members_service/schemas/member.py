@@ -507,9 +507,11 @@ class PendingRegistrationCreate(BaseModel):
     """Input for creating a pending registration."""
 
     email: EmailStr
-    first_name: str
-    last_name: str
-    password: Optional[str] = None
+    # Bound name lengths so an unauthenticated signup can't drop a multi-MB
+    # blob into the JSON column. 100 is generous for Nigerian composite names.
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
 
     # Profile data (stored as JSON, parsed on completion)
     profile: Optional[MemberProfileInput] = None
@@ -517,6 +519,8 @@ class PendingRegistrationCreate(BaseModel):
     availability: Optional[MemberAvailabilityInput] = None
     preferences: Optional[MemberPreferencesInput] = None
 
+    # extra="allow" is load-bearing: the router reads requested_membership_tiers
+    # and roles from model_dump(). Tightening this is a separate cleanup.
     model_config = ConfigDict(extra="allow")
 
 

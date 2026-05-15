@@ -6,7 +6,7 @@ call them directly via Docker network.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
+from libs.common.datetime_utils import utc_now
 from services.sessions_service.models import Session, SessionCoach, SessionStatus
 
 router = APIRouter(prefix="/internal/sessions", tags=["internal"])
@@ -347,7 +348,7 @@ async def get_next_session_for_cohort(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get the next upcoming session for a cohort."""
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     result = await db.execute(
         select(Session)
         .where(
