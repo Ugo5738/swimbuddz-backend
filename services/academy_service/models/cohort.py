@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
@@ -146,6 +146,37 @@ class Cohort(Base):
     complexity_score = relationship(
         "CohortComplexityScore", back_populates="cohort", uselist=False
     )
+
+    # Coerce string assignments to enum members on Python-side attribute set.
+    # SAEnum's bind processor handles enum-member-to-string serialization for
+    # the DB write, but doesn't coerce string-to-enum on assignment — so
+    # `Cohort(status="open")` would leave the in-memory attribute as a bare
+    # string, and a later `cohort.status.value` access would crash. The
+    # validator runs on every Python attribute set (NOT on ORM hydration
+    # from the DB, which is handled by the SAEnum type itself), so factories
+    # and ad-hoc code can pass the lowercase `.value` string without caring
+    # whether the receiving code expects an enum.
+    @validates("status")
+    def _coerce_status(self, key, value):
+        if isinstance(value, str):
+            if value in CohortStatus.__members__:  # "OPEN"
+                return CohortStatus[value]
+            try:
+                return CohortStatus(value)  # "open"
+            except ValueError:
+                return value  # let SQLAlchemy raise the proper error
+        return value
+
+    @validates("location_type")
+    def _coerce_location_type(self, key, value):
+        if isinstance(value, str):
+            if value in LocationType.__members__:
+                return LocationType[value]
+            try:
+                return LocationType(value)
+            except ValueError:
+                return value
+        return value
 
     def __repr__(self):
         return f"<Cohort {self.name} ({self.status})>"
