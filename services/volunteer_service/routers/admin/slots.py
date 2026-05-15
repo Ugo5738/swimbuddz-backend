@@ -127,6 +127,25 @@ async def checkin_slot(
         raise HTTPException(
             status_code=400, detail="Slot must be claimed or approved to check in"
         )
+
+    opp = (
+        await db.execute(
+            select(VolunteerOpportunity).where(
+                VolunteerOpportunity.id == slot.opportunity_id
+            )
+        )
+    ).scalar_one_or_none()
+    if opp and opp.end_time:
+        end_dt = datetime.combine(opp.date, opp.end_time, tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) > end_dt:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This opportunity has already ended. Use 'Mark No-Show' "
+                    "or 'Bulk Complete' with the actual hours instead."
+                ),
+            )
+
     slot.checked_in_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(slot)

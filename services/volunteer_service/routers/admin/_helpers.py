@@ -97,6 +97,20 @@ async def _auto_checkout_if_past(
     if datetime.now(timezone.utc) <= end_dt:
         return False
 
+    if slot.checked_in_at >= end_dt:
+        # Check-in stamped after the opportunity ended — degenerate data
+        # (e.g. admin clicked "Check In" days after the event). Don't
+        # silently produce a negative hours_logged; leave the slot for an
+        # admin to resolve via no-show or bulk-complete.
+        logger.warning(
+            "Skipping auto-checkout for slot %s: checked_in_at (%s) is "
+            "after opportunity end_dt (%s)",
+            slot.id,
+            slot.checked_in_at,
+            end_dt,
+        )
+        return False
+
     slot.checked_out_at = end_dt
     slot.status = SlotStatus.COMPLETED
     delta = end_dt - slot.checked_in_at
