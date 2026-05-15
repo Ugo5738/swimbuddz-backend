@@ -344,7 +344,7 @@ async def admin_dropout_action(
         if enrollment.dropped_at is None:
             enrollment.dropped_at = utc_now()
         logger.info(
-            f"Admin {current_user.id} approved dropout for enrollment {enrollment_id}"
+            f"Admin {current_user.user_id} approved dropout for enrollment {enrollment_id}"
         )
 
     elif payload.action == "reverse":
@@ -390,7 +390,7 @@ async def admin_dropout_action(
         enrollment.dropped_at = None
 
         logger.info(
-            f"Admin {current_user.id} reversed dropout for enrollment {enrollment_id}"
+            f"Admin {current_user.user_id} reversed dropout for enrollment {enrollment_id}"
         )
 
     else:

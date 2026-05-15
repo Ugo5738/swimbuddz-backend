@@ -155,8 +155,12 @@ async def download_certificate(
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
 
-    # Verify ownership (unless admin)
-    if str(enrollment.member_id) != current_user.id and not current_user.is_admin:
+    # Verify ownership (unless admin). The local `member_id` column is a
+    # DB-internal UUID; the auth user's identifier is the Supabase auth_id
+    # stored separately on `member_auth_id`. Compare auth_id-to-auth_id.
+    # Admin status lives in `app_metadata["roles"]`, not on AuthUser directly.
+    is_admin = "admin" in current_user.app_metadata.get("roles", [])
+    if enrollment.member_auth_id != current_user.user_id and not is_admin:
         raise HTTPException(
             status_code=403, detail="Not authorized to view this certificate"
         )
