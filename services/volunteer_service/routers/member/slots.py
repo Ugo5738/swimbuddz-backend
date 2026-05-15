@@ -17,7 +17,7 @@ from services.volunteer_service.models import (
     VolunteerSlot,
     VolunteerTier,
 )
-from services.volunteer_service.schemas import VolunteerSlotResponse
+from services.volunteer_service.schemas import MemberVolunteerSlotResponse
 from services.volunteer_service.services import is_late_cancellation
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +27,7 @@ router = APIRouter()
 
 @router.post(
     "/opportunities/{opp_id}/claim",
-    response_model=VolunteerSlotResponse,
+    response_model=MemberVolunteerSlotResponse,
     status_code=201,
 )
 async def claim_slot(

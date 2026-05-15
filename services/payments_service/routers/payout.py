@@ -12,6 +12,7 @@ from libs.common.service_client import get_member_by_auth_id, internal_get
 from libs.db.config import AsyncSessionLocal
 from services.payments_service.models import CoachPayout, PayoutMethod, PayoutStatus
 from services.payments_service.schemas import (
+    CoachPayoutResponse,
     PayoutApprove,
     PayoutCompleteManual,
     PayoutCreate,
@@ -462,7 +463,7 @@ async def get_my_payouts(
         )
 
 
-@coach_router.get("/{payout_id}", response_model=PayoutResponse)
+@coach_router.get("/{payout_id}", response_model=CoachPayoutResponse)
 async def get_my_payout(
     payout_id: UUID,
     current_user: AuthUser = Depends(get_current_user),

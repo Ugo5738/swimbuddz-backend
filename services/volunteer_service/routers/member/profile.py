@@ -10,8 +10,8 @@ from libs.common.service_client import get_member_by_auth_id
 from libs.db.session import get_async_db
 from services.volunteer_service.models import VolunteerProfile
 from services.volunteer_service.schemas import (
+    MemberVolunteerProfileResponse,
     VolunteerProfileCreate,
-    VolunteerProfileResponse,
     VolunteerProfileUpdate,
 )
 from sqlalchemy import select
@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter()
 
 
-@router.get("/profile/me", response_model=VolunteerProfileResponse)
+@router.get("/profile/me", response_model=MemberVolunteerProfileResponse)
 async def get_my_profile(
     user: Annotated[AuthUser, Depends(get_current_user)],
     db: AsyncSession = Depends(get_async_db),
@@ -42,7 +42,7 @@ async def get_my_profile(
     return profile
 
 
-@router.post("/profile/me", response_model=VolunteerProfileResponse, status_code=201)
+@router.post("/profile/me", response_model=MemberVolunteerProfileResponse, status_code=201)
 async def register_as_volunteer(
     data: VolunteerProfileCreate,
     user: Annotated[AuthUser, Depends(get_current_user)],
@@ -74,7 +74,7 @@ async def register_as_volunteer(
     return profile
 
 
-@router.patch("/profile/me", response_model=VolunteerProfileResponse)
+@router.patch("/profile/me", response_model=MemberVolunteerProfileResponse)
 async def update_my_profile(
     data: VolunteerProfileUpdate,
     user: Annotated[AuthUser, Depends(get_current_user)],

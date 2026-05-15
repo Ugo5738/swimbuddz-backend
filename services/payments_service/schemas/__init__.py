@@ -25,6 +25,7 @@ from services.payments_service.schemas.main import (
     SubmitProofRequest,
 )
 from services.payments_service.schemas.payout import (
+    CoachPayoutResponse,
     PayoutApprove,
     PayoutCompleteManual,
     PayoutCreate,
@@ -72,6 +73,7 @@ __all__ = [
     "PayoutListResponse",
     "PayoutPreviewLine",
     "PayoutPreviewResponse",
+    "CoachPayoutResponse",
     "PayoutResponse",
     "PayoutSummary",
     "PricingConfigResponse",
