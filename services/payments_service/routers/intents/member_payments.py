@@ -41,6 +41,7 @@ from services.payments_service.schemas import (
     ClubBillingCycle,
     CompletePaymentRequest,
     CreatePaymentIntentRequest,
+    MemberPaymentResponse,
     PaymentIntentResponse,
     PaymentResponse,
     PricingConfigResponse,
@@ -61,7 +62,7 @@ from ._paystack import _to_kobo, _verify_paystack_transaction
 router = APIRouter()
 
 
-@router.get("/me", response_model=list[PaymentResponse])
+@router.get("/me", response_model=list[MemberPaymentResponse])
 async def list_my_payments(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
@@ -75,7 +76,7 @@ async def list_my_payments(
     return result.scalars().all()
 
 
-@router.post("/paystack/verify/{reference}", response_model=PaymentResponse)
+@router.post("/paystack/verify/{reference}", response_model=MemberPaymentResponse)
 async def verify_my_paystack_payment(
     reference: str,
     current_user: AuthUser = Depends(get_current_user),

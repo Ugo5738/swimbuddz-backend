@@ -15,6 +15,7 @@ from services.payments_service.routers.intents import _apply_entitlement_with_tr
 from services.payments_service.schemas import (
     AdminReviewRequest,
     MarkRefundDisbursedRequest,
+    MemberPaymentResponse,
     PaymentResponse,
     RefundOwedItem,
     RefundQueueResponse,
@@ -28,7 +29,7 @@ settings = get_settings()
 logger = get_logger(__name__)
 
 
-@router.post("/{reference}/proof", response_model=PaymentResponse)
+@router.post("/{reference}/proof", response_model=MemberPaymentResponse)
 async def submit_proof_of_payment(
     reference: str,
     payload: SubmitProofRequest,
