@@ -26,18 +26,8 @@ import uuid
 import pytest
 
 
-# Apply the same xfail to every test in this file — they all hit the new
-# `member_auth_id` column which doesn't exist in the DB until the migration
-# is applied. Once the DB is reset, drop the marker line below to flip them
-# to expected-pass.
-pytestmark = pytest.mark.xfail(
-    reason=(
-        "Awaiting `./scripts/db/reset.sh dev` to apply migration "
-        "785e73dd9714 (member_id UUID → member_auth_id string). Test code "
-        "describes the post-migration behaviour."
-    ),
-    strict=False,
-)
+# Migration 785e73dd9714 (member_id UUID → member_auth_id string) has been
+# applied. xfail marker removed.
 
 
 @pytest.mark.asyncio
