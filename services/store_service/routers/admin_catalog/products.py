@@ -91,7 +91,6 @@ async def create_product(
     product = Product(**product_in.model_dump())
     db.add(product)
     await db.commit()
-    await db.refresh(product)
 
     await log_audit(
         db,
@@ -103,7 +102,19 @@ async def create_product(
     )
     await db.commit()
 
-    return product
+    # Re-fetch with relationships eagerly loaded so the ProductResponse
+    # serializer doesn't try to lazy-load `images` / `variants` / `category`
+    # from outside the greenlet context (MissingGreenlet on a plain refresh).
+    result = await db.execute(
+        select(Product)
+        .where(Product.id == product.id)
+        .options(
+            selectinload(Product.images),
+            selectinload(Product.variants),
+            selectinload(Product.category),
+        )
+    )
+    return result.scalar_one()
 
 
 @router.get("/products/{product_id}", response_model=ProductDetail)

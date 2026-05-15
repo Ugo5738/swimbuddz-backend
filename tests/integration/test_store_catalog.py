@@ -198,19 +198,6 @@ async def test_list_products_search_substring(store_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-@pytest.mark.xfail(
-    reason=(
-        "Pre-existing route bug: POST /admin/store/products returns the "
-        "freshly-created Product but serializes via ProductResponse, which "
-        "touches the (unloaded) `images` relationship from outside the "
-        "greenlet context → MissingGreenlet. Fix: either eagerly "
-        "selectinload(Product.images) on the refresh query, or use a "
-        "create-response model that doesn't include images. Documenting "
-        "as xfail rather than masking."
-    ),
-    raises=Exception,
-    strict=False,
-)
 async def test_admin_create_product_happy_path(store_client):
     """POST /admin/store/products with a valid payload returns 201."""
     suffix = uuid.uuid4().hex[:6]
