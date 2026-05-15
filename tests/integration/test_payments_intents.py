@@ -38,10 +38,14 @@ import pytest
 
 def test_verify_paystack_signature_accepts_valid_hmac(monkeypatch):
     """Valid HMAC-SHA512 of body with the configured secret must verify."""
+    # _verify_paystack_signature reads `settings.PAYSTACK_SECRET_KEY` at
+    # call time from its OWN module (`intents/_paystack.py`), so we patch
+    # the settings object on that submodule, not on the package alias.
     from services.payments_service.routers import intents
+    from services.payments_service.routers.intents import _paystack
 
     secret = "sk_test_FAKE_KEY_123"
-    monkeypatch.setattr(intents.settings, "PAYSTACK_SECRET_KEY", secret)
+    monkeypatch.setattr(_paystack.settings, "PAYSTACK_SECRET_KEY", secret)
 
     body = b'{"event":"charge.success","data":{"reference":"PAY-XYZ"}}'
     expected = hmac.new(
@@ -54,9 +58,10 @@ def test_verify_paystack_signature_accepts_valid_hmac(monkeypatch):
 def test_verify_paystack_signature_rejects_tampered_body(monkeypatch):
     """If the body changes after signing, signature must NOT verify."""
     from services.payments_service.routers import intents
+    from services.payments_service.routers.intents import _paystack
 
     secret = "sk_test_FAKE_KEY_123"
-    monkeypatch.setattr(intents.settings, "PAYSTACK_SECRET_KEY", secret)
+    monkeypatch.setattr(_paystack.settings, "PAYSTACK_SECRET_KEY", secret)
 
     original = b'{"event":"charge.success","data":{"reference":"PAY-XYZ"}}'
     tampered = b'{"event":"charge.success","data":{"reference":"PAY-EVIL"}}'
@@ -68,8 +73,9 @@ def test_verify_paystack_signature_rejects_tampered_body(monkeypatch):
 def test_verify_paystack_signature_rejects_wrong_signature(monkeypatch):
     """Garbage signature must fail constant-time compare."""
     from services.payments_service.routers import intents
+    from services.payments_service.routers.intents import _paystack
 
-    monkeypatch.setattr(intents.settings, "PAYSTACK_SECRET_KEY", "sk_test_X")
+    monkeypatch.setattr(_paystack.settings, "PAYSTACK_SECRET_KEY", "sk_test_X")
 
     assert intents._verify_paystack_signature(b'{"a":1}', "deadbeef") is False
     assert intents._verify_paystack_signature(b'{"a":1}', "") is False
@@ -213,9 +219,11 @@ async def test_complete_payment_marks_paid_and_applies_entitlement(
     await db_session.commit()
 
     # Mock the entitlement application — we only care that the endpoint
-    # calls it, not the cross-service mechanics (covered elsewhere).
+    # calls it, not the cross-service mechanics (covered elsewhere). The
+    # route lives in intents/completion.py and imports the helper directly,
+    # so patch on the call site (NOT the package re-export alias).
     with patch(
-        "services.payments_service.routers.intents._apply_entitlement_with_tracking",
+        "services.payments_service.routers.intents.completion._apply_entitlement_with_tracking",
         AsyncMock(return_value=None),
     ) as mock_apply:
         response = await payments_client.post(
@@ -257,7 +265,7 @@ async def test_complete_payment_is_idempotent_when_already_paid(
     await db_session.commit()
 
     with patch(
-        "services.payments_service.routers.intents._apply_entitlement_with_tracking",
+        "services.payments_service.routers.intents.completion._apply_entitlement_with_tracking",
         AsyncMock(return_value=None),
     ) as mock_apply:
         response = await payments_client.post(
@@ -343,11 +351,15 @@ async def test_verify_paystack_short_circuits_when_already_paid_and_applied(
     db_session.add(payment)
     await db_session.commit()
 
+    # Both helpers are imported by the route module `member_payments.py`
+    # at module load time, so patches must target that module — patching
+    # the re-export alias on the package would leave the bound name in
+    # `member_payments` untouched.
     with patch(
-        "services.payments_service.routers.intents._verify_paystack_transaction",
+        "services.payments_service.routers.intents.member_payments._verify_paystack_transaction",
         AsyncMock(side_effect=AssertionError("must NOT be called")),
     ), patch(
-        "services.payments_service.routers.intents._apply_entitlement_with_tracking",
+        "services.payments_service.routers.intents.member_payments._mark_paid_and_apply",
         AsyncMock(side_effect=AssertionError("must NOT be called")),
     ):
         response = await payments_client.post(
@@ -434,7 +446,7 @@ async def test_replay_entitlement_happy_path_invokes_apply(
     await db_session.commit()
 
     with patch(
-        "services.payments_service.routers.intents._apply_entitlement_with_tracking",
+        "services.payments_service.routers.intents.admin._apply_entitlement_with_tracking",
         AsyncMock(return_value=None),
     ) as mock_apply:
         response = await payments_client.post(

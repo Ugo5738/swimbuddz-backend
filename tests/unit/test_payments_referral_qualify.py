@@ -17,13 +17,16 @@ async def test_try_qualify_referral_posts_expected_payload():
         request=httpx.Request("POST", "http://wallet/internal/wallet/referral-qualify"),
     )
 
+    # `_try_qualify_referral` now lives in intents/_helpers.py; patch the
+    # names where the function actually looks them up.
     with (
         patch(
-            "services.payments_service.routers.intents.internal_post",
+            "services.payments_service.routers.intents._helpers.internal_post",
             new=AsyncMock(return_value=response),
         ) as internal_post_mock,
         patch(
-            "services.payments_service.routers.intents.logger.info", new=Mock()
+            "services.payments_service.routers.intents._helpers.logger.info",
+            new=Mock(),
         ) as info_mock,
     ):
         await _try_qualify_referral("auth-user-1", "PAY-123")
@@ -51,11 +54,12 @@ async def test_try_qualify_referral_handles_http_failure_without_raising():
 
     with (
         patch(
-            "services.payments_service.routers.intents.internal_post",
+            "services.payments_service.routers.intents._helpers.internal_post",
             new=AsyncMock(return_value=response),
         ) as internal_post_mock,
         patch(
-            "services.payments_service.routers.intents.logger.warning", new=Mock()
+            "services.payments_service.routers.intents._helpers.logger.warning",
+            new=Mock(),
         ) as warning_mock,
     ):
         await _try_qualify_referral("auth-user-2", "PAY-456")
