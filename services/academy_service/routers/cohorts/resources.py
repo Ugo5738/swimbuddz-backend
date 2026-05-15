@@ -12,7 +12,7 @@ from services.academy_service.schemas import CohortResourceResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter(tags=["academy"])
+router = APIRouter()
 
 
 @router.get(

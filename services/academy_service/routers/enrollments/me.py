@@ -35,7 +35,7 @@ from sqlalchemy.orm import selectinload
 from ._helpers import _annotate_payment_with_refund, _recompute_member_academy_until
 
 logger = get_logger(__name__)
-router = APIRouter(tags=["academy"])
+router = APIRouter()
 
 
 @router.get("/my-enrollments", response_model=List[EnrollmentResponse])

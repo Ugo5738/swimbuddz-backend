@@ -26,7 +26,7 @@ from services.attendance_service.schemas import (
 
 from ._shared import get_current_member, require_admin_or_coach_for_session
 
-router = APIRouter(tags=["attendance"])
+router = APIRouter()
 
 
 @router.get(

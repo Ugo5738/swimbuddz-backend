@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 logger = get_logger(__name__)
-router = APIRouter(tags=["academy"])
+router = APIRouter()
 
 
 @router.post("/cohorts", response_model=CohortResponse)

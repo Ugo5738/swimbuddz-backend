@@ -11,7 +11,7 @@ from services.store_service.schemas import ProductVideoCreate, ProductVideoRespo
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter(tags=["admin-store"])
+router = APIRouter()
 
 
 @router.post(

@@ -28,7 +28,7 @@ from services.academy_service.models import (
 from services.academy_service.routers._shared import _is_mid_entry_open_now
 from services.academy_service.schemas import CohortResponse
 
-router = APIRouter(tags=["academy"])
+router = APIRouter()
 
 
 @router.get("/cohorts", response_model=List[CohortResponse])

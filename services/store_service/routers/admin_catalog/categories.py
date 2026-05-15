@@ -16,7 +16,7 @@ from services.store_service.schemas import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter(tags=["admin-store"])
+router = APIRouter()
 
 
 @router.get("/categories", response_model=list[CategoryResponse])

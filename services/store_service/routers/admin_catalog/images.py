@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter(tags=["admin-store"])
+router = APIRouter()
 
 
 @router.post(

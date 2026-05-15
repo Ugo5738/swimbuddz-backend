@@ -24,7 +24,7 @@ from services.attendance_service.schemas import (
 from ._milestones import _check_attendance_milestones
 from ._shared import get_current_member, validate_session_access
 
-router = APIRouter(tags=["attendance"])
+router = APIRouter()
 
 
 @router.post("/sessions/{session_id}/sign-in", response_model=AttendanceResponse)

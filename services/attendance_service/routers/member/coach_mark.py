@@ -19,7 +19,7 @@ from services.attendance_service.schemas import (
 
 from ._shared import require_admin_or_coach_for_session
 
-router = APIRouter(tags=["attendance"])
+router = APIRouter()
 
 
 @router.post(

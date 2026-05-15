@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-router = APIRouter(tags=["admin-store"])
+router = APIRouter()
 
 
 @router.get("/collections", response_model=list[CollectionResponse])

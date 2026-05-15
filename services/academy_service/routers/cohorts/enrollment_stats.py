@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
-router = APIRouter(tags=["academy"])
+router = APIRouter()
 
 
 @router.get("/cohorts/{cohort_id}/enrollment-stats")

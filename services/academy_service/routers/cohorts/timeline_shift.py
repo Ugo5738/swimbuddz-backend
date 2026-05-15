@@ -47,7 +47,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter(tags=["academy"])
+router = APIRouter()
 
 
 @router.post(

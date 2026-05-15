@@ -25,7 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-router = APIRouter(tags=["admin-store"])
+router = APIRouter()
 
 
 @router.get("/products", response_model=ProductListResponse)

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.attendance_service.models import AttendanceRecord
 
-router = APIRouter(tags=["attendance"])
+router = APIRouter()
 
 
 @router.get("/sessions/{session_id}/pool-list")

@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from ._constants import CATEGORY_SKU_CODES
 
-router = APIRouter(tags=["admin-store"])
+router = APIRouter()
 
 
 @router.post(
