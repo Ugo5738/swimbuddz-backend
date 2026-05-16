@@ -10,7 +10,7 @@ lingers.
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
@@ -198,7 +198,8 @@ async def register_volunteer_interest(
 
     if existing_interest:
         raise HTTPException(
-            status_code=400, detail="Already registered interest in this role"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Already registered interest in this role",
         )
 
     interest = VolunteerInterest(

@@ -3,7 +3,7 @@
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
@@ -52,7 +52,8 @@ async def enroll_student(
 
     if existing:
         raise HTTPException(
-            status_code=400, detail="Member already enrolled in this cohort"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Member already enrolled in this cohort",
         )
 
     program = (

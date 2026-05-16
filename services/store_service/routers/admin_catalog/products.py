@@ -85,7 +85,8 @@ async def create_product(
     existing = await db.execute(select(Product).where(Product.slug == product_in.slug))
     if existing.scalar_one_or_none():
         raise HTTPException(
-            status_code=400, detail="Product with this slug already exists"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Product with this slug already exists",
         )
 
     product = Product(**product_in.model_dump())

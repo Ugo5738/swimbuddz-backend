@@ -143,7 +143,10 @@ async def add_product_to_collection(
         )
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Product already in collection")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Product already in collection",
+        )
 
     cp = CollectionProduct(
         collection_id=collection_id,

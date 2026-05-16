@@ -7,7 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
@@ -124,7 +124,10 @@ async def adjust_inventory(
     new_quantity = old_quantity + adjustment.quantity
 
     if new_quantity < 0:
-        raise HTTPException(status_code=400, detail="Cannot reduce inventory below 0")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Cannot reduce inventory below 0",
+        )
 
     if new_quantity < item.quantity_reserved:
         raise HTTPException(

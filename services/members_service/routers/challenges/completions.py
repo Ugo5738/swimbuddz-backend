@@ -8,7 +8,7 @@ The new submission flow lives in `submissions.py` (POST
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
@@ -73,7 +73,8 @@ async def mark_challenge_complete(
     )
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
-            status_code=400, detail="Challenge already approved for this member"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Challenge already approved for this member",
         )
 
     admin_uuid = _admin_uuid_or_none(admin)

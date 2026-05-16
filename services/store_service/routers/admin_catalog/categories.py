@@ -45,7 +45,8 @@ async def create_category(
     )
     if existing.scalar_one_or_none():
         raise HTTPException(
-            status_code=400, detail="Category with this slug already exists"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Category with this slug already exists",
         )
 
     category = Category(**category_in.model_dump())

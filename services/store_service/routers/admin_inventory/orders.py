@@ -7,7 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
@@ -324,7 +324,8 @@ async def issue_refund(
 
     if not order.member_auth_id:
         raise HTTPException(
-            status_code=400, detail="Cannot issue credit to guest order"
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Cannot issue credit to guest order",
         )
 
     if amount_ngn > order.total_ngn:

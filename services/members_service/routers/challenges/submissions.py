@@ -3,7 +3,7 @@
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.service_client import dispatch_notification
@@ -120,7 +120,10 @@ async def create_challenge_submission(
     if not challenge:
         raise HTTPException(status_code=404, detail="Club challenge not found")
     if not challenge.is_active:
-        raise HTTPException(status_code=400, detail="Challenge is not active")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Challenge is not active",
+        )
 
     # Resolve captain (the submitter) from auth
     captain_member_id = await _resolve_member_id_from_auth(current_user, db)

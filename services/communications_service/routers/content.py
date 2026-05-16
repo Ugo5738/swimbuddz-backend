@@ -3,7 +3,7 @@
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.common.member_utils import resolve_members_basic
 from libs.common.service_client import emit_rewards_event
@@ -238,7 +238,10 @@ async def publish_content_post(
         raise HTTPException(status_code=404, detail="Content post not found")
 
     if post.is_published:
-        raise HTTPException(status_code=400, detail="Post is already published")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Post is already published",
+        )
 
     post.is_published = True
     post.published_at = utc_now()

@@ -140,12 +140,24 @@ class Member(Base):
 
 ## 6. Pydantic v2 Usage
 
-- Define schemas under `schemas/`.
+- Define schemas under `schemas/` (package per service; never inline a response model in a router file).
 - Set `model_config = ConfigDict(from_attributes=True)` (or `Config.from_attributes = True`).
 - When applying partial updates, call `model_dump(exclude_unset=True)`.
 
+### Naming convention
+
+| Suffix | Use for | Examples |
+|---|---|---|
+| `<Entity>Response` | Outbound resource representations. The canonical "this is what we return" name. | `MemberResponse`, `CohortResponse`, `PaymentResponse` |
+| `<Entity>Create` | Inbound resource creation payloads on POST. | `MemberCreate`, `EnrollmentCreate` |
+| `<Entity>Update` | Inbound resource update payloads on PATCH/PUT. | `MemberUpdate`, `CohortUpdate` |
+| `<Entity>Request` | Inbound *action* payloads — when the body describes an operation rather than a resource. | `DebitRequest`, `BalanceCheckRequest`, `ApprovalAction` |
+| `<Entity>Input` | Nested sub-payloads of a Create/Update body. | `MemberProfileInput`, `MemberAvailabilityInput` |
+
+Avoid the `XRead` suffix — use `XResponse`. Avoid `XCreateRequest` / `XUpdateRequest` — use `XCreate` / `XUpdate`.
+
 ```python
-class MemberRead(BaseModel):
+class MemberResponse(BaseModel):
     id: UUID
     full_name: str
     email: EmailStr
@@ -161,13 +173,42 @@ class MemberRead(BaseModel):
 - Never leak raw exceptions to clients.
 - Keep error messages concise and actionable.
 
+### Status code selection
+
+| Status | When to use |
+|---|---|
+| **400** Bad Request | The request itself is malformed — wrong shape, bad JSON, missing required field that Pydantic wouldn't catch, type mismatch, free-text field over the allowed length, etc. |
+| **401** Unauthorized | Missing / invalid auth credentials. |
+| **403** Forbidden | Credentials are valid but the caller lacks the required role. |
+| **404** Not Found | The target row doesn't exist. |
+| **409** Conflict | The request is valid but conflicts with the current state of the resource. Almost any "already X" — *already exists*, *already enrolled*, *already published*, *already paid* — is 409. |
+| **422** Unprocessable Entity | The request is well-formed and the resource exists, but a business rule rejects the operation. "Cannot X in state Y", "is not active", "has expired", "cannot reduce below 0", "config is not active". |
+| **5xx** | Server failures only. Never wrap a business-rule rejection in a 500. |
+
 ```python
+# 409 — already-X conflicts
 if existing_member:
     raise HTTPException(
-        status_code=400,
+        status_code=status.HTTP_409_CONFLICT,
         detail="Member already exists for this Supabase user.",
     )
+
+# 422 — well-formed but rejected by business rule
+if not config.is_active:
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail="Recurring-payout config is not active.",
+    )
+
+# 400 — malformed input
+if date_from > date_to:
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="`from` must be <= `to`.",
+    )
 ```
+
+Use `status.HTTP_*` constants (`from fastapi import status`) instead of bare numbers when the status code is non-obvious.
 
 ---
 

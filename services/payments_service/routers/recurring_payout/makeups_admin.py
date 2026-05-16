@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.config import AsyncSessionLocal
@@ -122,7 +122,8 @@ async def admin_cancel_makeup(
             raise HTTPException(status_code=404, detail="Obligation not found")
         if obligation.status == MakeupStatus.COMPLETED:
             raise HTTPException(
-                status_code=400, detail="Cannot cancel a completed make-up"
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Cannot cancel a completed make-up",
             )
         obligation.status = MakeupStatus.CANCELLED
         await db.commit()

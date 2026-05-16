@@ -3,7 +3,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.service_client import get_member_by_auth_id
@@ -63,9 +63,15 @@ async def redeem_reward(
     if not reward:
         raise HTTPException(status_code=404, detail="Reward not found")
     if reward.is_redeemed:
-        raise HTTPException(status_code=400, detail="Reward already redeemed")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Reward already redeemed",
+        )
     if reward.expires_at and reward.expires_at < utc_now():
-        raise HTTPException(status_code=400, detail="Reward has expired")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Reward has expired",
+        )
 
     reward.is_redeemed = True
     reward.redeemed_at = utc_now()

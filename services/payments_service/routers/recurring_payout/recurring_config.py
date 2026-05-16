@@ -308,9 +308,15 @@ async def run_recurring_payout_now(
         if not config:
             raise HTTPException(status_code=404, detail="Config not found")
         if config.status != RecurringPayoutStatus.ACTIVE:
-            raise HTTPException(status_code=400, detail="Config is not active")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Config is not active",
+            )
         if config.block_index >= config.total_blocks:
-            raise HTTPException(status_code=400, detail="All blocks already paid")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="All blocks already paid",
+            )
         # Pull next_run_date forward to now so the standard sweep picks it up.
         config.next_run_date = utc_now()
         await db.commit()

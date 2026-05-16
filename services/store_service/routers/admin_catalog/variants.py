@@ -88,7 +88,8 @@ async def create_variant(
         )
         if existing.scalar_one_or_none():
             raise HTTPException(
-                status_code=400, detail="Variant with this SKU already exists"
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Variant with this SKU already exists",
             )
 
     variant_data = variant_in.model_dump(exclude={"sku"})

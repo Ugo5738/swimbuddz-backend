@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.service_client import get_member_by_auth_id
@@ -126,7 +126,8 @@ async def checkin_slot(
         raise HTTPException(status_code=404, detail="Slot not found")
     if slot.status not in (SlotStatus.CLAIMED, SlotStatus.APPROVED):
         raise HTTPException(
-            status_code=400, detail="Slot must be claimed or approved to check in"
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Slot must be claimed or approved to check in",
         )
 
     opp = (
