@@ -2,13 +2,14 @@ import uuid
 from datetime import datetime, time
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Time
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Time, event
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
+from services.sessions_service.models._validators import validate_session_discriminator
 from services.sessions_service.models.enums import (
     SessionLocation,
     SessionStatus,
@@ -307,3 +308,30 @@ class SessionBundleCart(Base):
 
     def __repr__(self) -> str:
         return f"<SessionBundleCart {self.id} {len(self.session_ids)} sessions>"
+
+
+# ============================================================================
+# SESSION DISCRIMINATOR ENFORCEMENT
+# ============================================================================
+# The Session table carries a `session_type` enum plus four mutually-exclusive
+# context-FK columns (cohort_id / event_id / booking_id / pod_id). The
+# `_validators.validate_session_discriminator` function is the single source
+# of truth for the type → FK mapping; it is wired here as a SQLAlchemy
+# before_insert / before_update hook so non-API writers (seed scripts,
+# internal services, MCP tools, ad-hoc scripts) cannot bypass it.
+#
+# Pydantic schemas wire the same validator at API entry so the failure
+# surface is a clean 422 instead of a transactional rollback.
+
+
+@event.listens_for(Session, "before_insert")
+@event.listens_for(Session, "before_update")
+def _validate_session_discriminator_event(mapper, connection, target):
+    """SQLAlchemy hook — reject Session rows with a bad type ↔ FK combo."""
+    validate_session_discriminator(
+        session_type=target.session_type,
+        cohort_id=target.cohort_id,
+        event_id=target.event_id,
+        booking_id=target.booking_id,
+        pod_id=target.pod_id,
+    )

@@ -137,9 +137,9 @@ async def upload_media(
     """Upload new media item."""
     # Validate file type based on media_type
     if media_type == "IMAGE" and not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image")
+        raise HTTPException(status_code=422, detail="File must be an image")
     if media_type == "VIDEO" and not file.content_type.startswith("video/"):
-        raise HTTPException(status_code=400, detail="File must be a video")
+        raise HTTPException(status_code=422, detail="File must be a video")
 
     # Read file data (with size limit)
     file_data = await _read_file_with_limit(file, "media")

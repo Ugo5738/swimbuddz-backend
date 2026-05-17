@@ -5,6 +5,10 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from services.sessions_service.models import SessionLocation, SessionStatus, SessionType
+from services.sessions_service.models._validators import (
+    SessionDiscriminatorError,
+    validate_session_discriminator,
+)
 
 
 class SessionBase(BaseModel):
@@ -47,7 +51,28 @@ class SessionBase(BaseModel):
 
 
 class SessionCreate(SessionBase):
-    pass
+    @model_validator(mode="after")
+    def _enforce_discriminator(self) -> "SessionCreate":
+        """Enforce the session_type → context-FK mapping at API entry.
+
+        See ``services.sessions_service.models._validators`` for the
+        rules. A SQLAlchemy ``before_insert`` listener on the Session
+        model carries the same enforcement so non-API writers can't
+        bypass this.
+        """
+        try:
+            validate_session_discriminator(
+                session_type=self.session_type,
+                cohort_id=self.cohort_id,
+                event_id=self.event_id,
+                booking_id=self.booking_id,
+                pod_id=self.pod_id,
+            )
+        except SessionDiscriminatorError as exc:
+            # Re-raise as ValueError so Pydantic surfaces a 422
+            # validation error with the discriminator message in `detail`.
+            raise ValueError(str(exc)) from exc
+        return self
 
 
 class SessionUpdate(BaseModel):
