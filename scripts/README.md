@@ -105,6 +105,60 @@ This is safe to run frequently. Migration files remain unchanged.
 4. Test: `./scripts/db/reset.sh dev`
 5. Commit the migration file to git
 
+**`--manual` mode** — pass `--manual` for operations Alembic autogenerate
+cannot represent (CHECK constraints, RLS policies, Realtime publication
+changes, raw SQL data migrations, enum-label renames). The script runs
+`alembic revision` without `--autogenerate`, producing a blank stub with
+an Alembic-assigned revision ID and correct down_revision. Fill in
+`upgrade()` / `downgrade()` yourself and add the standard `"Hand-written
+migration — Alembic autogenerate cannot represent …"` docstring marker.
+
+```bash
+./scripts/db/migrate.sh --manual sessions_service "add discriminator check"
+```
+
+### Known autogenerate gotchas
+
+**Adding an enum-typed column requires an explicit `CREATE TYPE`.**
+When you autogenerate a migration that introduces a new `sa.Enum(...)`
+column, the generated body uses `op.add_column(... sa.Enum(...))` but
+Alembic does **not** always emit a `CREATE TYPE` for the new Postgres
+enum type before the `ALTER TABLE`. The migration generates cleanly but
+fails at `alembic upgrade` with:
+
+    psycopg.errors.UndefinedObject: type "<your_enum_name>" does not exist
+
+**Fix** — edit the generated migration to create the type explicitly
+*before* `add_column`, and drop it explicitly in `downgrade`. Reference
+implementation: `services/academy_service/alembic/versions/a672e7f12a65_add_cohort_type_and_corporate_program_id.py`.
+
+```python
+_my_enum = sa.Enum("value_a", "value_b", name="my_enum_type")
+
+def upgrade() -> None:
+    # Create the Postgres enum type explicitly; `create_type=False` on
+    # the column below stops SQLAlchemy from trying to create it twice.
+    _my_enum.create(op.get_bind(), checkfirst=True)
+    op.add_column(
+        "my_table",
+        sa.Column(
+            "my_field",
+            sa.Enum("value_a", "value_b", name="my_enum_type", create_type=False),
+            server_default="value_a",
+            nullable=False,
+        ),
+    )
+
+def downgrade() -> None:
+    op.drop_column("my_table", "my_field")
+    _my_enum.drop(op.get_bind(), checkfirst=True)
+```
+
+This gotcha **does not apply** when the enum type already exists in the
+target DB (e.g. adding a second column that uses an existing enum, or
+extending an enum's values). It only bites the *first* column to use a
+brand-new enum type.
+
 **Available services:**
 
 - members_service
