@@ -159,6 +159,17 @@ class SessionFactory:
                     return enum_cls(val)
             return val
 
+        # Discriminator parity (A1 Phase 1): a Session with a context FK
+        # must carry the matching session_type or the model-level
+        # validator rejects it on flush. If the caller supplied a
+        # context FK but no explicit session_type, infer the valid one
+        # so `SessionFactory.create(cohort_id=...)` "just works".
+        if "session_type" not in overrides:
+            if overrides.get("cohort_id") is not None:
+                overrides["session_type"] = SessionType.COHORT_CLASS
+            elif overrides.get("event_id") is not None:
+                overrides["session_type"] = SessionType.EVENT
+
         if "session_type" in overrides:
             overrides["session_type"] = _to_enum(overrides["session_type"], SessionType)
         if "status" in overrides:
