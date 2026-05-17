@@ -120,9 +120,7 @@ async def test_download_certificate_admin_can_view_any_enrollment(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_download_certificate_owner_passes_auth_check(
-    academy_client, db_session
-):
+async def test_download_certificate_owner_passes_auth_check(academy_client, db_session):
     """Owner (matching member_auth_id) must NOT be blocked by the
     ownership check.
     """

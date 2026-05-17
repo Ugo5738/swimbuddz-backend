@@ -78,9 +78,7 @@ async def send_enrollment_confirmation_email(
     curriculum_line = (
         f"- Review the program curriculum on your Academy dashboard{dashboard_text}"
     )
-    schedule_line = (
-        f"- Check the session schedule and add sessions to your calendar\n  {sessions_url}"
-    )
+    schedule_line = f"- Check the session schedule and add sessions to your calendar\n  {sessions_url}"
     prep_line = (
         f"- Explore prep materials and learning resources in the Academy section"
         f"{dashboard_text}"

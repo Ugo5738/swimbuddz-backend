@@ -45,9 +45,7 @@ from ._helpers import (
 router = APIRouter()
 
 
-@router.get(
-    "/submissions/pending", response_model=List[ChallengeSubmissionResponse]
-)
+@router.get("/submissions/pending", response_model=List[ChallengeSubmissionResponse])
 async def list_pending_submissions_legacy(
     challenge_id: Optional[uuid.UUID] = Query(
         None, description="Filter by challenge (optional)"
@@ -68,9 +66,7 @@ async def list_pending_submissions_legacy(
     )
 
 
-@router.get(
-    "/submissions/list", response_model=List[ChallengeSubmissionResponse]
-)
+@router.get("/submissions/list", response_model=List[ChallengeSubmissionResponse])
 async def list_submissions(
     status: Literal["pending", "approved", "rejected", "all"] = Query(
         "pending",

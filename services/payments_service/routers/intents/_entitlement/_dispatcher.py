@@ -12,7 +12,7 @@ to `intents/__init__.py` for the retry worker and route modules):
     SELECT ... FOR UPDATE lock and triggers fulfillment.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy import select

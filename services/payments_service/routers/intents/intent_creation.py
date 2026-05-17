@@ -7,47 +7,27 @@ method) initializes the Paystack checkout and returns the
 authorization URL.
 """
 
-import hashlib
-import hmac
-from datetime import datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from datetime import datetime
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.auth.dependencies import _service_role_jwt, get_current_user, require_admin
+from libs.auth.dependencies import _service_role_jwt, get_current_user
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.currency import KOBO_PER_NAIRA
-from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
-from libs.common.service_client import (
-    dispatch_notification,
-    emit_rewards_event,
-    get_member_by_auth_id,
-    internal_post,
-)
 from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.payments_service.models import (
-    Discount,
-    DiscountType,
     Payment,
     PaymentPurpose,
     PaymentStatus,
 )
 from services.payments_service.schemas import (
-    ClubBillingCycle,
-    CompletePaymentRequest,
     CreatePaymentIntentRequest,
     PaymentIntentResponse,
-    PaymentResponse,
-    PricingConfigResponse,
-    SessionAttendanceRole,
-    SessionAttendanceStatus,
 )
 
 settings = get_settings()
@@ -375,9 +355,7 @@ async def create_payment_intent(
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "booking_id": str(booking_id),
-            "session_id": (
-                str(payload.session_id) if payload.session_id else None
-            ),
+            "session_id": (str(payload.session_id) if payload.session_id else None),
             "bubbles_to_apply": payload.bubbles_to_apply or 0,
         }
 

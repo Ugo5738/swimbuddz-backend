@@ -48,9 +48,7 @@ async def test_get_my_preferences_auto_creates_defaults_on_first_access(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_patch_my_preferences_persists_updates(
-    communications_client, db_session
-):
+async def test_patch_my_preferences_persists_updates(communications_client, db_session):
     """PATCH /me updates the fields in the body; unset fields keep prior values."""
     # Touch the row first so it exists with defaults
     await communications_client.get("/preferences/me")

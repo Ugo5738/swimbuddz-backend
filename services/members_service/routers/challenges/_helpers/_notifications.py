@@ -4,45 +4,23 @@ Fire-and-forget calls to communications_service after a review action.
 Failures never block the review.
 """
 
-import uuid
-from typing import List, Literal, Optional
+from typing import List, Optional
 
-from fastapi import HTTPException
-from libs.auth.dependencies import is_admin_or_service
-from libs.auth.models import AuthUser
-from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-from libs.common.media_utils import resolve_media_urls
 from libs.common.service_client import (
     dispatch_notification,
-    grant_challenge_reward_bubbles,
-    grant_challenge_volunteer_hours,
 )
 from services.members_service.models import (
-    ChallengeBadgeAward,
-    ChallengeExampleMedia,
-    ChallengeSubmissionMedia,
     ChallengeSubmissionMember,
     ClubChallenge,
-    Member,
     MemberChallengeCompletion,
-    Pod,
-    PodAssignment,
 )
-from services.members_service.schemas import (
-    ChallengeExampleMediaResponse,
-    ChallengePublicResponse,
-    ChallengeSubmissionMediaResponse,
-    ChallengeSubmissionMemberResponse,
-    ChallengeSubmissionResponse,
-    ChallengeWinnerPublicInfo,
-    ClubChallengeResponse,
-)
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 CHALLENGES_CALLING_SERVICE = "members_service.challenges"
 logger = get_logger(__name__)
+
 
 async def _notify_submission_reviewed(
     submission: MemberChallengeCompletion,
@@ -119,6 +97,7 @@ async def _notify_submission_reviewed(
                 "submission_id": str(submission.id),
             },
         )
+
 
 async def _notify_submission_winner(
     submission: MemberChallengeCompletion,

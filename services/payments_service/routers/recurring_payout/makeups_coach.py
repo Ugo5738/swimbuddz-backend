@@ -69,9 +69,7 @@ async def coach_list_makeup_obligations(
         return MakeupObligationListResponse(items=items, total=total)
 
 
-@router.patch(
-    "/{obligation_id}/schedule", response_model=MakeupObligationResponse
-)
+@router.patch("/{obligation_id}/schedule", response_model=MakeupObligationResponse)
 async def coach_schedule_makeup(
     obligation_id: uuid.UUID,
     payload: MakeupScheduleRequest,

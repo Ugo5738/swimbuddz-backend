@@ -2,40 +2,23 @@
 
 """Communications announcements router: announcements, read tracking, comments."""
 
-import uuid
 from datetime import datetime, timedelta
-from typing import List, Optional, Set
+from typing import Optional, Set
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.auth.dependencies import get_optional_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
-from libs.common.member_utils import resolve_members_basic
 from libs.common.datetime_utils import utc_now
-from libs.db.session import get_async_db
 from services.communications_service.models import (
     Announcement,
     AnnouncementAudience,
     AnnouncementCategory,
-    AnnouncementComment,
-    AnnouncementRead,
     AnnouncementStatus,
-    ContentComment,
     NotificationPreferences,
-)
-from services.communications_service.schemas import (
-    AnnouncementCommentResponse,
-    AnnouncementCreate,
-    AnnouncementReadCreate,
-    AnnouncementReadResponse,
-    AnnouncementResponse,
-    AnnouncementUpdate,
-    CommentCreate,
 )
 from services.communications_service.templates.messaging import send_message_email
 

@@ -182,9 +182,7 @@ async def test_list_products_search_substring(store_client, db_session):
     db_session.add_all([matching, non_matching])
     await db_session.commit()
 
-    response = await store_client.get(
-        "/store/products", params={"search": unique_term}
-    )
+    response = await store_client.get("/store/products", params={"search": unique_term})
     assert response.status_code == 200
     slugs = {item["slug"] for item in response.json()["items"]}
     assert matching.slug in slugs
@@ -299,9 +297,7 @@ async def test_admin_create_category_happy_path(store_client):
         "name": f"New Category {suffix}",
         "slug": f"new-cat-{suffix}",
     }
-    response = await store_client.post(
-        "/admin/store/categories", json=payload
-    )
+    response = await store_client.post("/admin/store/categories", json=payload)
     assert response.status_code in (200, 201), response.text
     body = response.json()
     assert body["slug"] == payload["slug"]

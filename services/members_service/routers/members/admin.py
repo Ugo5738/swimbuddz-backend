@@ -6,18 +6,16 @@ import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from libs.auth.dependencies import get_current_user, require_admin
+from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
-from libs.common.media_utils import resolve_media_url, resolve_media_urls
+from libs.common.media_utils import resolve_media_urls
 from libs.common.supabase import get_supabase_admin_client
 from libs.db.session import get_async_db
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from services.members_service.models import (
-    ChallengeBadgeAward,
     CoachProfile,
     Member,
     MemberAvailability,
@@ -30,22 +28,18 @@ from services.members_service.models import (
 )
 from services.members_service.routers._helpers import (
     member_eager_load_options,
-    normalize_member_tiers,
     resolve_member_media_urls,
 )
 from services.members_service.schemas import (
-    ChallengeBadgeAwardResponse,
-    MemberBasicResponse,
     MemberCreate,
-    MemberDirectoryResponse,
     MemberListResponse,
-    MemberPublicResponse,
     MemberResponse,
     MemberUpdate,
 )
 
 logger = get_logger(__name__)
 router = APIRouter()
+
 
 @router.post("/", response_model=MemberResponse, status_code=status.HTTP_201_CREATED)
 async def create_member(
@@ -76,6 +70,7 @@ async def create_member(
     )
     result = await db.execute(query)
     return result.scalar_one()
+
 
 @router.get("/", response_model=List[MemberListResponse])
 async def list_members(
@@ -153,6 +148,7 @@ async def list_members(
         responses.append(MemberListResponse(**payload))
     return responses
 
+
 @router.get("/stats")
 async def get_member_stats(
     db: AsyncSession = Depends(get_async_db),
@@ -181,6 +177,7 @@ async def get_member_stats(
         "pending_approvals": pending_approvals,
     }
 
+
 @router.get("/by-auth/{auth_id}", response_model=MemberResponse)
 async def get_member_by_auth_id(
     auth_id: str,
@@ -205,6 +202,7 @@ async def get_member_by_auth_id(
         )
 
     return member
+
 
 @router.get("/{member_id}", response_model=MemberResponse)
 async def get_member(
@@ -231,6 +229,7 @@ async def get_member(
     member_dict = MemberResponse.model_validate(member).model_dump()
     member_dict = await resolve_member_media_urls(member_dict)
     return member_dict
+
 
 @router.patch("/{member_id}", response_model=MemberResponse)
 async def update_member(
@@ -273,6 +272,7 @@ async def update_member(
     member_dict = MemberResponse.model_validate(updated_member).model_dump()
     member_dict = await resolve_member_media_urls(member_dict)
     return member_dict
+
 
 @router.delete("/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_member(

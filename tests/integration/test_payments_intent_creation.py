@@ -32,7 +32,7 @@ What's tested per purpose:
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -43,7 +43,9 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-def _install_paystack_stubs(monkeypatch, checkout_url="http://fake.test/checkout/PAY-X"):
+def _install_paystack_stubs(
+    monkeypatch, checkout_url="http://fake.test/checkout/PAY-X"
+):
     """Replace Paystack init + pending-ref update with deterministic stubs.
 
     Every intent-creation test needs these — without them, the route either
@@ -221,9 +223,15 @@ async def test_club_quarterly_basic_amount(payments_client, monkeypatch):
     # community membership well into the future so no extension is needed.
     far_future = (datetime.now(timezone.utc) + timedelta(days=400)).isoformat()
     fake_client = _fake_httpx_client(
-        get_responses=[("/members/by-auth/", 200, {
-            "membership": {"community_paid_until": far_future},
-        })],
+        get_responses=[
+            (
+                "/members/by-auth/",
+                200,
+                {
+                    "membership": {"community_paid_until": far_future},
+                },
+            )
+        ],
     )
     monkeypatch.setattr(intent_creation.httpx, "AsyncClient", fake_client)
 
@@ -262,9 +270,15 @@ async def test_club_flags_extension_when_member_short_on_community(
     # outlast it by ~89 days → needs ~3 months of community extension.
     expiring_soon = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     fake_client = _fake_httpx_client(
-        get_responses=[("/members/by-auth/", 200, {
-            "membership": {"community_paid_until": expiring_soon},
-        })],
+        get_responses=[
+            (
+                "/members/by-auth/",
+                200,
+                {
+                    "membership": {"community_paid_until": expiring_soon},
+                },
+            )
+        ],
     )
     monkeypatch.setattr(intent_creation.httpx, "AsyncClient", fake_client)
 
@@ -302,9 +316,15 @@ async def test_club_adds_extension_when_opted_in(payments_client, monkeypatch):
 
     expiring_soon = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     fake_client = _fake_httpx_client(
-        get_responses=[("/members/by-auth/", 200, {
-            "membership": {"community_paid_until": expiring_soon},
-        })],
+        get_responses=[
+            (
+                "/members/by-auth/",
+                200,
+                {
+                    "membership": {"community_paid_until": expiring_soon},
+                },
+            )
+        ],
     )
     monkeypatch.setattr(intent_creation.httpx, "AsyncClient", fake_client)
 
@@ -398,9 +418,7 @@ async def test_club_bundle_metadata_has_components(
 @pytest.mark.integration
 async def test_academy_cohort_requires_enrollment_id(payments_client, monkeypatch):
     _override_current_user_email(
-        __import__(
-            "services.payments_service.app.main", fromlist=["app"]
-        ).app
+        __import__("services.payments_service.app.main", fromlist=["app"]).app
     )
     _install_paystack_stubs(monkeypatch)
 
@@ -432,23 +450,37 @@ async def test_academy_cohort_uses_next_unpaid_installment(
     # Academy returns installments sorted by installment_number, with
     # amounts in kobo. First two paid, third pending.
     fake_client = _fake_httpx_client(
-        get_responses=[(
-            f"/internal/academy/enrollments/{enrollment_id}",
-            200,
-            {
-                "id": enrollment_id,
-                "cohort_id": cohort_id,
-                "payment_status": "pending",
-                "total_installments": 3,
-                "installments": [
-                    {"installment_number": 1, "amount": 5_000_000, "status": "paid"},
-                    {"installment_number": 2, "amount": 5_000_000, "status": "paid"},
-                    {"installment_number": 3, "amount": 5_000_000, "status": "pending"},
-                ],
-                "program": {"price_amount": 150000},
-                "cohort": {"price_override": None},
-            },
-        )],
+        get_responses=[
+            (
+                f"/internal/academy/enrollments/{enrollment_id}",
+                200,
+                {
+                    "id": enrollment_id,
+                    "cohort_id": cohort_id,
+                    "payment_status": "pending",
+                    "total_installments": 3,
+                    "installments": [
+                        {
+                            "installment_number": 1,
+                            "amount": 5_000_000,
+                            "status": "paid",
+                        },
+                        {
+                            "installment_number": 2,
+                            "amount": 5_000_000,
+                            "status": "paid",
+                        },
+                        {
+                            "installment_number": 3,
+                            "amount": 5_000_000,
+                            "status": "pending",
+                        },
+                    ],
+                    "program": {"price_amount": 150000},
+                    "cohort": {"price_override": None},
+                },
+            )
+        ],
     )
     monkeypatch.setattr(intent_creation.httpx, "AsyncClient", fake_client)
 
@@ -482,21 +514,27 @@ async def test_academy_cohort_amount_override_rejected_when_below_next_installme
 
     enrollment_id = str(uuid.uuid4())
     fake_client = _fake_httpx_client(
-        get_responses=[(
-            f"/internal/academy/enrollments/{enrollment_id}",
-            200,
-            {
-                "id": enrollment_id,
-                "cohort_id": str(uuid.uuid4()),
-                "payment_status": "pending",
-                "installments": [
-                    # Next installment: 50,000 NGN (5_000_000 kobo)
-                    {"installment_number": 1, "amount": 5_000_000, "status": "pending"},
-                ],
-                "program": {"price_amount": 150000},
-                "cohort": {"price_override": None},
-            },
-        )],
+        get_responses=[
+            (
+                f"/internal/academy/enrollments/{enrollment_id}",
+                200,
+                {
+                    "id": enrollment_id,
+                    "cohort_id": str(uuid.uuid4()),
+                    "payment_status": "pending",
+                    "installments": [
+                        # Next installment: 50,000 NGN (5_000_000 kobo)
+                        {
+                            "installment_number": 1,
+                            "amount": 5_000_000,
+                            "status": "pending",
+                        },
+                    ],
+                    "program": {"price_amount": 150000},
+                    "cohort": {"price_override": None},
+                },
+            )
+        ],
     )
     monkeypatch.setattr(intent_creation.httpx, "AsyncClient", fake_client)
 
@@ -546,11 +584,13 @@ async def test_store_order_uses_order_total(payments_client, monkeypatch):
 
     order_id = str(uuid.uuid4())
     fake_client = _fake_httpx_client(
-        get_responses=[(
-            f"/store/admin/orders/{order_id}",
-            200,
-            {"order_number": "ORD-001", "total_ngn": 12500.0},
-        )],
+        get_responses=[
+            (
+                f"/store/admin/orders/{order_id}",
+                200,
+                {"order_number": "ORD-001", "total_ngn": 12500.0},
+            )
+        ],
     )
     monkeypatch.setattr(intent_creation.httpx, "AsyncClient", fake_client)
 
@@ -576,11 +616,13 @@ async def test_store_order_rejects_zero_total(payments_client, monkeypatch):
 
     order_id = str(uuid.uuid4())
     fake_client = _fake_httpx_client(
-        get_responses=[(
-            f"/store/admin/orders/{order_id}",
-            200,
-            {"order_number": "ORD-002", "total_ngn": 0},
-        )],
+        get_responses=[
+            (
+                f"/store/admin/orders/{order_id}",
+                200,
+                {"order_number": "ORD-002", "total_ngn": 0},
+            )
+        ],
     )
     monkeypatch.setattr(intent_creation.httpx, "AsyncClient", fake_client)
 
@@ -601,9 +643,7 @@ async def test_store_order_rejects_zero_total(payments_client, monkeypatch):
 @pytest.mark.integration
 async def test_session_fee_requires_session_id(payments_client, monkeypatch):
     _override_current_user_email(
-        __import__(
-            "services.payments_service.app.main", fromlist=["app"]
-        ).app
+        __import__("services.payments_service.app.main", fromlist=["app"]).app
     )
     _install_paystack_stubs(monkeypatch)
 
@@ -621,9 +661,7 @@ async def test_session_fee_requires_positive_direct_amount(
     payments_client, monkeypatch
 ):
     _override_current_user_email(
-        __import__(
-            "services.payments_service.app.main", fromlist=["app"]
-        ).app
+        __import__("services.payments_service.app.main", fromlist=["app"]).app
     )
     _install_paystack_stubs(monkeypatch)
 
@@ -694,9 +732,7 @@ async def test_session_fee_rejects_bubbles_exceeding_amount(
 @pytest.mark.integration
 async def test_session_bundle_requires_session_ids(payments_client, monkeypatch):
     _override_current_user_email(
-        __import__(
-            "services.payments_service.app.main", fromlist=["app"]
-        ).app
+        __import__("services.payments_service.app.main", fromlist=["app"]).app
     )
     _install_paystack_stubs(monkeypatch)
 
@@ -714,9 +750,7 @@ async def test_session_bundle_requires_session_ids(payments_client, monkeypatch)
 @pytest.mark.integration
 async def test_session_bundle_rejects_duplicates(payments_client, monkeypatch):
     _override_current_user_email(
-        __import__(
-            "services.payments_service.app.main", fromlist=["app"]
-        ).app
+        __import__("services.payments_service.app.main", fromlist=["app"]).app
     )
     _install_paystack_stubs(monkeypatch)
 
@@ -742,9 +776,7 @@ async def test_session_bundle_rejects_ride_config_for_session_not_in_bundle(
     actually in the bundle; otherwise the rider buys a seat for a session
     they didn't pay for."""
     _override_current_user_email(
-        __import__(
-            "services.payments_service.app.main", fromlist=["app"]
-        ).app
+        __import__("services.payments_service.app.main", fromlist=["app"]).app
     )
     _install_paystack_stubs(monkeypatch)
 
@@ -781,9 +813,7 @@ async def test_ride_share_requires_all_four_fields(payments_client, monkeypatch)
     + direct_amount. Missing any → 400 with a field-specific message.
     """
     _override_current_user_email(
-        __import__(
-            "services.payments_service.app.main", fromlist=["app"]
-        ).app
+        __import__("services.payments_service.app.main", fromlist=["app"]).app
     )
     _install_paystack_stubs(monkeypatch)
 
@@ -848,9 +878,7 @@ async def test_wallet_topup_not_supported_via_intents_endpoint(
     than create a PENDING row with no amount.
     """
     _override_current_user_email(
-        __import__(
-            "services.payments_service.app.main", fromlist=["app"]
-        ).app
+        __import__("services.payments_service.app.main", fromlist=["app"]).app
     )
     _install_paystack_stubs(monkeypatch)
 
@@ -876,7 +904,6 @@ async def test_full_discount_brings_amount_to_zero_and_auto_completes(
     can't initialize a zero-amount transaction. The route must short-circuit
     via `_mark_paid_and_apply` and persist the row as PAID, not PENDING.
     """
-    from sqlalchemy import select
 
     from services.payments_service.app.main import app as payments_app
     from services.payments_service.models import DiscountType
@@ -917,8 +944,9 @@ async def test_full_discount_brings_amount_to_zero_and_auto_completes(
     assert body["original_amount"] == 20000.0
 
 
-async def _mark_paid_stub(*, db, payment, provider, provider_reference,
-                         paid_at, provider_payload=None):
+async def _mark_paid_stub(
+    *, db, payment, provider, provider_reference, paid_at, provider_payload=None
+):
     """Lightweight replacement for _mark_paid_and_apply during tests."""
     from services.payments_service.models import PaymentStatus
 
@@ -978,7 +1006,9 @@ async def test_payment_method_manual_transfer_does_not_initialize_paystack(
     _override_current_user_email(payments_app)
 
     paystack_mock = AsyncMock(
-        side_effect=AssertionError("Paystack must NOT be initialized for manual transfer")
+        side_effect=AssertionError(
+            "Paystack must NOT be initialized for manual transfer"
+        )
     )
     monkeypatch.setattr(
         "services.payments_service.routers.intents.intent_creation._initialize_paystack",

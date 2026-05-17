@@ -98,30 +98,42 @@ async def seed_cohort(args: argparse.Namespace) -> int:
             return 1
 
         print(f"✓ Found program: {program.name} (id={program.id}, slug={program.slug})")
-        print(f"  duration_weeks={program.duration_weeks}  "
-              f"default_capacity={program.default_capacity}  "
-              f"is_published={program.is_published}")
+        print(
+            f"  duration_weeks={program.duration_weeks}  "
+            f"default_capacity={program.default_capacity}  "
+            f"is_published={program.is_published}"
+        )
 
         # 2. Optionally publish the program so the cohort appears in
         #    /api/v1/academy/cohorts/enrollable (which filters on
         #    Program.is_published.is_(True)).
         if not program.is_published and not args.no_publish:
-            print("  · Program was unpublished — publishing it so the cohort "
-                  "appears as enrollable.")
+            print(
+                "  · Program was unpublished — publishing it so the cohort "
+                "appears as enrollable."
+            )
             program.is_published = True
         elif not program.is_published:
-            print("  · Program left unpublished (--no-publish). Cohort will NOT "
-                  "appear in /cohorts/enrollable until you publish it.")
+            print(
+                "  · Program left unpublished (--no-publish). Cohort will NOT "
+                "appear in /cohorts/enrollable until you publish it."
+            )
 
         # 3. Build the cohort.
-        start_date = _parse_date(args.start_date) if args.start_date else (
-            datetime.now(timezone.utc) + timedelta(days=7)
+        start_date = (
+            _parse_date(args.start_date)
+            if args.start_date
+            else (datetime.now(timezone.utc) + timedelta(days=7))
         )
-        end_date = _parse_date(args.end_date) if args.end_date else (
-            start_date + timedelta(weeks=program.duration_weeks or 12)
+        end_date = (
+            _parse_date(args.end_date)
+            if args.end_date
+            else (start_date + timedelta(weeks=program.duration_weeks or 12))
         )
-        capacity = args.capacity if args.capacity is not None else (
-            program.default_capacity or 10
+        capacity = (
+            args.capacity
+            if args.capacity is not None
+            else (program.default_capacity or 10)
         )
 
         cohort = Cohort(

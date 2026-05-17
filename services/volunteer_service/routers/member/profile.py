@@ -42,7 +42,9 @@ async def get_my_profile(
     return profile
 
 
-@router.post("/profile/me", response_model=MemberVolunteerProfileResponse, status_code=201)
+@router.post(
+    "/profile/me", response_model=MemberVolunteerProfileResponse, status_code=201
+)
 async def register_as_volunteer(
     data: VolunteerProfileCreate,
     user: Annotated[AuthUser, Depends(get_current_user)],

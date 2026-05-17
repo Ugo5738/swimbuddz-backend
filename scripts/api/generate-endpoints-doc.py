@@ -56,9 +56,7 @@ def main() -> None:
             tags = op.get("tags") or ["(untagged)"]
             tag = tags[0]
             summary = (
-                op.get("summary")
-                or (op.get("description") or "").split("\n")[0]
-                or "—"
+                op.get("summary") or (op.get("description") or "").split("\n")[0] or "—"
             ).strip()
             requires_auth = "security" in op or bool(spec.get("security"))
             by_tag[tag].append((path, method.upper(), summary, requires_auth))

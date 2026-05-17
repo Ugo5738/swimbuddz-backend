@@ -180,9 +180,7 @@ async def test_delete_album_keeps_media_then_404(media_client, db_session):
 
     # MediaItem must NOT be cascade-deleted with the album.
     still_there = (
-        await db_session.execute(
-            select(MediaItem).where(MediaItem.id == media_id)
-        )
+        await db_session.execute(select(MediaItem).where(MediaItem.id == media_id))
     ).scalar_one_or_none()
     assert still_there is not None
     # ...but its AlbumItem link is gone.

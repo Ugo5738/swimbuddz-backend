@@ -10,9 +10,8 @@ This router handles:
 """
 
 import uuid
-from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.media_utils import resolve_media_urls
@@ -23,26 +22,18 @@ from services.academy_service.models import (
     LessonSkill,
     Program,
     ProgramCurriculum,
-    Skill,
 )
 from services.academy_service.schemas.curriculum import (
-    CurriculumLessonCreate,
     CurriculumLessonResponse,
-    CurriculumLessonUpdate,
-    CurriculumWeekCreate,
     CurriculumWeekResponse,
-    CurriculumWeekUpdate,
     ProgramCurriculumResponse,
-    SkillCreate,
     SkillResponse,
-    SkillUpdate,
 )
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ._helpers import sync_curriculum_json
-
 
 
 router = APIRouter()

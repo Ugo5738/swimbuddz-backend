@@ -4,11 +4,9 @@
 
 import uuid
 from datetime import datetime
-from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from libs.auth.dependencies import require_admin
+from fastapi import HTTPException
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.common.service_client import (
@@ -17,14 +15,12 @@ from libs.common.service_client import (
     emit_rewards_event,
     get_member_by_auth_id,
 )
-from libs.db.session import get_async_db
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from services.store_service.models import (
     AuditEntityType,
-    InventoryItem,
     InventoryMovement,
     InventoryMovementType,
     Order,
@@ -32,22 +28,11 @@ from services.store_service.models import (
     OrderStatus,
     Product,
     ProductVariant,
-    StoreCredit,
-    StoreCreditSourceType,
 )
 from services.store_service.routers._helpers import log_audit
-from services.store_service.schemas import (
-    InventoryAdjustment,
-    InventoryItemResponse,
-    LowStockItem,
-    OrderListResponse,
-    OrderResponse,
-    OrderStatusUpdate,
-    OrderUpdate,
-    StoreCreditResponse,
-)
 
 logger = get_logger(__name__)
+
 
 def _order_eager_load_options():
     """Eager-load relationships needed to fully render an order response."""

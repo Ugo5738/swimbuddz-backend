@@ -4,7 +4,6 @@
 
 import logging
 import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,40 +13,22 @@ from libs.db.session import get_async_db
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.wallet_service.models.enums import AlertStatus
 from services.wallet_service.models.rewards import (
     MemberRewardHistory,
-    RewardAlert,
     RewardRule,
-    WalletEvent,
 )
 from services.wallet_service.schemas.rewards import (
-    AdminEventSubmitRequest,
-    AlertSummaryItem,
-    EventIngestResponse,
-    EventTypeCount,
-    RewardAlertListResponse,
-    RewardAlertResponse,
-    RewardAlertSummaryResponse,
-    RewardAlertUpdateRequest,
-    RewardAnalyticsResponse,
-    RewardCategoryStats,
-    RewardEventListItem,
-    RewardEventListResponse,
-    RewardGrantItem,
     RewardRuleCreateRequest,
     RewardRuleDetailResponse,
     RewardRuleListResponse,
     RewardRuleResponse,
     RewardRuleUpdateRequest,
-    RewardStatsResponse,
-    TopRuleUsage,
 )
-from services.wallet_service.services.rewards_engine import process_event
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
 
 @router.get("/rules", response_model=RewardRuleListResponse)
 async def list_reward_rules(
@@ -79,6 +60,7 @@ async def list_reward_rules(
         items=[RewardRuleResponse.model_validate(r) for r in rules],
         total=total,
     )
+
 
 @router.post("/rules", response_model=RewardRuleResponse, status_code=201)
 async def create_reward_rule(
@@ -143,6 +125,7 @@ async def create_reward_rule(
     logger.info("Admin %s created reward rule '%s'", admin.user_id, body.rule_name)
     return RewardRuleResponse.model_validate(rule)
 
+
 @router.get("/rules/{rule_id}", response_model=RewardRuleDetailResponse)
 async def get_reward_rule(
     rule_id: uuid.UUID,
@@ -172,6 +155,7 @@ async def get_reward_rule(
     resp.total_grants = row.total_grants
     resp.total_bubbles_distributed = row.total_bubbles
     return resp
+
 
 @router.patch("/rules/{rule_id}", response_model=RewardRuleResponse)
 async def update_reward_rule(

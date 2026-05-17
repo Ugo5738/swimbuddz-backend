@@ -14,21 +14,12 @@ from libs.common.config import get_settings
 from libs.common.currency import KOBO_PER_NAIRA
 from libs.common.logging import get_logger
 from libs.common.emails.client import get_email_client
-from libs.common.service_client import internal_post
 from libs.common.datetime_utils import utc_now
 from services.payments_service.models import (
     Payment,
-    PaymentPurpose,
-    PaymentStatus,
-)
-from services.payments_service.schemas import (
-    SessionAttendanceRole,
-    SessionAttendanceStatus,
 )
 
 from .._helpers import (
-    _require_attendance_status,
-    _send_tier_activated_email,
     _update_pending_payment_reference,
 )
 

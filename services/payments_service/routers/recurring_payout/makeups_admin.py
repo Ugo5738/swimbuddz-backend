@@ -67,9 +67,7 @@ async def list_makeup_obligations(
         return MakeupObligationListResponse(items=items, total=total)
 
 
-@router.patch(
-    "/{obligation_id}/schedule", response_model=MakeupObligationResponse
-)
+@router.patch("/{obligation_id}/schedule", response_model=MakeupObligationResponse)
 async def admin_schedule_makeup(
     obligation_id: uuid.UUID,
     payload: MakeupScheduleRequest,
@@ -104,9 +102,7 @@ async def admin_schedule_makeup(
         return MakeupObligationResponse.model_validate(obligation)
 
 
-@router.patch(
-    "/{obligation_id}/cancel", response_model=MakeupObligationResponse
-)
+@router.patch("/{obligation_id}/cancel", response_model=MakeupObligationResponse)
 async def admin_cancel_makeup(
     obligation_id: uuid.UUID,
     _admin: AuthUser = Depends(require_admin),

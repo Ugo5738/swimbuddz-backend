@@ -6,44 +6,18 @@ notification builders. `_short_display_name` enforces the public
 """
 
 import uuid
-from typing import List, Literal, Optional
+from typing import List, Optional
 
-from fastapi import HTTPException
-from libs.auth.dependencies import is_admin_or_service
-from libs.auth.models import AuthUser
-from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-from libs.common.media_utils import resolve_media_urls
-from libs.common.service_client import (
-    dispatch_notification,
-    grant_challenge_reward_bubbles,
-    grant_challenge_volunteer_hours,
-)
 from services.members_service.models import (
-    ChallengeBadgeAward,
-    ChallengeExampleMedia,
-    ChallengeSubmissionMedia,
-    ChallengeSubmissionMember,
-    ClubChallenge,
     Member,
-    MemberChallengeCompletion,
-    Pod,
-    PodAssignment,
 )
-from services.members_service.schemas import (
-    ChallengeExampleMediaResponse,
-    ChallengePublicResponse,
-    ChallengeSubmissionMediaResponse,
-    ChallengeSubmissionMemberResponse,
-    ChallengeSubmissionResponse,
-    ChallengeWinnerPublicInfo,
-    ClubChallengeResponse,
-)
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 CHALLENGES_CALLING_SERVICE = "members_service.challenges"
 logger = get_logger(__name__)
+
 
 async def _load_member_records(member_ids: List[uuid.UUID], db: AsyncSession) -> dict:
     """Bulk-load member name records by id (single in-service DB query).
@@ -66,6 +40,7 @@ async def _load_member_records(member_ids: List[uuid.UUID], db: AsyncSession) ->
     )
     return {row.id: (row.first_name, row.last_name) for row in rows.all()}
 
+
 def _full_name(record: Optional[tuple]) -> Optional[str]:
     """Format a (first, last) tuple as "First Last". None if record missing."""
     if not record:
@@ -75,6 +50,7 @@ def _full_name(record: Optional[tuple]) -> Optional[str]:
     full = f"{first} {last}".strip()
     return full or None
 
+
 async def _load_member_names(member_ids: List[uuid.UUID], db: AsyncSession) -> dict:
     """Convenience: bulk-resolve member ids → "First Last" strings.
 
@@ -83,6 +59,7 @@ async def _load_member_names(member_ids: List[uuid.UUID], db: AsyncSession) -> d
     """
     records = await _load_member_records(member_ids, db)
     return {mid: _full_name(rec) for mid, rec in records.items() if _full_name(rec)}
+
 
 def _short_display_name(record: Optional[tuple]) -> str:
     """Render a privacy-friendly public display name: "First L." form.

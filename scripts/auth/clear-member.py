@@ -83,7 +83,9 @@ async def lookup_supabase_user_id(email: str) -> str | None:
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(url, headers=headers, params={"email": email})
         if resp.status_code != 200:
-            print(f"  ⚠️  Supabase list-users failed: {resp.status_code} {resp.text[:200]}")
+            print(
+                f"  ⚠️  Supabase list-users failed: {resp.status_code} {resp.text[:200]}"
+            )
             return None
         users = resp.json().get("users", [])
         # The `email` filter is a substring/prefix match in some Supabase
@@ -117,10 +119,7 @@ async def delete_db_rows(email: str) -> dict[str, int]:
     async with AsyncSessionLocal() as session:
         # pending_registrations — keyed by email
         res = await session.execute(
-            text(
-                "DELETE FROM pending_registrations "
-                "WHERE LOWER(email) = :email"
-            ),
+            text("DELETE FROM pending_registrations " "WHERE LOWER(email) = :email"),
             {"email": target},
         )
         counts["pending_registrations"] = res.rowcount or 0
@@ -170,7 +169,9 @@ async def run(email: str, skip_confirm: bool) -> int:
     except Exception as e:
         print(f"  ✗ DB deletion failed: {e}")
         return 2
-    print(f"  ✓ pending_registrations: {counts['pending_registrations']} row(s) deleted")
+    print(
+        f"  ✓ pending_registrations: {counts['pending_registrations']} row(s) deleted"
+    )
     print(f"  ✓ members:              {counts['members']} row(s) deleted (cascade)")
 
     # 3. Delete Supabase auth user.

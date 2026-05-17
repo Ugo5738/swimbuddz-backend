@@ -299,7 +299,9 @@ async def bulk_complete(
         opp_start_dt: datetime | None = None
         opp_end_dt: datetime | None = None
         if opp and opp.start_time:
-            opp_start_dt = datetime.combine(opp.date, opp.start_time, tzinfo=timezone.utc)
+            opp_start_dt = datetime.combine(
+                opp.date, opp.start_time, tzinfo=timezone.utc
+            )
         if opp and opp.end_time:
             opp_end_dt = datetime.combine(opp.date, opp.end_time, tzinfo=timezone.utc)
 

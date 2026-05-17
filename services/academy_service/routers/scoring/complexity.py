@@ -2,51 +2,33 @@
 
 from fastapi import APIRouter
 from services.academy_service.routers._shared import (
-    AICoachSuggestion,
-    AICoachSuggestionResponse,
-    AIDimensionSuggestion,
-    AIScoringRequest,
-    AIScoringResponse,
     AsyncSession,
     AuthUser,
-    CoachGrade,
     Cohort,
     CohortComplexityScore,
     CohortComplexityScoreCreate,
     CohortComplexityScoreResponse,
     CohortComplexityScoreUpdate,
-    ComplexityScoreCalculateRequest,
-    ComplexityScoreCalculation,
     Depends,
-    DimensionLabelsResponse,
-    EligibleCoachResponse,
     HTTPException,
-    List,
-    ProgramCategory,
-    _GRADE_COLUMN_MAP,
     calculate_complexity_score,
     get_async_db,
     get_current_user,
-    get_dimension_labels,
-    get_eligible_coaches,
     get_logger,
     get_member_by_auth_id,
-    get_settings,
-    internal_post,
     require_admin,
     select,
-    selectinload,
     status,
     utc_now,
     uuid,
 )
 
 
-
 # ============================================================================
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["academy"])
+
 
 @router.post(
     "/cohorts/{cohort_id}/complexity-score",
@@ -142,6 +124,7 @@ async def create_cohort_complexity_score(
 
     return complexity_score
 
+
 @router.get(
     "/cohorts/{cohort_id}/complexity-score",
     response_model=CohortComplexityScoreResponse,
@@ -164,6 +147,7 @@ async def get_cohort_complexity_score(
         raise HTTPException(status_code=404, detail="Complexity score not found")
 
     return score
+
 
 @router.put(
     "/cohorts/{cohort_id}/complexity-score",
@@ -254,6 +238,7 @@ async def update_cohort_complexity_score(
 
     return score
 
+
 @router.delete("/cohorts/{cohort_id}/complexity-score")
 async def delete_cohort_complexity_score(
     cohort_id: uuid.UUID,
@@ -283,6 +268,7 @@ async def delete_cohort_complexity_score(
     await db.commit()
 
     return {"message": "Complexity score deleted"}
+
 
 @router.post("/cohorts/{cohort_id}/complexity-score/review")
 async def mark_complexity_score_reviewed(

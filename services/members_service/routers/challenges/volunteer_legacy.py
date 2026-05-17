@@ -164,9 +164,7 @@ async def delete_volunteer_role(
     return None
 
 
-@router.post(
-    "/interest", response_model=VolunteerInterestResponse, status_code=201
-)
+@router.post("/interest", response_model=VolunteerInterestResponse, status_code=201)
 async def register_volunteer_interest(
     interest_data: VolunteerInterestCreate,
     member_id: uuid.UUID = Query(..., description="Member ID"),

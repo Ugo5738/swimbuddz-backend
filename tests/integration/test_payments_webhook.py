@@ -56,12 +56,8 @@ async def test_webhook_rejects_missing_signature(payments_client, monkeypatch):
     """No signature header → 401, no DB changes."""
     _set_secret(monkeypatch)
 
-    body = json.dumps(
-        {"event": "charge.success", "data": {"reference": "PAY-NONE"}}
-    )
-    response = await payments_client.post(
-        "/payments/webhooks/paystack", content=body
-    )
+    body = json.dumps({"event": "charge.success", "data": {"reference": "PAY-NONE"}})
+    response = await payments_client.post("/payments/webhooks/paystack", content=body)
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid signature"
 
@@ -72,9 +68,7 @@ async def test_webhook_rejects_wrong_signature(payments_client, monkeypatch):
     """Forged signature → 401."""
     _set_secret(monkeypatch)
 
-    body = json.dumps(
-        {"event": "charge.success", "data": {"reference": "PAY-NONE"}}
-    )
+    body = json.dumps({"event": "charge.success", "data": {"reference": "PAY-NONE"}})
     response = await payments_client.post(
         "/payments/webhooks/paystack",
         content=body,
@@ -121,16 +115,16 @@ async def test_webhook_charge_success_marks_paid_and_triggers_entitlement(
     We mock the entitlement call (covered separately) and assert on the
     DB row + the mock activation.
     """
-    from sqlalchemy import select
 
-    from services.payments_service.models import Payment, PaymentStatus
+    from services.payments_service.models import PaymentStatus
     from tests.factories import PaymentFactory
 
     secret = "sk_test_HAPPY"
     _set_secret(monkeypatch, secret=secret)
 
     payment = PaymentFactory.create(
-        status=PaymentStatus.PENDING, amount=20000.0  # ₦20,000 → 2,000,000 kobo
+        status=PaymentStatus.PENDING,
+        amount=20000.0,  # ₦20,000 → 2,000,000 kobo
     )
     db_session.add(payment)
     await db_session.commit()
@@ -148,8 +142,9 @@ async def test_webhook_charge_success_marks_paid_and_triggers_entitlement(
     # _mark_paid_and_apply lives in intents/_entitlement/_dispatcher.py and
     # is imported into webhooks.py at module load. Patch the bound name
     # on the webhooks module so we don't need to actually drive entitlement.
-    async def _stub_mark_paid(db, payment, provider, provider_reference,
-                              paid_at, provider_payload=None):
+    async def _stub_mark_paid(
+        db, payment, provider, provider_reference, paid_at, provider_payload=None
+    ):
         payment.status = PaymentStatus.PAID
         payment.provider = provider
         payment.provider_reference = provider_reference
@@ -201,7 +196,8 @@ async def test_webhook_charge_success_amount_mismatch_blocks_entitlement(
     _set_secret(monkeypatch, secret=secret)
 
     payment = PaymentFactory.create(
-        status=PaymentStatus.PENDING, amount=20000.0  # expects 2,000,000 kobo
+        status=PaymentStatus.PENDING,
+        amount=20000.0,  # expects 2,000,000 kobo
     )
     db_session.add(payment)
     await db_session.commit()

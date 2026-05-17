@@ -55,9 +55,7 @@ async def _setup_member(db_session):
     """Seed a Member with a known auth_id and point the transport app's
     auth deps at it. Returns the seeded Member."""
     unique = uuid.uuid4().hex[:8]
-    user = make_admin_user(
-        user_id=str(uuid.uuid4()), email=f"rider-{unique}@test.com"
-    )
+    user = make_admin_user(user_id=str(uuid.uuid4()), email=f"rider-{unique}@test.com")
     member = MemberFactory.create(auth_id=user.user_id, email=user.email)
     db_session.add(member)
     await db_session.commit()
@@ -333,9 +331,7 @@ async def test_list_session_bookings(transport_client, db_session):
                 "pickup_location_id": str(pickup.id),
             },
         )
-    resp = await transport_client.get(
-        f"/transport/sessions/{cfg.session_id}/bookings"
-    )
+    resp = await transport_client.get(f"/transport/sessions/{cfg.session_id}/bookings")
     assert resp.status_code == 200, resp.text
     rows = resp.json()
     assert len(rows) == 1

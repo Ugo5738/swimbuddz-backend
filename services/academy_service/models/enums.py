@@ -38,10 +38,10 @@ class CohortType(str, enum.Enum):
     docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §B.
     """
 
-    GROUP = "group"              # 8–12 student cohort (default; current behaviour)
-    PRIVATE = "private"          # 1 student; member-paid 1-on-1 academy program
+    GROUP = "group"  # 8–12 student cohort (default; current behaviour)
+    PRIVATE = "private"  # 1 student; member-paid 1-on-1 academy program
     SMALL_GROUP = "small_group"  # 2–6 students; member-specified group (friends/family)
-    CORPORATE = "corporate"      # Commissioned by an organisation; capacity set by sponsor
+    CORPORATE = "corporate"  # Commissioned by an organisation; capacity set by sponsor
 
 
 class LocationType(str, enum.Enum):

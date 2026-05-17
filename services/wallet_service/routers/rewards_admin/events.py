@@ -14,34 +14,16 @@ from libs.common.datetime_utils import utc_now
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.wallet_service.models.enums import AlertStatus
 from services.wallet_service.models.rewards import (
-    MemberRewardHistory,
-    RewardAlert,
     RewardRule,
     WalletEvent,
 )
 from services.wallet_service.schemas.rewards import (
     AdminEventSubmitRequest,
-    AlertSummaryItem,
     EventIngestResponse,
-    EventTypeCount,
-    RewardAlertListResponse,
-    RewardAlertResponse,
-    RewardAlertSummaryResponse,
-    RewardAlertUpdateRequest,
-    RewardAnalyticsResponse,
-    RewardCategoryStats,
     RewardEventListItem,
     RewardEventListResponse,
     RewardGrantItem,
-    RewardRuleCreateRequest,
-    RewardRuleDetailResponse,
-    RewardRuleListResponse,
-    RewardRuleResponse,
-    RewardRuleUpdateRequest,
-    RewardStatsResponse,
-    TopRuleUsage,
 )
 from services.wallet_service.services.rewards_engine import process_event
 

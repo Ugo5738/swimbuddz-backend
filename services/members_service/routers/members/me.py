@@ -2,31 +2,20 @@
 
 """Core members router - CRUD operations for member profiles."""
 
-import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from libs.auth.dependencies import get_current_user, require_admin
+from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
-from libs.common.media_utils import resolve_media_url, resolve_media_urls
-from libs.common.supabase import get_supabase_admin_client
+from libs.common.media_utils import resolve_media_urls
 from libs.db.session import get_async_db
-from sqlalchemy import delete, func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from services.members_service.models import (
     ChallengeBadgeAward,
-    CoachProfile,
     Member,
-    MemberAvailability,
-    MemberChallengeCompletion,
-    MemberEmergencyContact,
-    MemberMembership,
-    MemberPreferences,
-    MemberProfile,
-    VolunteerInterest,
 )
 from services.members_service.routers._helpers import (
     member_eager_load_options,
@@ -35,17 +24,13 @@ from services.members_service.routers._helpers import (
 )
 from services.members_service.schemas import (
     ChallengeBadgeAwardResponse,
-    MemberBasicResponse,
-    MemberCreate,
-    MemberDirectoryResponse,
-    MemberListResponse,
-    MemberPublicResponse,
     MemberResponse,
     MemberUpdate,
 )
 
 logger = get_logger(__name__)
 router = APIRouter()
+
 
 @router.get("/me", response_model=MemberResponse)
 async def get_current_member_profile(
@@ -76,6 +61,7 @@ async def get_current_member_profile(
     member_dict = MemberResponse.model_validate(member).model_dump()
     member_dict = await resolve_member_media_urls(member_dict)
     return member_dict
+
 
 @router.get("/me/badges", response_model=List[ChallengeBadgeAwardResponse])
 async def list_my_badges(
@@ -123,6 +109,7 @@ async def list_my_badges(
             ) or url_map.get(str(award.badge_image_media_id))
         out.append(item)
     return out
+
 
 @router.patch("/me", response_model=MemberResponse)
 async def update_current_member(

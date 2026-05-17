@@ -143,9 +143,7 @@ async def test_claim_requires_volunteer_profile_400(volunteer_client, db_session
     db_session.add(opp)
     await db_session.commit()
     with _as_member(str(uuid.uuid4())):
-        resp = await volunteer_client.post(
-            f"/volunteers/opportunities/{opp.id}/claim"
-        )
+        resp = await volunteer_client.post(f"/volunteers/opportunities/{opp.id}/claim")
     assert resp.status_code == 400, resp.text
     assert "register" in resp.json()["detail"].lower()
 
@@ -161,9 +159,7 @@ async def test_claim_draft_opportunity_rejected_400(volunteer_client, db_session
     db_session.add(opp)
     await db_session.commit()
     with _as_member(str(mid)):
-        resp = await volunteer_client.post(
-            f"/volunteers/opportunities/{opp.id}/claim"
-        )
+        resp = await volunteer_client.post(f"/volunteers/opportunities/{opp.id}/claim")
     assert resp.status_code == 400, resp.text
     assert "not accepting" in resp.json()["detail"].lower()
 
@@ -177,9 +173,7 @@ async def test_claim_full_opportunity_rejected_400(volunteer_client, db_session)
     db_session.add(opp)
     await db_session.commit()
     with _as_member(str(mid)):
-        resp = await volunteer_client.post(
-            f"/volunteers/opportunities/{opp.id}/claim"
-        )
+        resp = await volunteer_client.post(f"/volunteers/opportunities/{opp.id}/claim")
     assert resp.status_code == 400, resp.text
     assert "filled" in resp.json()["detail"].lower()
 
@@ -196,9 +190,7 @@ async def test_claim_tier_too_low_403(volunteer_client, db_session):
     db_session.add(opp)
     await db_session.commit()
     with _as_member(str(mid)):
-        resp = await volunteer_client.post(
-            f"/volunteers/opportunities/{opp.id}/claim"
-        )
+        resp = await volunteer_client.post(f"/volunteers/opportunities/{opp.id}/claim")
     assert resp.status_code == 403, resp.text
 
 
@@ -221,9 +213,7 @@ async def test_claim_happy_path_auto_approves(volunteer_client, db_session):
     opp_id = opp.id
 
     with _as_member(str(mid)):
-        resp = await volunteer_client.post(
-            f"/volunteers/opportunities/{opp_id}/claim"
-        )
+        resp = await volunteer_client.post(f"/volunteers/opportunities/{opp_id}/claim")
     assert resp.status_code == 201, resp.text
     assert resp.json()["status"] == SlotStatus.APPROVED.value
 
@@ -246,9 +236,7 @@ async def test_claim_twice_conflicts_409(volunteer_client, db_session):
     await db_session.commit()
 
     with _as_member(str(mid)):
-        first = await volunteer_client.post(
-            f"/volunteers/opportunities/{opp.id}/claim"
-        )
+        first = await volunteer_client.post(f"/volunteers/opportunities/{opp.id}/claim")
         assert first.status_code == 201, first.text
         second = await volunteer_client.post(
             f"/volunteers/opportunities/{opp.id}/claim"
@@ -266,9 +254,7 @@ async def test_cancel_claim_then_404_when_none(volunteer_client, db_session):
     await db_session.commit()
 
     with _as_member(str(mid)):
-        add = await volunteer_client.post(
-            f"/volunteers/opportunities/{opp.id}/claim"
-        )
+        add = await volunteer_client.post(f"/volunteers/opportunities/{opp.id}/claim")
         assert add.status_code == 201, add.text
         cancel = await volunteer_client.delete(
             f"/volunteers/opportunities/{opp.id}/claim"
@@ -290,9 +276,7 @@ async def test_cancel_claim_then_404_when_none(volunteer_client, db_session):
 @pytest.mark.integration
 async def test_redeem_unknown_reward_404(volunteer_client):
     with _as_member(str(uuid.uuid4())):
-        resp = await volunteer_client.post(
-            f"/volunteers/rewards/{uuid.uuid4()}/redeem"
-        )
+        resp = await volunteer_client.post(f"/volunteers/rewards/{uuid.uuid4()}/redeem")
     assert resp.status_code == 404, resp.text
 
 
@@ -305,14 +289,10 @@ async def test_redeem_happy_then_double_redeem_409(volunteer_client, db_session)
     await db_session.commit()
 
     with _as_member(str(mid)):
-        first = await volunteer_client.post(
-            f"/volunteers/rewards/{reward.id}/redeem"
-        )
+        first = await volunteer_client.post(f"/volunteers/rewards/{reward.id}/redeem")
         assert first.status_code == 200, first.text
         assert first.json()["is_redeemed"] is True
-        second = await volunteer_client.post(
-            f"/volunteers/rewards/{reward.id}/redeem"
-        )
+        second = await volunteer_client.post(f"/volunteers/rewards/{reward.id}/redeem")
     # A perk must never redeem twice.
     assert second.status_code == 409, second.text
 
@@ -327,9 +307,7 @@ async def test_redeem_expired_reward_422(volunteer_client, db_session):
     await db_session.commit()
 
     with _as_member(str(mid)):
-        resp = await volunteer_client.post(
-            f"/volunteers/rewards/{reward.id}/redeem"
-        )
+        resp = await volunteer_client.post(f"/volunteers/rewards/{reward.id}/redeem")
     assert resp.status_code == 422, resp.text
     assert "expired" in resp.json()["detail"].lower()
 

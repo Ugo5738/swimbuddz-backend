@@ -10,39 +10,20 @@ from typing import List, Literal, Optional
 from fastapi import HTTPException
 from libs.auth.dependencies import is_admin_or_service
 from libs.auth.models import AuthUser
-from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-from libs.common.media_utils import resolve_media_urls
-from libs.common.service_client import (
-    dispatch_notification,
-    grant_challenge_reward_bubbles,
-    grant_challenge_volunteer_hours,
-)
 from services.members_service.models import (
     ChallengeBadgeAward,
-    ChallengeExampleMedia,
-    ChallengeSubmissionMedia,
-    ChallengeSubmissionMember,
     ClubChallenge,
     Member,
-    MemberChallengeCompletion,
     Pod,
     PodAssignment,
 )
-from services.members_service.schemas import (
-    ChallengeExampleMediaResponse,
-    ChallengePublicResponse,
-    ChallengeSubmissionMediaResponse,
-    ChallengeSubmissionMemberResponse,
-    ChallengeSubmissionResponse,
-    ChallengeWinnerPublicInfo,
-    ClubChallengeResponse,
-)
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 CHALLENGES_CALLING_SERVICE = "members_service.challenges"
 logger = get_logger(__name__)
+
 
 def _admin_uuid_or_none(admin: AuthUser) -> Optional[uuid.UUID]:
     """Coerce admin.user_id (string from JWT sub) to UUID for storage.
@@ -54,6 +35,7 @@ def _admin_uuid_or_none(admin: AuthUser) -> Optional[uuid.UUID]:
         return uuid.UUID(admin.user_id)
     except (ValueError, TypeError):
         return None
+
 
 async def _resolve_member_id_from_auth(
     auth_user: AuthUser, db: AsyncSession
@@ -75,6 +57,7 @@ async def _resolve_member_id_from_auth(
         raise HTTPException(status_code=403, detail="Member profile not found")
     return member.id
 
+
 async def _resolve_member_id_from_auth_optional(
     auth_user: AuthUser, db: AsyncSession
 ) -> Optional[uuid.UUID]:
@@ -94,6 +77,7 @@ async def _resolve_member_id_from_auth_optional(
     )
     member = member_row.scalar_one_or_none()
     return member.id if member else None
+
 
 async def _pod_lead_kind_for_member(
     *,
@@ -147,6 +131,7 @@ async def _pod_lead_kind_for_member(
         return "assistant_pod_lead"
     return None
 
+
 async def _authorize_review(
     *,
     reviewer: AuthUser,
@@ -197,6 +182,7 @@ async def _authorize_review(
             detail=("You can only review submissions from members in a pod you lead."),
         )
     return kind
+
 
 async def _enforce_prerequisite(
     db: AsyncSession,

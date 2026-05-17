@@ -11,29 +11,20 @@ from fastapi import HTTPException, status
 
 from libs.auth.dependencies import _service_role_jwt
 from libs.common.config import get_settings
-from libs.common.currency import KOBO_PER_NAIRA
 from libs.common.logging import get_logger
-from datetime import datetime, timezone
+from datetime import datetime
 from libs.common.emails.client import get_email_client
-from libs.common.service_client import internal_post
 from services.payments_service.models import (
     Payment,
-    PaymentPurpose,
-    PaymentStatus,
-)
-from services.payments_service.schemas import (
-    SessionAttendanceRole,
-    SessionAttendanceStatus,
 )
 
 from .._helpers import (
-    _require_attendance_status,
-    _send_tier_activated_email,
     _update_pending_payment_reference,
 )
 
 settings = get_settings()
 logger = get_logger(__name__)
+
 
 async def apply_ride_share(payment: Payment) -> None:
     session_id = (payment.payment_metadata or {}).get("session_id")
@@ -85,9 +76,7 @@ async def apply_ride_share(payment: Payment) -> None:
                 f"{settings.SESSIONS_SERVICE_URL}/sessions/{session_id}",
                 headers=headers,
             )
-            session_data = (
-                session_resp.json() if session_resp.status_code < 400 else {}
-            )
+            session_data = session_resp.json() if session_resp.status_code < 400 else {}
 
             member_email = member_data.get("email", "")
             member_name = f"{member_data.get('first_name', '')} {member_data.get('last_name', '')}".strip()
@@ -102,14 +91,10 @@ async def apply_ride_share(payment: Payment) -> None:
                     session_time = f"{dt.strftime('%I:%M %p')}"
                     ends_at = session_data.get("ends_at", "")
                     if ends_at:
-                        end_dt = datetime.fromisoformat(
-                            ends_at.replace("Z", "+00:00")
-                        )
+                        end_dt = datetime.fromisoformat(ends_at.replace("Z", "+00:00"))
                         session_time += f" - {end_dt.strftime('%I:%M %p')}"
                 except Exception:
-                    session_date = (
-                        starts_at[:10] if len(starts_at) >= 10 else starts_at
-                    )
+                    session_date = starts_at[:10] if len(starts_at) >= 10 else starts_at
 
             # Find ride share details from session data
             ride_share_area = None
@@ -127,9 +112,9 @@ async def apply_ride_share(payment: Payment) -> None:
                     for loc in area.get("pickup_locations", []):
                         if loc.get("id") == pickup_location_id:
                             pickup_name = loc.get("name", "")
-                            pickup_description = loc.get(
-                                "description", ""
-                            ) or loc.get("address", "")
+                            pickup_description = loc.get("description", "") or loc.get(
+                                "address", ""
+                            )
                             departure_time = loc.get(
                                 "departure_time_calculated", ""
                             ) or loc.get("departure_time", "")
@@ -143,9 +128,7 @@ async def apply_ride_share(payment: Payment) -> None:
                     to_email=member_email,
                     template_data={
                         "member_name": member_name or "Member",
-                        "session_title": session_data.get(
-                            "title", "Swimming Session"
-                        ),
+                        "session_title": session_data.get("title", "Swimming Session"),
                         "session_date": session_date,
                         "session_time": session_time,
                         "session_location": session_data.get("location_name", "")

@@ -3,7 +3,6 @@
 """Admin store inventory and orders router."""
 
 import uuid
-from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -12,7 +11,6 @@ from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.common.service_client import (
-    credit_member_wallet,
     dispatch_notification,
     emit_rewards_event,
     get_member_by_auth_id,
@@ -20,26 +18,16 @@ from libs.common.service_client import (
 from libs.db.session import get_async_db
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from services.store_service.models import (
     AuditEntityType,
-    InventoryItem,
-    InventoryMovement,
-    InventoryMovementType,
     Order,
-    OrderItem,
     OrderStatus,
-    Product,
-    ProductVariant,
     StoreCredit,
     StoreCreditSourceType,
 )
 from services.store_service.routers._helpers import log_audit
 from services.store_service.schemas import (
-    InventoryAdjustment,
-    InventoryItemResponse,
-    LowStockItem,
     OrderListResponse,
     OrderResponse,
     OrderStatusUpdate,
@@ -49,9 +37,14 @@ from services.store_service.schemas import (
 
 logger = get_logger(__name__)
 
-from ._helpers import _apply_order_status_change, _load_admin_order, _order_eager_load_options
+from ._helpers import (
+    _apply_order_status_change,
+    _load_admin_order,
+    _order_eager_load_options,
+)
 
 router = APIRouter(tags=["admin-store"])
+
 
 @router.get("/orders", response_model=OrderListResponse)
 async def list_all_orders(

@@ -11,15 +11,11 @@ from fastapi import HTTPException, status
 
 from libs.auth.dependencies import _service_role_jwt
 from libs.common.config import get_settings
-from libs.common.currency import KOBO_PER_NAIRA
 from libs.common.logging import get_logger
-from datetime import datetime, timezone
+from datetime import datetime
 from libs.common.emails.client import get_email_client
-from libs.common.service_client import internal_post
 from services.payments_service.models import (
     Payment,
-    PaymentPurpose,
-    PaymentStatus,
 )
 from services.payments_service.schemas import (
     SessionAttendanceRole,
@@ -28,12 +24,12 @@ from services.payments_service.schemas import (
 
 from .._helpers import (
     _require_attendance_status,
-    _send_tier_activated_email,
     _update_pending_payment_reference,
 )
 
 settings = get_settings()
 logger = get_logger(__name__)
+
 
 async def apply_session_fee(payment: Payment) -> None:
     session_id = (payment.payment_metadata or {}).get("session_id")
@@ -165,14 +161,10 @@ async def apply_session_fee(payment: Payment) -> None:
                     session_time = f"{dt.strftime('%I:%M %p')} - "
                     ends_at = session_data.get("ends_at", "")
                     if ends_at:
-                        end_dt = datetime.fromisoformat(
-                            ends_at.replace("Z", "+00:00")
-                        )
+                        end_dt = datetime.fromisoformat(ends_at.replace("Z", "+00:00"))
                         session_time += end_dt.strftime("%I:%M %p")
                 except Exception:
-                    session_date = (
-                        starts_at[:10] if len(starts_at) >= 10 else starts_at
-                    )
+                    session_date = starts_at[:10] if len(starts_at) >= 10 else starts_at
 
             # Get ride share details if booked
             ride_share_area = None
@@ -182,14 +174,14 @@ async def apply_session_fee(payment: Payment) -> None:
             ride_distance = None
             ride_duration = None
             if ride_config_id and pickup_location_id:
-                ride_areas = session_data.get(
-                    "rideShareAreas", []
-                ) or session_data.get("ride_share_areas", [])
+                ride_areas = session_data.get("rideShareAreas", []) or session_data.get(
+                    "ride_share_areas", []
+                )
                 for area in ride_areas:
                     if area.get("id") == ride_config_id:
-                        ride_share_area = area.get(
-                            "ride_area_name", ""
-                        ) or area.get("area_name", "")
+                        ride_share_area = area.get("ride_area_name", "") or area.get(
+                            "area_name", ""
+                        )
                         ride_distance = area.get("distance_km", "")
                         ride_duration = area.get("duration_minutes", "")
                         if ride_distance:
@@ -228,9 +220,7 @@ async def apply_session_fee(payment: Payment) -> None:
                     template_data={
                         "member_name": member_name or "Member",
                         "member_id": member_id,
-                        "session_title": session_data.get(
-                            "title", "Swimming Session"
-                        ),
+                        "session_title": session_data.get("title", "Swimming Session"),
                         "session_date": session_date,
                         "session_time": session_time,
                         "session_location": session_data.get("location_name", "")

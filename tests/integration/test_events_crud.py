@@ -104,9 +104,7 @@ async def test_create_event_converts_naira_and_stamps_creator(
 
     # DB stores kobo, not naira.
     row = (
-        await db_session.execute(
-            select(Event).where(Event.id == uuid.UUID(body["id"]))
-        )
+        await db_session.execute(select(Event).where(Event.id == uuid.UUID(body["id"])))
     ).scalar_one()
     assert row.cost_kobo == 250000
 
@@ -139,9 +137,7 @@ async def test_get_unknown_event_404(events_client):
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_update_unknown_event_404(events_client):
-    resp = await events_client.patch(
-        f"/events/{uuid.uuid4()}", json={"title": "x"}
-    )
+    resp = await events_client.patch(f"/events/{uuid.uuid4()}", json={"title": "x"})
     assert resp.status_code == 404, resp.text
 
 
@@ -159,16 +155,12 @@ async def test_patch_event_reprices_in_kobo(events_client, db_session):
         created = await events_client.post("/events/", json=_event_payload())
     event_id = created.json()["id"]
 
-    upd = await events_client.patch(
-        f"/events/{event_id}", json={"cost_naira": 999.5}
-    )
+    upd = await events_client.patch(f"/events/{event_id}", json={"cost_naira": 999.5})
     assert upd.status_code == 200, upd.text
     assert upd.json()["cost_naira"] == 999.5
 
     row = (
-        await db_session.execute(
-            select(Event).where(Event.id == uuid.UUID(event_id))
-        )
+        await db_session.execute(select(Event).where(Event.id == uuid.UUID(event_id)))
     ).scalar_one()
     assert row.cost_kobo == 99950
 

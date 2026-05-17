@@ -6,36 +6,19 @@ ClubChallengeResponse (admin/club list), ChallengeSubmissionResponse
 (privacy-trimmed public view), and the public winner block.
 """
 
-import uuid
-from typing import List, Literal, Optional
+from typing import List, Optional
 
-from fastapi import HTTPException
-from libs.auth.dependencies import is_admin_or_service
-from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_urls
-from libs.common.service_client import (
-    dispatch_notification,
-    grant_challenge_reward_bubbles,
-    grant_challenge_volunteer_hours,
-)
 from services.members_service.models import (
-    ChallengeBadgeAward,
-    ChallengeExampleMedia,
-    ChallengeSubmissionMedia,
     ChallengeSubmissionMember,
     ClubChallenge,
-    Member,
     MemberChallengeCompletion,
-    Pod,
-    PodAssignment,
 )
 from services.members_service.schemas import (
-    ChallengeExampleMediaResponse,
     ChallengePublicResponse,
     ChallengeSubmissionMediaResponse,
-    ChallengeSubmissionMemberResponse,
     ChallengeSubmissionResponse,
     ChallengeWinnerPublicInfo,
     ClubChallengeResponse,
@@ -46,8 +29,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 CHALLENGES_CALLING_SERVICE = "members_service.challenges"
 logger = get_logger(__name__)
 
-from ._media import _load_challenge_example_media, _load_submission_members, _load_submission_proof_media
+from ._media import (
+    _load_challenge_example_media,
+    _load_submission_members,
+    _load_submission_proof_media,
+)
 from ._members import _load_member_names, _load_member_records, _short_display_name
+
 
 async def _hydrate_challenge_response(
     challenge: ClubChallenge, db: AsyncSession
@@ -101,6 +89,7 @@ async def _hydrate_challenge_response(
 
     return ClubChallengeResponse.model_validate(challenge_dict)
 
+
 async def _hydrate_submission_response(
     submission: MemberChallengeCompletion, db: AsyncSession
 ) -> ChallengeSubmissionResponse:
@@ -131,6 +120,7 @@ async def _hydrate_submission_response(
     sub_dict["challenge_title"] = title
 
     return ChallengeSubmissionResponse.model_validate(sub_dict)
+
 
 async def _hydrate_public_challenge_response(
     challenge: ClubChallenge,
@@ -199,6 +189,7 @@ async def _hydrate_public_challenge_response(
         series_order=challenge.series_order,
         created_at=challenge.created_at,
     )
+
 
 async def _build_winner_info(
     challenge: ClubChallenge, db: AsyncSession

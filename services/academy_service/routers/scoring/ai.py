@@ -12,41 +12,30 @@ from services.academy_service.routers._shared import (
     CoachGrade,
     Cohort,
     CohortComplexityScore,
-    CohortComplexityScoreCreate,
-    CohortComplexityScoreResponse,
-    CohortComplexityScoreUpdate,
-    ComplexityScoreCalculateRequest,
-    ComplexityScoreCalculation,
     Depends,
-    DimensionLabelsResponse,
-    EligibleCoachResponse,
     HTTPException,
-    List,
     ProgramCategory,
     _GRADE_COLUMN_MAP,
     calculate_complexity_score,
     get_async_db,
-    get_current_user,
     get_dimension_labels,
     get_eligible_coaches,
     get_logger,
-    get_member_by_auth_id,
     get_settings,
     internal_post,
     require_admin,
     select,
     selectinload,
     status,
-    utc_now,
     uuid,
 )
-
 
 
 # ============================================================================
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["academy"])
+
 
 @router.post(
     "/cohorts/{cohort_id}/ai-score",
@@ -163,6 +152,7 @@ async def ai_score_cohort(
         model_used=ai_result.get("model_used", "unknown"),
         ai_request_id=ai_result.get("ai_request_id"),
     )
+
 
 @router.post(
     "/cohorts/{cohort_id}/ai-suggest-coach",

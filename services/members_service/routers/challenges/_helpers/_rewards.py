@@ -7,44 +7,27 @@ are logged and surfaced in payment_metadata, not raised.
 """
 
 import uuid
-from typing import List, Literal, Optional
+from typing import Optional
 
-from fastapi import HTTPException
-from libs.auth.dependencies import is_admin_or_service
-from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-from libs.common.media_utils import resolve_media_urls
 from libs.common.service_client import (
-    dispatch_notification,
     grant_challenge_reward_bubbles,
     grant_challenge_volunteer_hours,
 )
 from services.members_service.models import (
     ChallengeBadgeAward,
-    ChallengeExampleMedia,
-    ChallengeSubmissionMedia,
     ChallengeSubmissionMember,
     ClubChallenge,
     Member,
     MemberChallengeCompletion,
-    Pod,
-    PodAssignment,
 )
-from services.members_service.schemas import (
-    ChallengeExampleMediaResponse,
-    ChallengePublicResponse,
-    ChallengeSubmissionMediaResponse,
-    ChallengeSubmissionMemberResponse,
-    ChallengeSubmissionResponse,
-    ChallengeWinnerPublicInfo,
-    ClubChallengeResponse,
-)
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 CHALLENGES_CALLING_SERVICE = "members_service.challenges"
 logger = get_logger(__name__)
+
 
 async def _award_badge_and_members(
     submission: MemberChallengeCompletion,
@@ -97,6 +80,7 @@ async def _award_badge_and_members(
     # _distribute_external_rewards after the local commit.
     for m in members:
         m.badge_awarded = True
+
 
 async def _distribute_external_rewards(
     submission: MemberChallengeCompletion,

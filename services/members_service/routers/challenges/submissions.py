@@ -33,9 +33,7 @@ from ._helpers import (
 router = APIRouter()
 
 
-@router.get(
-    "/submissions/mine", response_model=List[ChallengeSubmissionResponse]
-)
+@router.get("/submissions/mine", response_model=List[ChallengeSubmissionResponse])
 async def list_my_submissions(
     challenge_id: Optional[uuid.UUID] = Query(
         None,

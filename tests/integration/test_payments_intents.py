@@ -48,9 +48,7 @@ def test_verify_paystack_signature_accepts_valid_hmac(monkeypatch):
     monkeypatch.setattr(_paystack.settings, "PAYSTACK_SECRET_KEY", secret)
 
     body = b'{"event":"charge.success","data":{"reference":"PAY-XYZ"}}'
-    expected = hmac.new(
-        secret.encode("utf-8"), body, hashlib.sha512
-    ).hexdigest()
+    expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha512).hexdigest()
 
     assert intents._verify_paystack_signature(body, expected) is True
 
@@ -140,9 +138,7 @@ def _override_current_user_with(payments_app, auth_id: str):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_list_my_payments_filters_to_current_user(
-    payments_client, db_session
-):
+async def test_list_my_payments_filters_to_current_user(payments_client, db_session):
     """/me returns only payments owned by current_user.user_id."""
     from services.payments_service.app.main import app as payments_app
     from tests.factories import PaymentFactory
@@ -170,9 +166,7 @@ async def test_list_my_payments_filters_to_current_user(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_admin_delete_member_payments_removes_rows(
-    payments_client, db_session
-):
+async def test_admin_delete_member_payments_removes_rows(payments_client, db_session):
     from sqlalchemy import select
 
     from services.payments_service.models import Payment
@@ -193,9 +187,7 @@ async def test_admin_delete_member_payments_removes_rows(
 
     # Verify the bystander survives
     remaining = (
-        await db_session.execute(
-            select(Payment).where(Payment.id == bystander.id)
-        )
+        await db_session.execute(select(Payment).where(Payment.id == bystander.id))
     ).scalar_one_or_none()
     assert remaining is not None
 
@@ -355,12 +347,15 @@ async def test_verify_paystack_short_circuits_when_already_paid_and_applied(
     # at module load time, so patches must target that module — patching
     # the re-export alias on the package would leave the bound name in
     # `member_payments` untouched.
-    with patch(
-        "services.payments_service.routers.intents.member_payments._verify_paystack_transaction",
-        AsyncMock(side_effect=AssertionError("must NOT be called")),
-    ), patch(
-        "services.payments_service.routers.intents.member_payments._mark_paid_and_apply",
-        AsyncMock(side_effect=AssertionError("must NOT be called")),
+    with (
+        patch(
+            "services.payments_service.routers.intents.member_payments._verify_paystack_transaction",
+            AsyncMock(side_effect=AssertionError("must NOT be called")),
+        ),
+        patch(
+            "services.payments_service.routers.intents.member_payments._mark_paid_and_apply",
+            AsyncMock(side_effect=AssertionError("must NOT be called")),
+        ),
     ):
         response = await payments_client.post(
             f"/payments/paystack/verify/{payment.reference}"
@@ -383,9 +378,7 @@ async def test_verify_paystack_returns_404_for_unknown_or_other_users_payment(
     other_auth_id = str(uuid.uuid4())
     _override_current_user_with(payments_app, my_auth_id)
 
-    not_mine = PaymentFactory.create(
-        member_auth_id=other_auth_id, status="pending"
-    )
+    not_mine = PaymentFactory.create(member_auth_id=other_auth_id, status="pending")
     db_session.add(not_mine)
     await db_session.commit()
 
@@ -429,9 +422,7 @@ async def test_replay_entitlement_rejects_non_paid_payments(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_replay_entitlement_happy_path_invokes_apply(
-    payments_client, db_session
-):
+async def test_replay_entitlement_happy_path_invokes_apply(payments_client, db_session):
     """Replay endpoint calls _apply_entitlement_with_tracking on PAID rows."""
     from tests.factories import PaymentFactory
 
@@ -462,9 +453,7 @@ async def test_replay_entitlement_happy_path_invokes_apply(
 async def test_replay_entitlement_returns_404_for_unknown_reference(
     payments_client,
 ):
-    response = await payments_client.post(
-        "/payments/admin/PAY-NOPE/replay-entitlement"
-    )
+    response = await payments_client.post("/payments/admin/PAY-NOPE/replay-entitlement")
     assert response.status_code == 404
 
 

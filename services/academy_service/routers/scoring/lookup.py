@@ -2,51 +2,26 @@
 
 from fastapi import APIRouter
 from services.academy_service.routers._shared import (
-    AICoachSuggestion,
-    AICoachSuggestionResponse,
-    AIDimensionSuggestion,
-    AIScoringRequest,
-    AIScoringResponse,
-    AsyncSession,
     AuthUser,
-    CoachGrade,
-    Cohort,
-    CohortComplexityScore,
-    CohortComplexityScoreCreate,
-    CohortComplexityScoreResponse,
-    CohortComplexityScoreUpdate,
     ComplexityScoreCalculateRequest,
     ComplexityScoreCalculation,
     Depends,
     DimensionLabelsResponse,
-    EligibleCoachResponse,
     HTTPException,
-    List,
     ProgramCategory,
-    _GRADE_COLUMN_MAP,
     calculate_complexity_score,
-    get_async_db,
-    get_current_user,
     get_dimension_labels,
-    get_eligible_coaches,
     get_logger,
-    get_member_by_auth_id,
-    get_settings,
-    internal_post,
     require_admin,
-    select,
-    selectinload,
     status,
-    utc_now,
-    uuid,
 )
-
 
 
 # ============================================================================
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["academy"])
+
 
 @router.post("/scoring/calculate", response_model=ComplexityScoreCalculation)
 async def preview_complexity_score(
@@ -69,6 +44,7 @@ async def preview_complexity_score(
         return ComplexityScoreCalculation(**result)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
 
 @router.get("/scoring/dimensions/{category}", response_model=DimensionLabelsResponse)
 async def get_scoring_dimensions(
