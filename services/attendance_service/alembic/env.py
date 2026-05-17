@@ -13,7 +13,10 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.attendance_service.models import AttendanceRecord  # noqa: F401
+from services.attendance_service.models import (  # noqa: F401
+    AttendanceRecord,
+    SessionBooking,
+)
 from sqlalchemy import Column, Table
 from sqlalchemy.dialects.postgresql import UUID
 

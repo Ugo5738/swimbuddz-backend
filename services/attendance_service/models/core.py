@@ -10,7 +10,7 @@ from services.attendance_service.models.enums import (
 )
 from sqlalchemy import DateTime
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import String, UniqueConstraint
+from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -68,6 +68,20 @@ class AttendanceRecord(Base):
     # Wallet payment reference (nullable — only set when paid with Bubbles)
     wallet_transaction_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=True
+    )
+
+    # Pre-booking linkage (A1 Phase 3.3). NULL = walk-in (member signed in
+    # without booking ahead). Set = this attendance row was produced by an
+    # existing SessionBooking — used to compute no-show stats:
+    # AttendanceRecord.status='absent' AND booking_id IS NOT NULL.
+    # Intra-service FK (both tables in attendance_service); ondelete=SET NULL
+    # so cancelling a booking whose attendance row already exists keeps the
+    # attendance history intact.
+    booking_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("session_bookings.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(

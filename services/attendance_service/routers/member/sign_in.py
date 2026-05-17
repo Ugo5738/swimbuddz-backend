@@ -14,6 +14,8 @@ from services.attendance_service.models import (
     AttendanceRecord,
     AttendanceStatus,
     MemberRef,
+    SessionBooking,
+    SessionBookingStatus,
 )
 from services.attendance_service.schemas import (
     AttendanceCreate,
@@ -49,6 +51,19 @@ async def sign_in_to_session(
     # Enforce tier-based access control (admins/coaches skip this check
     # since they need to mark attendance for any session)
     await validate_session_access(session_data, str(current_member.id))
+
+    # A1 Phase 3.3: look up an existing SessionBooking so we can link
+    # this attendance row back to it (so "no-show" computations work,
+    # and so the booking lifecycle stays auditable). NULL booking_id =
+    # walk-in. CONFIRMED booking found = pre-book → linked attendance.
+    booking_query = select(SessionBooking).where(
+        SessionBooking.session_id == session_id,
+        SessionBooking.member_id == current_member.id,
+        SessionBooking.status == SessionBookingStatus.CONFIRMED,
+    )
+    booking_result = await db.execute(booking_query)
+    booking = booking_result.scalar_one_or_none()
+    linked_booking_id = booking.id if booking else None
 
     # Check for existing attendance
     query = select(AttendanceRecord).where(
@@ -103,6 +118,9 @@ async def sign_in_to_session(
         attendance.status = attendance_in.status
         attendance.role = attendance_in.role
         attendance.notes = attendance_in.notes
+        # Link to the booking if we hadn't already and one exists now.
+        if attendance.booking_id is None and linked_booking_id is not None:
+            attendance.booking_id = linked_booking_id
     else:
         # Create new
         attendance = AttendanceRecord(
@@ -112,6 +130,7 @@ async def sign_in_to_session(
             role=attendance_in.role,
             notes=attendance_in.notes,
             wallet_transaction_id=wallet_txn_id,
+            booking_id=linked_booking_id,
         )
         db.add(attendance)
 

@@ -17,7 +17,11 @@ from libs.db.session import get_async_db
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.attendance_service.models import AttendanceRecord, AttendanceStatus, MemberRef
+from services.attendance_service.models import (
+    AttendanceRecord,
+    AttendanceStatus,
+    MemberRef,
+)
 from services.attendance_service.schemas import (
     AttendanceResponse,
     CohortAttendanceSummary,
