@@ -17,9 +17,14 @@ class SessionLocation(str, enum.Enum):
 
 
 class SessionType(str, enum.Enum):
+    # A1 Phase 3.1 (2026-05-17): dropped ONE_ON_ONE and GROUP_BOOKING — they
+    # were aspirational slots (zero rows in production, no member-facing
+    # booking flow). Private 1-on-1 and small-group academy instruction is
+    # now expressed via Cohort.type (CohortType.PRIVATE, SMALL_GROUP,
+    # CORPORATE). See docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md.
+    # The corresponding Postgres enum values may remain in
+    # session_type_enum harmlessly; no row references them.
     COHORT_CLASS = "cohort_class"
-    ONE_ON_ONE = "one_on_one"
-    GROUP_BOOKING = "group_booking"
     CLUB = "club"
     COMMUNITY = "community"
     EVENT = "event"

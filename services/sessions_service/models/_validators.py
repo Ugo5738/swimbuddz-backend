@@ -1,10 +1,10 @@
 """Cross-column validation for the Session model.
 
-The ``sessions`` table carries a ``session_type`` discriminator plus four
+The ``sessions`` table carries a ``session_type`` discriminator plus three
 mutually-exclusive context FK columns (``cohort_id``, ``event_id``,
-``booking_id``, ``pod_id``). Historically nothing enforced the
-type → FK mapping — any combination was writeable, which the May 2026
-codebase review flagged as a "god object" smell.
+``pod_id``). Historically nothing enforced the type → FK mapping — any
+combination was writeable, which the May 2026 codebase review flagged as
+a "god object" smell.
 
 This module is the canonical enforcement layer. It is consumed in two
 places to give us defence-in-depth:
@@ -15,8 +15,14 @@ places to give us defence-in-depth:
   ``Session`` model — catches any non-API writer (seed scripts, internal
   services, future MCP tools) and raises before the row is flushed.
 
-A DB-level CHECK constraint is the planned Phase 2 step; see the
-``A1_SESSION_GOD_OBJECT.md`` design note.
+A DB-level CHECK constraint (Phase 2) backs both layers and is the
+ultimate source of truth.
+
+Phase 3.1 (2026-05-17) dropped the aspirational ONE_ON_ONE / GROUP_BOOKING
+types and the unused ``booking_id`` column. Private 1-on-1 and small-group
+academy instruction is expressed via ``Cohort.type`` (CohortType.PRIVATE,
+SMALL_GROUP, CORPORATE) — all such sessions stay SessionType.COHORT_CLASS.
+See docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md.
 """
 
 from __future__ import annotations
@@ -37,19 +43,11 @@ class SessionDiscriminatorError(ValueError):
 _REQUIRED_BY_TYPE: dict[SessionType, tuple[str, frozenset[str]]] = {
     SessionType.COHORT_CLASS: (
         "cohort_id",
-        frozenset({"event_id", "booking_id", "pod_id"}),
+        frozenset({"event_id", "pod_id"}),
     ),
     SessionType.EVENT: (
         "event_id",
-        frozenset({"cohort_id", "booking_id", "pod_id"}),
-    ),
-    SessionType.ONE_ON_ONE: (
-        "booking_id",
-        frozenset({"cohort_id", "event_id", "pod_id"}),
-    ),
-    SessionType.GROUP_BOOKING: (
-        "booking_id",
-        frozenset({"cohort_id", "event_id", "pod_id"}),
+        frozenset({"cohort_id", "pod_id"}),
     ),
 }
 
@@ -59,22 +57,19 @@ def validate_session_discriminator(
     session_type: SessionType,
     cohort_id: Optional[uuid.UUID],
     event_id: Optional[uuid.UUID],
-    booking_id: Optional[uuid.UUID],
     pod_id: Optional[uuid.UUID],
 ) -> None:
     """Enforce the ``session_type`` → context-FK mapping.
 
     Rules:
-      * ``COHORT_CLASS`` — ``cohort_id`` required; ``event_id``,
-        ``booking_id``, ``pod_id`` must be NULL.
-      * ``EVENT`` — ``event_id`` required; ``cohort_id``,
-        ``booking_id``, ``pod_id`` must be NULL.
-      * ``ONE_ON_ONE`` / ``GROUP_BOOKING`` — ``booking_id`` required;
-        ``cohort_id``, ``event_id``, ``pod_id`` must be NULL.
-      * ``CLUB`` — ``cohort_id``, ``event_id``, ``booking_id`` must be
-        NULL; ``pod_id`` is *optional* (NULL = general club session;
-        set = pod-scoped club session).
-      * ``COMMUNITY`` — all four context FKs must be NULL.
+      * ``COHORT_CLASS`` — ``cohort_id`` required; ``event_id`` and
+        ``pod_id`` must be NULL.
+      * ``EVENT`` — ``event_id`` required; ``cohort_id`` and ``pod_id``
+        must be NULL.
+      * ``CLUB`` — ``cohort_id`` and ``event_id`` must be NULL;
+        ``pod_id`` is *optional* (NULL = general club session; set =
+        pod-scoped club session).
+      * ``COMMUNITY`` — all three context FKs must be NULL.
 
     Raises ``SessionDiscriminatorError`` (a ``ValueError`` subclass) on
     violation so callers get a clean 422 when the validator is wired
@@ -84,7 +79,6 @@ def validate_session_discriminator(
     fks = {
         "cohort_id": cohort_id,
         "event_id": event_id,
-        "booking_id": booking_id,
         "pod_id": pod_id,
     }
 
@@ -103,8 +97,8 @@ def validate_session_discriminator(
         return
 
     if session_type is SessionType.CLUB:
-        # pod_id is optional for CLUB; the other three context FKs must be NULL.
-        for fk in ("cohort_id", "event_id", "booking_id"):
+        # pod_id is optional for CLUB; the other two context FKs must be NULL.
+        for fk in ("cohort_id", "event_id"):
             if fks[fk] is not None:
                 raise SessionDiscriminatorError(
                     f"session_type='club' must not set {fk} "

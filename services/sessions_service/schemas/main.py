@@ -39,7 +39,6 @@ class SessionBase(BaseModel):
     # Context links
     cohort_id: Optional[uuid.UUID] = None
     event_id: Optional[uuid.UUID] = None
-    booking_id: Optional[uuid.UUID] = None
     # CLUB sessions can optionally be tied to a specific pod. NULL means
     # a general Club session (open to any Club member). Cross-service
     # ref → members_service.pods.id (no enforced FK).
@@ -65,7 +64,6 @@ class SessionCreate(SessionBase):
                 session_type=self.session_type,
                 cohort_id=self.cohort_id,
                 event_id=self.event_id,
-                booking_id=self.booking_id,
                 pod_id=self.pod_id,
             )
         except SessionDiscriminatorError as exc:
@@ -98,7 +96,6 @@ class SessionUpdate(BaseModel):
 
     cohort_id: Optional[uuid.UUID] = None
     event_id: Optional[uuid.UUID] = None
-    booking_id: Optional[uuid.UUID] = None
     pod_id: Optional[uuid.UUID] = None
 
     week_number: Optional[int] = None
@@ -144,7 +141,6 @@ class SessionResponse(SessionBase):
             "ride_share_fee": ride_share_fee_kobo / 100.0,
             "cohort_id": obj.cohort_id,
             "event_id": obj.event_id,
-            "booking_id": obj.booking_id,
             "pod_id": getattr(obj, "pod_id", None),
             "week_number": obj.week_number,
             "lesson_title": obj.lesson_title,

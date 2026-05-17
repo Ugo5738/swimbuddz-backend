@@ -41,22 +41,20 @@ class Session(Base):
     # validation lives in models/_validators.py + a SQLAlchemy event hook;
     # this is defence-in-depth for raw SQL / migrations / out-of-band writes.
     # The expression mirrors validate_session_discriminator() exactly.
-    # See docs/design/A1_SESSION_GOD_OBJECT.md for the full rationale.
+    # See docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md for the full
+    # rationale. Phase 3.1 (2026-05-17) trimmed this from six branches to
+    # four after dropping the aspirational ONE_ON_ONE / GROUP_BOOKING types
+    # and the unused booking_id column.
     __table_args__ = (
         CheckConstraint(
             "(session_type = 'cohort_class' AND cohort_id IS NOT NULL "
-            "AND event_id IS NULL AND booking_id IS NULL AND pod_id IS NULL) "
+            "AND event_id IS NULL AND pod_id IS NULL) "
             "OR (session_type = 'event' AND event_id IS NOT NULL "
-            "AND cohort_id IS NULL AND booking_id IS NULL AND pod_id IS NULL) "
-            "OR (session_type = 'one_on_one' AND booking_id IS NOT NULL "
-            "AND cohort_id IS NULL AND event_id IS NULL AND pod_id IS NULL) "
-            "OR (session_type = 'group_booking' AND booking_id IS NOT NULL "
-            "AND cohort_id IS NULL AND event_id IS NULL AND pod_id IS NULL) "
+            "AND cohort_id IS NULL AND pod_id IS NULL) "
             "OR (session_type = 'club' "
-            "AND cohort_id IS NULL AND event_id IS NULL AND booking_id IS NULL) "
+            "AND cohort_id IS NULL AND event_id IS NULL) "
             "OR (session_type = 'community' "
-            "AND cohort_id IS NULL AND event_id IS NULL "
-            "AND booking_id IS NULL AND pod_id IS NULL)",
+            "AND cohort_id IS NULL AND event_id IS NULL AND pod_id IS NULL)",
             name="ck_sessions_discriminator",
         ),
     )
@@ -136,12 +134,6 @@ class Session(Base):
     )
     # For EVENT sessions
     event_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        nullable=True,
-        index=True,
-    )
-    # For ONE_ON_ONE / GROUP_BOOKING (future booking system)
-    booking_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
         index=True,
@@ -347,8 +339,8 @@ class SessionBundleCart(Base):
 # ============================================================================
 # SESSION DISCRIMINATOR ENFORCEMENT
 # ============================================================================
-# The Session table carries a `session_type` enum plus four mutually-exclusive
-# context-FK columns (cohort_id / event_id / booking_id / pod_id). The
+# The Session table carries a `session_type` enum plus three mutually-exclusive
+# context-FK columns (cohort_id / event_id / pod_id). The
 # `_validators.validate_session_discriminator` function is the single source
 # of truth for the type → FK mapping; it is wired here as a SQLAlchemy
 # before_insert / before_update hook so non-API writers (seed scripts,
@@ -366,6 +358,5 @@ def _validate_session_discriminator_event(mapper, connection, target):
         session_type=target.session_type,
         cohort_id=target.cohort_id,
         event_id=target.event_id,
-        booking_id=target.booking_id,
         pod_id=target.pod_id,
     )

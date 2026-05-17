@@ -3,6 +3,13 @@
 Exercises ``services.sessions_service.models._validators.validate_session_discriminator``
 directly (no DB, no FastAPI). Confirms each SessionType branch and the
 "god object" cases the May 2026 review flagged are now caught.
+
+Phase 3.1 (2026-05-17) dropped the aspirational ONE_ON_ONE / GROUP_BOOKING
+SessionType values and the unused ``booking_id`` column — see
+docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md. The tests that previously
+exercised those branches were removed; the remaining four
+SessionType values (COHORT_CLASS, EVENT, CLUB, COMMUNITY) are still
+covered for both happy-path and forbidden-FK rejections.
 """
 
 import uuid
@@ -31,7 +38,6 @@ class TestValidCombinations:
             session_type=SessionType.COHORT_CLASS,
             cohort_id=_u(),
             event_id=None,
-            booking_id=None,
             pod_id=None,
         )
 
@@ -40,25 +46,6 @@ class TestValidCombinations:
             session_type=SessionType.EVENT,
             cohort_id=None,
             event_id=_u(),
-            booking_id=None,
-            pod_id=None,
-        )
-
-    def test_one_on_one_with_booking_id(self):
-        validate_session_discriminator(
-            session_type=SessionType.ONE_ON_ONE,
-            cohort_id=None,
-            event_id=None,
-            booking_id=_u(),
-            pod_id=None,
-        )
-
-    def test_group_booking_with_booking_id(self):
-        validate_session_discriminator(
-            session_type=SessionType.GROUP_BOOKING,
-            cohort_id=None,
-            event_id=None,
-            booking_id=_u(),
             pod_id=None,
         )
 
@@ -68,7 +55,6 @@ class TestValidCombinations:
             session_type=SessionType.CLUB,
             cohort_id=None,
             event_id=None,
-            booking_id=None,
             pod_id=None,
         )
 
@@ -77,7 +63,6 @@ class TestValidCombinations:
             session_type=SessionType.CLUB,
             cohort_id=None,
             event_id=None,
-            booking_id=None,
             pod_id=_u(),
         )
 
@@ -86,7 +71,6 @@ class TestValidCombinations:
             session_type=SessionType.COMMUNITY,
             cohort_id=None,
             event_id=None,
-            booking_id=None,
             pod_id=None,
         )
 
@@ -103,7 +87,6 @@ class TestRequiredFKMissing:
                 session_type=SessionType.COHORT_CLASS,
                 cohort_id=None,
                 event_id=None,
-                booking_id=None,
                 pod_id=None,
             )
 
@@ -113,27 +96,6 @@ class TestRequiredFKMissing:
                 session_type=SessionType.EVENT,
                 cohort_id=None,
                 event_id=None,
-                booking_id=None,
-                pod_id=None,
-            )
-
-    def test_one_on_one_without_booking_id_rejected(self):
-        with pytest.raises(SessionDiscriminatorError, match="booking_id"):
-            validate_session_discriminator(
-                session_type=SessionType.ONE_ON_ONE,
-                cohort_id=None,
-                event_id=None,
-                booking_id=None,
-                pod_id=None,
-            )
-
-    def test_group_booking_without_booking_id_rejected(self):
-        with pytest.raises(SessionDiscriminatorError, match="booking_id"):
-            validate_session_discriminator(
-                session_type=SessionType.GROUP_BOOKING,
-                cohort_id=None,
-                event_id=None,
-                booking_id=None,
                 pod_id=None,
             )
 
@@ -150,7 +112,6 @@ class TestForbiddenFKCombinations:
                 session_type=SessionType.COHORT_CLASS,
                 cohort_id=_u(),
                 event_id=_u(),
-                booking_id=None,
                 pod_id=None,
             )
 
@@ -160,7 +121,6 @@ class TestForbiddenFKCombinations:
                 session_type=SessionType.COHORT_CLASS,
                 cohort_id=_u(),
                 event_id=None,
-                booking_id=None,
                 pod_id=_u(),
             )
 
@@ -170,17 +130,6 @@ class TestForbiddenFKCombinations:
                 session_type=SessionType.EVENT,
                 cohort_id=_u(),
                 event_id=_u(),
-                booking_id=None,
-                pod_id=None,
-            )
-
-    def test_event_with_booking_id_rejected(self):
-        with pytest.raises(SessionDiscriminatorError, match="must not set booking_id"):
-            validate_session_discriminator(
-                session_type=SessionType.EVENT,
-                cohort_id=None,
-                event_id=_u(),
-                booking_id=_u(),
                 pod_id=None,
             )
 
@@ -190,7 +139,6 @@ class TestForbiddenFKCombinations:
                 session_type=SessionType.CLUB,
                 cohort_id=_u(),
                 event_id=None,
-                booking_id=None,
                 pod_id=None,
             )
 
@@ -200,23 +148,20 @@ class TestForbiddenFKCombinations:
                 session_type=SessionType.CLUB,
                 cohort_id=None,
                 event_id=_u(),
-                booking_id=None,
                 pod_id=None,
             )
 
     def test_community_with_any_fk_rejected(self):
-        # All four FKs are forbidden for COMMUNITY. Check at least one of each.
+        # All three FKs are forbidden for COMMUNITY. Check at least one of each.
         for fk_kwargs in [
             {"cohort_id": _u()},
             {"event_id": _u()},
-            {"booking_id": _u()},
             {"pod_id": _u()},
         ]:
             base = {
                 "session_type": SessionType.COMMUNITY,
                 "cohort_id": None,
                 "event_id": None,
-                "booking_id": None,
                 "pod_id": None,
             }
             base.update(fk_kwargs)
