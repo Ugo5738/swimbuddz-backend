@@ -2,7 +2,17 @@ import uuid
 from datetime import datetime, time
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Time, event
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Time,
+    event,
+)
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -26,6 +36,30 @@ class Session(Base):
     """Unified session model for all session types."""
 
     __tablename__ = "sessions"
+
+    # Enforces the session_type → context-FK mapping at the DB level. Python
+    # validation lives in models/_validators.py + a SQLAlchemy event hook;
+    # this is defence-in-depth for raw SQL / migrations / out-of-band writes.
+    # The expression mirrors validate_session_discriminator() exactly.
+    # See docs/design/A1_SESSION_GOD_OBJECT.md for the full rationale.
+    __table_args__ = (
+        CheckConstraint(
+            "(session_type = 'cohort_class' AND cohort_id IS NOT NULL "
+            "AND event_id IS NULL AND booking_id IS NULL AND pod_id IS NULL) "
+            "OR (session_type = 'event' AND event_id IS NOT NULL "
+            "AND cohort_id IS NULL AND booking_id IS NULL AND pod_id IS NULL) "
+            "OR (session_type = 'one_on_one' AND booking_id IS NOT NULL "
+            "AND cohort_id IS NULL AND event_id IS NULL AND pod_id IS NULL) "
+            "OR (session_type = 'group_booking' AND booking_id IS NOT NULL "
+            "AND cohort_id IS NULL AND event_id IS NULL AND pod_id IS NULL) "
+            "OR (session_type = 'club' "
+            "AND cohort_id IS NULL AND event_id IS NULL AND booking_id IS NULL) "
+            "OR (session_type = 'community' "
+            "AND cohort_id IS NULL AND event_id IS NULL "
+            "AND booking_id IS NULL AND pod_id IS NULL)",
+            name="ck_sessions_discriminator",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

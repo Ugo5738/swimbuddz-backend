@@ -138,8 +138,23 @@ generate_for_service() {
 
   echo "Generating migration for $svc..."
 
-  # Run autogenerate
-  OUTPUT=$(alembic -c "$ALEMBIC_INI" revision --autogenerate -m "$desc" 2>&1)
+  # Run autogenerate. Use `if !` so a nonzero exit from alembic doesn't kill
+  # the wrapper silently under `set -e` (the previous form
+  # `OUTPUT=$(alembic ... 2>&1)` would abort the function on failure with
+  # no diagnostic — exactly the silent-exit bug we hit when the dev DB
+  # was behind on migrations).
+  if ! OUTPUT=$(alembic -c "$ALEMBIC_INI" revision --autogenerate -m "$desc" 2>&1); then
+    echo "  ❌ Alembic failed for $svc:"
+    echo "$OUTPUT" | sed 's/^/      /'
+    echo ""
+    echo "  Common causes:"
+    echo "    * \"Target database is not up to date\" — apply pending migrations first:"
+    echo "        alembic -c $ALEMBIC_INI upgrade head"
+    echo "    * New model not visible to autogenerate — check alembic env.py"
+    echo "      imports + SERVICE_TABLES set"
+    echo "    * DB connection / credentials — confirm .env.dev"
+    return 1
+  fi
 
   # Check if there were actual changes
   if echo "$OUTPUT" | grep -q "No changes in schema detected"; then
@@ -151,12 +166,25 @@ generate_for_service() {
   MIGRATION_FILE=$(echo "$OUTPUT" | grep -oE "Generating .*/versions/[a-f0-9]+_.*\.py" | sed 's/Generating //')
 
   if [ -n "$MIGRATION_FILE" ]; then
+    # Alembic sometimes generates a file with `pass` in both upgrade() and
+    # downgrade() instead of reporting "No changes in schema detected".
+    # Treat that as no-effective-change and clean up the stub.
+    if grep -qE "^\s*pass\s*(#|$)" "$MIGRATION_FILE" \
+       && ! grep -qE "^\s*op\." "$MIGRATION_FILE"; then
+      echo "  ℹ️  No effective schema changes for $svc — removing empty stub:"
+      echo "     $(basename "$MIGRATION_FILE")"
+      rm -f "$MIGRATION_FILE"
+      return 0
+    fi
     echo "  ✓ Created: $(basename "$MIGRATION_FILE")"
     echo ""
     echo "  📝 Review this file before committing!"
     echo "     $MIGRATION_FILE"
   else
-    echo "  ✓ Migration generated"
+    # Alembic exited 0 but neither expected pattern matched — surface raw
+    # output instead of falsely claiming success.
+    echo "  ⚠️  Alembic exited 0 but output didn't match expected patterns:"
+    echo "$OUTPUT" | sed 's/^/      /'
   fi
 
   echo ""
