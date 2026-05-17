@@ -350,6 +350,37 @@ async def create_payment_intent(
             "bubbles_to_apply": payload.bubbles_to_apply or 0,
         }
 
+    # Session booking — A1 Phase 3.3 Paystack pre-booking. The PENDING
+    # SessionBooking was already created by sessions_service; this intent
+    # just carries booking_id so the entitlement handler can confirm it.
+    elif payload.purpose == PaymentPurpose.SESSION_BOOKING:
+        booking_id = (payload.payment_metadata or {}).get("booking_id")
+        if not booking_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "payment_metadata.booking_id is required for "
+                    "SESSION_BOOKING payments"
+                ),
+            )
+        if not payload.direct_amount or payload.direct_amount <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "direct_amount is required and must be > 0 for "
+                    "SESSION_BOOKING payments"
+                ),
+            )
+        amount = float(payload.direct_amount)
+        payment_metadata = {
+            **(payload.payment_metadata or {}),
+            "booking_id": str(booking_id),
+            "session_id": (
+                str(payload.session_id) if payload.session_id else None
+            ),
+            "bubbles_to_apply": payload.bubbles_to_apply or 0,
+        }
+
     # Session bundle — book multiple sessions in one payment intent
     elif payload.purpose == PaymentPurpose.SESSION_BUNDLE:
         if not payload.session_ids or len(payload.session_ids) == 0:

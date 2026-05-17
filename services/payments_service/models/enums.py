@@ -24,6 +24,10 @@ class PaymentPurpose(str, enum.Enum):
     STORE_ORDER = "store_order"
     WALLET_TOPUP = "wallet_topup"
     RIDE_SHARE = "ride_share"
+    # A1 Phase 3.3 — Paystack pre-booking. The entitlement handler calls
+    # sessions_service POST /internal/sessions/bookings/{id}/confirm to
+    # flip the PENDING SessionBooking to CONFIRMED once payment clears.
+    SESSION_BOOKING = "session_booking"
 
 
 class DiscountType(str, enum.Enum):

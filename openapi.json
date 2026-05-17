@@ -57035,7 +57035,8 @@
           "session_bundle",
           "store_order",
           "wallet_topup",
-          "ride_share"
+          "ride_share",
+          "session_booking"
         ],
         "title": "PaymentPurpose"
       },

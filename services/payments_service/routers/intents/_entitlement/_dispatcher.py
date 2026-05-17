@@ -40,6 +40,7 @@ from ._club import apply_club
 from ._club_bundle import apply_club_bundle
 from ._community import apply_community
 from ._ride_share import apply_ride_share
+from ._session_booking import apply_session_booking
 from ._session_bundle import apply_session_bundle
 from ._session_fee import apply_session_fee
 from ._store_order import apply_store_order
@@ -63,6 +64,7 @@ _PURPOSE_HANDLERS = {
     PaymentPurpose.WALLET_TOPUP: apply_wallet_topup,
     PaymentPurpose.SESSION_FEE: apply_session_fee,
     PaymentPurpose.SESSION_BUNDLE: apply_session_bundle,
+    PaymentPurpose.SESSION_BOOKING: apply_session_booking,
     PaymentPurpose.RIDE_SHARE: apply_ride_share,
 }
 
