@@ -12,7 +12,6 @@
           "system"
         ],
         "summary": "Health Check",
-        "description": "Health check endpoint.",
         "operationId": "health_check_health_get",
         "responses": {
           "200": {
@@ -395,6 +394,151 @@
         ]
       }
     },
+    "/api/v1/members/public": {
+      "get": {
+        "tags": [
+          "members"
+        ],
+        "summary": "List Public Members",
+        "description": "List all members for public dropdown (no auth required).\nReturns limited info (id, first_name, last_name).",
+        "operationId": "list_public_members_members_public_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemberPublicResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Public Members Members Public Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/members/directory": {
+      "get": {
+        "tags": [
+          "members"
+        ],
+        "summary": "List Directory Members",
+        "description": "List members who opted into the community directory.\nFilters server-side by show_in_directory=True.\nReturns only the fields needed for the directory page.\nNo auth required \u2014 directory is a community feature.",
+        "operationId": "list_directory_members_members_directory_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemberDirectoryResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Directory Members Members Directory Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/members/public/{member_id}": {
+      "get": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Get Member For Verification",
+        "description": "Get member data for public verification (e.g., pool staff scanning QR code).\nReturns limited info for verification purposes only.\nNo authentication required.",
+        "operationId": "get_member_for_verification_members_public__member_id__get",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/members/bulk-basic": {
+      "post": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Get Members Bulk Basic",
+        "description": "Bulk lookup of basic member info by IDs.\n\nInternal endpoint for service-to-service calls. Returns a dict mapping\nmember_id (string) -> basic info (name, email, profile photo).\nMax 50 IDs per request.",
+        "operationId": "get_members_bulk_basic_members_bulk_basic_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array",
+                "title": "Member Ids"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/MemberBasicResponse"
+                  },
+                  "type": "object",
+                  "title": "Response Get Members Bulk Basic Members Bulk Basic Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/members/": {
       "post": {
         "tags": [
@@ -477,151 +621,6 @@
                   },
                   "title": "Response List Members Members  Get"
                 }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/members/public": {
-      "get": {
-        "tags": [
-          "members"
-        ],
-        "summary": "List Public Members",
-        "description": "List all members for public dropdown (no auth required).\nReturns limited info (id, first_name, last_name).",
-        "operationId": "list_public_members_members_public_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/MemberPublicResponse"
-                  },
-                  "type": "array",
-                  "title": "Response List Public Members Members Public Get"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/members/directory": {
-      "get": {
-        "tags": [
-          "members"
-        ],
-        "summary": "List Directory Members",
-        "description": "List members who opted into the community directory.\nFilters server-side by show_in_directory=True.\nReturns only the fields needed for the directory page.\nNo auth required \u2014 directory is a community feature.",
-        "operationId": "list_directory_members_members_directory_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/MemberDirectoryResponse"
-                  },
-                  "type": "array",
-                  "title": "Response List Directory Members Members Directory Get"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/members/bulk-basic": {
-      "post": {
-        "tags": [
-          "members"
-        ],
-        "summary": "Get Members Bulk Basic",
-        "description": "Bulk lookup of basic member info by IDs.\n\nInternal endpoint for service-to-service calls. Returns a dict mapping\nmember_id (string) -> basic info (name, email, profile photo).\nMax 50 IDs per request.",
-        "operationId": "get_members_bulk_basic_members_bulk_basic_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "items": {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                "type": "array",
-                "title": "Member Ids"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "$ref": "#/components/schemas/MemberBasicResponse"
-                  },
-                  "type": "object",
-                  "title": "Response Get Members Bulk Basic Members Bulk Basic Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/members/public/{member_id}": {
-      "get": {
-        "tags": [
-          "members"
-        ],
-        "summary": "Get Member For Verification",
-        "description": "Get member data for public verification (e.g., pool staff scanning QR code).\nReturns limited info for verification purposes only.\nNo authentication required.",
-        "operationId": "get_member_for_verification_members_public__member_id__get",
-        "parameters": [
-          {
-            "name": "member_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Member Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
               }
             }
           },
@@ -5932,6 +5931,218 @@
         }
       }
     },
+    "/api/v1/internal/members/coaches/eligible": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Eligible Coaches",
+        "description": "Get eligible coaches filtered by grade column and allowed grades.\n\nThe grade_column must be one of the valid category grade columns on CoachProfile.\neligible_grades is a comma-separated list like 'grade_1,grade_2,grade_3'.",
+        "operationId": "get_eligible_coaches_internal_members_coaches_eligible_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "grade_column",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Coach profile grade column name",
+              "title": "Grade Column"
+            },
+            "description": "Coach profile grade column name"
+          },
+          {
+            "name": "eligible_grades",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated eligible grade values",
+              "title": "Eligible Grades"
+            },
+            "description": "Comma-separated eligible grade values"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EligibleCoachBasic"
+                  },
+                  "title": "Response Get Eligible Coaches Internal Members Coaches Eligible Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/members/coaches/{member_id}/profile": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Coach Profile",
+        "description": "Look up a coach profile by member_id.",
+        "operationId": "get_coach_profile_internal_members_coaches__member_id__profile_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachProfileBasic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/members/coaches/{member_id}/readiness": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Coach Readiness Data",
+        "description": "Get extended coach profile data for readiness assessment.\n\nReturns profile fields + whether an active agreement exists.",
+        "operationId": "get_coach_readiness_data_internal_members_coaches__member_id__readiness_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachReadinessData"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/members/{member_id}/bank-account": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Member Bank Account",
+        "description": "Look up a coach's bank account by member_id.",
+        "operationId": "get_member_bank_account_internal_members__member_id__bank_account_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachBankAccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/members/{member_id}/membership": {
       "get": {
         "tags": [
@@ -5963,7 +6174,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/services__members_service__routers__internal__MemberMembershipResponse"
+                  "$ref": "#/components/schemas/services__members_service__routers__internal___schemas__MemberMembershipResponse"
                 }
               }
             }
@@ -6130,218 +6341,6 @@
         ]
       }
     },
-    "/api/v1/internal/members/coaches/{member_id}/profile": {
-      "get": {
-        "tags": [
-          "internal"
-        ],
-        "summary": "Get Coach Profile",
-        "description": "Look up a coach profile by member_id.",
-        "operationId": "get_coach_profile_internal_members_coaches__member_id__profile_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "member_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Member Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoachProfileBasic"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/internal/members/{member_id}/bank-account": {
-      "get": {
-        "tags": [
-          "internal"
-        ],
-        "summary": "Get Member Bank Account",
-        "description": "Look up a coach's bank account by member_id.",
-        "operationId": "get_member_bank_account_internal_members__member_id__bank_account_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "member_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Member Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoachBankAccountResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/internal/members/coaches/eligible": {
-      "get": {
-        "tags": [
-          "internal"
-        ],
-        "summary": "Get Eligible Coaches",
-        "description": "Get eligible coaches filtered by grade column and allowed grades.\n\nThe grade_column must be one of the valid category grade columns on CoachProfile.\neligible_grades is a comma-separated list like 'grade_1,grade_2,grade_3'.",
-        "operationId": "get_eligible_coaches_internal_members_coaches_eligible_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "grade_column",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Coach profile grade column name",
-              "title": "Grade Column"
-            },
-            "description": "Coach profile grade column name"
-          },
-          {
-            "name": "eligible_grades",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Comma-separated eligible grade values",
-              "title": "Eligible Grades"
-            },
-            "description": "Comma-separated eligible grade values"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/EligibleCoachBasic"
-                  },
-                  "title": "Response Get Eligible Coaches Internal Members Coaches Eligible Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/internal/members/coaches/{member_id}/readiness": {
-      "get": {
-        "tags": [
-          "internal"
-        ],
-        "summary": "Get Coach Readiness Data",
-        "description": "Get extended coach profile data for readiness assessment.\n\nReturns profile fields + whether an active agreement exists.",
-        "operationId": "get_coach_readiness_data_internal_members_coaches__member_id__readiness_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "member_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Member Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoachReadinessData"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/sessions/templates": {
       "get": {
         "tags": [
@@ -6350,6 +6349,11 @@
         "summary": "List Templates",
         "description": "List all session templates.",
         "operationId": "list_templates_sessions_templates_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "active_only",
@@ -6396,6 +6400,11 @@
         "summary": "Create Template",
         "description": "Create a new session template.",
         "operationId": "create_template_sessions_templates_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -6438,6 +6447,11 @@
         "summary": "Get Template",
         "description": "Get a specific template.",
         "operationId": "get_template_sessions_templates__template_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "template_id",
@@ -6480,6 +6494,11 @@
         "summary": "Update Template",
         "description": "Update a session template.",
         "operationId": "update_template_sessions_templates__template_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "template_id",
@@ -6532,6 +6551,11 @@
         "summary": "Delete Template",
         "description": "Delete a session template.",
         "operationId": "delete_template_sessions_templates__template_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "template_id",
@@ -6569,6 +6593,11 @@
         "summary": "Generate Sessions",
         "description": "Generate sessions from a template for the specified number of weeks.",
         "operationId": "generate_sessions_sessions_templates__template_id__generate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "template_id",
@@ -6692,6 +6721,242 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BundleCartResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/book": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Book Session",
+        "description": "Pre-book a session as the authenticated member.\n\nCreates a SessionBooking(status=PENDING) with a 15-minute TTL.\nFrontend / payments_service is expected to call\nPOST /sessions/bookings/{id}/confirm after payment clears.",
+        "operationId": "book_session_sessions__session_id__book_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionBookingCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/bookings/{booking_id}/confirm": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Confirm Booking",
+        "description": "Flip a PENDING booking to CONFIRMED.\n\nMember can only confirm their own bookings. PENDING and not-yet-expired\nonly \u2014 EXPIRED/CANCELLED/already-CONFIRMED are rejected.",
+        "operationId": "confirm_booking_sessions_bookings__booking_id__confirm_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/bookings/{booking_id}/cancel": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Cancel Booking",
+        "description": "Cancel a booking before the session starts.\n\nRefund policy (per A1 Phase 3.3 product decision):\n\n* Members can only cancel their own bookings.\n* Refund is issued in Bubbles to the member's wallet, NOT to the\n  original card. Avoids transaction-fee reversal costs and keeps\n  cancellations from being a platform loss. Members keep spending\n  power and are more likely to rebook later.\n* The FULL ``fee_amount_kobo`` is refunded as Bubbles (no haircut\n  for the platform's transaction fee \u2014 that's already sunk on the\n  original payment and not recoverable). Refund amount conversion:\n  ``kobo_to_bubbles(booking.fee_amount_kobo)``.\n* Cancellations after the session has started are refused; the\n  nightly NO_SHOW sweep will produce ``AttendanceRecord(status=ABSENT,\n  booking_id=<>)`` for those.\n* Cash refunds to the original payment method are admin-only and\n  out of scope for this endpoint.",
+        "operationId": "cancel_booking_sessions_bookings__booking_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/bookings": {
+      "get": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "List Session Bookings",
+        "description": "Admin: list bookings for a session.\n\nDefaults to CONFIRMED only (i.e. \"who's paid\"). Pass\n``?status_filter=pending`` (or other values) to see other states.\nCombined with the existing attendance pool-list endpoint, this is\nhow admins reconcile expected attendance vs actual at session time.",
+        "operationId": "list_session_bookings_sessions__session_id__bookings_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "status_filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SessionBookingStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionBookingResponse"
+                  },
+                  "title": "Response List Session Bookings Sessions  Session Id  Bookings Get"
                 }
               }
             }
@@ -7780,6 +8045,244 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/internal/sessions/{session_id}/bookings/by-member/{member_id}": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Booking For Session Member",
+        "description": "Service-role lookup: SessionBooking for (session, member).\n\nUsed by attendance_service's sign-in flow to link the AttendanceRecord\nbeing created back to its originating booking. 404 if no booking\nmatches the filter \u2014 caller treats that as \"walk-in\" and continues.",
+        "operationId": "get_booking_for_session_member_internal_sessions__session_id__bookings_by_member__member_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by booking status (e.g. 'confirmed')",
+              "title": "Status"
+            },
+            "description": "Filter by booking status (e.g. 'confirmed')"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/sessions/bookings/confirmed": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "List Confirmed Bookings Since",
+        "description": "Service-role: list CONFIRMED bookings since `since`.\n\nUsed by attendance_service's nightly NO_SHOW sweep to find recent\nconfirmed bookings that may need an ABSENT AttendanceRecord created.",
+        "operationId": "list_confirmed_bookings_since_internal_sessions_bookings_confirmed_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Lower bound on booked_at (ISO 8601)",
+              "title": "Since"
+            },
+            "description": "Lower bound on booked_at (ISO 8601)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionBookingResponse"
+                  },
+                  "title": "Response List Confirmed Bookings Since Internal Sessions Bookings Confirmed Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/sessions/bookings/{booking_id}/confirm": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Internal Confirm Booking",
+        "description": "Service-role variant of /sessions/bookings/{id}/confirm.\n\nFuture: payments_service webhook calls this when a SESSION_BOOKING\npayment intent clears (so the booking gets confirmed even if the\nmember closed the browser mid-checkout).",
+        "operationId": "internal_confirm_booking_internal_sessions_bookings__booking_id__confirm_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/sessions/bookings/bulk": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Bulk Create Bookings",
+        "description": "Service-role bulk-create for corporate-wellness onboarding.\n\nEach row is created at status=CONFIRMED (sponsor-paid up front),\nchannel=CORPORATE_BULK, with corporate_program_id set. Idempotent:\npre-existing (session, member) pairs are reported as `skipped` and\nthe existing row is returned unchanged.",
+        "operationId": "bulk_create_bookings_internal_sessions_bookings_bulk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkBookingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/attendance/sessions/{session_id}/sign-in": {
@@ -8882,50 +9385,6 @@
       }
     },
     "/api/v1/academy/cohorts": {
-      "post": {
-        "tags": [
-          "academy"
-        ],
-        "summary": "Create Cohort",
-        "operationId": "create_cohort_academy_cohorts_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CohortCreate"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CohortResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
       "get": {
         "tags": [
           "academy"
@@ -8970,30 +9429,16 @@
             }
           }
         }
-      }
-    },
-    "/api/v1/academy/cohorts/{cohort_id}": {
-      "put": {
+      },
+      "post": {
         "tags": [
           "academy"
         ],
-        "summary": "Update Cohort",
-        "operationId": "update_cohort_academy_cohorts__cohort_id__put",
+        "summary": "Create Cohort",
+        "operationId": "create_cohort_academy_cohorts_post",
         "security": [
           {
             "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "cohort_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Cohort Id"
-            }
           }
         ],
         "requestBody": {
@@ -9001,91 +9446,11 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CohortUpdate"
+                "$ref": "#/components/schemas/CohortCreate"
               }
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CohortResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "academy"
-        ],
-        "summary": "Delete Cohort",
-        "operationId": "delete_cohort_academy_cohorts__cohort_id__delete",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "cohort_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Cohort Id"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "tags": [
-          "academy"
-        ],
-        "summary": "Get Cohort",
-        "operationId": "get_cohort_academy_cohorts__cohort_id__get",
-        "parameters": [
-          {
-            "name": "cohort_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Cohort Id"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -9261,6 +9626,144 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/academy/cohorts/{cohort_id}": {
+      "put": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Update Cohort",
+        "operationId": "update_cohort_academy_cohorts__cohort_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CohortUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Delete Cohort",
+        "operationId": "delete_cohort_academy_cohorts__cohort_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Get Cohort",
+        "operationId": "get_cohort_academy_cohorts__cohort_id__get",
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/academy/cohorts/{cohort_id}/enrollment-stats": {
@@ -10809,6 +11312,7 @@
     "/api/v1/academy/scoring/calculate": {
       "post": {
         "tags": [
+          "academy",
           "academy"
         ],
         "summary": "Preview Complexity Score",
@@ -10856,6 +11360,7 @@
     "/api/v1/academy/scoring/dimensions/{category}": {
       "get": {
         "tags": [
+          "academy",
           "academy"
         ],
         "summary": "Get Scoring Dimensions",
@@ -10903,6 +11408,7 @@
     "/api/v1/academy/cohorts/{cohort_id}/complexity-score": {
       "post": {
         "tags": [
+          "academy",
           "academy"
         ],
         "summary": "Create Cohort Complexity Score",
@@ -10960,6 +11466,7 @@
       },
       "get": {
         "tags": [
+          "academy",
           "academy"
         ],
         "summary": "Get Cohort Complexity Score",
@@ -11007,6 +11514,7 @@
       },
       "put": {
         "tags": [
+          "academy",
           "academy"
         ],
         "summary": "Update Cohort Complexity Score",
@@ -11064,6 +11572,7 @@
       },
       "delete": {
         "tags": [
+          "academy",
           "academy"
         ],
         "summary": "Delete Cohort Complexity Score",
@@ -11111,6 +11620,7 @@
     "/api/v1/academy/cohorts/{cohort_id}/complexity-score/review": {
       "post": {
         "tags": [
+          "academy",
           "academy"
         ],
         "summary": "Mark Complexity Score Reviewed",
@@ -11158,6 +11668,7 @@
     "/api/v1/academy/cohorts/{cohort_id}/eligible-coaches": {
       "get": {
         "tags": [
+          "academy",
           "academy"
         ],
         "summary": "Get Eligible Coaches For Cohort",
@@ -11211,6 +11722,7 @@
     "/api/v1/academy/cohorts/{cohort_id}/ai-score": {
       "post": {
         "tags": [
+          "academy",
           "academy"
         ],
         "summary": "Ai Score Cohort",
@@ -11270,6 +11782,7 @@
     "/api/v1/academy/cohorts/{cohort_id}/ai-suggest-coach": {
       "post": {
         "tags": [
+          "academy",
           "academy"
         ],
         "summary": "Ai Suggest Coach",
@@ -12611,6 +13124,68 @@
         }
       }
     },
+    "/api/v1/academy/curricula/{curriculum_id}/weeks/reorder": {
+      "put": {
+        "tags": [
+          "curriculum"
+        ],
+        "summary": "Reorder Weeks",
+        "description": "Reorder weeks by providing the week IDs in the desired order.",
+        "operationId": "reorder_weeks_academy_curricula__curriculum_id__weeks_reorder_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "curriculum_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Curriculum Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "title": "Week Ids"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/curriculum-weeks/{week_id}/lessons": {
       "post": {
         "tags": [
@@ -12755,68 +13330,6 @@
         "responses": {
           "204": {
             "description": "Successful Response"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/academy/curricula/{curriculum_id}/weeks/reorder": {
-      "put": {
-        "tags": [
-          "curriculum"
-        ],
-        "summary": "Reorder Weeks",
-        "description": "Reorder weeks by providing the week IDs in the desired order.",
-        "operationId": "reorder_weeks_academy_curricula__curriculum_id__weeks_reorder_put",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "curriculum_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Curriculum Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                "title": "Week Ids"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
           },
           "422": {
             "description": "Validation Error",
@@ -13419,52 +13932,6 @@
         ]
       }
     },
-    "/api/v1/payments/admin/members/by-auth/{auth_id}": {
-      "delete": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "Admin Delete Member Payments",
-        "description": "Delete payments for a member by auth ID (Admin only).",
-        "operationId": "admin_delete_member_payments_payments_admin_members_by_auth__auth_id__delete",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "auth_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Auth Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/payments/me": {
       "get": {
         "tags": [
@@ -13479,7 +13946,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/PaymentResponse"
+                    "$ref": "#/components/schemas/MemberPaymentResponse"
                   },
                   "type": "array",
                   "title": "Response List My Payments Payments Me Get"
@@ -13525,7 +13992,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaymentResponse"
+                  "$ref": "#/components/schemas/MemberPaymentResponse"
                 }
               }
             }
@@ -13585,6 +14052,52 @@
                 "schema": {
                   "$ref": "#/components/schemas/PaymentResponse"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/members/by-auth/{auth_id}": {
+      "delete": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Admin Delete Member Payments",
+        "description": "Delete payments for a member by auth ID (Admin only).",
+        "operationId": "admin_delete_member_payments_payments_admin_members_by_auth__auth_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -14448,7 +14961,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaymentResponse"
+                  "$ref": "#/components/schemas/MemberPaymentResponse"
                 }
               }
             }
@@ -15249,7 +15762,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PayoutResponse"
+                  "$ref": "#/components/schemas/CoachPayoutResponse"
                 }
               }
             }
@@ -18129,7 +18642,7 @@
           "preferences"
         ],
         "summary": "Get My Preferences",
-        "description": "Get the current user's notification preferences.\nCreates default preferences if none exist.",
+        "description": "Get the current user's notification preferences.\n\nCreates a row with all-defaults the first time a member accesses\ntheir preferences. Subsequent calls return the persisted row.",
         "operationId": "get_my_preferences_preferences_me_get",
         "responses": {
           "200": {
@@ -18154,7 +18667,7 @@
           "preferences"
         ],
         "summary": "Update My Preferences",
-        "description": "Update the current user's notification preferences.",
+        "description": "Update the current user's notification preferences.\n\nOnly fields included in the request body are written; unset fields\nkeep their current value. Auto-creates the row if it doesn't exist.",
         "operationId": "update_my_preferences_preferences_me_patch",
         "requestBody": {
           "content": {
@@ -18193,106 +18706,6 @@
             "HTTPBearer": []
           }
         ]
-      }
-    },
-    "/api/v1/preferences/{member_id}": {
-      "get": {
-        "tags": [
-          "preferences"
-        ],
-        "summary": "Get Member Preferences",
-        "description": "Get notification preferences for a specific member.\nAdmin only or self-access.",
-        "operationId": "get_member_preferences_preferences__member_id__get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "member_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Member Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotificationPreferencesResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/preferences/check-opt-in": {
-      "post": {
-        "tags": [
-          "preferences"
-        ],
-        "summary": "Check Notification Opt In",
-        "description": "Check if a member has opted in for a specific notification type.\nUsed by other services before sending notifications.",
-        "operationId": "check_notification_opt_in_preferences_check_opt_in_post",
-        "parameters": [
-          {
-            "name": "member_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Member Id"
-            }
-          },
-          {
-            "name": "notification_type",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Notification Type"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
       }
     },
     "/api/v1/testimonials/public": {
@@ -22638,33 +23051,6 @@
         }
       }
     },
-    "/api/v1/admin/wallet/rewards/stats": {
-      "get": {
-        "tags": [
-          "admin-rewards"
-        ],
-        "summary": "Get Reward Stats",
-        "description": "Dashboard stats for the rewards engine.",
-        "operationId": "get_reward_stats_admin_wallet_rewards_stats_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RewardStatsResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
     "/api/v1/admin/wallet/rewards/events/submit": {
       "post": {
         "tags": [
@@ -22937,6 +23323,33 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/admin/wallet/rewards/stats": {
+      "get": {
+        "tags": [
+          "admin-rewards"
+        ],
+        "summary": "Get Reward Stats",
+        "description": "Dashboard stats for the rewards engine.",
+        "operationId": "get_reward_stats_admin_wallet_rewards_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RewardStatsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/admin/wallet/rewards/analytics": {
@@ -23742,7 +24155,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/transport/areas": {
@@ -24139,6 +24557,11 @@
         ],
         "summary": "List Routes",
         "operationId": "list_routes_transport_routes_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "origin_area_id",
@@ -24241,6 +24664,11 @@
         ],
         "summary": "Create Route",
         "operationId": "create_route_transport_routes_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -24282,6 +24710,11 @@
         ],
         "summary": "Update Route",
         "operationId": "update_route_transport_routes__route_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "route_id",
@@ -24333,6 +24766,11 @@
         ],
         "summary": "Delete Route",
         "operationId": "delete_route_transport_routes__route_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "route_id",
@@ -24370,6 +24808,11 @@
         "summary": "Attach Ride Areas To Session",
         "description": "Attach ride areas to a session with session-specific configuration.",
         "operationId": "attach_ride_areas_to_session_transport_sessions__session_id__ride_configs_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "session_id",
@@ -24430,6 +24873,11 @@
         "summary": "Get Session Ride Configs",
         "description": "Get ride configurations for a session with route info and pickup location\navailability.",
         "operationId": "get_session_ride_configs_transport_sessions__session_id__ride_configs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "session_id",
@@ -24509,7 +24957,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/transport/sessions/{session_id}/bookings": {
@@ -24977,29 +25430,6 @@
         ],
         "parameters": [
           {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1,
-              "title": "Page"
-            }
-          },
-          {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
-              "default": 20,
-              "title": "Page Size"
-            }
-          },
-          {
             "name": "request_type",
             "in": "query",
             "required": false,
@@ -25014,6 +25444,33 @@
               ],
               "title": "Request Type"
             }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "1-indexed page number",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "1-indexed page number"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Items per page (max 100)",
+              "default": 20,
+              "title": "Page Size"
+            },
+            "description": "Items per page (max 100)"
           }
         ],
         "responses": {
@@ -25022,7 +25479,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AIRequestListResponse"
+                  "$ref": "#/components/schemas/PaginatedResponse_AIRequestResponse_"
                 }
               }
             }
@@ -25228,7 +25685,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VolunteerProfileResponse"
+                  "$ref": "#/components/schemas/MemberVolunteerProfileResponse"
                 }
               }
             }
@@ -25263,7 +25720,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VolunteerProfileResponse"
+                  "$ref": "#/components/schemas/MemberVolunteerProfileResponse"
                 }
               }
             }
@@ -25308,7 +25765,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VolunteerProfileResponse"
+                  "$ref": "#/components/schemas/MemberVolunteerProfileResponse"
                 }
               }
             }
@@ -25557,7 +26014,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VolunteerSlotResponse"
+                  "$ref": "#/components/schemas/MemberVolunteerSlotResponse"
                 }
               }
             }
@@ -26964,6 +27421,7 @@
           "admin-volunteers"
         ],
         "summary": "Bulk Complete",
+        "description": "Complete a batch of slots, deriving timestamps and hours from the\nopportunity's scheduled window.\n\nFor each slot:\n- reject if the opportunity hasn't started yet (admin mis-click);\n- preserve any pre-existing `checked_in_at` (a real check-in stamp\n  shouldn't be clobbered); otherwise stamp the opportunity start;\n- set `checked_out_at` to the opportunity's end (or `now()` if the\n  event is still in progress / has no end_time);\n- derive `hours_logged` from those timestamps so the slot row stays\n  internally consistent. `data.hours`, if supplied, overrides the\n  derivation for every slot in the batch.",
         "operationId": "bulk_complete_admin_volunteers_slots_bulk_complete_post",
         "requestBody": {
           "content": {
@@ -31470,6 +31928,7 @@
     "/api/v1/admin/store/inventory": {
       "get": {
         "tags": [
+          "admin-store",
           "admin-store"
         ],
         "summary": "List Inventory",
@@ -31523,6 +31982,7 @@
     "/api/v1/admin/store/inventory/low-stock": {
       "get": {
         "tags": [
+          "admin-store",
           "admin-store"
         ],
         "summary": "Get Low Stock Items",
@@ -31554,6 +32014,7 @@
     "/api/v1/admin/store/inventory/{inventory_id}": {
       "patch": {
         "tags": [
+          "admin-store",
           "admin-store"
         ],
         "summary": "Adjust Inventory",
@@ -31613,6 +32074,7 @@
     "/api/v1/admin/store/orders": {
       "get": {
         "tags": [
+          "admin-store",
           "admin-store"
         ],
         "summary": "List All Orders",
@@ -31691,6 +32153,7 @@
     "/api/v1/admin/store/orders/new-count": {
       "get": {
         "tags": [
+          "admin-store",
           "admin-store"
         ],
         "summary": "Get New Order Count",
@@ -31716,6 +32179,7 @@
     "/api/v1/admin/store/orders/{order_id}": {
       "get": {
         "tags": [
+          "admin-store",
           "admin-store"
         ],
         "summary": "Get Order Admin",
@@ -31763,6 +32227,7 @@
       },
       "patch": {
         "tags": [
+          "admin-store",
           "admin-store"
         ],
         "summary": "Update Order",
@@ -31822,6 +32287,7 @@
     "/api/v1/admin/store/orders/{order_id}/status": {
       "patch": {
         "tags": [
+          "admin-store",
           "admin-store"
         ],
         "summary": "Update Order Status",
@@ -31881,6 +32347,7 @@
     "/api/v1/admin/store/orders/{order_id}/mark-paid": {
       "post": {
         "tags": [
+          "admin-store",
           "admin-store"
         ],
         "summary": "Mark Order Paid",
@@ -31930,6 +32397,7 @@
     "/api/v1/admin/store/orders/{order_id}/refund": {
       "post": {
         "tags": [
+          "admin-store",
           "admin-store"
         ],
         "summary": "Issue Refund",
@@ -33647,14 +34115,14 @@
         }
       }
     },
-    "/api/v1/api/v1/media/albums": {
+    "/api/v1/media/albums": {
       "post": {
         "tags": [
           "media"
         ],
         "summary": "Create Album",
         "description": "Create a new album (admin only).",
-        "operationId": "create_album_api_v1_media_albums_post",
+        "operationId": "create_album_media_albums_post",
         "security": [
           {
             "HTTPBearer": []
@@ -33699,7 +34167,7 @@
         ],
         "summary": "List Albums",
         "description": "List all albums, optionally filtered by type or linked entity.",
-        "operationId": "list_albums_api_v1_media_albums_get",
+        "operationId": "list_albums_media_albums_get",
         "parameters": [
           {
             "name": "album_type",
@@ -33745,7 +34213,7 @@
                   "items": {
                     "$ref": "#/components/schemas/AlbumResponse"
                   },
-                  "title": "Response List Albums Api V1 Media Albums Get"
+                  "title": "Response List Albums Media Albums Get"
                 }
               }
             }
@@ -33763,14 +34231,14 @@
         }
       }
     },
-    "/api/v1/api/v1/media/albums/{album_id}": {
+    "/api/v1/media/albums/{album_id}": {
       "get": {
         "tags": [
           "media"
         ],
         "summary": "Get Album",
         "description": "Get album details with all media items.",
-        "operationId": "get_album_api_v1_media_albums__album_id__get",
+        "operationId": "get_album_media_albums__album_id__get",
         "parameters": [
           {
             "name": "album_id",
@@ -33812,7 +34280,7 @@
         ],
         "summary": "Update Album",
         "description": "Update album (admin only).",
-        "operationId": "update_album_api_v1_media_albums__album_id__patch",
+        "operationId": "update_album_media_albums__album_id__patch",
         "security": [
           {
             "HTTPBearer": []
@@ -33869,7 +34337,7 @@
         ],
         "summary": "Update Album",
         "description": "Update album (admin only).",
-        "operationId": "update_album_api_v1_media_albums__album_id__put",
+        "operationId": "update_album_media_albums__album_id__put",
         "security": [
           {
             "HTTPBearer": []
@@ -33926,7 +34394,7 @@
         ],
         "summary": "Delete Album",
         "description": "Delete album. Note: Does NOT delete the actual media items, just the album and associations.",
-        "operationId": "delete_album_api_v1_media_albums__album_id__delete",
+        "operationId": "delete_album_media_albums__album_id__delete",
         "security": [
           {
             "HTTPBearer": []
@@ -33966,14 +34434,14 @@
         }
       }
     },
-    "/api/v1/api/v1/media/media": {
+    "/api/v1/media/media": {
       "post": {
         "tags": [
           "media"
         ],
         "summary": "Upload Media",
         "description": "Upload new media item.",
-        "operationId": "upload_media_api_v1_media_media_post",
+        "operationId": "upload_media_media_media_post",
         "security": [
           {
             "HTTPBearer": []
@@ -33984,7 +34452,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_upload_media_api_v1_media_media_post"
+                "$ref": "#/components/schemas/Body_upload_media_media_media_post"
               }
             }
           }
@@ -34018,7 +34486,7 @@
         ],
         "summary": "List Media",
         "description": "List all media items.",
-        "operationId": "list_media_api_v1_media_media_get",
+        "operationId": "list_media_media_media_get",
         "parameters": [
           {
             "name": "media_type",
@@ -34067,7 +34535,7 @@
                   "items": {
                     "$ref": "#/components/schemas/MediaItemResponse"
                   },
-                  "title": "Response List Media Api V1 Media Media Get"
+                  "title": "Response List Media Media Media Get"
                 }
               }
             }
@@ -34085,19 +34553,19 @@
         }
       }
     },
-    "/api/v1/api/v1/media/uploads": {
+    "/api/v1/media/uploads": {
       "post": {
         "tags": [
           "media"
         ],
         "summary": "Upload File",
         "description": "Generic file upload endpoint for authenticated users.\n\nSupports multiple purposes:\n- coach_document: Documents for coach applications (PDF, images)\n- payment_proof: Proof of payment screenshots (PDF, images)\n- milestone_evidence: Video/image evidence for milestone completion\n- milestone_video: Demo video for a milestone\n- general: General uploads\n\nReturns MediaItem with file_url. The calling service should store the media_id\nin its own table to track the relationship.",
-        "operationId": "upload_file_api_v1_media_uploads_post",
+        "operationId": "upload_file_media_uploads_post",
         "requestBody": {
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_upload_file_api_v1_media_uploads_post"
+                "$ref": "#/components/schemas/Body_upload_file_media_uploads_post"
               }
             }
           },
@@ -34132,19 +34600,19 @@
         ]
       }
     },
-    "/api/v1/api/v1/media/register-url": {
+    "/api/v1/media/register-url": {
       "post": {
         "tags": [
           "media"
         ],
         "summary": "Register External Url",
         "description": "Register an external URL (YouTube, image URL, etc.) as a media item.\n\nThis allows the same media_id pattern for both uploads and external links.\nThe URL is stored directly without downloading/hosting.\n\nReturns MediaItem with the external URL as file_url.",
-        "operationId": "register_external_url_api_v1_media_register_url_post",
+        "operationId": "register_external_url_media_register_url_post",
         "requestBody": {
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_register_external_url_api_v1_media_register_url_post"
+                "$ref": "#/components/schemas/Body_register_external_url_media_register_url_post"
               }
             }
           },
@@ -34179,14 +34647,14 @@
         ]
       }
     },
-    "/api/v1/api/v1/media/media/{media_id}": {
+    "/api/v1/media/media/{media_id}": {
       "get": {
         "tags": [
           "media"
         ],
         "summary": "Get Media Item",
         "description": "Get a single media item by ID.",
-        "operationId": "get_media_item_api_v1_media_media__media_id__get",
+        "operationId": "get_media_item_media_media__media_id__get",
         "parameters": [
           {
             "name": "media_id",
@@ -34228,7 +34696,7 @@
         ],
         "summary": "Update Media",
         "description": "Update media metadata.",
-        "operationId": "update_media_api_v1_media_media__media_id__put",
+        "operationId": "update_media_media_media__media_id__put",
         "security": [
           {
             "HTTPBearer": []
@@ -34285,7 +34753,7 @@
         ],
         "summary": "Delete Media",
         "description": "Delete media item and remove from storage.",
-        "operationId": "delete_media_api_v1_media_media__media_id__delete",
+        "operationId": "delete_media_media_media__media_id__delete",
         "security": [
           {
             "HTTPBearer": []
@@ -34325,14 +34793,14 @@
         }
       }
     },
-    "/api/v1/api/v1/media/media/{media_id}/tags": {
+    "/api/v1/media/media/{media_id}/tags": {
       "post": {
         "tags": [
           "media"
         ],
         "summary": "Tag Member In Media",
         "description": "Tag a member in a media item.",
-        "operationId": "tag_member_in_media_api_v1_media_media__media_id__tags_post",
+        "operationId": "tag_member_in_media_media_media__media_id__tags_post",
         "security": [
           {
             "HTTPBearer": []
@@ -34355,7 +34823,7 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_tag_member_in_media_api_v1_media_media__media_id__tags_post"
+                "$ref": "#/components/schemas/Body_tag_member_in_media_media_media__media_id__tags_post"
               }
             }
           }
@@ -34384,14 +34852,14 @@
         }
       }
     },
-    "/api/v1/api/v1/media/media/{media_id}/tags/{member_id}": {
+    "/api/v1/media/media/{media_id}/tags/{member_id}": {
       "delete": {
         "tags": [
           "media"
         ],
         "summary": "Remove Tag",
         "description": "Remove member tag from media.",
-        "operationId": "remove_tag_api_v1_media_media__media_id__tags__member_id__delete",
+        "operationId": "remove_tag_media_media__media_id__tags__member_id__delete",
         "security": [
           {
             "HTTPBearer": []
@@ -34441,14 +34909,14 @@
         }
       }
     },
-    "/api/v1/api/v1/media/health": {
+    "/api/v1/media/health": {
       "get": {
         "tags": [
           "media"
         ],
         "summary": "Health Check",
         "description": "Health check endpoint.",
-        "operationId": "health_check_api_v1_media_health_get",
+        "operationId": "health_check_media_health_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -34461,14 +34929,14 @@
         }
       }
     },
-    "/api/v1/api/v1/media/urls": {
+    "/api/v1/media/urls": {
       "post": {
         "tags": [
           "media"
         ],
         "summary": "Resolve Media Urls",
         "description": "Batch resolve media IDs to their file URLs.\n\nThis endpoint is designed for internal service-to-service calls.\nOther services should use this instead of direct DB queries.\n\nReturns a dict mapping media_id -> file_url (only for found items).",
-        "operationId": "resolve_media_urls_api_v1_media_urls_post",
+        "operationId": "resolve_media_urls_media_urls_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -34505,14 +34973,14 @@
         }
       }
     },
-    "/api/v1/api/v1/media/assets": {
+    "/api/v1/media/assets": {
       "get": {
         "tags": [
           "media"
         ],
         "summary": "List Site Assets",
         "description": "List all site assets.",
-        "operationId": "list_site_assets_api_v1_media_assets_get",
+        "operationId": "list_site_assets_media_assets_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -34523,7 +34991,7 @@
                     "$ref": "#/components/schemas/SiteAssetResponse"
                   },
                   "type": "array",
-                  "title": "Response List Site Assets Api V1 Media Assets Get"
+                  "title": "Response List Site Assets Media Assets Get"
                 }
               }
             }
@@ -34536,7 +35004,7 @@
         ],
         "summary": "Create Site Asset",
         "description": "Create or upsert a site asset key.",
-        "operationId": "create_site_asset_api_v1_media_assets_post",
+        "operationId": "create_site_asset_media_assets_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -34576,14 +35044,14 @@
         ]
       }
     },
-    "/api/v1/api/v1/media/assets/{key}": {
+    "/api/v1/media/assets/{key}": {
       "get": {
         "tags": [
           "media"
         ],
         "summary": "Get Site Asset",
         "description": "Get site asset by key.",
-        "operationId": "get_site_asset_api_v1_media_assets__key__get",
+        "operationId": "get_site_asset_media_assets__key__get",
         "parameters": [
           {
             "name": "key",
@@ -34624,7 +35092,7 @@
         ],
         "summary": "Update Site Asset",
         "description": "Update site asset.",
-        "operationId": "update_site_asset_api_v1_media_assets__key__put",
+        "operationId": "update_site_asset_media_assets__key__put",
         "security": [
           {
             "HTTPBearer": []
@@ -34680,7 +35148,7 @@
         ],
         "summary": "Delete Site Asset",
         "description": "Delete site asset and, if unused elsewhere, its media + storage objects.",
-        "operationId": "delete_site_asset_api_v1_media_assets__key__delete",
+        "operationId": "delete_site_asset_media_assets__key__delete",
         "security": [
           {
             "HTTPBearer": []
@@ -34719,14 +35187,14 @@
         }
       }
     },
-    "/api/v1/api/v1/media/admin/members/{member_id}": {
+    "/api/v1/media/admin/members/{member_id}": {
       "delete": {
         "tags": [
           "media"
         ],
         "summary": "Admin Delete Member Media",
         "description": "Delete media artifacts for a member (Admin only).",
-        "operationId": "admin_delete_member_media_api_v1_media_admin_members__member_id__delete",
+        "operationId": "admin_delete_member_media_media_admin_members__member_id__delete",
         "security": [
           {
             "HTTPBearer": []
@@ -34766,14 +35234,14 @@
         }
       }
     },
-    "/api/v1/api/v1/media/audio-tracks": {
+    "/api/v1/media/audio-tracks": {
       "get": {
         "tags": [
           "audio"
         ],
         "summary": "List Audio Tracks",
         "description": "List available audio tracks for audio overlay.\n\nPublic endpoint \u2014 any authenticated user can browse the track library.",
-        "operationId": "list_audio_tracks_api_v1_media_audio_tracks_get",
+        "operationId": "list_audio_tracks_media_audio_tracks_get",
         "parameters": [
           {
             "name": "genre",
@@ -34838,7 +35306,7 @@
                   "items": {
                     "$ref": "#/components/schemas/AudioTrackResponse"
                   },
-                  "title": "Response List Audio Tracks Api V1 Media Audio Tracks Get"
+                  "title": "Response List Audio Tracks Media Audio Tracks Get"
                 }
               }
             }
@@ -34861,7 +35329,7 @@
         ],
         "summary": "Upload Audio Track",
         "description": "Upload a new audio track (admin only).\n\nAccepts MP3, WAV, AAC, OGG, and FLAC files. The file is stored\nin the public bucket under audio-tracks/ prefix.",
-        "operationId": "upload_audio_track_api_v1_media_audio_tracks_post",
+        "operationId": "upload_audio_track_media_audio_tracks_post",
         "security": [
           {
             "HTTPBearer": []
@@ -34872,7 +35340,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_upload_audio_track_api_v1_media_audio_tracks_post"
+                "$ref": "#/components/schemas/Body_upload_audio_track_media_audio_tracks_post"
               }
             }
           }
@@ -34901,14 +35369,14 @@
         }
       }
     },
-    "/api/v1/api/v1/media/audio-tracks/{track_id}": {
+    "/api/v1/media/audio-tracks/{track_id}": {
       "get": {
         "tags": [
           "audio"
         ],
         "summary": "Get Audio Track",
         "description": "Get a single audio track by ID.",
-        "operationId": "get_audio_track_api_v1_media_audio_tracks__track_id__get",
+        "operationId": "get_audio_track_media_audio_tracks__track_id__get",
         "parameters": [
           {
             "name": "track_id",
@@ -34950,7 +35418,7 @@
         ],
         "summary": "Update Audio Track",
         "description": "Update audio track metadata (admin only).",
-        "operationId": "update_audio_track_api_v1_media_audio_tracks__track_id__put",
+        "operationId": "update_audio_track_media_audio_tracks__track_id__put",
         "security": [
           {
             "HTTPBearer": []
@@ -35007,7 +35475,7 @@
         ],
         "summary": "Delete Audio Track",
         "description": "Delete an audio track (admin only).",
-        "operationId": "delete_audio_track_api_v1_media_audio_tracks__track_id__delete",
+        "operationId": "delete_audio_track_media_audio_tracks__track_id__delete",
         "security": [
           {
             "HTTPBearer": []
@@ -35042,14 +35510,14 @@
         }
       }
     },
-    "/api/v1/api/v1/media/videos/{media_id}/apply-audio": {
+    "/api/v1/media/videos/{media_id}/apply-audio": {
       "post": {
         "tags": [
           "audio"
         ],
         "summary": "Apply Audio To Video",
         "description": "Apply an audio track to a video (admin only).\n\nEnqueues an async job that uses ffmpeg to:\n- Strip or mix the original audio\n- Overlay the selected audio track\n- Re-upload the processed video\n\nvolume_mix controls the blend:\n- 1.0 = fully replace original audio with the track\n- 0.0 = keep original audio only (no-op)\n- 0.5 = mix both at equal volume",
-        "operationId": "apply_audio_to_video_api_v1_media_videos__media_id__apply_audio_post",
+        "operationId": "apply_audio_to_video_media_videos__media_id__apply_audio_post",
         "security": [
           {
             "HTTPBearer": []
@@ -42753,6 +43221,17 @@
             "type": "string",
             "title": "Id"
           },
+          "auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Id"
+          },
           "first_name": {
             "type": "string",
             "title": "First Name"
@@ -45154,16 +45633,22 @@
           },
           "first_name": {
             "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
             "title": "First Name"
           },
           "last_name": {
             "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
             "title": "Last Name"
           },
           "password": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 8
               },
               {
                 "type": "null"
@@ -46614,7 +47099,7 @@
         "title": "VolunteerRoleUpdate",
         "description": "Schema for updating a volunteer role."
       },
-      "services__members_service__routers__internal__MemberMembershipResponse": {
+      "services__members_service__routers__internal___schemas__MemberMembershipResponse": {
         "properties": {
           "member_id": {
             "type": "string",
@@ -46941,6 +47426,134 @@
         "title": "MemberMembershipResponse",
         "description": "Membership tiers, billing, and gamification."
       },
+      "BookingChannel": {
+        "type": "string",
+        "enum": [
+          "member_self",
+          "admin",
+          "corporate_bulk",
+          "bundle_cart"
+        ],
+        "title": "BookingChannel",
+        "description": "How a SessionBooking was created."
+      },
+      "BookingConfirmRequest": {
+        "properties": {
+          "payment_intent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Intent Id"
+          },
+          "wallet_transaction_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wallet Transaction Id"
+          }
+        },
+        "type": "object",
+        "title": "BookingConfirmRequest",
+        "description": "Transition a PENDING booking to CONFIRMED after payment cleared."
+      },
+      "BulkBookingItem": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Member Auth Id"
+          },
+          "fee_amount_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Fee Amount Kobo",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "member_id",
+          "member_auth_id"
+        ],
+        "title": "BulkBookingItem",
+        "description": "One entry in a corporate-bulk booking payload."
+      },
+      "BulkBookingRequest": {
+        "properties": {
+          "corporate_program_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Corporate Program Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BulkBookingItem"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "corporate_program_id",
+          "items"
+        ],
+        "title": "BulkBookingRequest",
+        "description": "Service-role bulk-create for corporate-wellness orchestration."
+      },
+      "BulkBookingResponse": {
+        "properties": {
+          "created": {
+            "type": "integer",
+            "title": "Created"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          },
+          "bookings": {
+            "items": {
+              "$ref": "#/components/schemas/SessionBookingResponse"
+            },
+            "type": "array",
+            "title": "Bookings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created",
+          "skipped",
+          "bookings"
+        ],
+        "title": "BulkBookingResponse",
+        "description": "Result of a bulk-create call."
+      },
       "BundleCartResponse": {
         "properties": {
           "id": {
@@ -47187,6 +47800,200 @@
         ],
         "title": "SessionBasic"
       },
+      "SessionBookingCreate": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "fee_amount_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Fee Amount Kobo",
+            "default": 0
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "pay_with_bubbles": {
+            "type": "boolean",
+            "title": "Pay With Bubbles",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "SessionBookingCreate",
+        "description": "Member self-book a session ahead of time.\n\nChannel defaults to MEMBER_SELF. Admin and internal/corporate routes\nset channel explicitly. Default flow: this route creates\nSessionBooking(status=PENDING) with ``expires_at = booked_at + 15 min``\nand the frontend (or payments_service webhook) calls the confirm\nendpoint once Paystack payment clears, before ``expires_at``, to\ntransition status \u2192 CONFIRMED. A 5-min sweep otherwise marks the\nbooking EXPIRED.\n\nFree-session / full-Bubbles fast path: pass ``pay_with_bubbles=True``\nAND ``fee_amount_kobo`` (zero is OK for free sessions). The endpoint\ndebits the member's wallet and confirms in one transaction, returning\na CONFIRMED booking. Mirrors the existing one-click sign-in UX."
+      },
+      "SessionBookingResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "title": "Member Auth Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionBookingStatus"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/BookingChannel"
+          },
+          "fee_amount_kobo": {
+            "type": "integer",
+            "title": "Fee Amount Kobo"
+          },
+          "payment_intent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Intent Id"
+          },
+          "wallet_transaction_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wallet Transaction Id"
+          },
+          "corporate_program_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corporate Program Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "booked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Booked At"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "session_id",
+          "member_id",
+          "member_auth_id",
+          "status",
+          "channel",
+          "fee_amount_kobo",
+          "booked_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SessionBookingResponse"
+      },
+      "SessionBookingStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "confirmed",
+          "cancelled",
+          "expired"
+        ],
+        "title": "SessionBookingStatus",
+        "description": "Lifecycle of a SessionBooking (the *intent* to attend a session).\n\nTerminal at session start time \u2014 what happened at the session\n(PRESENT / ABSENT / LATE / EXCUSED) lives on AttendanceRecord in\nattendance_service, not here. See\ndocs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md \u00a7C."
+      },
       "SessionCreate": {
         "properties": {
           "title": {
@@ -47326,18 +48133,6 @@
               }
             ],
             "title": "Event Id"
-          },
-          "booking_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Booking Id"
           },
           "pod_id": {
             "anyOf": [
@@ -47648,18 +48443,6 @@
             ],
             "title": "Event Id"
           },
-          "booking_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Booking Id"
-          },
           "pod_id": {
             "anyOf": [
               {
@@ -47779,9 +48562,39 @@
             ],
             "title": "Description"
           },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
           "location": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Location"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
           },
           "session_type": {
             "$ref": "#/components/schemas/SessionType",
@@ -47842,7 +48655,6 @@
         "type": "object",
         "required": [
           "title",
-          "location",
           "day_of_week",
           "start_time",
           "duration_minutes"
@@ -47866,9 +48678,39 @@
             ],
             "title": "Description"
           },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
           "location": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Location"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
           },
           "session_type": {
             "$ref": "#/components/schemas/SessionType",
@@ -47955,7 +48797,6 @@
         "type": "object",
         "required": [
           "title",
-          "location",
           "day_of_week",
           "start_time",
           "duration_minutes",
@@ -47990,6 +48831,18 @@
             ],
             "title": "Description"
           },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
           "location": {
             "anyOf": [
               {
@@ -48000,6 +48853,17 @@
               }
             ],
             "title": "Location"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
           },
           "pool_fee": {
             "anyOf": [
@@ -48115,8 +48979,6 @@
         "type": "string",
         "enum": [
           "cohort_class",
-          "one_on_one",
-          "group_booking",
           "club",
           "community",
           "event"
@@ -48313,18 +49175,6 @@
               }
             ],
             "title": "Event Id"
-          },
-          "booking_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Booking Id"
           },
           "pod_id": {
             "anyOf": [
@@ -50267,6 +51117,22 @@
             "$ref": "#/components/schemas/CohortStatus",
             "default": "open"
           },
+          "type": {
+            "$ref": "#/components/schemas/CohortType",
+            "default": "group"
+          },
+          "corporate_program_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corporate Program Id"
+          },
           "allow_mid_entry": {
             "type": "boolean",
             "title": "Allow Mid Entry",
@@ -50668,6 +51534,22 @@
           "status": {
             "$ref": "#/components/schemas/CohortStatus",
             "default": "open"
+          },
+          "type": {
+            "$ref": "#/components/schemas/CohortType",
+            "default": "group"
+          },
+          "corporate_program_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corporate Program Id"
           },
           "allow_mid_entry": {
             "type": "boolean",
@@ -51316,6 +52198,17 @@
         "title": "CohortTimelineShiftRequest",
         "description": "Request payload for timeline-shifting a cohort and linked records."
       },
+      "CohortType": {
+        "type": "string",
+        "enum": [
+          "group",
+          "private",
+          "small_group",
+          "corporate"
+        ],
+        "title": "CohortType",
+        "description": "How the cohort is structured.\n\nThe session layer (``SessionType.COHORT_CLASS`` with ``cohort_id`` set)\nis identical for all CohortType values \u2014 variation lives here on the\ncohort row rather than at the per-session level. See\ndocs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md \u00a7B."
+      },
       "CohortUpdate": {
         "properties": {
           "name": {
@@ -51373,6 +52266,28 @@
                 "type": "null"
               }
             ]
+          },
+          "type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CohortType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "corporate_program_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corporate Program Id"
           },
           "allow_mid_entry": {
             "anyOf": [
@@ -53040,11 +53955,13 @@
         "type": "string",
         "enum": [
           "pending",
+          "pending_review",
           "paid",
-          "failed",
-          "waived"
+          "waived",
+          "failed"
         ],
-        "title": "PaymentStatus"
+        "title": "PaymentStatus",
+        "description": "Lifecycle state of a payment record.\n\nUsed by payments_service (full set) and academy_service (uses PENDING /\nPAID / WAIVED / FAILED only \u2014 never writes PENDING_REVIEW today)."
       },
       "PendingMilestoneReview": {
         "properties": {
@@ -54371,6 +55288,172 @@
         "title": "CoachLineItem",
         "description": "Per-student contribution to an upcoming block payout \u2014 the same data\nsurfaced to admins on the preview, exposed to the coach so they can\naudit how their pay was computed."
       },
+      "CoachPayoutResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "coach_member_id": {
+            "type": "string",
+            "title": "Coach Member Id"
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period Start"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period End"
+          },
+          "period_label": {
+            "type": "string",
+            "title": "Period Label"
+          },
+          "academy_earnings": {
+            "type": "integer",
+            "title": "Academy Earnings"
+          },
+          "session_earnings": {
+            "type": "integer",
+            "title": "Session Earnings"
+          },
+          "other_earnings": {
+            "type": "integer",
+            "title": "Other Earnings"
+          },
+          "total_amount": {
+            "type": "integer",
+            "title": "Total Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PayoutStatus"
+          },
+          "payout_method": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoutMethod"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "payment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Reference"
+          },
+          "paystack_transfer_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paystack Transfer Code"
+          },
+          "paystack_transfer_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paystack Transfer Status"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "coach_member_id",
+          "period_start",
+          "period_end",
+          "period_label",
+          "academy_earnings",
+          "session_earnings",
+          "other_earnings",
+          "total_amount",
+          "currency",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CoachPayoutResponse",
+        "description": "Coach-facing view of their own payout.\n\nStrict subset of `PayoutResponse` that omits the admin-only\n`admin_notes` field (a private comment about the coach written by\nthe admin who approved/processed the payout \u2014 should never reach\nthe coach receiving the payout).\n\nUsed by `coach_router.get(\"/{payout_id}\")`. Admin routes continue\nto return `PayoutResponse`."
+      },
       "CoachUpcomingPayout": {
         "properties": {
           "config_id": {
@@ -55672,6 +56755,152 @@
         "title": "MarkRefundDisbursedRequest",
         "description": "Admin marks one refund obligation as disbursed (paid out)."
       },
+      "MemberPaymentResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "title": "Member Auth Id"
+          },
+          "payer_email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Email"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/PaymentPurpose"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "provider_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Reference"
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Method"
+          },
+          "proof_of_payment_media_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proof Of Payment Media Id"
+          },
+          "proof_of_payment_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proof Of Payment Url"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "entitlement_applied_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entitlement Applied At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "reference",
+          "member_auth_id",
+          "purpose",
+          "amount",
+          "currency",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MemberPaymentResponse",
+        "description": "Member-facing payment shape.\n\nStrict subset of `PaymentResponse` \u2014 deliberately omits fields that\nare admin-only or contain operational/integration data that should\nnot leak to the payer:\n\n  * `admin_review_note`     \u2014 admin's private comment on the payment\n  * `entitlement_error`     \u2014 internal failure string; can leak\n                              service URLs / stack trace fragments\n  * `payment_metadata`      \u2014 contains `provider_payload` (raw\n                              Paystack response with card BIN/country),\n                              `paystack.access_code` (could be replayed\n                              if leaked while a transaction is open),\n                              `admin_note`, and `fulfillment` retry\n                              state \u2014 all admin/ops data, not for the\n                              payer.\n\nRoutes that return data to the authenticated owner of the payment\n(GET /payments/me, POST /payments/paystack/verify/{ref}, POST\n/payments/{ref}/proof) MUST use this shape. Admin-only routes can\nkeep using `PaymentResponse`."
+      },
       "MemberPaymentSummary": {
         "properties": {
           "total_spent": {
@@ -55806,7 +57035,8 @@
           "session_bundle",
           "store_order",
           "wallet_topup",
-          "ride_share"
+          "ride_share",
+          "session_booking"
         ],
         "title": "PaymentPurpose"
       },
@@ -58816,10 +60046,9 @@
             "format": "uuid",
             "title": "Id"
           },
-          "member_id": {
+          "member_auth_id": {
             "type": "string",
-            "format": "uuid",
-            "title": "Member Id"
+            "title": "Member Auth Id"
           },
           "created_at": {
             "type": "string",
@@ -58835,7 +60064,7 @@
         "type": "object",
         "required": [
           "id",
-          "member_id",
+          "member_auth_id",
           "created_at",
           "updated_at"
         ],
@@ -62511,7 +63740,8 @@
           }
         },
         "type": "object",
-        "title": "MemberWalletSummary"
+        "title": "MemberWalletSummary",
+        "description": "Aggregate wallet activity for one member in a date window.\n\nConsumed by ``reporting_service`` when building quarterly member reports."
       },
       "NotificationPreferenceResponse": {
         "properties": {
@@ -62960,7 +64190,8 @@
         "required": [
           "share_link"
         ],
-        "title": "ReferralLinkResponse"
+        "title": "ReferralLinkResponse",
+        "description": "Single-field response for the s2s referral-link lookup.\n\nConsumed by ``reporting_service`` when generating wrapped cards that\nembed a member's referral share URL."
       },
       "ReferralStatsResponse": {
         "properties": {
@@ -65765,37 +66996,6 @@
         ],
         "title": "AIPromptTemplateResponse"
       },
-      "AIRequestListResponse": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/AIRequestResponse"
-            },
-            "type": "array",
-            "title": "Items"
-          },
-          "total": {
-            "type": "integer",
-            "title": "Total"
-          },
-          "page": {
-            "type": "integer",
-            "title": "Page"
-          },
-          "page_size": {
-            "type": "integer",
-            "title": "Page Size"
-          }
-        },
-        "type": "object",
-        "required": [
-          "items",
-          "total",
-          "page",
-          "page_size"
-        ],
-        "title": "AIRequestListResponse"
-      },
       "AIRequestResponse": {
         "properties": {
           "id": {
@@ -66237,6 +67437,37 @@
         "title": "CohortComplexityScoringResponse",
         "description": "AI-suggested cohort complexity scores."
       },
+      "PaginatedResponse_AIRequestResponse_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AIRequestResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "PaginatedResponse[AIRequestResponse]"
+      },
       "BulkCompleteRequest": {
         "properties": {
           "slot_ids": {
@@ -66562,6 +67793,335 @@
           "date"
         ],
         "title": "ManualHoursCreate"
+      },
+      "MemberVolunteerProfileResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/VolunteerTier"
+          },
+          "tier_override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VolunteerTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total_hours": {
+            "type": "number",
+            "title": "Total Hours"
+          },
+          "total_sessions_volunteered": {
+            "type": "integer",
+            "title": "Total Sessions Volunteered"
+          },
+          "total_no_shows": {
+            "type": "integer",
+            "title": "Total No Shows"
+          },
+          "total_late_cancellations": {
+            "type": "integer",
+            "title": "Total Late Cancellations"
+          },
+          "reliability_score": {
+            "type": "integer",
+            "title": "Reliability Score"
+          },
+          "recognition_tier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecognitionTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preferred_roles": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred Roles"
+          },
+          "available_days": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Days"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "spotlight_quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spotlight Quote"
+          },
+          "is_featured": {
+            "type": "boolean",
+            "title": "Is Featured",
+            "default": false
+          },
+          "featured_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Featured From"
+          },
+          "featured_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Featured Until"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "member_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Name"
+          },
+          "member_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "member_id",
+          "tier",
+          "total_hours",
+          "total_sessions_volunteered",
+          "total_no_shows",
+          "total_late_cancellations",
+          "reliability_score",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MemberVolunteerProfileResponse",
+        "description": "Self-view variant of VolunteerProfileResponse.\n\nStrict subset that omits `admin_notes` \u2014 the field is a private\ncomment written by an admin about the volunteer (reliability flags,\nsafeguarding observations) and should never reach the member viewing\ntheir own profile via GET/POST/PATCH /volunteer/profile/me.\n\nAdmin-facing routes (`/admin/profiles/*`, `/admin/reliability-report`)\ncontinue to use `VolunteerProfileResponse`."
+      },
+      "MemberVolunteerSlotResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "opportunity_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Opportunity Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SlotStatus"
+          },
+          "claimed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Claimed At"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "cancellation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancellation Reason"
+          },
+          "checked_in_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked In At"
+          },
+          "checked_out_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked Out At"
+          },
+          "hours_logged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours Logged"
+          },
+          "member_feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Feedback"
+          },
+          "member_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "opportunity_id",
+          "member_id",
+          "status",
+          "claimed_at"
+        ],
+        "title": "MemberVolunteerSlotResponse",
+        "description": "Self-view variant of VolunteerSlotResponse.\n\nOmits `admin_notes` \u2014 that's a private operational note from the\nadmin who checked the volunteer in / out (reliability flags, late\narrival, behaviour observations). Member-facing routes (claim,\ncancel-own-slot) return this slim version."
       },
       "MemberVolunteerSummary": {
         "properties": {
@@ -77942,7 +79502,7 @@
         "title": "AudioTrackUpdate",
         "description": "Schema for updating audio track metadata."
       },
-      "Body_register_external_url_api_v1_media_register_url_post": {
+      "Body_register_external_url_media_register_url_post": {
         "properties": {
           "url": {
             "type": "string",
@@ -77996,9 +79556,9 @@
           "url",
           "purpose"
         ],
-        "title": "Body_register_external_url_api_v1_media_register_url_post"
+        "title": "Body_register_external_url_media_register_url_post"
       },
-      "Body_tag_member_in_media_api_v1_media_media__media_id__tags_post": {
+      "Body_tag_member_in_media_media_media__media_id__tags_post": {
         "properties": {
           "member_id": {
             "type": "string",
@@ -78032,9 +79592,9 @@
         "required": [
           "member_id"
         ],
-        "title": "Body_tag_member_in_media_api_v1_media_media__media_id__tags_post"
+        "title": "Body_tag_member_in_media_media_media__media_id__tags_post"
       },
-      "Body_upload_audio_track_api_v1_media_audio_tracks_post": {
+      "Body_upload_audio_track_media_audio_tracks_post": {
         "properties": {
           "file": {
             "type": "string",
@@ -78078,9 +79638,9 @@
           "file",
           "title"
         ],
-        "title": "Body_upload_audio_track_api_v1_media_audio_tracks_post"
+        "title": "Body_upload_audio_track_media_audio_tracks_post"
       },
-      "Body_upload_file_api_v1_media_uploads_post": {
+      "Body_upload_file_media_uploads_post": {
         "properties": {
           "file": {
             "type": "string",
@@ -78130,9 +79690,9 @@
           "file",
           "purpose"
         ],
-        "title": "Body_upload_file_api_v1_media_uploads_post"
+        "title": "Body_upload_file_media_uploads_post"
       },
-      "Body_upload_media_api_v1_media_media_post": {
+      "Body_upload_media_media_media_post": {
         "properties": {
           "file": {
             "type": "string",
@@ -78194,7 +79754,7 @@
         "required": [
           "file"
         ],
-        "title": "Body_upload_media_api_v1_media_media_post"
+        "title": "Body_upload_media_media_media_post"
       },
       "MediaItemResponse": {
         "properties": {

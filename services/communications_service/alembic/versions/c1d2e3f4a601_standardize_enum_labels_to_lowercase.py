@@ -3,6 +3,11 @@
 Revision ID: c1d2e3f4a601
 Revises: 995988fb8afb
 Create Date: 2026-02-22 05:42:00.000000
+
+Hand-written migration — Alembic autogenerate cannot represent enum-label
+rename data migrations. The string-based enum columns are rewritten in
+place from uppercase to lowercase values; idempotent if the row is already
+at the new label.
 """
 
 from alembic import op

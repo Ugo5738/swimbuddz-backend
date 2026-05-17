@@ -3,7 +3,7 @@
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
@@ -54,7 +54,8 @@ async def create_announcement_category(
     existing_result = await db.execute(existing_query)
     if existing_result.scalar_one_or_none():
         raise HTTPException(
-            status_code=400, detail="Category with this name already exists"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Category with this name already exists",
         )
 
     category = AnnouncementCategoryConfig(

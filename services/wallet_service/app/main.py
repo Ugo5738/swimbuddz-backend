@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from libs.common.health import register_health_check
 from services.wallet_service.routers.admin import router as admin_router
 from services.wallet_service.routers.internal import router as internal_router
 from services.wallet_service.routers.member import router as wallet_router
@@ -26,10 +27,7 @@ def create_app() -> FastAPI:
         description="Bubbles wallet and balance management service for SwimBuddz.",
     )
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "ok", "service": "wallet"}
+    register_health_check(app, "wallet")
 
     # Member-facing routes
     # Gateway: /api/v1/wallet/{path} → /wallet/{path}

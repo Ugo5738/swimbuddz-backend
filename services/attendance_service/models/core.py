@@ -70,6 +70,20 @@ class AttendanceRecord(Base):
         UUID(as_uuid=True), nullable=True
     )
 
+    # Pre-booking linkage (A1 Phase 3.3). NULL = walk-in (member signed in
+    # without booking ahead). Set = this attendance row was produced by an
+    # existing SessionBooking in sessions_service — used to compute
+    # no-show stats: AttendanceRecord.status='absent' AND booking_id IS NOT NULL.
+    # Plain UUID, no FK — SessionBooking lives in sessions_service per the
+    # cross-service-no-FK architecture rule. Cleanup of orphan booking_ids
+    # on SessionBooking deletion is handled by HTTP-emitted events
+    # (see services/sessions_service/services/attendance_sync.py).
+    booking_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )

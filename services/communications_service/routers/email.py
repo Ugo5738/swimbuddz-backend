@@ -6,7 +6,6 @@ by calling this API instead of importing email functions directly.
 """
 
 import uuid
-from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -17,13 +16,13 @@ from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.common.emails.core import send_email
 from libs.common.logging import get_logger
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.communications_service.models import MessageLog, MessageRecipientType
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/email", tags=["email"])
-
 
 # ===== SCHEMAS =====
 
@@ -138,7 +137,7 @@ async def send_bulk_emails(
             recipient_count=len(request.to_emails),
             subject=request.subject,
             body=request.body[:1000],  # Truncate for storage
-            sent_at=datetime.now(timezone.utc),
+            sent_at=utc_now(),
         )
         db.add(log)
         await db.commit()
@@ -210,6 +209,16 @@ async def send_templated_email(
             program_name=d.get("program_name", ""),
             cohort_name=d.get("cohort_name", ""),
             start_date=d.get("start_date", ""),
+            # These were previously dropped here even though the template
+            # accepts them (academy mark-paid sends them in template_data):
+            # location/coach now render in the detail box, the installment
+            # block renders for instalment payers, and enrollment_id powers
+            # the deep links in the "Before Your First Session" checklist.
+            location=d.get("location"),
+            coach_name=d.get("coach_name"),
+            is_installment=d.get("is_installment", False),
+            installment_schedule=d.get("installment_schedule"),
+            enrollment_id=d.get("enrollment_id"),
         ),
         "enrollment_reminder": lambda d: academy.send_enrollment_reminder_email(
             to_email=request.to_email,

@@ -20,7 +20,7 @@ from sqlalchemy import DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import Float, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, validates
 
 
 class Payment(Base):
@@ -103,6 +103,36 @@ class Payment(Base):
         suffix = "".join(random.choices(string.digits, k=5))
         return f"PAY-{suffix}"
 
+    # Coerce string assignments on enum columns to the corresponding enum
+    # member. SAEnum handles enum-member → DB-value serialization on write,
+    # but doesn't coerce string → enum on Python-side attribute set — so
+    # `Payment(status="paid")` from a factory or admin tool would leave
+    # `.status` as a bare string and a later `payment.status.value` access
+    # would crash. The validators run on every Python-side set (NOT on ORM
+    # hydration from the DB, which SAEnum handles itself) and accept both
+    # uppercase enum NAMES ("PAID") and lowercase VALUES ("paid").
+    @validates("status")
+    def _coerce_status(self, key, value):
+        if isinstance(value, str):
+            if value in PaymentStatus.__members__:
+                return PaymentStatus[value]
+            try:
+                return PaymentStatus(value)
+            except ValueError:
+                return value
+        return value
+
+    @validates("purpose")
+    def _coerce_purpose(self, key, value):
+        if isinstance(value, str):
+            if value in PaymentPurpose.__members__:
+                return PaymentPurpose[value]
+            try:
+                return PaymentPurpose(value)
+            except ValueError:
+                return value
+        return value
+
     def __repr__(self):
         return f"<Payment {self.reference}>"
 
@@ -160,6 +190,18 @@ class Discount(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
+
+    # See Payment._coerce_status for the rationale.
+    @validates("discount_type")
+    def _coerce_discount_type(self, key, value):
+        if isinstance(value, str):
+            if value in DiscountType.__members__:
+                return DiscountType[value]
+            try:
+                return DiscountType(value)
+            except ValueError:
+                return value
+        return value
 
     def __repr__(self):
         return f"<Discount {self.code}>"
@@ -266,6 +308,18 @@ class CoachPayout(Base):
     def generate_reference() -> str:
         suffix = "".join(random.choices(string.digits, k=6))
         return f"PAYOUT-{suffix}"
+
+    # See Payment._coerce_status for the rationale.
+    @validates("status")
+    def _coerce_status(self, key, value):
+        if isinstance(value, str):
+            if value in PayoutStatus.__members__:
+                return PayoutStatus[value]
+            try:
+                return PayoutStatus(value)
+            except ValueError:
+                return value
+        return value
 
     def __repr__(self):
         return f"<CoachPayout {self.id} {self.period_label} {self.status.value}>"

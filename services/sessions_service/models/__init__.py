@@ -5,6 +5,7 @@ member groupings, not events. Sessions service reads pod data over HTTP
 when needed. See docs/club/POD_OPERATIONS.md.
 """
 
+from services.sessions_service.models.booking import SessionBooking
 from services.sessions_service.models.core import (
     Session,
     SessionBundleCart,
@@ -14,9 +15,16 @@ from services.sessions_service.models.core import (
     SessionTemplate,
     SessionType,
 )
+from services.sessions_service.models.enums import (
+    BookingChannel,
+    SessionBookingStatus,
+)
 
 __all__ = [
+    "BookingChannel",
     "Session",
+    "SessionBooking",
+    "SessionBookingStatus",
     "SessionBundleCart",
     "SessionCoach",
     "SessionLocation",

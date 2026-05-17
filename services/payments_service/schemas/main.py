@@ -119,6 +119,51 @@ class PaymentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MemberPaymentResponse(BaseModel):
+    """Member-facing payment shape.
+
+    Strict subset of `PaymentResponse` — deliberately omits fields that
+    are admin-only or contain operational/integration data that should
+    not leak to the payer:
+
+      * `admin_review_note`     — admin's private comment on the payment
+      * `entitlement_error`     — internal failure string; can leak
+                                  service URLs / stack trace fragments
+      * `payment_metadata`      — contains `provider_payload` (raw
+                                  Paystack response with card BIN/country),
+                                  `paystack.access_code` (could be replayed
+                                  if leaked while a transaction is open),
+                                  `admin_note`, and `fulfillment` retry
+                                  state — all admin/ops data, not for the
+                                  payer.
+
+    Routes that return data to the authenticated owner of the payment
+    (GET /payments/me, POST /payments/paystack/verify/{ref}, POST
+    /payments/{ref}/proof) MUST use this shape. Admin-only routes can
+    keep using `PaymentResponse`.
+    """
+
+    id: uuid.UUID
+    reference: str
+    member_auth_id: str
+    payer_email: Optional[EmailStr] = None
+    purpose: PaymentPurpose
+    amount: float
+    currency: str
+    status: PaymentStatus
+    provider: Optional[str] = None
+    provider_reference: Optional[str] = None
+    payment_method: Optional[str] = None
+    proof_of_payment_media_id: Optional[str] = None
+    proof_of_payment_url: Optional[str] = None
+    paid_at: Optional[datetime] = None
+    entitlement_applied_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class CompletePaymentRequest(BaseModel):
     provider: str = Field(default="paystack", min_length=2, max_length=32)
     provider_reference: Optional[str] = Field(default=None, max_length=128)

@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from libs.common.health import register_health_check
 from services.reporting_service.routers.admin_flywheel import (
     router as admin_flywheel_router,
 )
@@ -26,10 +27,7 @@ def create_app() -> FastAPI:
         description="Quarterly reporting, analytics, and shareable card generation.",
     )
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "ok", "service": "reporting"}
+    register_health_check(app, "reporting")
 
     # Member-facing report routes
     # Gateway: /api/v1/reports/{path} → /reports/{path}

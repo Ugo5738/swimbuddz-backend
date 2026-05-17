@@ -84,6 +84,42 @@ class PayoutResponse(BaseModel):
     updated_at: datetime
 
 
+class CoachPayoutResponse(BaseModel):
+    """Coach-facing view of their own payout.
+
+    Strict subset of `PayoutResponse` that omits the admin-only
+    `admin_notes` field (a private comment about the coach written by
+    the admin who approved/processed the payout — should never reach
+    the coach receiving the payout).
+
+    Used by `coach_router.get("/{payout_id}")`. Admin routes continue
+    to return `PayoutResponse`.
+    """
+
+    id: str
+    coach_member_id: str
+    period_start: datetime
+    period_end: datetime
+    period_label: str
+    academy_earnings: int
+    session_earnings: int
+    other_earnings: int
+    total_amount: int
+    currency: str
+    status: PayoutStatus
+    payout_method: Optional[PayoutMethod] = None
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    paid_at: Optional[datetime] = None
+    payment_reference: Optional[str] = None
+    paystack_transfer_code: Optional[str] = None
+    paystack_transfer_status: Optional[str] = None
+    # admin_notes intentionally omitted (admin-only)
+    failure_reason: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class PayoutListResponse(BaseModel):
     """Paginated list of payouts."""
 

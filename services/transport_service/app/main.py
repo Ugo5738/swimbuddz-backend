@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from libs.common.health import register_health_check
 from services.transport_service.routers.areas import router as areas_router
 from services.transport_service.routers.bookings import router as bookings_router
 from services.transport_service.routers.internal import router as internal_router
@@ -29,10 +30,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "ok", "service": "transport"}
+    register_health_check(app, "transport")
 
     app.include_router(areas_router)
     app.include_router(routes_router)

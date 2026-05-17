@@ -2,11 +2,18 @@
 
 Called by other SwimBuddz services to submit events that may trigger
 automatic Bubble rewards (attendance milestones, topups, etc.).
+
+Gated by `require_service_role` — only callers presenting a valid
+service-role JWT can ingest events. Prevents a misconfigured network
+boundary (or a future gateway proxy that forwards /internal/* paths)
+from letting anonymous callers grant themselves rewards.
 """
 
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from libs.auth.dependencies import require_service_role
+from libs.auth.models import AuthUser
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +36,7 @@ router = APIRouter(prefix="/internal/wallet", tags=["internal-rewards"])
 async def ingest_event(
     body: EventIngestRequest,
     db: AsyncSession = Depends(get_async_db),
+    _service: AuthUser = Depends(require_service_role),
 ):
     """Submit an event for rewards processing.
 

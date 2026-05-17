@@ -11,7 +11,6 @@ Follows the pipeline defined in REWARDS_ENGINE_DESIGN.md Section 3.4:
 
 import logging
 import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select
@@ -23,6 +22,7 @@ from services.wallet_service.models.rewards import (
     RewardRule,
     WalletEvent,
 )
+from libs.common.datetime_utils import utc_now
 from services.wallet_service.services.abuse_detector import check_for_abuse
 from services.wallet_service.services.cap_checker import (
     check_lifetime_cap,
@@ -87,7 +87,7 @@ async def process_event(event: WalletEvent, db: AsyncSession) -> list[dict]:
     if not matching_rules:
         logger.debug("No active rules for event_type=%s", event.event_type)
         event.processed = True
-        event.processed_at = datetime.now(timezone.utc)
+        event.processed_at = utc_now()
         await db.flush()
         return grants
 
@@ -219,7 +219,7 @@ async def process_event(event: WalletEvent, db: AsyncSession) -> list[dict]:
 
     # 8. Mark event as processed
     event.processed = True
-    event.processed_at = datetime.now(timezone.utc)
+    event.processed_at = utc_now()
     event.rewards_granted = len(grants)
     await db.flush()
 

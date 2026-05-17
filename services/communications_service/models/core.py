@@ -289,15 +289,25 @@ class MessageLog(Base):
 
 
 class NotificationPreferences(Base):
-    """Member notification preferences for email and push notifications."""
+    """Member notification preferences for email and push notifications.
+
+    Keyed by `member_auth_id` (Supabase auth ID, stored as a string) to
+    avoid a cross-service ID translation on the notification-dispatch hot
+    path. Matches the convention used in payments_service.Payment.
+
+    Renamed from `member_id: UUID` in May 2026: the original column
+    stored a DB-internal Member.id which couldn't be compared to the
+    Supabase auth_id on the route handler — every read raised
+    AttributeError or returned 404. No production data to preserve.
+    """
 
     __tablename__ = "notification_preferences"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    member_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, unique=True, index=True
+    member_auth_id: Mapped[str] = mapped_column(
+        String, nullable=False, unique=True, index=True
     )
 
     # Email preferences
@@ -338,7 +348,7 @@ class NotificationPreferences(Base):
     )
 
     def __repr__(self):
-        return f"<NotificationPreferences member={self.member_id}>"
+        return f"<NotificationPreferences member_auth_id={self.member_auth_id}>"
 
 
 # ============================================================================

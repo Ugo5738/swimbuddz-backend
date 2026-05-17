@@ -206,7 +206,10 @@ async def suspend_supplier(
         raise HTTPException(status_code=404, detail="Supplier not found")
 
     if supplier.status == SupplierStatus.SUSPENDED:
-        raise HTTPException(status_code=400, detail="Supplier is already suspended")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Supplier is already suspended",
+        )
 
     old_status = supplier.status
     supplier.status = SupplierStatus.SUSPENDED
@@ -247,7 +250,10 @@ async def activate_supplier(
         raise HTTPException(status_code=404, detail="Supplier not found")
 
     if supplier.status == SupplierStatus.ACTIVE:
-        raise HTTPException(status_code=400, detail="Supplier is already active")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Supplier is already active",
+        )
 
     old_status = supplier.status
     supplier.status = SupplierStatus.ACTIVE

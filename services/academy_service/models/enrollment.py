@@ -32,9 +32,13 @@ class Enrollment(Base):
         UUID(as_uuid=True),
         ForeignKey("programs.id"),
         nullable=True,
+        index=True,
     )
     cohort_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("cohorts.id", ondelete="CASCADE"), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("cohorts.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
     member_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True

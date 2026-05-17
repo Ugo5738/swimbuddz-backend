@@ -86,3 +86,13 @@ class AdminReferralProgramStats(BaseModel):
     total_rewarded: int
     conversion_rate: float
     total_bubbles_distributed: int
+
+
+class ReferralLinkResponse(BaseModel):
+    """Single-field response for the s2s referral-link lookup.
+
+    Consumed by ``reporting_service`` when generating wrapped cards that
+    embed a member's referral share URL.
+    """
+
+    share_link: str

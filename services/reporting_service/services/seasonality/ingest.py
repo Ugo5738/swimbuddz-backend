@@ -229,7 +229,7 @@ async def ingest_all_available_months(
     Only ingests months that have already ended (won't ingest the current
     month since it's incomplete).
     """
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     results = []
 
     for month in range(1, 13):

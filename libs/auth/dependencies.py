@@ -1,5 +1,4 @@
 import time
-from datetime import datetime, timezone
 from typing import Annotated, Any, Dict, Optional
 
 import httpx
@@ -11,6 +10,7 @@ from sqlalchemy import text
 
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
+from libs.common.datetime_utils import utc_now
 
 settings = get_settings()
 
@@ -25,7 +25,7 @@ def _service_role_jwt(service_name: str = "internal") -> str:
     Returns:
         JWT token string valid for 60 seconds
     """
-    now = int(datetime.now(tz=timezone.utc).timestamp())
+    now = int(utc_now().timestamp())
     payload = {
         "sub": f"service:{service_name}",
         "email": settings.ADMIN_EMAIL if hasattr(settings, "ADMIN_EMAIL") else None,
@@ -70,6 +70,54 @@ async def _get_jwk_for_kid(kid: str) -> Optional[Dict[str, Any]]:
         if key.get("kid") == kid:
             return key
     return None
+
+
+async def validate_token(token: str) -> AuthUser:
+    """Validate a Supabase JWT string and return the authenticated user.
+
+    Used by callers that receive the token outside the Authorization header
+    (e.g. the MCP server, which takes the token in the request body). Raises
+    401 if the JWT is missing/invalid/expired.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        header = jwt.get_unverified_header(token)
+        alg = header.get("alg", "HS256")
+        if alg.startswith("HS"):
+            key = settings.SUPABASE_JWT_SECRET
+            algorithms = ["HS256"]
+        else:
+            kid = header.get("kid")
+            jwk_key = await _get_jwk_for_kid(kid) if kid else None
+            if not jwk_key:
+                raise credentials_exception
+            key = jwk_key
+            algorithms = [alg]
+        try:
+            payload = jwt.decode(
+                token,
+                key,
+                algorithms=algorithms,
+                audience="authenticated",
+                options={"verify_aud": True},
+            )
+        except JWTError as e:
+            if "audience" in str(e).lower() or "aud" in str(e).lower():
+                payload = jwt.decode(
+                    token,
+                    key,
+                    algorithms=algorithms,
+                    options={"verify_aud": False},
+                )
+            else:
+                raise
+        return AuthUser(**payload)
+    except (JWTError, ValidationError):
+        raise credentials_exception
 
 
 async def get_current_user(

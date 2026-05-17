@@ -7,7 +7,6 @@ not by frontend clients directly.
 from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,8 +28,11 @@ from services.wallet_service.schemas import (
     GrantWelcomeBonusResponse,
     InternalDebitCreditResponse,
     ChallengeCompletionRewardRequest,
+    MemberWalletSummary,
     PoolSubmissionRewardRequest,
+    ReferralLinkResponse,
     WalletCreateRequest,
+    WalletEcosystemStatsResponse,
     WalletResponse,
 )
 from services.wallet_service.services.promotional_service import (
@@ -371,11 +373,6 @@ async def internal_referral_qualify(
 # ---------------------------------------------------------------------------
 
 
-class MemberWalletSummary(BaseModel):
-    bubbles_earned: int = 0
-    bubbles_spent: int = 0
-
-
 @router.get(
     "/member-summary/{member_auth_id}",
     response_model=MemberWalletSummary,
@@ -453,10 +450,6 @@ async def get_member_wallet_summary(
 # ---------------------------------------------------------------------------
 
 
-class ReferralLinkResponse(BaseModel):
-    share_link: str
-
-
 @router.get(
     "/referral-link/{member_auth_id}",
     response_model=ReferralLinkResponse,
@@ -487,20 +480,6 @@ async def get_member_referral_link(
 # and cross-service-user counting (NULL is treated as a single "uncategorized"
 # service per FLYWHEEL_METRICS_DESIGN).
 _UNCATEGORIZED_BUCKET = "uncategorized"
-
-
-class WalletEcosystemStatsResponse(BaseModel):
-    """Aggregate wallet ecosystem stats over a date window.
-
-    Consumed by ``reporting_service.tasks.flywheel._fetch_wallet_ecosystem_aggregates``.
-    """
-
-    active_wallet_users: int = 0
-    single_service_users: int = 0
-    cross_service_users: int = 0
-    total_bubbles_spent: int = 0
-    total_topup_bubbles: int = 0
-    spend_distribution: dict[str, float] = {}
 
 
 @router.get(

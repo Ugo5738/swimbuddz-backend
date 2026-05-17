@@ -5,6 +5,10 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from services.sessions_service.models import SessionLocation, SessionStatus, SessionType
+from services.sessions_service.models._validators import (
+    SessionDiscriminatorError,
+    validate_session_discriminator,
+)
 
 
 class SessionBase(BaseModel):
@@ -35,7 +39,6 @@ class SessionBase(BaseModel):
     # Context links
     cohort_id: Optional[uuid.UUID] = None
     event_id: Optional[uuid.UUID] = None
-    booking_id: Optional[uuid.UUID] = None
     # CLUB sessions can optionally be tied to a specific pod. NULL means
     # a general Club session (open to any Club member). Cross-service
     # ref → members_service.pods.id (no enforced FK).
@@ -47,7 +50,27 @@ class SessionBase(BaseModel):
 
 
 class SessionCreate(SessionBase):
-    pass
+    @model_validator(mode="after")
+    def _enforce_discriminator(self) -> "SessionCreate":
+        """Enforce the session_type → context-FK mapping at API entry.
+
+        See ``services.sessions_service.models._validators`` for the
+        rules. A SQLAlchemy ``before_insert`` listener on the Session
+        model carries the same enforcement so non-API writers can't
+        bypass this.
+        """
+        try:
+            validate_session_discriminator(
+                session_type=self.session_type,
+                cohort_id=self.cohort_id,
+                event_id=self.event_id,
+                pod_id=self.pod_id,
+            )
+        except SessionDiscriminatorError as exc:
+            # Re-raise as ValueError so Pydantic surfaces a 422
+            # validation error with the discriminator message in `detail`.
+            raise ValueError(str(exc)) from exc
+        return self
 
 
 class SessionUpdate(BaseModel):
@@ -73,7 +96,6 @@ class SessionUpdate(BaseModel):
 
     cohort_id: Optional[uuid.UUID] = None
     event_id: Optional[uuid.UUID] = None
-    booking_id: Optional[uuid.UUID] = None
     pod_id: Optional[uuid.UUID] = None
 
     week_number: Optional[int] = None
@@ -119,7 +141,6 @@ class SessionResponse(SessionBase):
             "ride_share_fee": ride_share_fee_kobo / 100.0,
             "cohort_id": obj.cohort_id,
             "event_id": obj.event_id,
-            "booking_id": obj.booking_id,
             "pod_id": getattr(obj, "pod_id", None),
             "week_number": obj.week_number,
             "lesson_title": obj.lesson_title,

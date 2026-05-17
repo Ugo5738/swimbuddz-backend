@@ -15,7 +15,6 @@ from services.payments_service.models.core import (
 from services.payments_service.models.enums import (
     MakeupReason,
     MakeupStatus,
-    PaymentMethod,
     RecurringPayoutStatus,
 )
 
@@ -27,7 +26,6 @@ __all__ = [
     "MakeupReason",
     "MakeupStatus",
     "Payment",
-    "PaymentMethod",
     "PaymentPurpose",
     "PaymentStatus",
     "PayoutMethod",

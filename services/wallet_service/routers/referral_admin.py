@@ -8,6 +8,7 @@ from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.common.service_client import get_member_by_auth_id
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -170,17 +171,13 @@ async def get_referral_leaderboard(
     query = select(ReferralCode).where(ReferralCode.successful_referrals > 0)
 
     if period == "this_month":
-        from datetime import datetime, timezone
-
-        now = datetime.now(timezone.utc)
+        now = utc_now()
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         # For this_month, filter referral codes that had activity this month
         # We use the code's last_used_at as a proxy
         query = query.where(ReferralCode.last_used_at >= month_start)
     elif period == "this_year":
-        from datetime import datetime, timezone
-
-        now = datetime.now(timezone.utc)
+        now = utc_now()
         year_start = now.replace(
             month=1, day=1, hour=0, minute=0, second=0, microsecond=0
         )

@@ -2,13 +2,13 @@
 
 import hashlib
 import uuid
-from datetime import datetime, timezone
 
 from services.media_service.models import MediaItem, MediaTag, SiteAsset
 from services.media_service.schemas import MediaItemResponse, SiteAssetResponse
 from services.media_service.services.storage import storage_service
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from libs.common.datetime_utils import utc_now
 
 
 def _maybe_presign_url(url: str | None) -> str | None:
@@ -48,7 +48,7 @@ def _stable_daily_album_index(album_id: uuid.UUID, item_count: int) -> int:
     if item_count <= 0:
         return 0
 
-    day_key = datetime.now(timezone.utc).date().isoformat()
+    day_key = utc_now().date().isoformat()
     seed = f"{album_id}:{day_key}".encode("utf-8")
     digest = hashlib.sha256(seed).hexdigest()
     return int(digest, 16) % item_count

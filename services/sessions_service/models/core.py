@@ -2,13 +2,24 @@ import uuid
 from datetime import datetime, time
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Time
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Time,
+    event,
+)
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
+from services.sessions_service.models._validators import validate_session_discriminator
 from services.sessions_service.models.enums import (
     SessionLocation,
     SessionStatus,
@@ -25,6 +36,28 @@ class Session(Base):
     """Unified session model for all session types."""
 
     __tablename__ = "sessions"
+
+    # Enforces the session_type → context-FK mapping at the DB level. Python
+    # validation lives in models/_validators.py + a SQLAlchemy event hook;
+    # this is defence-in-depth for raw SQL / migrations / out-of-band writes.
+    # The expression mirrors validate_session_discriminator() exactly.
+    # See docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md for the full
+    # rationale. Phase 3.1 (2026-05-17) trimmed this from six branches to
+    # four after dropping the aspirational ONE_ON_ONE / GROUP_BOOKING types
+    # and the unused booking_id column.
+    __table_args__ = (
+        CheckConstraint(
+            "(session_type = 'cohort_class' AND cohort_id IS NOT NULL "
+            "AND event_id IS NULL AND pod_id IS NULL) "
+            "OR (session_type = 'event' AND event_id IS NOT NULL "
+            "AND cohort_id IS NULL AND pod_id IS NULL) "
+            "OR (session_type = 'club' "
+            "AND cohort_id IS NULL AND event_id IS NULL) "
+            "OR (session_type = 'community' "
+            "AND cohort_id IS NULL AND event_id IS NULL AND pod_id IS NULL)",
+            name="ck_sessions_discriminator",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -101,12 +134,6 @@ class Session(Base):
     )
     # For EVENT sessions
     event_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        nullable=True,
-        index=True,
-    )
-    # For ONE_ON_ONE / GROUP_BOOKING (future booking system)
-    booking_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
         index=True,
@@ -208,8 +235,18 @@ class SessionTemplate(Base):
         default=SessionType.COMMUNITY,
     )
 
-    # Location - string for flexibility (can be predefined or custom)
-    location: Mapped[str] = mapped_column(String, nullable=False)
+    # Location
+    # Preferred: pool_id → references a row in the pools registry
+    # (pools_service). Stored as a plain UUID (no cross-service FK).
+    # Sessions generated from this template inherit pool_id directly.
+    # The legacy `location` string remains for templates created before
+    # the pools registry existed; new templates leave it NULL and rely on
+    # pool_id + location_name instead.
+    pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    location_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Capacity & Fees
     capacity: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
@@ -297,3 +334,29 @@ class SessionBundleCart(Base):
 
     def __repr__(self) -> str:
         return f"<SessionBundleCart {self.id} {len(self.session_ids)} sessions>"
+
+
+# ============================================================================
+# SESSION DISCRIMINATOR ENFORCEMENT
+# ============================================================================
+# The Session table carries a `session_type` enum plus three mutually-exclusive
+# context-FK columns (cohort_id / event_id / pod_id). The
+# `_validators.validate_session_discriminator` function is the single source
+# of truth for the type → FK mapping; it is wired here as a SQLAlchemy
+# before_insert / before_update hook so non-API writers (seed scripts,
+# internal services, MCP tools, ad-hoc scripts) cannot bypass it.
+#
+# Pydantic schemas wire the same validator at API entry so the failure
+# surface is a clean 422 instead of a transactional rollback.
+
+
+@event.listens_for(Session, "before_insert")
+@event.listens_for(Session, "before_update")
+def _validate_session_discriminator_event(mapper, connection, target):
+    """SQLAlchemy hook — reject Session rows with a bad type ↔ FK combo."""
+    validate_session_discriminator(
+        session_type=target.session_type,
+        cohort_id=target.cohort_id,
+        event_id=target.event_id,
+        pod_id=target.pod_id,
+    )

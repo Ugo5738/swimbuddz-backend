@@ -7,7 +7,7 @@ bundle checkout page.
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
+from libs.common.datetime_utils import utc_now
 from services.sessions_service.models import SessionBundleCart
 
 router = APIRouter(prefix="/sessions/bundles", tags=["bundles"])
@@ -77,7 +78,7 @@ async def create_bundle_cart(
         member_auth_id=current_user.user_id,
         session_ids=unique_ids,
         status="open",
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=CART_TTL_HOURS),
+        expires_at=utc_now() + timedelta(hours=CART_TTL_HOURS),
     )
     db.add(cart)
     await db.commit()

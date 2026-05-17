@@ -1,13 +1,13 @@
 """Personal notifications router: CRUD for member notifications + dispatch endpoint."""
 
 import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import require_admin, require_service_role
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +33,6 @@ CATEGORY_TO_EMAIL_PREF: dict[str, str] = {
     "announcements": "email_announcements",
 }
 
-
 # ============================================================================
 # MEMBER-FACING ENDPOINTS
 # ============================================================================
@@ -49,7 +48,7 @@ async def list_notifications(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List notifications for a member, newest first."""
-    now = datetime.now(timezone.utc)
+    now = utc_now()
 
     # Base query: non-expired notifications for this member
     base_where = [
@@ -103,7 +102,7 @@ async def get_unread_count(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get unread notification count for a member."""
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     query = select(func.count(Notification.id)).where(
         Notification.member_id == member_id,
         (Notification.expires_at.is_(None)) | (Notification.expires_at > now),
@@ -131,7 +130,7 @@ async def mark_notification_read(
         raise HTTPException(status_code=404, detail="Notification not found")
 
     if not notification.read_at:
-        notification.read_at = datetime.now(timezone.utc)
+        notification.read_at = utc_now()
         await db.commit()
         await db.refresh(notification)
 
@@ -144,7 +143,7 @@ async def mark_all_notifications_read(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Mark all unread notifications as read for a member."""
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     stmt = (
         update(Notification)
         .where(
@@ -286,7 +285,7 @@ async def cleanup_expired_notifications(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Purge expired notifications."""
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     stmt = delete(Notification).where(
         Notification.expires_at.isnot(None),
         Notification.expires_at <= now,

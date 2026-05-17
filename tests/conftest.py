@@ -484,3 +484,73 @@ async def chat_client(db_session):
     ) as client:
         yield client
     chat_app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def ai_client(db_session):
+    """AsyncClient for the ai service with admin auth."""
+    from services.ai_service.app.main import app as ai_app
+
+    _wire_app(ai_app, db_session)
+    async with AsyncClient(
+        transport=ASGITransport(app=ai_app),
+        base_url="http://test",
+    ) as client:
+        yield client
+    ai_app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def events_client(db_session):
+    """AsyncClient for the events service with admin auth."""
+    from services.events_service.app.main import app as events_app
+
+    _wire_app(events_app, db_session)
+    async with AsyncClient(
+        transport=ASGITransport(app=events_app),
+        base_url="http://test",
+    ) as client:
+        yield client
+    events_app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def media_client(db_session):
+    """AsyncClient for the media service with admin auth."""
+    from services.media_service.app.main import app as media_app
+
+    _wire_app(media_app, db_session)
+    async with AsyncClient(
+        transport=ASGITransport(app=media_app),
+        base_url="http://test",
+    ) as client:
+        yield client
+    media_app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def transport_client(db_session):
+    """AsyncClient for the transport service with admin auth."""
+    from services.transport_service.app.main import app as transport_app
+
+    _wire_app(transport_app, db_session)
+    async with AsyncClient(
+        transport=ASGITransport(app=transport_app),
+        base_url="http://test",
+    ) as client:
+        yield client
+    transport_app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def volunteer_client(db_session):
+    """AsyncClient for the volunteer service with admin auth."""
+    from services.volunteer_service.app.main import app as volunteer_app
+
+    _wire_app(volunteer_app, db_session)
+    async with AsyncClient(
+        transport=ASGITransport(app=volunteer_app),
+        base_url="http://test",
+    ) as client:
+        yield client
+    volunteer_app.dependency_overrides.clear()

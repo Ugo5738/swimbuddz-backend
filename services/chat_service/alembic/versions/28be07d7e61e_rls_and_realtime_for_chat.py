@@ -4,6 +4,9 @@ Revision ID: 28be07d7e61e
 Revises: 8538d428974f
 Create Date: 2026-05-06 09:31:07.940427
 
+Hand-written migration — Alembic autogenerate cannot represent RLS policy
+or Realtime publication changes. The body uses raw SQL via ``op.execute``.
+
 Enables Row-Level Security on chat tables so Supabase Realtime subscribers
 only see channels they belong to, then adds the streamable tables to the
 ``supabase_realtime`` publication.

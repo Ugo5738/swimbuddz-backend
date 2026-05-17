@@ -291,7 +291,7 @@ async def test_mark_paid_updates_non_installment_enrollment(academy_client, db_s
     enrollment_id = create_response.json()["id"]
 
     with patch(
-        "services.academy_service.routers.enrollments.get_member_by_id",
+        "services.academy_service.routers.enrollments.admin_payments.get_member_by_id",
         new_callable=AsyncMock,
         return_value={
             "id": str(member.id),

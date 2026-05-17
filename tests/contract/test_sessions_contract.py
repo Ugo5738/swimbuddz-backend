@@ -88,6 +88,77 @@ async def test_session_ids_for_cohort_contract(sessions_client, db_session):
     assert all(isinstance(item, str) for item in data)
 
 
+# ---------------------------------------------------------------------------
+# Error-path contracts (review finding FU7).
+#
+# Other services don't just depend on the *success* shape — they depend
+# on the *error* shape. academy_service / attendance_service branch on
+# 404 ("session/cohort gone") vs 5xx ("sessions_service down"), and the
+# payments SESSION_BOOKING entitlement handler maps a 404 from the
+# confirm endpoint to a 409 manual-refund (a 500 there would silently
+# break the money path). These pin those error contracts so a refactor
+# that turns a 404 into a 500/422 fails here first.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.contract
+async def test_session_by_id_missing_is_404_contract(sessions_client):
+    """Unknown session → clean 404, never 500. academy_service /
+    attendance_service / payments distinguish 'gone' from 'service
+    down' on this status code."""
+    import uuid
+
+    response = await sessions_client.get(f"/internal/sessions/{uuid.uuid4()}")
+    assert response.status_code == 404, response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.contract
+async def test_next_session_none_is_404_contract(sessions_client):
+    """No upcoming session for a cohort → 404 (not 200/null, not 500).
+    academy cohort dashboards branch on this to show 'no session yet'."""
+    import uuid
+
+    response = await sessions_client.get(
+        f"/internal/sessions/cohorts/{uuid.uuid4()}/next-session"
+    )
+    assert response.status_code == 404, response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.contract
+async def test_session_ids_unknown_cohort_is_empty_not_404_contract(
+    sessions_client,
+):
+    """Unknown cohort → 200 + []. academy_service iterates this list
+    directly, so a 404 here would break cohort queries — the empty-list
+    contract must hold even when the cohort has no sessions."""
+    import uuid
+
+    response = await sessions_client.get(
+        f"/internal/sessions/cohorts/{uuid.uuid4()}/session-ids"
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.contract
+async def test_confirm_unknown_booking_is_404_contract(sessions_client):
+    """POST confirm for an unknown booking → 404. The payments
+    SESSION_BOOKING entitlement handler relies on exactly this: 404 →
+    409 manual-refund. A 500/422 here would mis-handle a cleared
+    payment (the money path)."""
+    import uuid
+
+    response = await sessions_client.post(
+        f"/internal/sessions/bookings/{uuid.uuid4()}/confirm",
+        json={},
+    )
+    assert response.status_code == 404, response.text
+
+
 @pytest.mark.asyncio
 @pytest.mark.contract
 async def test_scheduled_sessions_contract(sessions_client, db_session):

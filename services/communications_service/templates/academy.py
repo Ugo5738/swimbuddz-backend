@@ -4,6 +4,7 @@ Academy-related email templates.
 
 from typing import Optional
 
+from libs.common.config import get_settings
 from libs.common.emails.core import send_email
 from services.communications_service.templates.base import (
     GRADIENT_AMBER,
@@ -18,6 +19,8 @@ from services.communications_service.templates.base import (
     wrap_html,
 )
 
+settings = get_settings()
+
 
 async def send_enrollment_confirmation_email(
     to_email: str,
@@ -30,13 +33,31 @@ async def send_enrollment_confirmation_email(
     is_installment: bool = False,
     installment_deposit: Optional[str] = None,
     installment_schedule: Optional[list[str]] = None,
+    enrollment_id: Optional[str] = None,
 ) -> bool:
     """
     Send enrollment confirmation email to a member.
     Includes program details, before-you-start checklist, and installment
     schedule when the member is paying in instalments.
+
+    When `enrollment_id` is provided the "Before Your First Session"
+    checklist items become deep links: the curriculum / prep-materials
+    items point at the member's enrollment dashboard
+    (/account/academy/enrollments/{id}) and the schedule item points at
+    /sessions. Without it the items render as plain text (defensive — the
+    email should still send if a caller omits the id).
     """
     subject = f"Welcome to {program_name}! Your enrollment is confirmed."
+
+    frontend = settings.FRONTEND_URL.rstrip("/")
+    # Curriculum + prep materials both live on the enrollment dashboard
+    # (there is no dedicated resources route — see onboarding.py).
+    dashboard_url = (
+        f"{frontend}/account/academy/enrollments/{enrollment_id}"
+        if enrollment_id
+        else None
+    )
+    sessions_url = f"{frontend}/sessions"
 
     # Build plain-text installment note
     installment_note = ""
@@ -50,6 +71,19 @@ async def send_enrollment_confirmation_email(
     location_line = f"Location: {location}\n" if location else ""
     coach_line = f"Coach: {coach_name}\n" if coach_name else ""
 
+    # Plain-text variant: append bare URLs after the relevant lines so
+    # text-only mail clients (which auto-linkify URLs) still get a tappable
+    # target. When enrollment_id is missing we drop the dashboard URL line.
+    dashboard_text = f"\n  {dashboard_url}" if dashboard_url else ""
+    curriculum_line = (
+        f"- Review the program curriculum on your Academy dashboard{dashboard_text}"
+    )
+    schedule_line = f"- Check the session schedule and add sessions to your calendar\n  {sessions_url}"
+    prep_line = (
+        f"- Explore prep materials and learning resources in the Academy section"
+        f"{dashboard_text}"
+    )
+
     body = f"""Hi {member_name},
 
 Congratulations! Your enrollment in the SwimBuddz Academy has been confirmed.
@@ -60,9 +94,9 @@ Start Date: {start_date}
 {location_line}{coach_line}{installment_note}
 Before your first session:
 - Pack your swim gear: swimsuit, goggles, towel, and swim cap
-- Review the program curriculum on your Academy dashboard
-- Check the session schedule and add sessions to your calendar
-- Explore prep materials and learning resources in the Academy section
+{curriculum_line}
+{schedule_line}
+{prep_line}
 
 If you have any questions, please reach out to our team.
 
@@ -107,9 +141,31 @@ See you in the water!
             "Before Your First Session",
             [
                 "Pack your swim gear: swimsuit, goggles, towel, and swim cap",
-                "Review the program curriculum on your Academy dashboard",
-                "Check the session schedule and add sessions to your calendar",
-                "Explore prep materials and learning resources in the Academy section",
+                # checklist_box renders each item as raw HTML (no escaping),
+                # so anchor tags are safe here. Underline+colour the linked
+                # phrase only; fall back to plain text when there's no
+                # enrollment_id to build the dashboard URL.
+                (
+                    "Review the program curriculum on your "
+                    f'<a href="{dashboard_url}" style="color:#0891b2;">'
+                    "Academy dashboard</a>"
+                    if dashboard_url
+                    else "Review the program curriculum on your Academy dashboard"
+                ),
+                (
+                    'Check the <a href="'
+                    f'{sessions_url}" style="color:#0891b2;">session schedule</a>'
+                    " and add sessions to your calendar"
+                ),
+                (
+                    "Explore "
+                    f'<a href="{dashboard_url}" style="color:#0891b2;">'
+                    "prep materials and learning resources</a>"
+                    " in the Academy section"
+                    if dashboard_url
+                    else "Explore prep materials and learning resources "
+                    "in the Academy section"
+                ),
             ],
         )
         + "<p>If you have any questions, please reach out to our team.</p>"

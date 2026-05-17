@@ -83,6 +83,27 @@ async def sign_in_to_session(session_id: UUID, member_id: UUID) -> SessionAttend
 - Dependencies:
   - `get_async_db()` (or equivalent) returns an async SQLAlchemy session.
   - `get_current_user()` / `require_admin()` enforce auth/roles.
+- **Health check** — every service registers its `/health` endpoint via `libs.common.health.register_health_check(app, "<service_name>")`. Do not hand-define the handler.
+- **Pagination** — list endpoints that paginate use `libs.common.pagination.PaginatedResponse[T]` as the response model and the `pagination_params` FastAPI dependency + `paginate(db, query, pagination)` helper. See `services/ai_service/routers/member.py::list_ai_requests` for the reference implementation.
+
+### Router prefix convention
+
+Two valid patterns exist in the codebase; both work. Pick one per service and apply it consistently:
+
+1. **Prefix in the router** (members_service style):
+   ```python
+   router = APIRouter(prefix="/members", tags=["members"])
+   ...
+   app.include_router(router)
+   ```
+2. **Prefix at include_router** (academy_service style):
+   ```python
+   router = APIRouter(tags=["academy"])
+   ...
+   app.include_router(router, prefix="/academy")
+   ```
+
+When **adding a new service**, prefer pattern (1) — routes self-describe their path, which makes them easier to grep for. Don't mix the two patterns inside one service.
 
 Example:
 
@@ -119,12 +140,24 @@ class Member(Base):
 
 ## 6. Pydantic v2 Usage
 
-- Define schemas under `schemas/`.
+- Define schemas under `schemas/` (package per service; never inline a response model in a router file).
 - Set `model_config = ConfigDict(from_attributes=True)` (or `Config.from_attributes = True`).
 - When applying partial updates, call `model_dump(exclude_unset=True)`.
 
+### Naming convention
+
+| Suffix | Use for | Examples |
+|---|---|---|
+| `<Entity>Response` | Outbound resource representations. The canonical "this is what we return" name. | `MemberResponse`, `CohortResponse`, `PaymentResponse` |
+| `<Entity>Create` | Inbound resource creation payloads on POST. | `MemberCreate`, `EnrollmentCreate` |
+| `<Entity>Update` | Inbound resource update payloads on PATCH/PUT. | `MemberUpdate`, `CohortUpdate` |
+| `<Entity>Request` | Inbound *action* payloads — when the body describes an operation rather than a resource. | `DebitRequest`, `BalanceCheckRequest`, `ApprovalAction` |
+| `<Entity>Input` | Nested sub-payloads of a Create/Update body. | `MemberProfileInput`, `MemberAvailabilityInput` |
+
+Avoid the `XRead` suffix — use `XResponse`. Avoid `XCreateRequest` / `XUpdateRequest` — use `XCreate` / `XUpdate`.
+
 ```python
-class MemberRead(BaseModel):
+class MemberResponse(BaseModel):
     id: UUID
     full_name: str
     email: EmailStr
@@ -140,13 +173,42 @@ class MemberRead(BaseModel):
 - Never leak raw exceptions to clients.
 - Keep error messages concise and actionable.
 
+### Status code selection
+
+| Status | When to use |
+|---|---|
+| **400** Bad Request | The request itself is malformed — wrong shape, bad JSON, missing required field that Pydantic wouldn't catch, type mismatch, free-text field over the allowed length, etc. |
+| **401** Unauthorized | Missing / invalid auth credentials. |
+| **403** Forbidden | Credentials are valid but the caller lacks the required role. |
+| **404** Not Found | The target row doesn't exist. |
+| **409** Conflict | The request is valid but conflicts with the current state of the resource. Almost any "already X" — *already exists*, *already enrolled*, *already published*, *already paid* — is 409. |
+| **422** Unprocessable Entity | The request is well-formed and the resource exists, but a business rule rejects the operation. "Cannot X in state Y", "is not active", "has expired", "cannot reduce below 0", "config is not active". |
+| **5xx** | Server failures only. Never wrap a business-rule rejection in a 500. |
+
 ```python
+# 409 — already-X conflicts
 if existing_member:
     raise HTTPException(
-        status_code=400,
+        status_code=status.HTTP_409_CONFLICT,
         detail="Member already exists for this Supabase user.",
     )
+
+# 422 — well-formed but rejected by business rule
+if not config.is_active:
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail="Recurring-payout config is not active.",
+    )
+
+# 400 — malformed input
+if date_from > date_to:
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="`from` must be <= `to`.",
+    )
 ```
+
+Use `status.HTTP_*` constants (`from fastapi import status`) instead of bare numbers when the status code is non-obvious.
 
 ---
 
@@ -179,3 +241,102 @@ if existing_member:
 
 - Endpoints defined in `API_CONTRACT.md` are stable for this iteration.
 - Avoid breaking changes; if unavoidable, add a new versioned path and document the migration plan.
+
+---
+
+## 12. File Size Limits
+
+Large files hurt review velocity, IDE responsiveness, AI assistance, and test isolation. We aim for files that fit on one screen end-to-end and split anything beyond that into focused modules.
+
+**Targets (whole-file line counts):**
+
+| File kind | Soft target | Hard cap |
+|---|---:|---:|
+| Router (`services/*/routers/*.py`) | 500 | 800 |
+| Model (`services/*/models/*.py`) | 400 | 600 |
+| Schema (`services/*/schemas/*.py`) | 500 | 800 |
+| Service / domain logic (`services/*/services/*.py`) | 500 | 800 |
+| Shared library (`libs/**/*.py`, `mcp/**/*.py`) | 600 | 1000 |
+
+**Excluded from these limits** (do not flag, do not split):
+
+- Alembic migrations (`services/*/alembic/versions/`) — generated.
+- Seed data (`scripts/seed/*.py`) — data, not logic.
+- Email / notification templates (`services/*/templates/*.py`) — copy-heavy.
+- Tests — split by what they cover, not by line count.
+
+**How to split when you hit the cap:**
+
+- **Routers** — split by sub-resource and `include_router` from `app/main.py`. Example: `routers/payments/intents.py`, `routers/payments/webhooks.py`, `routers/payments/refunds.py` rather than one 2,000-line `intents.py`.
+- **Models** — split by aggregate root (`models/enrollment.py`, `models/cohort.py`) and re-export from `models/__init__.py`.
+- **Schemas** — split alongside the matching model file (`schemas/enrollment.py` mirrors `models/enrollment.py`).
+- **Shared libraries** — split by responsibility; if `service_client.py` is 1,000+ lines, it's doing too many things.
+
+### 12.1 The split pattern (single canonical form)
+
+**Convert the file to a package directory of the same name.** The original `<name>.py` is replaced by `<name>/__init__.py` exposing the same public names; the split content lives in sibling files inside the package.
+
+This is the only pattern we use. Picking one form removes context-dependent judgment and makes every split look identical.
+
+Why this form:
+
+1. **Public import path is preserved exactly.** `from X.Y.foo import Bar` keeps working whether `foo` is a `.py` file or a `foo/` package — Python resolves them identically. No consumer changes.
+2. **The original filename survives as a namespace** — `foo/` makes it obvious where the code originated. Submodule files cluster with their natural cohort, not scattered across the parent directory.
+3. **Scales without crowding.** Splitting `routers/admin.py` into `routers/admin/` doesn't add 6 new files to `routers/`. The parent directory stays the same size; each split adds exactly one directory.
+4. **Sibling files inside the package can be ergonomic.** `from .foo.program import ProgramBase` is one segment longer than the equivalent flat layout, but the namespace makes the relationship explicit.
+
+**Example layout** (`services/members_service/routers/admin/`):
+
+```
+admin/
+├── __init__.py     # creates the prefixed router, includes each sub-router
+├── _shared.py      # private helpers used by multiple sub-routers
+├── approval.py     # one sub-router
+├── community.py    # one sub-router
+├── …
+```
+
+**Example layout for schemas with a `main.py` catch-all** (`services/academy_service/schemas/main/`):
+
+```
+schemas/
+├── __init__.py            # aggregator (unchanged from before the split)
+├── coach_assignment.py    # pre-existing peer (not in scope for the split)
+├── curriculum.py          # pre-existing peer
+├── main/                  # the split lives here
+│   ├── __init__.py        # was main.py; re-exports every class
+│   ├── program.py
+│   ├── cohort.py
+│   └── …
+└── self_enroll.py
+```
+
+The public path `from services.academy_service.schemas.main import ProgramBase` works identically before and after.
+
+The aggregator (`__init__.py`) is the only file that needs to change shape: it gathers the sub-files and exposes the public surface. Everything else is `git mv`.
+
+### 12.2 Internal naming + structure (applies to both patterns)
+
+- **Private files** start with `_`: `_shared.py` (helpers), `_schemas.py` (Pydantic shapes used by multiple submodules), `_helpers.py` (pure functions + constants), `_constants.py` (literals only), `_milestones.py` etc. for narrowly-scoped private modules.
+- **Sub-routers** are declared as `router = APIRouter()` **without a prefix** (a `tags=` argument is fine — it only affects OpenAPI grouping). The aggregator's `__init__.py` declares the prefixed router (`router = APIRouter(prefix="/coaches", ...)`) and calls `router.include_router(_submodule.router)` once per sub-router.
+- **Aggregator import style depends on what the submodules expose:**
+  - **Router packages** (every submodule exports its own `router`) use `from . import submodule as _submodule` so the aggregator can call `_submodule.router.include_router(...)` without name collisions when multiple submodules each declare `router`.
+  - **Schema packages** (submodules export classes, no `router`) use `from .submodule import (ClassA, ClassB, ...)` to re-export the classes into the package namespace.
+- **Cross-submodule imports** use relative paths: `from ._shared import X`, `from ._schemas import Y`. External imports remain absolute.
+- **Route ordering matters** when sub-routers carry routes that could match the same path under different segment counts. If any sub-router has a `/{member_id}` catch-all, sub-routers with static-prefix routes (`/active`, `/search`, etc.) MUST be `include_router`'d first. Document this in the aggregator's docstring (see `routers/internal/__init__.py` for an example).
+- **`__all__`** in the aggregator lists exactly what callers can import. For schema shims, list every re-exported class. For router packages, list `router` (and `admin_router` if applicable).
+
+### 12.3 Verification ritual (do all four, in order, every time)
+
+1. **AST byte-equality** of every top-level function/class against `git show HEAD:<original-path>`. Any divergence beyond cosmetic Unicode escaping is a bug; investigate before continuing.
+2. **`python3 -m py_compile`** every new file. Catches indent and import-name typos that AST equality can't.
+3. **`docker compose restart <service> gateway`** — wait for `Application startup complete` in the logs. A boot failure here means a runtime import or initialization bug.
+4. **Integration tests + endpoint smoke** for the affected service. Hit at least one endpoint per public sub-router via the gateway to confirm route registration and prefix wiring. Compare OpenAPI route count before/after — should be exactly equal.
+
+**Enforcement:**
+
+```bash
+bash scripts/lint/check_file_sizes.sh
+```
+
+Prints every file in violation, classified `[soft]` or `[HARD]`. The script is non-blocking (always exits 0); treat results as a backlog. Once the hard-cap list is empty, wire the script into CI with `exit 1` on hard violations.

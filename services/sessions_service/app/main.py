@@ -3,6 +3,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from libs.common.health import register_health_check
+from services.sessions_service.routers.bookings import router as bookings_router
 from services.sessions_service.routers.bundles import router as bundles_router
 from services.sessions_service.routers.internal import router as internal_router
 from services.sessions_service.routers.member import router as sessions_router
@@ -32,10 +34,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    @app.get("/health", tags=["system"])
-    async def health_check() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "ok", "service": "sessions"}
+    register_health_check(app, "sessions")
 
     # Include routers
     # Register templates router with  full path to avoid trailing slash issues
@@ -44,6 +43,10 @@ def create_app() -> FastAPI:
     # Bundles must be registered BEFORE sessions_router — its /sessions/bundles path
     # would otherwise be swallowed by the sessions_router's /sessions/{id} matcher.
     app.include_router(bundles_router)
+    # Bookings (book / cancel / confirm / admin list) — register before
+    # sessions_router for the same reason: /sessions/bookings/* and
+    # /sessions/{id}/book would otherwise hit the {id} catch-all first.
+    app.include_router(bookings_router)
     app.include_router(sessions_router)
 
     # Internal service-to-service endpoints (not exposed via gateway)

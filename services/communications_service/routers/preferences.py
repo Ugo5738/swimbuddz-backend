@@ -1,10 +1,28 @@
-"""
-Notification preferences router for the Communications Service.
+"""Notification preferences for the communications service.
+
+Settings rows are keyed by `member_auth_id` (Supabase auth ID stored as a
+string), matching the convention used by payments_service. The previous
+`member_id: UUID` design compared two unrelated UUIDs (DB-internal
+Member.id vs auth_id) and could never match — every read returned 404
+or raised AttributeError on the broken `current_user.id` access.
+
+Removed in this revision:
+
+  * `GET /preferences/{member_id}` — used `current_user.id` (non-existent)
+    AND compared `member_id` to it (wrong UUID type). Never worked. The
+    self-access case is covered by `/me`; the admin case will return as
+    a separate `require_admin`-gated endpoint when there's a real
+    admin-tooling use case.
+
+  * `POST /preferences/check-opt-in` — was publicly exposed via the
+    gateway with NO auth dependency at all, accepting an arbitrary
+    `member_id` query param. Zero internal callers in the codebase.
+    If other services need to check opt-in before sending, add a new
+    internal endpoint gated by `require_service_role` with an explicit
+    caller list.
 """
 
-import uuid
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
@@ -19,29 +37,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter(prefix="/preferences", tags=["preferences"])
 
 
+async def _get_or_create_prefs(
+    auth_id: str, db: AsyncSession
+) -> NotificationPreferences:
+    """Return the prefs row for `auth_id`, creating defaults on first read."""
+    result = await db.execute(
+        select(NotificationPreferences).where(
+            NotificationPreferences.member_auth_id == auth_id
+        )
+    )
+    prefs = result.scalar_one_or_none()
+    if prefs is None:
+        prefs = NotificationPreferences(member_auth_id=auth_id)
+        db.add(prefs)
+        await db.commit()
+        await db.refresh(prefs)
+    return prefs
+
+
 @router.get("/me", response_model=NotificationPreferencesResponse)
 async def get_my_preferences(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """
-    Get the current user's notification preferences.
-    Creates default preferences if none exist.
-    """
-    query = select(NotificationPreferences).where(
-        NotificationPreferences.member_id == current_user.id
-    )
-    result = await db.execute(query)
-    prefs = result.scalar_one_or_none()
+    """Get the current user's notification preferences.
 
-    if not prefs:
-        # Create default preferences for this user
-        prefs = NotificationPreferences(member_id=current_user.id)
-        db.add(prefs)
-        await db.commit()
-        await db.refresh(prefs)
-
-    return prefs
+    Creates a row with all-defaults the first time a member accesses
+    their preferences. Subsequent calls return the persisted row.
+    """
+    return await _get_or_create_prefs(current_user.user_id, db)
 
 
 @router.patch("/me", response_model=NotificationPreferencesResponse)
@@ -50,104 +74,14 @@ async def update_my_preferences(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """
-    Update the current user's notification preferences.
-    """
-    query = select(NotificationPreferences).where(
-        NotificationPreferences.member_id == current_user.id
-    )
-    result = await db.execute(query)
-    prefs = result.scalar_one_or_none()
+    """Update the current user's notification preferences.
 
-    if not prefs:
-        # Create with provided values
-        prefs = NotificationPreferences(
-            member_id=current_user.id,
-            **updates.model_dump(exclude_unset=True),
-        )
-        db.add(prefs)
-    else:
-        # Update existing
-        for field, value in updates.model_dump(exclude_unset=True).items():
-            setattr(prefs, field, value)
-
+    Only fields included in the request body are written; unset fields
+    keep their current value. Auto-creates the row if it doesn't exist.
+    """
+    prefs = await _get_or_create_prefs(current_user.user_id, db)
+    for field, value in updates.model_dump(exclude_unset=True).items():
+        setattr(prefs, field, value)
     await db.commit()
     await db.refresh(prefs)
-
     return prefs
-
-
-@router.get("/{member_id}", response_model=NotificationPreferencesResponse)
-async def get_member_preferences(
-    member_id: uuid.UUID,
-    current_user: AuthUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """
-    Get notification preferences for a specific member.
-    Admin only or self-access.
-    """
-    # Check authorization - admin or self
-    if current_user.id != member_id and current_user.role not in ["admin", "service"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only view your own notification preferences",
-        )
-
-    query = select(NotificationPreferences).where(
-        NotificationPreferences.member_id == member_id
-    )
-    result = await db.execute(query)
-    prefs = result.scalar_one_or_none()
-
-    if not prefs:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Notification preferences not found for this member",
-        )
-
-    return prefs
-
-
-@router.post("/check-opt-in")
-async def check_notification_opt_in(
-    member_id: uuid.UUID,
-    notification_type: str,  # e.g., "email_announcements", "push_session_reminders"
-    db: AsyncSession = Depends(get_async_db),
-):
-    """
-    Check if a member has opted in for a specific notification type.
-    Used by other services before sending notifications.
-    """
-    query = select(NotificationPreferences).where(
-        NotificationPreferences.member_id == member_id
-    )
-    result = await db.execute(query)
-    prefs = result.scalar_one_or_none()
-
-    # If no preferences exist, use defaults (all true except marketing)
-    if not prefs:
-        # Default preferences
-        defaults = {
-            "email_announcements": True,
-            "email_session_reminders": True,
-            "email_academy_updates": True,
-            "email_payment_receipts": True,
-            "email_coach_messages": True,
-            "email_marketing": False,
-            "email_birthday": True,
-            "push_announcements": True,
-            "push_session_reminders": True,
-            "push_academy_updates": True,
-            "push_coach_messages": True,
-            "weekly_digest": True,
-        }
-        opted_in = defaults.get(notification_type, True)
-    else:
-        opted_in = getattr(prefs, notification_type, True)
-
-    return {
-        "member_id": str(member_id),
-        "notification_type": notification_type,
-        "opted_in": opted_in,
-    }

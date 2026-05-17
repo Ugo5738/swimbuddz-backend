@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
@@ -12,6 +11,7 @@ from jose import jwt
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
+from libs.common.datetime_utils import utc_now
 from pydantic import BaseModel
 from services.gateway_service.app import clients
 
@@ -56,7 +56,7 @@ def _parse_service_json(response: httpx.Response | None) -> Dict[str, Any] | Non
 
 
 def _service_role_token() -> str:
-    now = int(datetime.now(tz=timezone.utc).timestamp())
+    now = int(utc_now().timestamp())
     payload = {
         "sub": "service:gateway",
         "email": settings.ADMIN_EMAIL,

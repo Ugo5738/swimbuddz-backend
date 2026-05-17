@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from libs.common.config import get_settings
+from libs.common.health import register_health_check
 
 from services.media_service.routers.albums import router as albums_router
 from services.media_service.routers.assets import router as assets_router
@@ -32,8 +33,4 @@ app.include_router(media_router)
 app.include_router(assets_router)
 app.include_router(audio_router)
 
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy", "service": "media"}
+register_health_check(app, "media")

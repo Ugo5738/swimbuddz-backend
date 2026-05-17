@@ -159,6 +159,17 @@ class SessionFactory:
                     return enum_cls(val)
             return val
 
+        # Discriminator parity (A1 Phase 1): a Session with a context FK
+        # must carry the matching session_type or the model-level
+        # validator rejects it on flush. If the caller supplied a
+        # context FK but no explicit session_type, infer the valid one
+        # so `SessionFactory.create(cohort_id=...)` "just works".
+        if "session_type" not in overrides:
+            if overrides.get("cohort_id") is not None:
+                overrides["session_type"] = SessionType.COHORT_CLASS
+            elif overrides.get("event_id") is not None:
+                overrides["session_type"] = SessionType.EVENT
+
         if "session_type" in overrides:
             overrides["session_type"] = _to_enum(overrides["session_type"], SessionType)
         if "status" in overrides:
@@ -237,6 +248,13 @@ class CohortFactory:
     def create(program_id=None, **overrides):
         from services.academy_service.models import Cohort, CohortStatus, LocationType
 
+        # Pass the lowercase `.value` strings directly. The Cohort model
+        # has @validates hooks on `status` and `location_type` that coerce
+        # incoming strings (both uppercase NAMES like "OPEN" and lowercase
+        # VALUES like "open") into the proper enum member on Python-side
+        # assignment. That keeps the factory simple AND lets route
+        # handlers safely read `cohort.status.value` from the in-memory
+        # identity-map row.
         start = _tomorrow()
         defaults = {
             "id": _uuid(),
@@ -246,9 +264,9 @@ class CohortFactory:
             "end_date": start + timedelta(weeks=12),
             "capacity": 20,
             "timezone": "Africa/Lagos",
-            "location_type": LocationType.POOL,
+            "location_type": LocationType.POOL.value,
             "location_name": "Sunfit Pool",
-            "status": CohortStatus.OPEN,
+            "status": CohortStatus.OPEN.value,
             "allow_mid_entry": False,
             "mid_entry_cutoff_week": 2,
             "require_approval": False,

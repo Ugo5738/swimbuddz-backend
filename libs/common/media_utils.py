@@ -52,7 +52,7 @@ async def resolve_media_urls(
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.post(
-                f"{settings.MEDIA_SERVICE_URL}/api/v1/media/urls",
+                f"{settings.MEDIA_SERVICE_URL}/media/urls",
                 json=[str(mid) for mid in valid_ids],
             )
             response.raise_for_status()

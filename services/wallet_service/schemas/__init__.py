@@ -46,6 +46,7 @@ from services.wallet_service.schemas.referral import (  # noqa: F401
     ReferralCodeResponse,
     ReferralCodeValidateResponse,
     ReferralHistoryItem,
+    ReferralLinkResponse,
     ReferralStatsResponse,
 )
 from services.wallet_service.schemas.rewards import (  # noqa: F401
@@ -90,13 +91,17 @@ from services.wallet_service.schemas.transaction import (  # noqa: F401
     TransactionResponse,
 )
 from services.wallet_service.schemas.wallet import (  # noqa: F401
+    MemberWalletSummary,
     WalletCreateRequest,
+    WalletEcosystemStatsResponse,
     WalletResponse,
 )
 
 __all__ = [
     # Wallet
+    "MemberWalletSummary",
     "WalletCreateRequest",
+    "WalletEcosystemStatsResponse",
     "WalletResponse",
     # Transaction
     "CreditRequest",
@@ -144,6 +149,7 @@ __all__ = [
     "ReferralCodeResponse",
     "ReferralCodeValidateResponse",
     "ReferralHistoryItem",
+    "ReferralLinkResponse",
     "ReferralStatsResponse",
     # Rewards
     "AdminEventSubmitRequest",

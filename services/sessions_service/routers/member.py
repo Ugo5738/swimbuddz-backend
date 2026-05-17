@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 
 import httpx
@@ -84,7 +84,7 @@ async def get_session_stats(
     """
     Get session statistics.
     """
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     query = select(func.count(Session.id)).where(Session.starts_at > now)
     result = await db.execute(query)
     upcoming_sessions_count = result.scalar_one() or 0

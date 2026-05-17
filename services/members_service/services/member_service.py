@@ -5,10 +5,11 @@ Pure functions with no database dependencies for easy testing.
 All datetime operations use timezone-aware UTC datetimes.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from dateutil.relativedelta import relativedelta
+from libs.common.datetime_utils import utc_now
 
 # Tier priority for sorting and comparison
 TIER_PRIORITY = {"academy": 3, "club": 2, "community": 1}
@@ -43,7 +44,7 @@ def normalize_member_tiers(
 
     Returns (primary_tier, tiers_list, changed_flag).
     """
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     tiers: set[str] = set()
 
     if academy_paid_until and academy_paid_until > now:
@@ -84,7 +85,7 @@ def calculate_community_expiry(
     fairly — the member doesn't lose the time they already paid for, and the
     new period is an exact calendar offset of the base.
     """
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     base = current_expiry if current_expiry and current_expiry > now else now
     return base + relativedelta(years=years)
 
@@ -102,7 +103,7 @@ def calculate_club_expiry(
     top of the prior expiry, fixing the audit Path 6 concern that the old
     30-day approximation was systematically short by 1-5 days per year.
     """
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     base = current_expiry if current_expiry and current_expiry > now else now
     return base + relativedelta(months=months)
 

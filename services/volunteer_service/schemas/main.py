@@ -122,6 +122,45 @@ class VolunteerProfileResponse(BaseModel):
     member_email: Optional[str] = None
 
 
+class MemberVolunteerProfileResponse(BaseModel):
+    """Self-view variant of VolunteerProfileResponse.
+
+    Strict subset that omits `admin_notes` — the field is a private
+    comment written by an admin about the volunteer (reliability flags,
+    safeguarding observations) and should never reach the member viewing
+    their own profile via GET/POST/PATCH /volunteer/profile/me.
+
+    Admin-facing routes (`/admin/profiles/*`, `/admin/reliability-report`)
+    continue to use `VolunteerProfileResponse`.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    member_id: uuid.UUID
+    tier: VolunteerTier
+    tier_override: Optional[VolunteerTier] = None
+    total_hours: float
+    total_sessions_volunteered: int
+    total_no_shows: int
+    total_late_cancellations: int
+    reliability_score: int
+    recognition_tier: Optional[RecognitionTier] = None
+    preferred_roles: Optional[list[str]] = None
+    available_days: Optional[list[str]] = None
+    notes: Optional[str] = None
+    is_active: bool
+    # admin_notes intentionally omitted
+    spotlight_quote: Optional[str] = None
+    is_featured: bool = False
+    featured_from: Optional[datetime] = None
+    featured_until: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    member_name: Optional[str] = None
+    member_email: Optional[str] = None
+
+
 # ============================================================================
 # OPPORTUNITY SCHEMAS
 # ============================================================================
@@ -220,6 +259,34 @@ class VolunteerSlotResponse(BaseModel):
     admin_notes: Optional[str] = None
     member_feedback: Optional[str] = None
     # Enrichment
+    member_name: Optional[str] = None
+
+
+class MemberVolunteerSlotResponse(BaseModel):
+    """Self-view variant of VolunteerSlotResponse.
+
+    Omits `admin_notes` — that's a private operational note from the
+    admin who checked the volunteer in / out (reliability flags, late
+    arrival, behaviour observations). Member-facing routes (claim,
+    cancel-own-slot) return this slim version.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    opportunity_id: uuid.UUID
+    member_id: uuid.UUID
+    status: SlotStatus
+    claimed_at: datetime
+    approved_at: Optional[datetime] = None
+    approved_by: Optional[uuid.UUID] = None
+    cancelled_at: Optional[datetime] = None
+    cancellation_reason: Optional[str] = None
+    checked_in_at: Optional[datetime] = None
+    checked_out_at: Optional[datetime] = None
+    hours_logged: Optional[float] = None
+    # admin_notes intentionally omitted
+    member_feedback: Optional[str] = None
     member_name: Optional[str] = None
 
 

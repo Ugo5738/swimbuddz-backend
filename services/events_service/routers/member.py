@@ -1,7 +1,6 @@
 """Events Service router/endpoints."""
 
 import uuid
-from datetime import datetime, timezone
 from typing import List, Optional
 
 import httpx
@@ -10,6 +9,7 @@ from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.currency import kobo_to_bubbles, naira_to_kobo
 from libs.common.service_client import debit_member_wallet
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,7 +82,7 @@ async def list_events(
         query = query.where(Event.event_type == event_type)
 
     if upcoming_only:
-        query = query.where(Event.start_time >= datetime.now(timezone.utc))
+        query = query.where(Event.start_time >= utc_now())
 
     query = query.order_by(Event.start_time.asc())
 
@@ -311,7 +311,7 @@ async def create_or_update_rsvp(
     if existing_rsvp:
         # Update existing RSVP
         existing_rsvp.status = rsvp_data.status
-        existing_rsvp.updated_at = datetime.now(timezone.utc)
+        existing_rsvp.updated_at = utc_now()
         await db.commit()
         await db.refresh(existing_rsvp)
         # Sync chat membership to match new RSVP status.

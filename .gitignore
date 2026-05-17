@@ -52,3 +52,11 @@ docker-compose.override.yml
 
 # MCP / tooling artifacts
 *.mcp.cache
+
+# AI model weights — fetched at runtime by ultralytics on first use.
+# Don't commit (yolov8n.pt is ~6.5 MB). If we ever need a pinned version,
+# pull from a GCS bucket via a setup script.
+*.pt
+*.pth
+*.onnx
+*.tflite

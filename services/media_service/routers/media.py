@@ -37,7 +37,7 @@ from services.media_service.services.storage import (
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/media", tags=["media"])
+router = APIRouter(prefix="/media", tags=["media"])
 
 # ── Lazy ARQ Redis pool for enqueuing video processing jobs ──
 _redis_pool = None
@@ -137,9 +137,9 @@ async def upload_media(
     """Upload new media item."""
     # Validate file type based on media_type
     if media_type == "IMAGE" and not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image")
+        raise HTTPException(status_code=422, detail="File must be an image")
     if media_type == "VIDEO" and not file.content_type.startswith("video/"):
-        raise HTTPException(status_code=400, detail="File must be a video")
+        raise HTTPException(status_code=422, detail="File must be a video")
 
     # Read file data (with size limit)
     file_data = await _read_file_with_limit(file, "media")

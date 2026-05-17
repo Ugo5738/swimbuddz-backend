@@ -1,7 +1,7 @@
 """Paystack webhook handler, reference generation, and listing."""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -10,6 +10,7 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
 from libs.common.service_client import internal_post
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.payments_service.models import (
     CoachPayout,
@@ -248,7 +249,7 @@ async def paystack_webhook(
             if payout:
                 payout.status = PayoutStatus.PAID
                 payout.paystack_transfer_status = "success"
-                payout.paid_at = datetime.now(timezone.utc)
+                payout.paid_at = utc_now()
                 db.add(payout)
                 await db.commit()
                 logger.info(

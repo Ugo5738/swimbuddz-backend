@@ -16,6 +16,7 @@ from services.payments_service.schemas.main import (
     InternalInitializeResponse,
     InternalPaystackVerifyResponse,
     MarkRefundDisbursedRequest,
+    MemberPaymentResponse,
     PaymentIntentResponse,
     PaymentResponse,
     PricingConfigResponse,
@@ -24,6 +25,7 @@ from services.payments_service.schemas.main import (
     SubmitProofRequest,
 )
 from services.payments_service.schemas.payout import (
+    CoachPayoutResponse,
     PayoutApprove,
     PayoutCompleteManual,
     PayoutCreate,
@@ -60,6 +62,7 @@ __all__ = [
     "MakeupObligationResponse",
     "MakeupScheduleRequest",
     "MarkRefundDisbursedRequest",
+    "MemberPaymentResponse",
     "PaymentIntentResponse",
     "PaymentResponse",
     "PayoutApprove",
@@ -70,6 +73,7 @@ __all__ = [
     "PayoutListResponse",
     "PayoutPreviewLine",
     "PayoutPreviewResponse",
+    "CoachPayoutResponse",
     "PayoutResponse",
     "PayoutSummary",
     "PricingConfigResponse",

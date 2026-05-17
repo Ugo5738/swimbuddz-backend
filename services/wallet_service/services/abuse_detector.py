@@ -9,7 +9,7 @@ the reward grant that already happened.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,7 @@ from services.wallet_service.models.rewards import (
     RewardRule,
     WalletEvent,
 )
+from libs.common.datetime_utils import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ async def _check_rapid_same_reward(
     db: AsyncSession,
 ) -> None:
     """Flag if a member earned the same reward >3 times in 1 hour."""
-    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+    one_hour_ago = utc_now() - timedelta(hours=1)
 
     count = (
         await db.execute(
@@ -123,9 +124,7 @@ async def _check_daily_bubbles_limit(
     db: AsyncSession,
 ) -> None:
     """Flag if a member earned >100 Bubbles in rewards today."""
-    today_start = datetime.now(timezone.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    today_start = utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     total_today = (
         await db.execute(
@@ -185,7 +184,7 @@ async def _check_failure_rate(db: AsyncSession) -> None:
 
     System-wide check (no member_auth_id).
     """
-    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+    one_hour_ago = utc_now() - timedelta(hours=1)
 
     result = await db.execute(
         select(
