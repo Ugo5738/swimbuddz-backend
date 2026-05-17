@@ -6905,6 +6905,65 @@
         }
       }
     },
+    "/api/v1/sessions/bookings/me": {
+      "get": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "List My Bookings",
+        "description": "List the authenticated member's session bookings.\n\nDefaults to the *active* set \u2014 PENDING (payment in flight, still\nwithin the 15-min TTL) and CONFIRMED (paid, seat held). This is what\nthe member's \"Booked\" tab consumes: the booking lifecycle is\nintent-only, so a confirmed booking never produces an AttendanceRecord\nuntil day-of sign-in \u2014 the Booked tab must read bookings directly,\nnot attendance. Pass ``?status_filter=cancelled`` (etc.) to narrow to\na single state.\n\nRegistered before the admin ``/sessions/{session_id}/bookings`` route\nso the literal ``bookings/me`` path is matched first.",
+        "operationId": "list_my_bookings_sessions_bookings_me_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status_filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SessionBookingStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionBookingResponse"
+                  },
+                  "title": "Response List My Bookings Sessions Bookings Me Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sessions/{session_id}/bookings": {
       "get": {
         "tags": [
