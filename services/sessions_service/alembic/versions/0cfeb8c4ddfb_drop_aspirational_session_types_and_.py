@@ -15,7 +15,17 @@ hand-written because Alembic autogenerate cannot represent CHECK
 constraint changes (and the column drop is paired with the constraint
 swap, which must happen in one transaction).
 
-Verified clean before applying:
+The rebuilt CHECK is added with ``NOT VALID`` (like its predecessor
+``c490b3168c3e``) so existing rows are NOT re-checked at migration
+time — only new INSERTs/UPDATEs are enforced. The original "verified
+clean" note below held for the *dev* DB only; production carries
+legacy generic ``sessions`` rows (e.g. community/club sessions with a
+stray ``cohort_id`` — the god-object data A1 exists to fix) that
+violate the strict 4-branch rule. Validating immediately therefore
+fails the deploy. The legacy-data audit + ``VALIDATE CONSTRAINT`` is
+deferred to A1 Phase 2.b (see docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md).
+
+Dev-only "verified clean" (does NOT hold in production):
   * Zero rows in `sessions` with session_type IN ('one_on_one','group_booking')
   * Zero rows in `sessions` with booking_id IS NOT NULL
   * Zero rows in `session_templates` with session_type IN those values
@@ -72,20 +82,25 @@ def upgrade() -> None:
     # before the column. Order: drop CHECK → drop column → re-add CHECK.
     op.execute("ALTER TABLE sessions DROP CONSTRAINT ck_sessions_discriminator")
     op.execute("ALTER TABLE sessions DROP COLUMN booking_id")
+    # NOT VALID: enforce the rule for new/updated rows only. Legacy
+    # production rows that violate the strict 4-branch discriminator
+    # are tolerated until the A1 Phase 2.b audit + VALIDATE CONSTRAINT.
     op.execute(
         f"ALTER TABLE sessions ADD CONSTRAINT ck_sessions_discriminator "
-        f"CHECK ({_NEW_CHECK})"
+        f"CHECK ({_NEW_CHECK}) NOT VALID"
     )
 
 
 def downgrade() -> None:
-    # Restore booking_id column + old 6-branch constraint. Existing rows
-    # have NULL booking_id, which satisfies every branch of the old
-    # constraint, so no data fix-up needed.
+    # Restore booking_id column + old 6-branch constraint. Re-added
+    # NOT VALID for the same reason as upgrade(): legacy production rows
+    # (e.g. community/club sessions with a stray cohort_id) violate the
+    # old expression's community/club branches too, so immediate
+    # validation would fail a rollback.
     op.execute("ALTER TABLE sessions DROP CONSTRAINT ck_sessions_discriminator")
     op.execute("ALTER TABLE sessions ADD COLUMN booking_id UUID")
     op.execute("CREATE INDEX ix_sessions_booking_id ON sessions (booking_id)")
     op.execute(
         f"ALTER TABLE sessions ADD CONSTRAINT ck_sessions_discriminator "
-        f"CHECK ({_OLD_CHECK})"
+        f"CHECK ({_OLD_CHECK}) NOT VALID"
     )
