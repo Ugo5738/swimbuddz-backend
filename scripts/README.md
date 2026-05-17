@@ -11,6 +11,8 @@
 | Just seed data                        | `./scripts/seed/all.sh dev`                       |
 | Backup migrations                     | `./scripts/db/backup-migrations.sh`               |
 | Generate OpenAPI spec                 | `python scripts/api/generate-openapi.py`          |
+| Generate DB table reference doc       | `python scripts/db/generate-schema-doc.py`        |
+| Generate API endpoint reference doc   | `python scripts/api/generate-endpoints-doc.py`    |
 
 ---
 

@@ -1,5 +1,12 @@
 # SwimBuddz Backend – API Endpoints Reference
 
+> **Complete route list:** see the auto-generated companion
+> [API_ENDPOINTS_GENERATED.md](../../docs/API_ENDPOINTS_GENERATED.md) —
+> every operation from `openapi.json`, grouped by tag, guaranteed
+> never-stale (backend CI fails if `openapi.json` drifts). Regenerate
+> with `python scripts/api/generate-endpoints-doc.py`. This file stays
+> hand-curated for auth flows and worked examples.
+
 This document defines the **HTTP interface** exposed via the gateway (`https://api.swimbuddz.com` or `http://localhost:8000` for development).
 
 All endpoints assume Bearer authentication with a Supabase access token unless marked as **Public**.
