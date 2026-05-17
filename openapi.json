@@ -50310,6 +50310,22 @@
             "$ref": "#/components/schemas/CohortStatus",
             "default": "open"
           },
+          "type": {
+            "$ref": "#/components/schemas/CohortType",
+            "default": "group"
+          },
+          "corporate_program_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corporate Program Id"
+          },
           "allow_mid_entry": {
             "type": "boolean",
             "title": "Allow Mid Entry",
@@ -50711,6 +50727,22 @@
           "status": {
             "$ref": "#/components/schemas/CohortStatus",
             "default": "open"
+          },
+          "type": {
+            "$ref": "#/components/schemas/CohortType",
+            "default": "group"
+          },
+          "corporate_program_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corporate Program Id"
           },
           "allow_mid_entry": {
             "type": "boolean",
@@ -51359,6 +51391,17 @@
         "title": "CohortTimelineShiftRequest",
         "description": "Request payload for timeline-shifting a cohort and linked records."
       },
+      "CohortType": {
+        "type": "string",
+        "enum": [
+          "group",
+          "private",
+          "small_group",
+          "corporate"
+        ],
+        "title": "CohortType",
+        "description": "How the cohort is structured.\n\nThe session layer (``SessionType.COHORT_CLASS`` with ``cohort_id`` set)\nis identical for all CohortType values \u2014 variation lives here on the\ncohort row rather than at the per-session level. See\ndocs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md \u00a7B."
+      },
       "CohortUpdate": {
         "properties": {
           "name": {
@@ -51416,6 +51459,28 @@
                 "type": "null"
               }
             ]
+          },
+          "type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CohortType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "corporate_program_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corporate Program Id"
           },
           "allow_mid_entry": {
             "anyOf": [

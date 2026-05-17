@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from libs.common.currency import kobo_to_naira, naira_to_kobo
-from services.academy_service.models import CohortStatus, LocationType
+from services.academy_service.models import CohortStatus, CohortType, LocationType
 
 from .program import ProgramResponse
 
@@ -18,6 +18,15 @@ class CohortBase(BaseModel):
     end_date: datetime
     capacity: int
     status: CohortStatus = CohortStatus.OPEN
+    # Cohort variant — see A1 Phase 3.2.
+    # GROUP (default, 8–12), PRIVATE (1:1), SMALL_GROUP (2–6 member-specified),
+    # CORPORATE (sponsor-commissioned). All such cohorts produce
+    # SessionType.COHORT_CLASS sessions; the type just controls capacity /
+    # billing / enrollment semantics at the academy level.
+    type: CohortType = CohortType.GROUP
+    # Cross-service reference to a future corporate-wellness model (sponsor
+    # billing terms, enrolment ingest, etc). Plain UUID, no FK.
+    corporate_program_id: Optional[UUID] = None
     allow_mid_entry: bool = False
     mid_entry_cutoff_week: int = 2  # Max week number for mid-entry
     require_approval: bool = (
@@ -98,6 +107,8 @@ class CohortUpdate(BaseModel):
     end_date: Optional[datetime] = None
     capacity: Optional[int] = None
     status: Optional[CohortStatus] = None
+    type: Optional[CohortType] = None
+    corporate_program_id: Optional[UUID] = None
     allow_mid_entry: Optional[bool] = None
     mid_entry_cutoff_week: Optional[int] = None
     require_approval: Optional[bool] = None

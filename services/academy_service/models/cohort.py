@@ -20,6 +20,7 @@ from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from services.academy_service.models.enums import (
     CohortStatus,
+    CohortType,
     ExtensionRequestStatus,
     LocationType,
     ResourceSourceType,
@@ -49,6 +50,30 @@ class Cohort(Base):
     end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     capacity: Mapped[int] = mapped_column(Integer, default=10)
+
+    # ── Cohort variant ────────────────────────────────────────────────────
+    # A1 Phase 3.2 (2026-05-17). All cohort sessions stay
+    # SessionType.COHORT_CLASS — type lives here so the academy can express
+    # private 1-on-1, member-specified small groups, and corporate-sponsored
+    # cohorts inside the existing cohort framework. See
+    # docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §B.
+    type: Mapped[CohortType] = mapped_column(
+        SAEnum(
+            CohortType,
+            name="cohort_type_enum",
+            values_callable=enum_values,
+            validate_strings=True,
+        ),
+        nullable=False,
+        default=CohortType.GROUP,
+        server_default="group",
+    )
+    # Cross-service ref to a row in the future corporate-wellness model
+    # (sponsor / billing / ingest is in scope for a separate design note).
+    # Plain UUID, no FK — cross-service rule.
+    corporate_program_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
 
     # Location
     timezone: Mapped[str] = mapped_column(

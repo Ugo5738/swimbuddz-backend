@@ -29,6 +29,21 @@ class CohortStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class CohortType(str, enum.Enum):
+    """How the cohort is structured.
+
+    The session layer (``SessionType.COHORT_CLASS`` with ``cohort_id`` set)
+    is identical for all CohortType values — variation lives here on the
+    cohort row rather than at the per-session level. See
+    docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §B.
+    """
+
+    GROUP = "group"              # 8–12 student cohort (default; current behaviour)
+    PRIVATE = "private"          # 1 student; member-paid 1-on-1 academy program
+    SMALL_GROUP = "small_group"  # 2–6 students; member-specified group (friends/family)
+    CORPORATE = "corporate"      # Commissioned by an organisation; capacity set by sponsor
+
+
 class LocationType(str, enum.Enum):
     POOL = "pool"
     OPEN_WATER = "open_water"
