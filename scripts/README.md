@@ -32,7 +32,8 @@ scripts/
 │
 ├── seed/                     # Seeding scripts
 │   ├── all.sh                # Run all seeders
-│   ├── program.py            # Seed academy programs
+│   ├── program.py            # Seed academy programs from JSON
+│   ├── cohort.py             # Seed a test cohort under an existing program (auto-publishes)
 │   ├── discounts.py          # Seed discount codes
 │   ├── announcements.py      # Seed announcements
 │   ├── content-posts.py      # Seed content posts
@@ -45,7 +46,8 @@ scripts/
 │
 ├── auth/                     # Authentication/user scripts
 │   ├── create-admin.py       # Create admin user
-│   └── clear-users.py        # Clear all Supabase auth users
+│   ├── clear-users.py        # Clear all Supabase auth users
+│   └── clear-member.py       # Clear a single member (auth + DB) for re-registration tests
 │
 ├── api/                      # API utilities
 │   └── generate-openapi.py   # Generate combined OpenAPI schema
