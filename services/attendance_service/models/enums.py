@@ -21,26 +21,3 @@ class AttendanceRole(str, enum.Enum):
     COACH = "coach"
     VOLUNTEER = "volunteer"
     GUEST = "guest"
-
-
-class SessionBookingStatus(str, enum.Enum):
-    """Lifecycle of a SessionBooking (the *intent* to attend).
-
-    Terminal at session start time — post-session outcome (PRESENT/ABSENT/
-    etc.) lives on AttendanceRecord, not here. See
-    docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §C.
-    """
-
-    PENDING = "pending"  # awaiting payment / approval
-    CONFIRMED = "confirmed"  # paid / approved; capacity held
-    CANCELLED = "cancelled"  # member or admin cancelled before session
-    EXPIRED = "expired"  # PENDING booking aged out without confirmation
-
-
-class BookingChannel(str, enum.Enum):
-    """How a SessionBooking was created."""
-
-    MEMBER_SELF = "member_self"  # member booked directly
-    ADMIN = "admin"  # admin booked on behalf of member
-    CORPORATE_BULK = "corporate_bulk"  # corporate-wellness bulk booking
-    BUNDLE_CART = "bundle_cart"  # paid via the multi-session bundle cart

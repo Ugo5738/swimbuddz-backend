@@ -1,5 +1,13 @@
 """Sessions Service schemas package."""
 
+from services.sessions_service.schemas.booking import (
+    BookingConfirmRequest,
+    BulkBookingItem,
+    BulkBookingRequest,
+    BulkBookingResponse,
+    SessionBookingCreate,
+    SessionBookingResponse,
+)
 from services.sessions_service.schemas.main import (
     SessionBase,
     SessionCreate,
@@ -15,8 +23,14 @@ from services.sessions_service.schemas.templates import (
 )
 
 __all__ = [
+    "BookingConfirmRequest",
+    "BulkBookingItem",
+    "BulkBookingRequest",
+    "BulkBookingResponse",
     "GenerateSessionsRequest",
     "SessionBase",
+    "SessionBookingCreate",
+    "SessionBookingResponse",
     "SessionCreate",
     "SessionResponse",
     "SessionTemplateBase",

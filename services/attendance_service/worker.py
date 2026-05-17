@@ -26,8 +26,7 @@ class WorkerSettings:
     functions = [task_sweep_no_show_bookings]
 
     cron_jobs = [
-        # Daily at 02:45 UTC (~03:45 WAT). Looks back 7 days by default; any
-        # booking older than that is assumed already swept.
+        # Daily at 02:45 UTC (~03:45 WAT). Looks back 7 days by default.
         cron(
             task_sweep_no_show_bookings,
             hour={2},

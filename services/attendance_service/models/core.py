@@ -10,7 +10,7 @@ from services.attendance_service.models.enums import (
 )
 from sqlalchemy import DateTime
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -72,14 +72,14 @@ class AttendanceRecord(Base):
 
     # Pre-booking linkage (A1 Phase 3.3). NULL = walk-in (member signed in
     # without booking ahead). Set = this attendance row was produced by an
-    # existing SessionBooking — used to compute no-show stats:
-    # AttendanceRecord.status='absent' AND booking_id IS NOT NULL.
-    # Intra-service FK (both tables in attendance_service); ondelete=SET NULL
-    # so cancelling a booking whose attendance row already exists keeps the
-    # attendance history intact.
+    # existing SessionBooking in sessions_service — used to compute
+    # no-show stats: AttendanceRecord.status='absent' AND booking_id IS NOT NULL.
+    # Plain UUID, no FK — SessionBooking lives in sessions_service per the
+    # cross-service-no-FK architecture rule. Cleanup of orphan booking_ids
+    # on SessionBooking deletion is handled by HTTP-emitted events
+    # (see services/sessions_service/services/attendance_sync.py).
     booking_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("session_bookings.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )

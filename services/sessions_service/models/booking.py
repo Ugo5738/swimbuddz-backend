@@ -1,15 +1,21 @@
 """SessionBooking — intent-to-attend for a session.
 
+Lives in sessions_service alongside the Session table and SessionBundleCart
+because the session owns capacity gating and "who's booked this session"
+is naturally a session-side query.
+
 Represents the booking *lifecycle* only (PENDING → CONFIRMED → CANCELLED /
 EXPIRED). The post-session attendance fact (PRESENT / ABSENT / LATE /
-EXCUSED) lives on ``AttendanceRecord``. Walk-in flow doesn't create a
-SessionBooking — AttendanceRecord is created directly with
-``booking_id=NULL``. Pre-book flow creates SessionBooking first; at
-sign-in time AttendanceRecord is created with ``booking_id`` set.
+EXCUSED) lives on ``AttendanceRecord`` in attendance_service; the link is
+``AttendanceRecord.booking_id`` (plain UUID, cross-service ref). Walk-in
+flow doesn't create a SessionBooking — AttendanceRecord is created
+directly with ``booking_id=NULL``. Pre-book flow creates SessionBooking
+first; at sign-in time AttendanceRecord is created with ``booking_id`` set.
 
-See docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §C for full design
-rationale, including the "single source of truth for attendance" split
-between this table and AttendanceRecord.
+See docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §C for the full
+design rationale, including the "single source of truth for attendance"
+split between this table (in sessions_service) and AttendanceRecord
+(in attendance_service).
 """
 
 import uuid
@@ -18,7 +24,7 @@ from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
-from services.attendance_service.models.enums import (
+from services.sessions_service.models.enums import (
     BookingChannel,
     SessionBookingStatus,
     enum_values,
@@ -33,11 +39,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 class SessionBooking(Base):
     """A member's pre-commitment to attend a session.
 
-    Cross-service columns (``session_id``, ``member_id``,
+    Cross-service columns (``member_id``, ``member_auth_id``,
     ``payment_intent_id``, ``wallet_transaction_id``,
-    ``corporate_program_id``) are plain UUIDs without ForeignKey
-    constraints, per the no-cross-service-FK architecture rule in
-    docs/reference/SERVICE_COMMUNICATION.md.
+    ``corporate_program_id``) are plain UUIDs / strings without
+    ForeignKey constraints, per the no-cross-service-FK architecture
+    rule in docs/reference/SERVICE_COMMUNICATION.md.
+
+    ``session_id`` is intra-service (sessions table is in this service),
+    so it COULD carry a real FK — left as plain UUID for parity with the
+    other cross-service refs and to keep the migration trivially reversible.
     """
 
     __tablename__ = "session_bookings"
@@ -46,7 +56,8 @@ class SessionBooking(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
 
-    # Cross-service refs — plain UUIDs, no FKs.
+    # Refs — plain UUIDs, no FKs (cross-service rule; session_id stays plain
+    # for symmetry even though it points to a local table).
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
     )
@@ -109,7 +120,9 @@ class SessionBooking(Base):
     cancelled_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # TTL for PENDING bookings (e.g., 15 minutes to complete checkout).
+    # TTL for PENDING bookings — 15 min default at creation time. The
+    # 5-min sweep flips expired PENDING bookings to EXPIRED so the seat
+    # gets released back to other members.
     expires_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -123,11 +136,9 @@ class SessionBooking(Base):
 
     __table_args__ = (
         # At most one active booking per (session, member). The nightly
-        # NO_SHOW sweep can leave the row in CONFIRMED but with an
-        # AttendanceRecord(status=ABSENT) attached — that's fine; the
-        # uniqueness here prevents *double-booking*, not historical
-        # rows. (CANCELLED bookings stay too — partial unique index would
-        # let members re-book after cancelling; deferred until needed.)
+        # NO_SHOW sweep can leave the row in CONFIRMED with an
+        # AttendanceRecord(status=ABSENT) referencing it — that's fine; the
+        # uniqueness here prevents *double-booking*, not historical rows.
         UniqueConstraint(
             "session_id", "member_id", name="uq_session_bookings_session_member"
         ),

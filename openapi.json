@@ -6738,6 +6738,242 @@
         }
       }
     },
+    "/api/v1/sessions/{session_id}/book": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Book Session",
+        "description": "Pre-book a session as the authenticated member.\n\nCreates a SessionBooking(status=PENDING) with a 15-minute TTL.\nFrontend / payments_service is expected to call\nPOST /sessions/bookings/{id}/confirm after payment clears.",
+        "operationId": "book_session_sessions__session_id__book_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionBookingCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/bookings/{booking_id}/confirm": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Confirm Booking",
+        "description": "Flip a PENDING booking to CONFIRMED.\n\nMember can only confirm their own bookings. PENDING and not-yet-expired\nonly \u2014 EXPIRED/CANCELLED/already-CONFIRMED are rejected.",
+        "operationId": "confirm_booking_sessions_bookings__booking_id__confirm_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/bookings/{booking_id}/cancel": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Cancel Booking",
+        "description": "Cancel a booking before the session starts.\n\nRefund policy (per A1 Phase 3.3 product decision):\n\n* Members can only cancel their own bookings.\n* Refund is issued in Bubbles to the member's wallet, NOT to the\n  original card. Avoids transaction-fee reversal costs and keeps\n  cancellations from being a platform loss. Members keep spending\n  power and are more likely to rebook later.\n* The FULL ``fee_amount_kobo`` is refunded as Bubbles (no haircut\n  for the platform's transaction fee \u2014 that's already sunk on the\n  original payment and not recoverable). Refund amount conversion:\n  ``kobo_to_bubbles(booking.fee_amount_kobo)``.\n* Cancellations after the session has started are refused; the\n  nightly NO_SHOW sweep will produce ``AttendanceRecord(status=ABSENT,\n  booking_id=<>)`` for those.\n* Cash refunds to the original payment method are admin-only and\n  out of scope for this endpoint.",
+        "operationId": "cancel_booking_sessions_bookings__booking_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/bookings": {
+      "get": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "List Session Bookings",
+        "description": "Admin: list bookings for a session.\n\nDefaults to CONFIRMED only (i.e. \"who's paid\"). Pass\n``?status_filter=pending`` (or other values) to see other states.\nCombined with the existing attendance pool-list endpoint, this is\nhow admins reconcile expected attendance vs actual at session time.",
+        "operationId": "list_session_bookings_sessions__session_id__bookings_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "status_filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SessionBookingStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionBookingResponse"
+                  },
+                  "title": "Response List Session Bookings Sessions  Session Id  Bookings Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sessions/": {
       "get": {
         "tags": [
@@ -7811,6 +8047,244 @@
         }
       }
     },
+    "/api/v1/internal/sessions/{session_id}/bookings/by-member/{member_id}": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Booking For Session Member",
+        "description": "Service-role lookup: SessionBooking for (session, member).\n\nUsed by attendance_service's sign-in flow to link the AttendanceRecord\nbeing created back to its originating booking. 404 if no booking\nmatches the filter \u2014 caller treats that as \"walk-in\" and continues.",
+        "operationId": "get_booking_for_session_member_internal_sessions__session_id__bookings_by_member__member_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by booking status (e.g. 'confirmed')",
+              "title": "Status"
+            },
+            "description": "Filter by booking status (e.g. 'confirmed')"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/sessions/bookings/confirmed": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "List Confirmed Bookings Since",
+        "description": "Service-role: list CONFIRMED bookings since `since`.\n\nUsed by attendance_service's nightly NO_SHOW sweep to find recent\nconfirmed bookings that may need an ABSENT AttendanceRecord created.",
+        "operationId": "list_confirmed_bookings_since_internal_sessions_bookings_confirmed_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Lower bound on booked_at (ISO 8601)",
+              "title": "Since"
+            },
+            "description": "Lower bound on booked_at (ISO 8601)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionBookingResponse"
+                  },
+                  "title": "Response List Confirmed Bookings Since Internal Sessions Bookings Confirmed Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/sessions/bookings/{booking_id}/confirm": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Internal Confirm Booking",
+        "description": "Service-role variant of /sessions/bookings/{id}/confirm.\n\nFuture: payments_service webhook calls this when a SESSION_BOOKING\npayment intent clears (so the booking gets confirmed even if the\nmember closed the browser mid-checkout).",
+        "operationId": "internal_confirm_booking_internal_sessions_bookings__booking_id__confirm_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/sessions/bookings/bulk": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Bulk Create Bookings",
+        "description": "Service-role bulk-create for corporate-wellness onboarding.\n\nEach row is created at status=CONFIRMED (sponsor-paid up front),\nchannel=CORPORATE_BULK, with corporate_program_id set. Idempotent:\npre-existing (session, member) pairs are reported as `skipped` and\nthe existing row is returned unchanged.",
+        "operationId": "bulk_create_bookings_internal_sessions_bookings_bulk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkBookingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/attendance/sessions/{session_id}/sign-in": {
       "post": {
         "tags": [
@@ -7907,114 +8381,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AttendanceResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/attendance/sessions/{session_id}/book": {
-      "post": {
-        "tags": [
-          "attendance"
-        ],
-        "summary": "Book Session",
-        "description": "Pre-book a session as the authenticated member.\n\nCreates a SessionBooking(status=PENDING). Payment is handled\nout-of-band \u2014 payments_service writes ``payment_intent_id`` and\ntransitions the booking to CONFIRMED when the payment clears.",
-        "operationId": "book_session_attendance_sessions__session_id__book_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Session Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SessionBookingCreate"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionBookingResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/attendance/bookings/{booking_id}/cancel": {
-      "post": {
-        "tags": [
-          "attendance"
-        ],
-        "summary": "Cancel Booking",
-        "description": "Cancel a booking before the session starts.\n\nMembers can only cancel their own bookings. Refund handling lives\nin payments_service per the booking's ``payment_intent_id`` /\n``wallet_transaction_id`` \u2014 this endpoint only transitions status\nand timestamps.",
-        "operationId": "cancel_booking_attendance_bookings__booking_id__cancel_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "booking_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Booking Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionBookingResponse"
                 }
               }
             }
@@ -8508,53 +8874,6 @@
             }
           }
         }
-      }
-    },
-    "/api/v1/internal/attendance/bookings/bulk": {
-      "post": {
-        "tags": [
-          "internal"
-        ],
-        "summary": "Bulk Create Bookings",
-        "description": "Bulk-create SessionBookings for a corporate-wellness sponsor.\n\nUsed by sponsor onboarding flows that pre-purchase N\u00d7M (sessions \u00d7\nmembers) and want every (session, member) pair to land as a\nCONFIRMED SessionBooking in one call. Each row is tagged with\n``channel=CORPORATE_BULK`` and the supplied ``corporate_program_id``\nso the bookings can later be traced to the sponsor.\n\nIdempotent: if a booking for (session, member) already exists,\nthat pair is reported in ``skipped`` and the existing row is\nreturned unchanged.",
-        "operationId": "bulk_create_bookings_internal_attendance_bookings_bulk_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BulkBookingRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BulkBookingResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
       }
     },
     "/api/v1/academy/programs": {
@@ -42902,6 +43221,17 @@
             "type": "string",
             "title": "Id"
           },
+          "auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Id"
+          },
           "first_name": {
             "type": "string",
             "title": "First Name"
@@ -47096,6 +47426,134 @@
         "title": "MemberMembershipResponse",
         "description": "Membership tiers, billing, and gamification."
       },
+      "BookingChannel": {
+        "type": "string",
+        "enum": [
+          "member_self",
+          "admin",
+          "corporate_bulk",
+          "bundle_cart"
+        ],
+        "title": "BookingChannel",
+        "description": "How a SessionBooking was created."
+      },
+      "BookingConfirmRequest": {
+        "properties": {
+          "payment_intent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Intent Id"
+          },
+          "wallet_transaction_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wallet Transaction Id"
+          }
+        },
+        "type": "object",
+        "title": "BookingConfirmRequest",
+        "description": "Transition a PENDING booking to CONFIRMED after payment cleared."
+      },
+      "BulkBookingItem": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Member Auth Id"
+          },
+          "fee_amount_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Fee Amount Kobo",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "member_id",
+          "member_auth_id"
+        ],
+        "title": "BulkBookingItem",
+        "description": "One entry in a corporate-bulk booking payload."
+      },
+      "BulkBookingRequest": {
+        "properties": {
+          "corporate_program_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Corporate Program Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BulkBookingItem"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "corporate_program_id",
+          "items"
+        ],
+        "title": "BulkBookingRequest",
+        "description": "Service-role bulk-create for corporate-wellness orchestration."
+      },
+      "BulkBookingResponse": {
+        "properties": {
+          "created": {
+            "type": "integer",
+            "title": "Created"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          },
+          "bookings": {
+            "items": {
+              "$ref": "#/components/schemas/SessionBookingResponse"
+            },
+            "type": "array",
+            "title": "Bookings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created",
+          "skipped",
+          "bookings"
+        ],
+        "title": "BulkBookingResponse",
+        "description": "Result of a bulk-create call."
+      },
       "BundleCartResponse": {
         "properties": {
           "id": {
@@ -47341,6 +47799,200 @@
           "capacity"
         ],
         "title": "SessionBasic"
+      },
+      "SessionBookingCreate": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "fee_amount_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Fee Amount Kobo",
+            "default": 0
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "pay_with_bubbles": {
+            "type": "boolean",
+            "title": "Pay With Bubbles",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "SessionBookingCreate",
+        "description": "Member self-book a session ahead of time.\n\nChannel defaults to MEMBER_SELF. Admin and internal/corporate routes\nset channel explicitly. Default flow: this route creates\nSessionBooking(status=PENDING) with ``expires_at = booked_at + 15 min``\nand the frontend (or payments_service webhook) calls the confirm\nendpoint once Paystack payment clears, before ``expires_at``, to\ntransition status \u2192 CONFIRMED. A 5-min sweep otherwise marks the\nbooking EXPIRED.\n\nFree-session / full-Bubbles fast path: pass ``pay_with_bubbles=True``\nAND ``fee_amount_kobo`` (zero is OK for free sessions). The endpoint\ndebits the member's wallet and confirms in one transaction, returning\na CONFIRMED booking. Mirrors the existing one-click sign-in UX."
+      },
+      "SessionBookingResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "title": "Member Auth Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionBookingStatus"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/BookingChannel"
+          },
+          "fee_amount_kobo": {
+            "type": "integer",
+            "title": "Fee Amount Kobo"
+          },
+          "payment_intent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Intent Id"
+          },
+          "wallet_transaction_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wallet Transaction Id"
+          },
+          "corporate_program_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corporate Program Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "booked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Booked At"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "session_id",
+          "member_id",
+          "member_auth_id",
+          "status",
+          "channel",
+          "fee_amount_kobo",
+          "booked_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SessionBookingResponse"
+      },
+      "SessionBookingStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "confirmed",
+          "cancelled",
+          "expired"
+        ],
+        "title": "SessionBookingStatus",
+        "description": "Lifecycle of a SessionBooking (the *intent* to attend a session).\n\nTerminal at session start time \u2014 what happened at the session\n(PRESENT / ABSENT / LATE / EXCUSED) lives on AttendanceRecord in\nattendance_service, not here. See\ndocs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md \u00a7C."
       },
       "SessionCreate": {
         "properties": {
@@ -48792,103 +49444,6 @@
         ],
         "title": "AttendanceStatus"
       },
-      "BookingChannel": {
-        "type": "string",
-        "enum": [
-          "member_self",
-          "admin",
-          "corporate_bulk",
-          "bundle_cart"
-        ],
-        "title": "BookingChannel",
-        "description": "How a SessionBooking was created."
-      },
-      "BulkBookingItem": {
-        "properties": {
-          "session_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Session Id"
-          },
-          "member_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Member Id"
-          },
-          "member_auth_id": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Member Auth Id"
-          },
-          "fee_amount_kobo": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Fee Amount Kobo",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "required": [
-          "session_id",
-          "member_id",
-          "member_auth_id"
-        ],
-        "title": "BulkBookingItem",
-        "description": "One entry in a corporate-bulk booking payload."
-      },
-      "BulkBookingRequest": {
-        "properties": {
-          "corporate_program_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Corporate Program Id"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/BulkBookingItem"
-            },
-            "type": "array",
-            "maxItems": 500,
-            "minItems": 1,
-            "title": "Items"
-          }
-        },
-        "type": "object",
-        "required": [
-          "corporate_program_id",
-          "items"
-        ],
-        "title": "BulkBookingRequest",
-        "description": "Service-role bulk-create for corporate-wellness orchestration.\n\nUsed by sponsor onboarding flows that pre-purchase N\u00d7M (sessions \u00d7\nmembers) and want every (session, member) pair to land as a\nCONFIRMED SessionBooking in one call. Caller is expected to set\nchannel=CORPORATE_BULK; corporate_program_id is required so the\nbookings can be traced to the sponsor."
-      },
-      "BulkBookingResponse": {
-        "properties": {
-          "created": {
-            "type": "integer",
-            "title": "Created"
-          },
-          "skipped": {
-            "type": "integer",
-            "title": "Skipped"
-          },
-          "bookings": {
-            "items": {
-              "$ref": "#/components/schemas/SessionBookingResponse"
-            },
-            "type": "array",
-            "title": "Bookings"
-          }
-        },
-        "type": "object",
-        "required": [
-          "created",
-          "skipped",
-          "bookings"
-        ],
-        "title": "BulkBookingResponse",
-        "description": "Result of a bulk-create call."
-      },
       "CoachAttendanceMarkEntry": {
         "properties": {
           "member_id": {
@@ -49178,195 +49733,6 @@
         ],
         "title": "RideShareOption",
         "description": "Local copy \u2014 avoids cross-service import from transport_service."
-      },
-      "SessionBookingCreate": {
-        "properties": {
-          "session_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Session Id"
-          },
-          "fee_amount_kobo": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Fee Amount Kobo",
-            "default": 0
-          },
-          "notes": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 500
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notes"
-          }
-        },
-        "type": "object",
-        "required": [
-          "session_id"
-        ],
-        "title": "SessionBookingCreate",
-        "description": "Member self-book a session ahead of time.\n\nChannel defaults to MEMBER_SELF. Admin and internal/corporate routes\nset channel explicitly. Payment is handled out-of-band: the route\ncreates a SessionBooking(status=PENDING) and a payment intent in\npayments_service; on Paystack webhook / Bubbles debit success the\nbooking is transitioned to CONFIRMED."
-      },
-      "SessionBookingResponse": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "session_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Session Id"
-          },
-          "member_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Member Id"
-          },
-          "member_auth_id": {
-            "type": "string",
-            "title": "Member Auth Id"
-          },
-          "status": {
-            "$ref": "#/components/schemas/SessionBookingStatus"
-          },
-          "channel": {
-            "$ref": "#/components/schemas/BookingChannel"
-          },
-          "fee_amount_kobo": {
-            "type": "integer",
-            "title": "Fee Amount Kobo"
-          },
-          "payment_intent_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Payment Intent Id"
-          },
-          "wallet_transaction_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Wallet Transaction Id"
-          },
-          "corporate_program_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Corporate Program Id"
-          },
-          "notes": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notes"
-          },
-          "booked_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Booked At"
-          },
-          "confirmed_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confirmed At"
-          },
-          "cancelled_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cancelled At"
-          },
-          "expires_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expires At"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "session_id",
-          "member_id",
-          "member_auth_id",
-          "status",
-          "channel",
-          "fee_amount_kobo",
-          "booked_at",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "SessionBookingResponse"
-      },
-      "SessionBookingStatus": {
-        "type": "string",
-        "enum": [
-          "pending",
-          "confirmed",
-          "cancelled",
-          "expired"
-        ],
-        "title": "SessionBookingStatus",
-        "description": "Lifecycle of a SessionBooking (the *intent* to attend).\n\nTerminal at session start time \u2014 post-session outcome (PRESENT/ABSENT/\netc.) lives on AttendanceRecord, not here. See\ndocs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md \u00a7C."
       },
       "SessionSummary": {
         "properties": {

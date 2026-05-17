@@ -6,6 +6,9 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from libs.common.currency import kobo_to_bubbles
 from libs.common.service_client import debit_member_wallet, get_session_by_id
+from libs.common.service_client.sessions import (
+    get_confirmed_booking_for_session_member,
+)
 from libs.db.session import get_async_db
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,8 +17,6 @@ from services.attendance_service.models import (
     AttendanceRecord,
     AttendanceStatus,
     MemberRef,
-    SessionBooking,
-    SessionBookingStatus,
 )
 from services.attendance_service.schemas import (
     AttendanceCreate,
@@ -52,18 +53,17 @@ async def sign_in_to_session(
     # since they need to mark attendance for any session)
     await validate_session_access(session_data, str(current_member.id))
 
-    # A1 Phase 3.3: look up an existing SessionBooking so we can link
-    # this attendance row back to it (so "no-show" computations work,
-    # and so the booking lifecycle stays auditable). NULL booking_id =
-    # walk-in. CONFIRMED booking found = pre-book → linked attendance.
-    booking_query = select(SessionBooking).where(
-        SessionBooking.session_id == session_id,
-        SessionBooking.member_id == current_member.id,
-        SessionBooking.status == SessionBookingStatus.CONFIRMED,
+    # A1 Phase 3.3: look up an existing SessionBooking in sessions_service
+    # so we can link this attendance row back to it (so "no-show"
+    # computations work, and so the booking lifecycle stays auditable).
+    # NULL booking_id = walk-in. CONFIRMED booking found = pre-book →
+    # linked attendance.
+    booking_data = await get_confirmed_booking_for_session_member(
+        session_id=str(session_id),
+        member_id=str(current_member.id),
+        calling_service="attendance",
     )
-    booking_result = await db.execute(booking_query)
-    booking = booking_result.scalar_one_or_none()
-    linked_booking_id = booking.id if booking else None
+    linked_booking_id = uuid.UUID(booking_data["id"]) if booking_data else None
 
     # Check for existing attendance
     query = select(AttendanceRecord).where(

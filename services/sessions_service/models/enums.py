@@ -38,6 +38,30 @@ class SessionStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class SessionBookingStatus(str, enum.Enum):
+    """Lifecycle of a SessionBooking (the *intent* to attend a session).
+
+    Terminal at session start time — what happened at the session
+    (PRESENT / ABSENT / LATE / EXCUSED) lives on AttendanceRecord in
+    attendance_service, not here. See
+    docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §C.
+    """
+
+    PENDING = "pending"  # awaiting payment / approval
+    CONFIRMED = "confirmed"  # paid / approved; capacity held
+    CANCELLED = "cancelled"  # member or admin cancelled before session
+    EXPIRED = "expired"  # PENDING booking aged out without confirmation
+
+
+class BookingChannel(str, enum.Enum):
+    """How a SessionBooking was created."""
+
+    MEMBER_SELF = "member_self"  # member booked directly
+    ADMIN = "admin"  # admin booked on behalf of member
+    CORPORATE_BULK = "corporate_bulk"  # corporate-wellness bulk booking
+    BUNDLE_CART = "bundle_cart"  # paid via the multi-session bundle cart
+
+
 # Pod-related enums (PodVisibility, PodStatus, PodAssignmentSource) moved
 # to services.members_service.models.enums in May 2026 alongside the Pod
 # model itself. See docs/club/POD_OPERATIONS.md.

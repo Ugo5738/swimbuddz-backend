@@ -18,19 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
-from libs.common.datetime_utils import utc_now
-from services.attendance_service.models import (
-    AttendanceRecord,
-    BookingChannel,
-    SessionBooking,
-    SessionBookingStatus,
-)
+from services.attendance_service.models import AttendanceRecord
 from services.attendance_service.models.enums import AttendanceStatus
-from services.attendance_service.schemas import (
-    BulkBookingRequest,
-    BulkBookingResponse,
-    SessionBookingResponse,
-)
 
 router = APIRouter(prefix="/internal/attendance", tags=["internal"])
 
@@ -250,69 +239,4 @@ async def get_member_attendance_stats(
         favorite_day=favorite_day,
         weekly_attendance=weekly_attendance,
         total_pool_hours=total_pool_hours,
-    )
-
-
-# ---------------------------------------------------------------------------
-# A1 Phase 3.3: Corporate-bulk SessionBooking creation
-# ---------------------------------------------------------------------------
-
-
-@router.post("/bookings/bulk", response_model=BulkBookingResponse)
-async def bulk_create_bookings(
-    payload: BulkBookingRequest,
-    _: AuthUser = Depends(require_service_role),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Bulk-create SessionBookings for a corporate-wellness sponsor.
-
-    Used by sponsor onboarding flows that pre-purchase N×M (sessions ×
-    members) and want every (session, member) pair to land as a
-    CONFIRMED SessionBooking in one call. Each row is tagged with
-    ``channel=CORPORATE_BULK`` and the supplied ``corporate_program_id``
-    so the bookings can later be traced to the sponsor.
-
-    Idempotent: if a booking for (session, member) already exists,
-    that pair is reported in ``skipped`` and the existing row is
-    returned unchanged.
-    """
-    created: list[SessionBooking] = []
-    skipped = 0
-    now = utc_now()
-
-    for item in payload.items:
-        existing_q = select(SessionBooking).where(
-            SessionBooking.session_id == item.session_id,
-            SessionBooking.member_id == item.member_id,
-        )
-        existing = (await db.execute(existing_q)).scalar_one_or_none()
-        if existing is not None:
-            skipped += 1
-            created.append(existing)
-            continue
-
-        booking = SessionBooking(
-            session_id=item.session_id,
-            member_id=item.member_id,
-            member_auth_id=item.member_auth_id,
-            status=SessionBookingStatus.CONFIRMED,  # sponsor-paid up front
-            channel=BookingChannel.CORPORATE_BULK,
-            fee_amount_kobo=item.fee_amount_kobo,
-            corporate_program_id=payload.corporate_program_id,
-            confirmed_at=now,
-        )
-        db.add(booking)
-        created.append(booking)
-
-    await db.commit()
-    for booking in created:
-        await db.refresh(booking)
-
-    return BulkBookingResponse(
-        created=len(payload.items) - skipped,
-        skipped=skipped,
-        bookings=[
-            SessionBookingResponse.model_validate(b, from_attributes=True)
-            for b in created
-        ],
     )

@@ -18,7 +18,20 @@ from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from libs.common.datetime_utils import utc_now
-from services.sessions_service.models import Session, SessionCoach, SessionStatus
+from services.sessions_service.models import (
+    BookingChannel,
+    Session,
+    SessionBooking,
+    SessionBookingStatus,
+    SessionCoach,
+    SessionStatus,
+)
+from services.sessions_service.schemas import (
+    BookingConfirmRequest,
+    BulkBookingRequest,
+    BulkBookingResponse,
+    SessionBookingResponse,
+)
 
 router = APIRouter(prefix="/internal/sessions", tags=["internal"])
 
@@ -417,3 +430,165 @@ async def get_session_coach_ids(
         select(SessionCoach.coach_id).where(SessionCoach.session_id == session_id)
     )
     return [str(row[0]) for row in result.all()]
+
+
+# ---------------------------------------------------------------------------
+# A1 Phase 3.3: SessionBooking internal endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{session_id}/bookings/by-member/{member_id}",
+    response_model=SessionBookingResponse,
+)
+async def get_booking_for_session_member(
+    session_id: uuid.UUID,
+    member_id: uuid.UUID,
+    status: Optional[str] = Query(
+        None, description="Filter by booking status (e.g. 'confirmed')"
+    ),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Service-role lookup: SessionBooking for (session, member).
+
+    Used by attendance_service's sign-in flow to link the AttendanceRecord
+    being created back to its originating booking. 404 if no booking
+    matches the filter — caller treats that as "walk-in" and continues.
+    """
+    query = select(SessionBooking).where(
+        SessionBooking.session_id == session_id,
+        SessionBooking.member_id == member_id,
+    )
+    if status:
+        try:
+            query = query.where(SessionBooking.status == SessionBookingStatus(status))
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"Invalid status={status}")
+    booking = (await db.execute(query)).scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(status_code=404, detail="No booking found")
+    return booking
+
+
+@router.get(
+    "/bookings/confirmed",
+    response_model=List[SessionBookingResponse],
+)
+async def list_confirmed_bookings_since(
+    since: datetime = Query(..., description="Lower bound on booked_at (ISO 8601)"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Service-role: list CONFIRMED bookings since `since`.
+
+    Used by attendance_service's nightly NO_SHOW sweep to find recent
+    confirmed bookings that may need an ABSENT AttendanceRecord created.
+    """
+    query = (
+        select(SessionBooking)
+        .where(
+            SessionBooking.status == SessionBookingStatus.CONFIRMED,
+            SessionBooking.booked_at >= since,
+        )
+        .order_by(SessionBooking.booked_at.asc())
+    )
+    return (await db.execute(query)).scalars().all()
+
+
+@router.post(
+    "/bookings/{booking_id}/confirm",
+    response_model=SessionBookingResponse,
+)
+async def internal_confirm_booking(
+    booking_id: uuid.UUID,
+    confirm_in: BookingConfirmRequest,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Service-role variant of /sessions/bookings/{id}/confirm.
+
+    Future: payments_service webhook calls this when a SESSION_BOOKING
+    payment intent clears (so the booking gets confirmed even if the
+    member closed the browser mid-checkout).
+    """
+    booking = (
+        await db.execute(select(SessionBooking).where(SessionBooking.id == booking_id))
+    ).scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.status == SessionBookingStatus.CONFIRMED:
+        return booking
+    if booking.status != SessionBookingStatus.PENDING:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot confirm a booking with status={booking.status.value}.",
+        )
+    booking.status = SessionBookingStatus.CONFIRMED
+    booking.confirmed_at = utc_now()
+    if confirm_in.payment_intent_id is not None:
+        booking.payment_intent_id = confirm_in.payment_intent_id
+    if confirm_in.wallet_transaction_id is not None:
+        booking.wallet_transaction_id = confirm_in.wallet_transaction_id
+    await db.commit()
+    await db.refresh(booking)
+    return booking
+
+
+@router.post("/bookings/bulk", response_model=BulkBookingResponse)
+async def bulk_create_bookings(
+    payload: BulkBookingRequest,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Service-role bulk-create for corporate-wellness onboarding.
+
+    Each row is created at status=CONFIRMED (sponsor-paid up front),
+    channel=CORPORATE_BULK, with corporate_program_id set. Idempotent:
+    pre-existing (session, member) pairs are reported as `skipped` and
+    the existing row is returned unchanged.
+    """
+    created_rows: list[SessionBooking] = []
+    skipped = 0
+    now = utc_now()
+
+    for item in payload.items:
+        existing = (
+            await db.execute(
+                select(SessionBooking).where(
+                    SessionBooking.session_id == item.session_id,
+                    SessionBooking.member_id == item.member_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            skipped += 1
+            created_rows.append(existing)
+            continue
+
+        booking = SessionBooking(
+            session_id=item.session_id,
+            member_id=item.member_id,
+            member_auth_id=item.member_auth_id,
+            status=SessionBookingStatus.CONFIRMED,
+            channel=BookingChannel.CORPORATE_BULK,
+            fee_amount_kobo=item.fee_amount_kobo,
+            corporate_program_id=payload.corporate_program_id,
+            booked_at=now,
+            confirmed_at=now,
+        )
+        db.add(booking)
+        created_rows.append(booking)
+
+    await db.commit()
+    for booking in created_rows:
+        await db.refresh(booking)
+
+    return BulkBookingResponse(
+        created=len(payload.items) - skipped,
+        skipped=skipped,
+        bookings=[
+            SessionBookingResponse.model_validate(b, from_attributes=True)
+            for b in created_rows
+        ],
+    )

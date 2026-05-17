@@ -2,14 +2,9 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
-from services.attendance_service.models.enums import (
-    AttendanceRole,
-    AttendanceStatus,
-    BookingChannel,
-    SessionBookingStatus,
-)
+from services.attendance_service.models.enums import AttendanceRole, AttendanceStatus
 from services.attendance_service.schemas.enums import RideShareOption
 
 
@@ -113,85 +108,3 @@ class CoachAttendanceMarkResponse(BaseModel):
     upserted: int
     deleted: int  # PRESENT entries that removed an existing exception row
     records: List[AttendanceResponse]
-
-
-# ============================================================================
-# SessionBooking schemas (A1 Phase 3.3)
-# ============================================================================
-
-
-class SessionBookingCreate(BaseModel):
-    """Member self-book a session ahead of time.
-
-    Channel defaults to MEMBER_SELF. Admin and internal/corporate routes
-    set channel explicitly. Payment is handled out-of-band: the route
-    creates a SessionBooking(status=PENDING) and a payment intent in
-    payments_service; on Paystack webhook / Bubbles debit success the
-    booking is transitioned to CONFIRMED.
-    """
-
-    session_id: uuid.UUID
-    fee_amount_kobo: int = Field(default=0, ge=0)
-    notes: Optional[str] = Field(default=None, max_length=500)
-
-
-class AdminBookingCreate(BaseModel):
-    """Admin creates a booking on behalf of a member (channel=admin)."""
-
-    session_id: uuid.UUID
-    member_id: uuid.UUID
-    fee_amount_kobo: int = Field(default=0, ge=0)
-    notes: Optional[str] = Field(default=None, max_length=500)
-
-
-class BulkBookingItem(BaseModel):
-    """One entry in a corporate-bulk booking payload."""
-
-    session_id: uuid.UUID
-    member_id: uuid.UUID
-    member_auth_id: str = Field(min_length=1, max_length=128)
-    fee_amount_kobo: int = Field(default=0, ge=0)
-
-
-class BulkBookingRequest(BaseModel):
-    """Service-role bulk-create for corporate-wellness orchestration.
-
-    Used by sponsor onboarding flows that pre-purchase N×M (sessions ×
-    members) and want every (session, member) pair to land as a
-    CONFIRMED SessionBooking in one call. Caller is expected to set
-    channel=CORPORATE_BULK; corporate_program_id is required so the
-    bookings can be traced to the sponsor.
-    """
-
-    corporate_program_id: uuid.UUID
-    items: List[BulkBookingItem] = Field(min_length=1, max_length=500)
-
-
-class SessionBookingResponse(BaseModel):
-    id: uuid.UUID
-    session_id: uuid.UUID
-    member_id: uuid.UUID
-    member_auth_id: str
-    status: SessionBookingStatus
-    channel: BookingChannel
-    fee_amount_kobo: int
-    payment_intent_id: Optional[uuid.UUID] = None
-    wallet_transaction_id: Optional[uuid.UUID] = None
-    corporate_program_id: Optional[uuid.UUID] = None
-    notes: Optional[str] = None
-    booked_at: datetime
-    confirmed_at: Optional[datetime] = None
-    cancelled_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class BulkBookingResponse(BaseModel):
-    """Result of a bulk-create call."""
-
-    created: int
-    skipped: int  # (session, member) pairs that already had a booking
-    bookings: List[SessionBookingResponse]
