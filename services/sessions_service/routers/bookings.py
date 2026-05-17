@@ -363,6 +363,49 @@ async def cancel_booking(
 
 
 # ---------------------------------------------------------------------------
+# Member: my bookings
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/sessions/bookings/me",
+    response_model=List[SessionBookingResponse],
+)
+async def list_my_bookings(
+    status_filter: Optional[SessionBookingStatus] = None,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List the authenticated member's session bookings.
+
+    Defaults to the *active* set — PENDING (payment in flight, still
+    within the 15-min TTL) and CONFIRMED (paid, seat held). This is what
+    the member's "Booked" tab consumes: the booking lifecycle is
+    intent-only, so a confirmed booking never produces an AttendanceRecord
+    until day-of sign-in — the Booked tab must read bookings directly,
+    not attendance. Pass ``?status_filter=cancelled`` (etc.) to narrow to
+    a single state.
+
+    Registered before the admin ``/sessions/{session_id}/bookings`` route
+    so the literal ``bookings/me`` path is matched first.
+    """
+    member_id, _auth_id = await _resolve_member_for_user(current_user)
+
+    query = select(SessionBooking).where(SessionBooking.member_id == member_id)
+    if status_filter is not None:
+        query = query.where(SessionBooking.status == status_filter)
+    else:
+        query = query.where(
+            SessionBooking.status.in_(
+                [SessionBookingStatus.PENDING, SessionBookingStatus.CONFIRMED]
+            )
+        )
+    query = query.order_by(SessionBooking.booked_at.desc())
+    rows = (await db.execute(query)).scalars().all()
+    return rows
+
+
+# ---------------------------------------------------------------------------
 # Admin: who's paid for a session
 # ---------------------------------------------------------------------------
 
