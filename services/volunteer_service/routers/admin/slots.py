@@ -259,20 +259,34 @@ async def bulk_complete(
     admin: Annotated[AuthUser, Depends(require_admin)],
     db: AsyncSession = Depends(get_async_db),
 ):
+    """Complete a batch of slots, deriving timestamps and hours from the
+    opportunity's scheduled window.
+
+    For each slot:
+    - reject if the opportunity hasn't started yet (admin mis-click);
+    - preserve any pre-existing `checked_in_at` (a real check-in stamp
+      shouldn't be clobbered); otherwise stamp the opportunity start;
+    - set `checked_out_at` to the opportunity's end (or `now()` if the
+      event is still in progress / has no end_time);
+    - derive `hours_logged` from those timestamps so the slot row stays
+      internally consistent. `data.hours`, if supplied, overrides the
+      derivation for every slot in the batch.
+    """
     results: list[tuple[VolunteerSlot, VolunteerOpportunity | None]] = []
     _admin = await get_member_by_auth_id(admin.user_id, calling_service="volunteer")
     admin_member_id = uuid.UUID(_admin["id"]) if _admin else None
+    now = utc_now()
+
     for slot_id in data.slot_ids:
         slot = (
             await db.execute(select(VolunteerSlot).where(VolunteerSlot.id == slot_id))
         ).scalar_one_or_none()
         if not slot:
             continue
-
-        now = utc_now()
-        slot.checked_out_at = now
-        slot.status = SlotStatus.COMPLETED
-        slot.hours_logged = data.hours or 2.0  # Default 2 hours if not specified
+        # Idempotency: skip slots that are already in a terminal state, so
+        # re-clicking Complete All doesn't add duplicate hours_log rows.
+        if slot.status not in (SlotStatus.CLAIMED, SlotStatus.APPROVED):
+            continue
 
         opp = (
             await db.execute(
@@ -281,6 +295,46 @@ async def bulk_complete(
                 .where(VolunteerOpportunity.id == slot.opportunity_id)
             )
         ).scalar_one_or_none()
+
+        opp_start_dt: datetime | None = None
+        opp_end_dt: datetime | None = None
+        if opp and opp.start_time:
+            opp_start_dt = datetime.combine(opp.date, opp.start_time, tzinfo=timezone.utc)
+        if opp and opp.end_time:
+            opp_end_dt = datetime.combine(opp.date, opp.end_time, tzinfo=timezone.utc)
+
+        # Future-event guard: don't let an admin "complete" something that
+        # hasn't started. (We do allow completing in-progress events — admin
+        # may be closing volunteers out as they leave.)
+        if opp_start_dt and now < opp_start_dt:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Cannot complete '{opp.title if opp else 'opportunity'}': "
+                    "it hasn't started yet."
+                ),
+            )
+
+        # checked_in_at: preserve a real check-in; otherwise stamp opp start
+        if slot.checked_in_at is None:
+            slot.checked_in_at = opp_start_dt or now
+        # checked_out_at: opp end if past, else clamp to now
+        if opp_end_dt:
+            slot.checked_out_at = min(opp_end_dt, now)
+        else:
+            slot.checked_out_at = now
+        slot.status = SlotStatus.COMPLETED
+
+        # hours: explicit override > derived from the stamps we just set.
+        # If both stamps collapsed to the same `now` (no opp times at all),
+        # fall back to 2.0 so we don't credit zero hours.
+        if data.hours is not None:
+            slot.hours_logged = data.hours
+        else:
+            delta_hours = (
+                slot.checked_out_at - slot.checked_in_at
+            ).total_seconds() / 3600
+            slot.hours_logged = round(delta_hours, 2) if delta_hours > 0 else 2.0
 
         hours_log = VolunteerHoursLog(
             member_id=slot.member_id,
