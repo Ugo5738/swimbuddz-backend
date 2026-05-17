@@ -24,12 +24,23 @@ set -e
 # ===============================================================================
 
 print_usage() {
-  echo "Usage: $0 <service|--all> \"<description>\""
+  echo "Usage: $0 [--manual] <service|--all> \"<description>\""
+  echo ""
+  echo "Default behavior runs alembic --autogenerate, which detects most"
+  echo "schema changes from your model edits. Pass --manual to create a"
+  echo "blank stub instead — required for operations Alembic autogenerate"
+  echo "cannot represent: CHECK constraints, RLS policies, raw SQL data"
+  echo "migrations, Realtime publication changes, enum-label renames."
   echo ""
   echo "Examples:"
   echo "  $0 members_service \"add phone number field\""
   echo "  $0 payments_service \"add invoice table\""
   echo "  $0 --all \"add created_by to all tables\""
+  echo "  $0 --manual sessions_service \"add discriminator check constraint\""
+  echo ""
+  echo "When you use --manual, fill in upgrade()/downgrade() yourself and"
+  echo "ADD the standard \"Hand-written migration — ...\" marker to the"
+  echo "docstring per project memory (see feedback_no_handwritten_migrations.md)."
   echo ""
   echo "Available services:"
   for svc in "${SERVICES[@]}"; do
@@ -103,6 +114,12 @@ cd "$PROJECT_ROOT"
 # PARSE ARGUMENTS
 # -------------------------------------------------------------------------------
 
+MANUAL_MODE=false
+if [ "${1:-}" = "--manual" ]; then
+  MANUAL_MODE=true
+  shift
+fi
+
 if [ $# -lt 2 ]; then
   print_usage
   exit 1
@@ -136,28 +153,44 @@ generate_for_service() {
     return 0
   fi
 
-  echo "Generating migration for $svc..."
-
-  # Run autogenerate. Use `if !` so a nonzero exit from alembic doesn't kill
-  # the wrapper silently under `set -e` (the previous form
-  # `OUTPUT=$(alembic ... 2>&1)` would abort the function on failure with
-  # no diagnostic — exactly the silent-exit bug we hit when the dev DB
-  # was behind on migrations).
-  if ! OUTPUT=$(alembic -c "$ALEMBIC_INI" revision --autogenerate -m "$desc" 2>&1); then
-    echo "  ❌ Alembic failed for $svc:"
-    echo "$OUTPUT" | sed 's/^/      /'
-    echo ""
-    echo "  Common causes:"
-    echo "    * \"Target database is not up to date\" — apply pending migrations first:"
-    echo "        alembic -c $ALEMBIC_INI upgrade head"
-    echo "    * New model not visible to autogenerate — check alembic env.py"
-    echo "      imports + SERVICE_TABLES set"
-    echo "    * DB connection / credentials — confirm .env.dev"
-    return 1
+  if [ "$MANUAL_MODE" = true ]; then
+    echo "Generating manual (non-autogenerate) stub for $svc..."
+  else
+    echo "Generating migration for $svc..."
   fi
 
-  # Check if there were actual changes
-  if echo "$OUTPUT" | grep -q "No changes in schema detected"; then
+  # Run alembic. Use `if !` so a nonzero exit doesn't kill the wrapper
+  # silently under `set -e` (the previous form `OUTPUT=$(alembic ... 2>&1)`
+  # would abort the function on failure with no diagnostic).
+  if [ "$MANUAL_MODE" = true ]; then
+    # `alembic revision -m ...` (no --autogenerate) creates an empty stub
+    # with an Alembic-assigned revision ID + correct down_revision chain.
+    # Author fills in upgrade()/downgrade() themselves. Used for CHECK
+    # constraints, RLS, raw SQL, data migrations — anything autogenerate
+    # cannot represent.
+    if ! OUTPUT=$(alembic -c "$ALEMBIC_INI" revision -m "$desc" 2>&1); then
+      echo "  ❌ Alembic failed for $svc:"
+      echo "$OUTPUT" | sed 's/^/      /'
+      return 1
+    fi
+  else
+    if ! OUTPUT=$(alembic -c "$ALEMBIC_INI" revision --autogenerate -m "$desc" 2>&1); then
+      echo "  ❌ Alembic failed for $svc:"
+      echo "$OUTPUT" | sed 's/^/      /'
+      echo ""
+      echo "  Common causes:"
+      echo "    * \"Target database is not up to date\" — apply pending migrations first:"
+      echo "        alembic -c $ALEMBIC_INI upgrade head"
+      echo "    * New model not visible to autogenerate — check alembic env.py"
+      echo "      imports + SERVICE_TABLES set"
+      echo "    * DB connection / credentials — confirm .env.dev"
+      return 1
+    fi
+  fi
+
+  # Autogenerate mode only: detect "No changes detected"
+  if [ "$MANUAL_MODE" != true ] \
+     && echo "$OUTPUT" | grep -q "No changes in schema detected"; then
     echo "  ℹ️  No schema changes detected for $svc"
     return 0
   fi
@@ -166,10 +199,11 @@ generate_for_service() {
   MIGRATION_FILE=$(echo "$OUTPUT" | grep -oE "Generating .*/versions/[a-f0-9]+_.*\.py" | sed 's/Generating //')
 
   if [ -n "$MIGRATION_FILE" ]; then
-    # Alembic sometimes generates a file with `pass` in both upgrade() and
-    # downgrade() instead of reporting "No changes in schema detected".
-    # Treat that as no-effective-change and clean up the stub.
-    if grep -qE "^\s*pass\s*(#|$)" "$MIGRATION_FILE" \
+    # Autogenerate mode: if alembic produced a file with `pass` bodies it
+    # actually meant "no changes" — clean up. Manual mode: an empty stub
+    # is the whole point, so leave it alone.
+    if [ "$MANUAL_MODE" != true ] \
+       && grep -qE "^\s*pass\s*(#|$)" "$MIGRATION_FILE" \
        && ! grep -qE "^\s*op\." "$MIGRATION_FILE"; then
       echo "  ℹ️  No effective schema changes for $svc — removing empty stub:"
       echo "     $(basename "$MIGRATION_FILE")"
@@ -178,7 +212,13 @@ generate_for_service() {
     fi
     echo "  ✓ Created: $(basename "$MIGRATION_FILE")"
     echo ""
-    echo "  📝 Review this file before committing!"
+    if [ "$MANUAL_MODE" = true ]; then
+      echo "  ✏️  Manual mode — fill in upgrade()/downgrade() yourself."
+      echo "      ADD the standard \"Hand-written migration — …\" docstring"
+      echo "      marker so it's clear why autogenerate wasn't used."
+    else
+      echo "  📝 Review this file before committing!"
+    fi
     echo "     $MIGRATION_FILE"
   else
     # Alembic exited 0 but neither expected pattern matched — surface raw
