@@ -209,6 +209,16 @@ async def send_templated_email(
             program_name=d.get("program_name", ""),
             cohort_name=d.get("cohort_name", ""),
             start_date=d.get("start_date", ""),
+            # These were previously dropped here even though the template
+            # accepts them (academy mark-paid sends them in template_data):
+            # location/coach now render in the detail box, the installment
+            # block renders for instalment payers, and enrollment_id powers
+            # the deep links in the "Before Your First Session" checklist.
+            location=d.get("location"),
+            coach_name=d.get("coach_name"),
+            is_installment=d.get("is_installment", False),
+            installment_schedule=d.get("installment_schedule"),
+            enrollment_id=d.get("enrollment_id"),
         ),
         "enrollment_reminder": lambda d: academy.send_enrollment_reminder_email(
             to_email=request.to_email,

@@ -32,6 +32,15 @@ from services.academy_service.services.chat_sync import reconcile_cohort_members
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
+
+# Sentinel stored in Enrollment.reminders_sent to make the enrollment
+# confirmation email idempotent. mark-paid is legitimately called more
+# than once for the same enrollment — the Paystack webhook AND the
+# client-side /paystack/verify fallback on the enrollment-success page
+# both reach it (and React 18 StrictMode can double-fire the verify in
+# dev). Without this guard each call re-sends the confirmation email.
+_CONFIRMATION_SENT_KEY = "enrollment_confirmation"
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -55,6 +64,16 @@ async def admin_mark_enrollment_paid(
         .where(Enrollment.id == enrollment_id)
         .options(
             selectinload(Enrollment.cohort).selectinload(Cohort.program),
+            # Eager-load coach_assignments on the cohort. The enrollment
+            # confirmation email below reads `enrollment.cohort.coach_assignments`
+            # to resolve the lead coach name; without this preload the access
+            # triggers a lazy-load on the async session and raises
+            # `greenlet_spawn has not been called` — which is then caught by
+            # the try/except wrapping the email send and gets logged as a
+            # silent warning. The confirmation email never reaches the member.
+            # (Backref defined on CoachAssignment.cohort in
+            # services/academy_service/models/progress.py.)
+            selectinload(Enrollment.cohort).selectinload(Cohort.coach_assignments),
             selectinload(Enrollment.program),
             selectinload(Enrollment.installments),
             selectinload(Enrollment.progress_records),
@@ -176,8 +195,15 @@ async def admin_mark_enrollment_paid(
         not was_any_installment_paid and enrollment.paid_installments_count > 0
     ) or (not installments and enrollment.payment_status == PaymentStatus.PAID)
 
+    # Idempotency guard: mark-paid is reached by both the Paystack webhook
+    # and the client-side verify fallback, so the trigger condition above
+    # can be true on more than one call for the same enrollment. Only the
+    # first send actually goes out; the sentinel is persisted in
+    # reminders_sent (same JSON-list pattern the reminder tasks use).
+    already_sent = _CONFIRMATION_SENT_KEY in (enrollment.reminders_sent or [])
+
     # Send enrollment confirmation email on first successful installment.
-    if should_send_confirmation:
+    if should_send_confirmation and not already_sent:
         try:
             member_data = await get_member_by_id(
                 str(enrollment.member_id), calling_service="academy"
@@ -246,8 +272,21 @@ async def admin_mark_enrollment_paid(
                             "coach_name": coach_name,
                             "is_installment": is_installment,
                             "installment_schedule": installment_schedule,
+                            # Powers the deep links in the email's
+                            # "Before Your First Session" checklist
+                            # (curriculum + prep → enrollment dashboard).
+                            "enrollment_id": str(enrollment.id),
                         },
                     )
+
+                    # Persist the sentinel only after a successful send so a
+                    # transient email failure can still be retried by the
+                    # next mark-paid call (webhook/verify).
+                    enrollment.reminders_sent = list(
+                        enrollment.reminders_sent or []
+                    ) + [_CONFIRMATION_SENT_KEY]
+                    flag_modified(enrollment, "reminders_sent")
+                    await db.commit()
         except Exception as e:
             logger.warning(f"Failed to send enrollment confirmation email: {e}")
 

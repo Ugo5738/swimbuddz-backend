@@ -111,8 +111,15 @@ async def get_enrollment_onboarding(
         next_session=next_session if next_session.date else None,
         prep_materials=program.prep_materials,
         dashboard_link=f"/account/academy/enrollments/{enrollment.id}",
-        resources_link=f"/account/academy/cohorts/{cohort.id}/resources",
-        sessions_link="/account/sessions",
+        # Prep materials / curriculum are surfaced on the enrollment
+        # dashboard. There is no dedicated /cohorts/{id}/resources route
+        # on the frontend — the old value here 404'd (broke the
+        # enrollment-success "resources" link and the confirmation email).
+        resources_link=f"/account/academy/enrollments/{enrollment.id}",
+        # Member session schedule lives at /sessions, not /account/sessions
+        # (that route doesn't exist — the old value 404'd from the
+        # enrollment-success "View Sessions" button).
+        sessions_link="/sessions",
         coach_name=coach_name,
         total_milestones=total_milestones,
     )

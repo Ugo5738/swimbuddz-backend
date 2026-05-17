@@ -186,6 +186,7 @@ async def get_member_by_id(
         raise HTTPException(status_code=404, detail="Member not found")
     return MemberBasic(
         id=str(member.id),
+        auth_id=member.auth_id,
         first_name=member.first_name,
         last_name=member.last_name,
         email=member.email,
@@ -213,6 +214,7 @@ async def get_members_bulk(
     return [
         MemberBasic(
             id=str(m.id),
+            auth_id=m.auth_id,
             first_name=m.first_name,
             last_name=m.last_name,
             email=m.email,

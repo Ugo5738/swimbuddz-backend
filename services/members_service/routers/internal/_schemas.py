@@ -10,6 +10,15 @@ from pydantic import BaseModel
 
 class MemberBasic(BaseModel):
     id: str
+    # Supabase auth user UUID. Cross-service callers (academy, payments)
+    # need this to call the members-service activation endpoints — those
+    # are keyed by auth_id, not member_id. Endpoint is gated by
+    # require_service_role, so exposing auth_id internally is safe.
+    # Added 2026-05-17 after the academy mark-paid handler silently
+    # skipped tier activation when this field was missing from the
+    # response (admin_payments.py:264 sets `member_auth_id = member_data
+    # .get("auth_id")` then guards on it).
+    auth_id: str | None = None
     first_name: str
     last_name: str
     email: str

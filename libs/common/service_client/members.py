@@ -53,7 +53,11 @@ async def search_members(
 async def get_member_by_id(member_id: str, *, calling_service: str) -> Optional[dict]:
     """Look up a member by their member ID.
 
-    Returns dict with {id, first_name, last_name, email} or None.
+    Returns dict with {id, auth_id, first_name, last_name, email, phone,
+    community_paid_until, profile_photo_url} or None. `auth_id` is the
+    Supabase user UUID — required to call members-service activation
+    endpoints which key on auth_id (e.g. `/admin/members/by-auth/{auth_id}
+    /academy/activate`).
     """
     settings = get_settings()
     resp = await internal_get(
@@ -72,7 +76,8 @@ async def get_members_bulk(
 ) -> list[dict]:
     """Bulk-lookup members by IDs.
 
-    Returns list of {id, first_name, last_name, email}.
+    Returns list of {id, auth_id, first_name, last_name, email, phone,
+    community_paid_until}.
     """
     if not member_ids:
         return []
