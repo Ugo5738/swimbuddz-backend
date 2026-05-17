@@ -184,6 +184,20 @@ def create_app() -> FastAPI:
             request,
         )
 
+    # A1 Phase 3.3 — booking is rate-limited because the Bubbles fast path
+    # debits the wallet inside POST /sessions/{id}/book. Per-user/IP cap
+    # (libs.common.rate_limit keys by user when authed) stops a runaway
+    # client from hammering wallet debits. Reads/other session writes go
+    # through the catch-all below unthrottled. Registered BEFORE the
+    # catch-all so this specific (method, path) wins.
+    @app.api_route("/api/v1/sessions/{session_id}/book", methods=["POST"])
+    @limiter.limit("10/minute")
+    async def proxy_session_book(session_id: str, request: Request):
+        """Proxy session pre-booking to sessions service (rate-limited)."""
+        return await proxy_request(
+            clients.sessions_client, f"/sessions/{session_id}/book", request
+        )
+
     @app.api_route(
         "/api/v1/sessions/{path:path}",
         methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
