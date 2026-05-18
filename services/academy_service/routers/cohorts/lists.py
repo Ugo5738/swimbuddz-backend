@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
-from libs.common.service_client import get_member_by_auth_id
+from libs.common.service_client import get_member_by_auth_id, get_members_bulk
 from libs.db.session import get_async_db
 from services.academy_service.models import (
     Cohort,
@@ -42,7 +42,33 @@ async def list_cohorts(
     query = query.options(selectinload(Cohort.program))
 
     result = await db.execute(query)
-    return result.scalars().all()
+    cohorts = result.scalars().all()
+    await _annotate_coach_names(cohorts)
+    return cohorts
+
+
+async def _annotate_coach_names(cohorts: List[Cohort]) -> None:
+    """Stamp each cohort with `coach_name` (first + last) resolved from
+    members-service so the public program page can show who teaches a cohort.
+
+    Best-effort: on any members-service failure the coach_name stays None and
+    the cohort list still returns. Only the name is exposed — never contact
+    details — since `/cohorts` is a public endpoint.
+    """
+    coach_ids = list({str(c.coach_id) for c in cohorts if c.coach_id})
+    if not coach_ids:
+        return
+    try:
+        members = await get_members_bulk(coach_ids, calling_service="academy")
+    except Exception:
+        return
+    name_map = {
+        m["id"]: (f"{m.get('first_name', '')} {m.get('last_name', '')}".strip() or None)
+        for m in members
+    }
+    for cohort in cohorts:
+        if cohort.coach_id:
+            cohort.coach_name = name_map.get(str(cohort.coach_id))
 
 
 async def _annotate_enrollment_counts(db: AsyncSession, cohorts: List[Cohort]) -> None:

@@ -1,13 +1,18 @@
 """Program schemas."""
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from libs.common.currency import kobo_to_naira, naira_to_kobo
 from services.academy_service.models import BillingType, ProgramLevel
+
+
+class ProgramFAQItem(BaseModel):
+    question: str
+    answer: str
 
 
 class ProgramBase(BaseModel):
@@ -25,6 +30,7 @@ class ProgramBase(BaseModel):
     # Content
     curriculum_json: Optional[Dict[str, Any]] = None
     prep_materials: Optional[Dict[str, Any]] = None
+    faq_json: Optional[List[ProgramFAQItem]] = None
     # Status
     is_published: bool = False
 
@@ -49,6 +55,7 @@ class ProgramUpdate(BaseModel):
     billing_type: Optional[BillingType] = None
     curriculum_json: Optional[Dict[str, Any]] = None
     prep_materials: Optional[Dict[str, Any]] = None
+    faq_json: Optional[List[ProgramFAQItem]] = None
     is_published: Optional[bool] = None
 
     @field_validator("price_amount", mode="before")

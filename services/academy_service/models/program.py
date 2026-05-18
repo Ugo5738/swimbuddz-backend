@@ -2,14 +2,14 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from services.academy_service.models.enums import BillingType, ProgramLevel, enum_values
-from sqlalchemy import JSON, Boolean, DateTime
-from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 # ============================================================================
 # REFERENCE MODELS
@@ -79,6 +79,8 @@ class Program(Base):
     # Content
     curriculum_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     prep_materials: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # List of {"question": str, "answer": str} shown on the public program page
+    faq_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
     # Versioning & Status
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")

@@ -329,6 +329,11 @@ The opt-out lives on `notification_preferences.email_birthday` (boolean, default
 
 ### Programs
 
+> The program schema includes `faq_json`: an optional ordered list of
+> `{ "question": str, "answer": str }` shown on the public program page.
+> It is returned by all program reads and accepted (optional) by program
+> create/update.
+
 #### `GET /api/v1/academy/programs`
 
 - **Auth:** Public
@@ -1693,7 +1698,11 @@ The endpoints below were added to close gaps surfaced by the May 2026 payment-pa
 - **Request Body** – `ExtendClubRequest`
 
 ```json
-{ "months": 1, "from_date": "2026-07-11T00:00:00Z", "reason": "Free post-academy club bridge (cohort X)" }
+{
+  "months": 1,
+  "from_date": "2026-07-11T00:00:00Z",
+  "reason": "Free post-academy club bridge (cohort X)"
+}
 ```
 
 - **Response 200:** `MemberResponse`.
@@ -1732,19 +1741,21 @@ The endpoints below were added to close gaps surfaced by the May 2026 payment-pa
   "total_owed_kobo": 6250000,
   "total_owed_naira": 62500,
   "item_count": 1,
-  "items": [{
-    "payment_reference": "PAY-XXXXX",
-    "payment_amount": 62500,
-    "payer_email": "member@example.com",
-    "member_auth_id": "supabase-uuid",
-    "refund_kobo": 6250000,
-    "refund_naira": 62500,
-    "enrollment_id": "uuid",
-    "window": "before_start",
-    "reason": "Optional member reason",
-    "annotated_at": "2026-05-14T02:22:36+00:00",
-    "disbursed_at": null
-  }]
+  "items": [
+    {
+      "payment_reference": "PAY-XXXXX",
+      "payment_amount": 62500,
+      "payer_email": "member@example.com",
+      "member_auth_id": "supabase-uuid",
+      "refund_kobo": 6250000,
+      "refund_naira": 62500,
+      "enrollment_id": "uuid",
+      "window": "before_start",
+      "reason": "Optional member reason",
+      "annotated_at": "2026-05-14T02:22:36+00:00",
+      "disbursed_at": null
+    }
+  ]
 }
 ```
 
