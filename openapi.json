@@ -51782,6 +51782,17 @@
             ],
             "title": "Coach Id"
           },
+          "coach_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach Name"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -54224,6 +54235,20 @@
             ],
             "title": "Prep Materials"
           },
+          "faq_json": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProgramFAQItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Faq Json"
+          },
           "is_published": {
             "type": "boolean",
             "title": "Is Published",
@@ -54288,6 +54313,24 @@
         ],
         "title": "ProgramCurriculumResponse",
         "description": "Full curriculum response with weeks and lessons."
+      },
+      "ProgramFAQItem": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question",
+          "answer"
+        ],
+        "title": "ProgramFAQItem"
       },
       "ProgramLevel": {
         "type": "string",
@@ -54389,6 +54432,20 @@
               }
             ],
             "title": "Prep Materials"
+          },
+          "faq_json": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProgramFAQItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Faq Json"
           },
           "is_published": {
             "type": "boolean",
@@ -54572,6 +54629,20 @@
               }
             ],
             "title": "Prep Materials"
+          },
+          "faq_json": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProgramFAQItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Faq Json"
           },
           "is_published": {
             "anyOf": [

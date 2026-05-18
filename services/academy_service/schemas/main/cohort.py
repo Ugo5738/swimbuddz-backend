@@ -238,6 +238,9 @@ class CohortResponse(CohortBase):
     id: UUID
     program_id: UUID
     coach_id: Optional[UUID] = None
+    # Resolved from members-service by list endpoints (best-effort). None when
+    # no coach is assigned or members-service is unavailable.
+    coach_name: Optional[str] = None
     admin_dropout_approval: bool = False
     created_at: datetime
     updated_at: datetime
