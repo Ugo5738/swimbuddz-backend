@@ -46,7 +46,7 @@ async def create_extension_request(
 ):
     """Coach requests an extension for a cohort they're assigned to."""
     # Get member for this coach
-    member = await get_member_by_auth_id(current_user.user_id)
+    member = await get_member_by_auth_id(current_user.user_id, calling_service="academy")
     if not member:
         raise HTTPException(status_code=404, detail="Coach member profile not found")
 
@@ -121,7 +121,7 @@ async def list_my_extension_requests(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all extension requests created by the current coach."""
-    member = await get_member_by_auth_id(current_user.user_id)
+    member = await get_member_by_auth_id(current_user.user_id, calling_service="academy")
     if not member:
         raise HTTPException(status_code=404, detail="Coach member profile not found")
 
@@ -192,7 +192,7 @@ async def approve_extension_request(
         )
 
     # Get admin member for audit
-    admin_member = await get_member_by_auth_id(current_user.user_id)
+    admin_member = await get_member_by_auth_id(current_user.user_id, calling_service="academy")
     admin_member_id = uuid.UUID(admin_member["id"]) if admin_member else None
 
     # Update the cohort end date
@@ -293,7 +293,7 @@ async def reject_extension_request(
             detail=f"Request has already been {ext_request.status.value}",
         )
 
-    admin_member = await get_member_by_auth_id(current_user.user_id)
+    admin_member = await get_member_by_auth_id(current_user.user_id, calling_service="academy")
     admin_member_id = uuid.UUID(admin_member["id"]) if admin_member else None
 
     ext_request.status = ExtensionRequestStatus.REJECTED
