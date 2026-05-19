@@ -9,6 +9,7 @@ import os
 import subprocess
 import tempfile
 import uuid
+from urllib.parse import urlparse
 
 import httpx
 from libs.common.logging import get_logger
@@ -19,6 +20,31 @@ from services.media_service.models import MediaItem
 from services.media_service.services.storage import BucketType, storage_service
 
 logger = get_logger(__name__)
+
+
+async def _resolve_download_url(url: str) -> str:
+    """Return a URL the worker can actually fetch.
+
+    Objects in the private S3 bucket are not publicly readable, so a plain
+    GET on their stored ``file_url`` returns 403 Forbidden. Presign those
+    before download. Public/CloudFront/external URLs are returned unchanged.
+    """
+    if not url or storage_service.backend != "s3":
+        return url
+    private_bucket = getattr(storage_service, "bucket_private", "") or ""
+    if not private_bucket or private_bucket not in url:
+        return url
+    key = urlparse(url).path.lstrip("/")
+    if not key:
+        return url
+    try:
+        return await storage_service.generate_presigned_url(
+            key, BucketType.PRIVATE, expiration=3600
+        )
+    except Exception as e:
+        logger.warning("Could not presign private URL (%s): %s", url[:80], e)
+        return url
+
 
 # ── ffprobe helpers ──
 
@@ -202,10 +228,11 @@ async def process_video_upload(
         thumbnail_path = os.path.join(tmpdir, f"thumb_{uuid.uuid4()}.jpg")
 
         # Step 1: Download original video
-        logger.info("Downloading video from %s", original_file_url[:80])
+        download_url = await _resolve_download_url(original_file_url)
+        logger.info("Downloading video from %s", download_url[:80])
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
-                async with client.stream("GET", original_file_url) as resp:
+                async with client.stream("GET", download_url) as resp:
                     resp.raise_for_status()
                     with open(original_path, "wb") as f:
                         async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
@@ -492,10 +519,11 @@ async def apply_audio_overlay(
         output_path = os.path.join(tmpdir, f"output_{uuid.uuid4()}.mp4")
 
         # Step 1: Download video
-        logger.info("Downloading video from %s", video_url[:80])
+        video_dl_url = await _resolve_download_url(video_url)
+        logger.info("Downloading video from %s", video_dl_url[:80])
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
-                async with client.stream("GET", video_url) as resp:
+                async with client.stream("GET", video_dl_url) as resp:
                     resp.raise_for_status()
                     with open(video_path, "wb") as f:
                         async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
@@ -508,10 +536,11 @@ async def apply_audio_overlay(
             return {"error": "video_download_failed"}
 
         # Step 2: Download audio track
-        logger.info("Downloading audio from %s", audio_url[:80])
+        audio_dl_url = await _resolve_download_url(audio_url)
+        logger.info("Downloading audio from %s", audio_dl_url[:80])
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
-                async with client.stream("GET", audio_url) as resp:
+                async with client.stream("GET", audio_dl_url) as resp:
                     resp.raise_for_status()
                     with open(audio_path, "wb") as f:
                         async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
