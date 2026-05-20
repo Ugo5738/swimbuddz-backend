@@ -104,6 +104,12 @@ class MilestoneEventType(str, enum.Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     STATUS_CHANGED = "status_changed"
+    # OVERRIDE rows record an admin (or AI) reversing a prior decision.
+    # They are distinguished from a normal review by ``override_of_event_id``
+    # pointing at the earlier event and ``override_reason`` being non-null.
+    # ``actor_role`` may be ``"admin"`` or ``"ai_service"``; ``new_status``
+    # carries what the override decided.
+    OVERRIDE = "override"
 
 
 class ResourceSourceType(str, enum.Enum):
