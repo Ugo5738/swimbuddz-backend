@@ -463,7 +463,9 @@ async def override_progress(
     # cohort here (require_admin already covered authorisation), but
     # we do want the same 404/400 shape as the coach path.
     enrollment = (
-        await db.execute(select(Enrollment).where(Enrollment.id == payload.enrollment_id))
+        await db.execute(
+            select(Enrollment).where(Enrollment.id == payload.enrollment_id)
+        )
     ).scalar_one_or_none()
     if enrollment is None:
         raise HTTPException(

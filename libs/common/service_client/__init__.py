@@ -12,7 +12,7 @@ New code may import directly from a submodule
 
 from __future__ import annotations
 
-from .academy import check_cohort_enrollment
+from .academy import check_cohort_enrollment, list_enrollment_progress
 from .communications import dispatch_notification
 from .core import (
     _DEFAULT_TIMEOUT,
@@ -85,6 +85,7 @@ __all__ = [
     "list_pods",
     # Academy
     "check_cohort_enrollment",
+    "list_enrollment_progress",
     # Sessions
     "get_session_by_id",
     "get_next_session_for_cohort",
