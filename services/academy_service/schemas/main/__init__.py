@@ -74,6 +74,7 @@ from .onboarding import NextSessionInfo, OnboardingResponse
 from .program import ProgramBase, ProgramCreate, ProgramResponse, ProgramUpdate
 from .progress import (
     MemberMilestoneClaimRequest,
+    OverrideProgressRequest,
     StudentProgressBase,
     StudentProgressResponse,
     StudentProgressUpdate,
@@ -153,6 +154,7 @@ __all__ = [
     "ProgramUpdate",
     # progress
     "MemberMilestoneClaimRequest",
+    "OverrideProgressRequest",
     "StudentProgressBase",
     "StudentProgressResponse",
     "StudentProgressUpdate",

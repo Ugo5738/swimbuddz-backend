@@ -15,6 +15,7 @@ from services.academy_service.routers._shared import (
     MilestoneEventType,
     MilestoneReviewEvent,
     MilestoneReviewEventResponse,
+    OverrideProgressRequest,
     ProgressStatus,
     RequiredEvidence,
     StudentProgress,
@@ -24,6 +25,7 @@ from services.academy_service.routers._shared import (
     get_async_db,
     get_current_user,
     get_logger,
+    require_admin,
     require_coach,
     require_coach_for_cohort,
     select,
@@ -114,13 +116,24 @@ async def update_student_progress(
         progress.status = progress_in.status
         progress.achieved_at = progress_in.achieved_at
         progress.coach_notes = progress_in.coach_notes
-        # Set review fields if provided or auto-fill for verification
-        if progress_in.reviewed_by_coach_id:
-            progress.reviewed_by_coach_id = progress_in.reviewed_by_coach_id
-        elif progress_in.reviewed_at or progress_in.coach_notes:
-            # Auto-fill review info when coach adds notes or review timestamp
-            progress.reviewed_by_coach_id = current_user.user_id
-            progress.reviewed_at = progress_in.reviewed_at or utc_now()
+        # ── Freeze invariant ────────────────────────────────────────────
+        # ``reviewed_by_coach_id`` is the **original** reviewer's
+        # identity — set on first review and never overwritten by a
+        # subsequent action through this endpoint. Admin overrides go
+        # through ``POST /admin/progress/override``, which records a
+        # separate OVERRIDE event and deliberately does not touch this
+        # field. See ACADEMY_ADMIN_CONTROLS_DESIGN §5.4 for the
+        # rationale; older behaviour silently overwrote and erased the
+        # coach from the live row.
+        if progress.reviewed_by_coach_id is None:
+            if progress_in.reviewed_by_coach_id:
+                progress.reviewed_by_coach_id = progress_in.reviewed_by_coach_id
+                progress.reviewed_at = progress_in.reviewed_at or utc_now()
+            elif progress_in.reviewed_at or progress_in.coach_notes:
+                # Auto-fill on first review when coach adds notes or
+                # explicit review timestamp.
+                progress.reviewed_by_coach_id = current_user.user_id
+                progress.reviewed_at = progress_in.reviewed_at or utc_now()
     else:
         previous_status = None
         progress = StudentProgress(
@@ -401,3 +414,167 @@ async def list_milestone_review_events(
     )
     events_result = await db.execute(events_query)
     return events_result.scalars().all()
+
+
+# --- Admin override ---
+
+
+@router.post(
+    "/admin/progress/override",
+    response_model=StudentProgressResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def override_progress(
+    payload: OverrideProgressRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+) -> StudentProgress:
+    """Admin (or AI service) override of a prior decision on a milestone claim.
+
+    Unlike ``POST /progress`` (the coach path), this endpoint:
+
+    * **Requires** ``override_reason`` (enforced by the schema).
+    * Records a separate ``OVERRIDE`` event on
+      ``milestone_review_events`` chained to the most recent prior
+      decision via ``override_of_event_id``. Override-of-override is
+      permitted — the chain just deepens.
+    * Does **not** touch ``StudentProgress.reviewed_by_coach_id`` — the
+      original coach stays attributed to the live row (see
+      ACADEMY_ADMIN_CONTROLS_DESIGN §5.4).
+    * Attributes the event to the synthetic AI principal when the
+      caller authenticated via ``service_role``; otherwise to the
+      admin user. ``ai_metadata`` is recorded on the event row
+      regardless of caller — it's attribution data that travels with
+      the event, not a control flag.
+
+    Returns the (possibly newly-created) ``StudentProgress`` row.
+    """
+    # Service-role JWTs are attributed to the AI principal; everything
+    # else is treated as a human admin. The synthetic principal UUID
+    # lives in libs.common.principals so it can be referenced from
+    # other services later.
+    from libs.common.principals import AI_SERVICE_PRINCIPAL_ID
+
+    is_ai_principal = current_user.role == "service_role"
+    actor_id = AI_SERVICE_PRINCIPAL_ID if is_ai_principal else current_user.user_id
+    actor_role = "ai_service" if is_ai_principal else "admin"
+
+    # Load enrollment + milestone for sanity checks. We don't gate by
+    # cohort here (require_admin already covered authorisation), but
+    # we do want the same 404/400 shape as the coach path.
+    enrollment = (
+        await db.execute(select(Enrollment).where(Enrollment.id == payload.enrollment_id))
+    ).scalar_one_or_none()
+    if enrollment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found"
+        )
+
+    milestone = (
+        await db.execute(select(Milestone).where(Milestone.id == payload.milestone_id))
+    ).scalar_one_or_none()
+    if milestone is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Milestone not found"
+        )
+    if milestone.program_id != enrollment.program_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Milestone does not belong to enrollment program",
+        )
+
+    # Load (or lazily create) the StudentProgress row. Overrides should
+    # normally target an existing claim, but allow create-on-override
+    # for the rare case where an admin records a decision before the
+    # student claimed it (e.g., backfilling historical data).
+    progress = (
+        await db.execute(
+            select(StudentProgress).where(
+                StudentProgress.enrollment_id == payload.enrollment_id,
+                StudentProgress.milestone_id == payload.milestone_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if progress is None:
+        progress = StudentProgress(
+            enrollment_id=payload.enrollment_id,
+            milestone_id=payload.milestone_id,
+            status=payload.new_status,
+        )
+        db.add(progress)
+        previous_status = None
+    else:
+        previous_status = progress.status
+        progress.status = payload.new_status
+
+    # Live-row mutations the override is allowed to make. Crucially,
+    # ``reviewed_by_coach_id`` and ``reviewed_at`` are NOT touched.
+    if payload.new_status == ProgressStatus.ACHIEVED and progress.achieved_at is None:
+        progress.achieved_at = utc_now()
+    if payload.new_status == ProgressStatus.PENDING:
+        # Re-opening — clear the achievement timestamp so the row
+        # reads cleanly as not-yet-achieved.
+        progress.achieved_at = None
+    if payload.coach_notes is not None:
+        progress.coach_notes = payload.coach_notes or None
+    if payload.score is not None:
+        progress.score = payload.score
+
+    # Flush so progress.id is available for the FK on the event row.
+    await db.flush()
+
+    # Find the most recent prior decision event to chain off. We treat
+    # APPROVED / REJECTED / OVERRIDE as "decisions"; STATUS_CHANGED and
+    # CLAIMED are not decisions for chain purposes. NULL means this is
+    # the first decision on the claim — schema allows it.
+    prior_event = (
+        await db.execute(
+            select(MilestoneReviewEvent)
+            .where(
+                MilestoneReviewEvent.progress_id == progress.id,
+                MilestoneReviewEvent.event_type.in_(
+                    [
+                        MilestoneEventType.APPROVED,
+                        MilestoneEventType.REJECTED,
+                        MilestoneEventType.OVERRIDE,
+                    ]
+                ),
+            )
+            .order_by(MilestoneReviewEvent.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    db.add(
+        MilestoneReviewEvent(
+            progress_id=progress.id,
+            enrollment_id=payload.enrollment_id,
+            milestone_id=payload.milestone_id,
+            event_type=MilestoneEventType.OVERRIDE,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            previous_status=previous_status,
+            new_status=payload.new_status,
+            coach_notes_snapshot=progress.coach_notes,
+            evidence_media_id_snapshot=progress.evidence_media_id,
+            score_snapshot=progress.score,
+            override_of_event_id=prior_event.id if prior_event else None,
+            override_reason=payload.override_reason,
+            ai_metadata=payload.ai_metadata,
+        )
+    )
+
+    await db.commit()
+    await db.refresh(progress)
+
+    logger.info(
+        "Override recorded: progress=%s actor=%s:%s new_status=%s prior_event=%s",
+        progress.id,
+        actor_role,
+        actor_id,
+        payload.new_status,
+        prior_event.id if prior_event else "none",
+    )
+
+    return progress
