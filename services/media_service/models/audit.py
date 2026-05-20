@@ -21,7 +21,7 @@ values without breaking referential integrity.
 
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base

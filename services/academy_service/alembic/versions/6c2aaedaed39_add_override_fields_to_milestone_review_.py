@@ -14,7 +14,7 @@ See ``docs/design/ACADEMY_ADMIN_CONTROLS_DESIGN.md`` §5.3 and §6.1 for
 the design rationale.
 
 Revision ID: 6c2aaedaed39
-Revises: ba3150f4c374
+Revises: e946432f8fb7
 Create Date: 2026-05-20 12:32:43.595845
 """
 
@@ -25,7 +25,11 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = "6c2aaedaed39"
-down_revision = "ba3150f4c374"
+# Chained off the uppercase-cleanup migration (PR #173 / e946432f8fb7)
+# rather than directly off ba3150f4c374 — the cleanup recreates several
+# enums in the same transactional path, and chaining this migration
+# after it avoids a multi-head split on develop.
+down_revision = "e946432f8fb7"
 branch_labels = None
 depends_on = None
 
