@@ -6,10 +6,14 @@ from datetime import date
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-from libs.common.service_client import get_member_by_auth_id
 from libs.common.datetime_utils import utc_now
+from libs.common.service_client import get_member_by_auth_id
 from libs.db.session import get_async_db
 from services.volunteer_service.models import (
     OpportunityStatus,
@@ -23,9 +27,6 @@ from services.volunteer_service.schemas import (
     VolunteerOpportunityResponse,
     VolunteerOpportunityUpdate,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from ._helpers import _enrich_opportunity
 
@@ -38,6 +39,8 @@ async def list_opportunities(
     role_id: Optional[uuid.UUID] = None,
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
+    session_id: Optional[uuid.UUID] = None,
+    event_id: Optional[uuid.UUID] = None,
     skip: int = 0,
     limit: int = 50,
     admin: Annotated[AuthUser, Depends(require_admin)] = None,
@@ -62,6 +65,10 @@ async def list_opportunities(
         q = q.where(VolunteerOpportunity.date >= from_date)
     if to_date:
         q = q.where(VolunteerOpportunity.date <= to_date)
+    if session_id:
+        q = q.where(VolunteerOpportunity.session_id == session_id)
+    if event_id:
+        q = q.where(VolunteerOpportunity.event_id == event_id)
 
     rows = (await db.execute(q)).scalars().all()
     return [await _enrich_opportunity(opp) for opp in rows]

@@ -194,6 +194,10 @@ class VolunteerOpportunityUpdate(BaseModel):
     date: Optional[date] = None
     start_time: Optional[time] = None
     end_time: Optional[time] = None
+    # Cross-service refs — plain UUIDs (no cross-service FK). See
+    # docs/design/VOLUNTEER_OPPORTUNITY_CONTEXT_DESIGN.md.
+    session_id: Optional[uuid.UUID] = None
+    event_id: Optional[uuid.UUID] = None
     location_name: Optional[str] = None
     slots_needed: Optional[int] = None
     opportunity_type: Optional[OpportunityType] = None
@@ -449,3 +453,134 @@ class SpotlightResponse(BaseModel):
 class FeatureVolunteerRequest(BaseModel):
     spotlight_quote: Optional[str] = None
     featured_until: Optional[datetime] = None
+
+
+# ============================================================================
+# TEMPLATE SCHEMAS
+# ============================================================================
+
+
+class SessionTemplateVolunteerSlotBase(BaseModel):
+    role_id: uuid.UUID
+    slots_needed: int = Field(default=1, ge=1)
+    opportunity_type: OpportunityType = OpportunityType.OPEN_CLAIM
+    min_tier: VolunteerTier = VolunteerTier.TIER_1
+    qr_checkin_enabled: bool = False
+    title_override: Optional[str] = Field(default=None, max_length=200)
+    description_override: Optional[str] = None
+    cancellation_deadline_hours: int = 24
+    is_active: bool = True
+
+
+class SessionTemplateVolunteerSlotCreate(SessionTemplateVolunteerSlotBase):
+    session_template_id: uuid.UUID
+
+
+class SessionTemplateVolunteerSlotUpdate(BaseModel):
+    role_id: Optional[uuid.UUID] = None
+    slots_needed: Optional[int] = Field(default=None, ge=1)
+    opportunity_type: Optional[OpportunityType] = None
+    min_tier: Optional[VolunteerTier] = None
+    qr_checkin_enabled: Optional[bool] = None
+    title_override: Optional[str] = Field(default=None, max_length=200)
+    description_override: Optional[str] = None
+    cancellation_deadline_hours: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class SessionTemplateVolunteerSlotResponse(SessionTemplateVolunteerSlotBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    session_template_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+    # Enrichment
+    role_title: Optional[str] = None
+    role_category: Optional[str] = None
+
+
+class VolunteerOpportunityTemplateBase(BaseModel):
+    title: str = Field(..., max_length=200)
+    description: Optional[str] = None
+    role_id: uuid.UUID
+    day_of_week: int = Field(..., ge=0, le=6, description="0=Monday … 6=Sunday")
+    start_time: time
+    duration_minutes: int = Field(default=60, ge=15)
+    location_name: Optional[str] = Field(default=None, max_length=200)
+    slots_needed: int = Field(default=1, ge=1)
+    opportunity_type: OpportunityType = OpportunityType.OPEN_CLAIM
+    min_tier: VolunteerTier = VolunteerTier.TIER_1
+    qr_checkin_enabled: bool = False
+    cancellation_deadline_hours: int = 24
+    auto_generate: bool = False
+    is_active: bool = True
+
+
+class VolunteerOpportunityTemplateCreate(VolunteerOpportunityTemplateBase):
+    pass
+
+
+class VolunteerOpportunityTemplateUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=200)
+    description: Optional[str] = None
+    role_id: Optional[uuid.UUID] = None
+    day_of_week: Optional[int] = Field(default=None, ge=0, le=6)
+    start_time: Optional[time] = None
+    duration_minutes: Optional[int] = Field(default=None, ge=15)
+    location_name: Optional[str] = Field(default=None, max_length=200)
+    slots_needed: Optional[int] = Field(default=None, ge=1)
+    opportunity_type: Optional[OpportunityType] = None
+    min_tier: Optional[VolunteerTier] = None
+    qr_checkin_enabled: Optional[bool] = None
+    cancellation_deadline_hours: Optional[int] = None
+    auto_generate: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class VolunteerOpportunityTemplateResponse(VolunteerOpportunityTemplateBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    last_materialised_through: Optional[date] = None
+    created_at: datetime
+    updated_at: datetime
+    role_title: Optional[str] = None
+    role_category: Optional[str] = None
+
+
+class MaterialiseTemplateRequest(BaseModel):
+    """Materialise a standalone template forward to a target date.
+
+    Admin trigger: "create concrete opportunities for the next N weeks of
+    this template." Idempotent — skips dates already past
+    last_materialised_through.
+    """
+
+    through_date: date = Field(
+        ..., description="Generate opportunities up to and including this date."
+    )
+
+
+class MaterialiseTemplateResponse(BaseModel):
+    success: bool
+    created_count: int
+    last_materialised_through: date
+
+
+class MaterialiseFromSessionTemplateRequest(BaseModel):
+    """Internal: sessions_service tells volunteer_service that a session
+    was generated from a session template, so we should create matching
+    opportunities."""
+
+    session_id: str
+    session_template_id: str
+    date: date
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    location_name: Optional[str] = None
+
+
+class MaterialiseFromSessionTemplateResponse(BaseModel):
+    success: bool
+    created_count: int

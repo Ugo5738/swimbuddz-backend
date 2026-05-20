@@ -2,8 +2,6 @@ import uuid
 from datetime import date, datetime, time
 from typing import Optional
 
-from libs.common.datetime_utils import utc_now
-from libs.db.base import Base
 from sqlalchemy import (
     ARRAY,
     Boolean,
@@ -22,6 +20,8 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from libs.common.datetime_utils import utc_now
+from libs.db.base import Base
 from services.volunteer_service.models.enums import (
     OpportunityStatus,
     OpportunityType,
@@ -464,3 +464,172 @@ class VolunteerReward(Base):
 
     def __repr__(self) -> str:
         return f"<VolunteerReward {self.title} member={self.member_id}>"
+
+
+# ============================================================================
+# VOLUNTEER TEMPLATES — recurrence for opportunities
+# ============================================================================
+#
+# Two surfaces solve two different problems:
+#
+#   SessionTemplateVolunteerSlot — child of a session template. When the
+#   parent session template generates a session, sessions_service calls
+#   the volunteer service's `from-session-template` materialise endpoint,
+#   which fans out one VolunteerOpportunity per slot row. Keeps the
+#   volunteer schedule in lock-step with the session schedule.
+#
+#   VolunteerOpportunityTemplate — standalone recurrence not tied to a
+#   session (e.g. weekly community outreach). Materialised by a
+#   volunteer-service worker N weeks ahead.
+#
+# Both reference VolunteerRole. Cross-service refs (session_template_id)
+# are stored as plain UUIDs — no DB FK — matching the project's
+# no-cross-service-FK rule (see SERVICE_COMMUNICATION.md).
+#
+# Design note: docs/design/VOLUNTEER_OPPORTUNITY_CONTEXT_DESIGN.md.
+
+
+class SessionTemplateVolunteerSlot(Base):
+    """Recurring volunteer need declared on a session template.
+
+    Materialised into a real VolunteerOpportunity whenever a session is
+    generated from the parent session template.
+    """
+
+    __tablename__ = "session_template_volunteer_slots"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    # Cross-service ref: sessions_service.session_templates.id (plain
+    # UUID, no FK). Indexed for the materialise-by-template lookup.
+    session_template_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    role_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("volunteer_roles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    slots_needed: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    opportunity_type: Mapped[OpportunityType] = mapped_column(
+        SAEnum(
+            OpportunityType,
+            name="opportunity_type",
+            values_callable=enum_values,
+            validate_strings=True,
+            create_constraint=False,
+        ),
+        default=OpportunityType.OPEN_CLAIM,
+    )
+    min_tier: Mapped[VolunteerTier] = mapped_column(
+        SAEnum(
+            VolunteerTier,
+            name="volunteer_tier",
+            values_callable=enum_values,
+            validate_strings=True,
+            create_constraint=False,
+        ),
+        default=VolunteerTier.TIER_1,
+    )
+    qr_checkin_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    title_override: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    description_override: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    cancellation_deadline_hours: Mapped[int] = mapped_column(Integer, default=24)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    role: Mapped[Optional["VolunteerRole"]] = relationship()
+
+    def __repr__(self) -> str:
+        return (
+            f"<SessionTemplateVolunteerSlot template={self.session_template_id} "
+            f"role={self.role_id} slots={self.slots_needed}>"
+        )
+
+
+class VolunteerOpportunityTemplate(Base):
+    """Standalone recurring volunteer opportunity (not tied to a session)."""
+
+    __tablename__ = "volunteer_opportunity_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    role_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("volunteer_roles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Recurrence pattern — mirrors SessionTemplate so admins find the UX
+    # familiar. 0=Monday … 6=Sunday.
+    day_of_week: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_time: Mapped[time] = mapped_column(Time, nullable=False)
+    duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+
+    location_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    slots_needed: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    opportunity_type: Mapped[OpportunityType] = mapped_column(
+        SAEnum(
+            OpportunityType,
+            name="opportunity_type",
+            values_callable=enum_values,
+            validate_strings=True,
+            create_constraint=False,
+        ),
+        default=OpportunityType.OPEN_CLAIM,
+    )
+    min_tier: Mapped[VolunteerTier] = mapped_column(
+        SAEnum(
+            VolunteerTier,
+            name="volunteer_tier",
+            values_callable=enum_values,
+            validate_strings=True,
+            create_constraint=False,
+        ),
+        default=VolunteerTier.TIER_1,
+    )
+    qr_checkin_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    cancellation_deadline_hours: Mapped[int] = mapped_column(Integer, default=24)
+    auto_generate: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+
+    # Track materialisation watermark so the periodic worker doesn't
+    # double-create. NULL = never materialised. Updated on every
+    # successful materialise call.
+    last_materialised_through: Mapped[Optional[date]] = mapped_column(
+        Date, nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    role: Mapped[Optional["VolunteerRole"]] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<VolunteerOpportunityTemplate {self.title} dow={self.day_of_week}>"
