@@ -93,7 +93,16 @@ ENUM_LOWERCASE_VALUES: dict[str, list[str]] = {
     "progress_status_enum": ["pending", "achieved"],
 }
 
-# Same ordering as migration ``a4c5d6e7f801`` for clarity.
+# Ordering follows migration ``a4c5d6e7f801`` for the first 13 rows,
+# then adds the two ``milestone_review_events`` columns that also
+# reference ``progress_status_enum`` — that older migration's
+# ``COLUMN_ENUM_MAP`` predated the audit-log table and didn't list
+# them. They MUST be included here, otherwise the ``DROP TYPE`` for
+# the legacy ``progress_status_enum`` will fail with
+# ``DependentObjectsStillExist``. ``milestone_event_type_enum`` is
+# deliberately not listed: it was created lowercase-only from the
+# start (its values ``claimed/approved/rejected/status_changed``
+# never had uppercase variants), so it has nothing to drop.
 COLUMN_ENUM_MAP: list[tuple[str, str, str]] = [
     ("programs", "level", "program_level_enum"),
     ("programs", "billing_type", "billing_type_enum"),
@@ -108,6 +117,8 @@ COLUMN_ENUM_MAP: list[tuple[str, str, str]] = [
     ("milestones", "milestone_type", "milestone_type_enum"),
     ("milestones", "required_evidence", "required_evidence_enum"),
     ("student_progress", "status", "progress_status_enum"),
+    ("milestone_review_events", "previous_status", "progress_status_enum"),
+    ("milestone_review_events", "new_status", "progress_status_enum"),
 ]
 
 
