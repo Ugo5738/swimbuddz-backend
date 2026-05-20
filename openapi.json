@@ -11117,6 +11117,53 @@
         }
       }
     },
+    "/api/v1/academy/admin/progress/override": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Override Progress",
+        "description": "Admin (or AI service) override of a prior decision on a milestone claim.\n\nUnlike ``POST /progress`` (the coach path), this endpoint:\n\n* **Requires** ``override_reason`` (enforced by the schema).\n* Records a separate ``OVERRIDE`` event on\n  ``milestone_review_events`` chained to the most recent prior\n  decision via ``override_of_event_id``. Override-of-override is\n  permitted \u2014 the chain just deepens.\n* Does **not** touch ``StudentProgress.reviewed_by_coach_id`` \u2014 the\n  original coach stays attributed to the live row (see\n  ACADEMY_ADMIN_CONTROLS_DESIGN \u00a75.4).\n* Attributes the event to the synthetic AI principal when the\n  caller authenticated via ``service_role``; otherwise to the\n  admin user. ``ai_metadata`` is recorded on the event row\n  regardless of caller \u2014 it's attribution data that travels with\n  the event, not a control flag.\n\nReturns the (possibly newly-created) ``StudentProgress`` row.",
+        "operationId": "override_progress_academy_admin_progress_override_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OverrideProgressRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentProgressResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/academy/coach/me/dashboard": {
       "get": {
         "tags": [
@@ -35628,6 +35675,104 @@
         }
       }
     },
+    "/api/v1/media/admin/enrollments/{enrollment_id}/evidence": {
+      "get": {
+        "tags": [
+          "media-admin"
+        ],
+        "summary": "List Enrollment Evidence",
+        "description": "Return every milestone-evidence media item for an enrollment.\n\nJoins academy's StudentProgress (fetched over HTTP \u2014 services\ncannot share a DB) with the local ``media_items`` rows. Items\nthat the academy reports but media can't locate are dropped from\nthe response with a logger.warning; this means a deleted media\nrow never surfaces an empty card but the operator sees the\ndiscrepancy in logs.",
+        "operationId": "list_enrollment_evidence_media_admin_enrollments__enrollment_id__evidence_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminEvidenceListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/admin/items/{media_id}/download": {
+      "get": {
+        "tags": [
+          "media-admin"
+        ],
+        "summary": "Get Media Download Url",
+        "description": "Issue a 60-second presigned URL for an admin to download a media item.\n\nThe bytes do not stream through this service \u2014 see design \u00a79.3.\nThe audit row is written when the URL is issued (records intent),\nnot when the download completes (which we can't observe).",
+        "operationId": "get_media_download_url_media_admin_items__media_id__download_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "media_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Media Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaDownloadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/chat/channels": {
       "get": {
         "tags": [
@@ -53629,7 +53774,8 @@
           "claimed",
           "approved",
           "rejected",
-          "status_changed"
+          "status_changed",
+          "override"
         ],
         "title": "MilestoneEventType"
       },
@@ -53848,6 +53994,41 @@
             ],
             "title": "Score Snapshot"
           },
+          "override_of_event_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Of Event Id"
+          },
+          "override_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
+          },
+          "ai_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Metadata"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -54020,6 +54201,72 @@
         ],
         "title": "OnboardingResponse",
         "description": "Structured onboarding information for a new enrollment."
+      },
+      "OverrideProgressRequest": {
+        "properties": {
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Enrollment Id"
+          },
+          "milestone_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Milestone Id"
+          },
+          "new_status": {
+            "$ref": "#/components/schemas/ProgressStatus"
+          },
+          "override_reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Override Reason"
+          },
+          "coach_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach Notes"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "ai_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enrollment_id",
+          "milestone_id",
+          "new_status",
+          "override_reason"
+        ],
+        "title": "OverrideProgressRequest",
+        "description": "Admin (or AI service) override of a prior coach decision.\n\nDistinct from ``StudentProgressUpdate`` because an override:\n\n* **Must** carry an ``override_reason`` \u2014 every override is recorded\n  in the audit trail and the reason is required justification.\n* Does **not** touch ``reviewed_by_coach_id`` \u2014 the original coach\n  stays attributed to the live row. See ACADEMY_ADMIN_CONTROLS_DESIGN \u00a75.4.\n* Optionally carries ``ai_metadata`` for AI-driven overrides\n  (model version, confidence score, etc.). Caller's role/identity is\n  derived from the JWT, not this field \u2014 including ``ai_metadata``\n  from a human admin token is allowed (it's just attribution data\n  that travels with the event row) but ``actor_role`` is always set\n  from the auth context."
       },
       "PaymentStatus": {
         "type": "string",
@@ -78964,6 +79211,133 @@
         "title": "RSVPResponse",
         "description": "RSVP response schema."
       },
+      "AdminEvidenceItemResponse": {
+        "properties": {
+          "media_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Media Id"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "file_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Url"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
+          },
+          "is_processed": {
+            "type": "boolean",
+            "title": "Is Processed",
+            "default": true
+          },
+          "media_created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Media Created At"
+          },
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Enrollment Id"
+          },
+          "milestone_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Milestone Id"
+          },
+          "progress_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Progress Id"
+          },
+          "progress_status": {
+            "type": "string",
+            "title": "Progress Status"
+          },
+          "student_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Student Notes"
+          },
+          "claim_achieved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Achieved At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "media_id",
+          "media_type",
+          "media_created_at",
+          "enrollment_id",
+          "milestone_id",
+          "progress_id",
+          "progress_status"
+        ],
+        "title": "AdminEvidenceItemResponse",
+        "description": "A single tile in the admin evidence gallery for an enrollment.\n\nComposed by joining a ``StudentProgress`` row (fetched from the\nacademy service) with its ``MediaItem`` (looked up locally). The\nURLs are presigned where applicable, matching the existing coach\nview's behaviour \u2014 admins see the same view, plus a download\naffordance."
+      },
+      "AdminEvidenceListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminEvidenceItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Enrollment Id"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "enrollment_id",
+          "total"
+        ],
+        "title": "AdminEvidenceListResponse",
+        "description": "Wrapper for the admin evidence-gallery list endpoint.\n\nA wrapper rather than a bare list lets future pagination /\naggregate fields (total uploaded bytes, average review age, \u2026)\nland without a breaking change."
+      },
       "AlbumCoverPhoto": {
         "properties": {
           "id": {
@@ -79885,6 +80259,26 @@
           "file"
         ],
         "title": "Body_upload_media_media_media_post"
+      },
+      "MediaDownloadResponse": {
+        "properties": {
+          "download_url": {
+            "type": "string",
+            "title": "Download Url"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "download_url",
+          "expires_at"
+        ],
+        "title": "MediaDownloadResponse",
+        "description": "Response from the admin download endpoint.\n\nThe URL is short-lived (60 seconds by design \u2014 see\nACADEMY_ADMIN_CONTROLS_DESIGN \u00a79.3) and intended to be handed\nstraight to the browser. ``expires_at`` is included so the\nclient can show a \"this link expires\" hint and / or retry on\nexpiry."
       },
       "MediaItemResponse": {
         "properties": {
