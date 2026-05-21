@@ -3,13 +3,13 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.service_client import get_members_bulk, get_session_by_id
 from libs.db.session import get_async_db
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.attendance_service.models import AttendanceRecord, AttendanceStatus
 from services.attendance_service.schemas import (
     AttendanceResponse,
@@ -55,18 +55,19 @@ async def coach_mark_session_attendance(
             session_id=session_id, upserted=0, deleted=0, records=[]
         )
 
-    # Resolve session → cohort_id; verify each member is enrolled in the cohort.
+    # Resolve session. We used to reject non-cohort sessions here, but the
+    # admin attendance UI needs the same upsert mechanic for community /
+    # club / event sessions too — there's no other path for bulk-marking
+    # paid bookings as PRESENT. The EXCUSED → CohortMakeupObligation
+    # side-effect downstream is already cohort-aware and only fires when
+    # the parent session has a cohort_id, so lifting the gate here is
+    # safe.
     session_data = await get_session_by_id(
         str(session_id), calling_service="attendance"
     )
     if not session_data:
         raise HTTPException(status_code=404, detail="Session not found")
-    cohort_id = session_data.get("cohort_id")
-    if cohort_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Coach attendance marking only supported for cohort sessions",
-        )
+    is_cohort_session = session_data.get("cohort_id") is not None
 
     # Pull existing rows for this session for the members in the payload.
     member_ids = [e.member_id for e in payload.entries]
@@ -91,11 +92,36 @@ async def coach_mark_session_attendance(
 
     for entry in payload.entries:
         existing = existing_by_member.get(entry.member_id)
+
+        # PRESENT has different semantics by session kind:
+        #   - Cohort sessions are default-present, so PRESENT means
+        #     "remove the exception row" (or no-op if none exists).
+        #   - Non-cohort sessions have no default-present model, so
+        #     PRESENT must materialise a row — that's how a paid booking
+        #     becomes an actual attendance record. Without this branch
+        #     the admin bulk "mark all expected as present" button on
+        #     non-cohort sessions would silently no-op.
         if entry.status == AttendanceStatus.PRESENT:
-            # Revert to default-present: delete the exception row if any.
-            if existing is not None:
-                await db.delete(existing)
-                deleted += 1
+            if is_cohort_session:
+                if existing is not None:
+                    await db.delete(existing)
+                    deleted += 1
+                continue
+            # Non-cohort: upsert as PRESENT.
+            if existing is None:
+                db.add(
+                    AttendanceRecord(
+                        session_id=session_id,
+                        member_id=entry.member_id,
+                        status=AttendanceStatus.PRESENT,
+                        notes=entry.notes,
+                    )
+                )
+            else:
+                existing.status = AttendanceStatus.PRESENT
+                if entry.notes is not None:
+                    existing.notes = entry.notes
+            upserted += 1
             continue
 
         if existing is None:

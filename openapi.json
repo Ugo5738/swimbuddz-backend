@@ -70768,7 +70768,15 @@
             "title": "Role Id"
           },
           "date": {
-            "type": "null",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Date"
           },
           "start_time": {
