@@ -224,6 +224,58 @@ These are mounted on the members service directly (not exposed through the gatew
 - **Auth:** Admin
 - **Description:** Export paid attendee list for pool management (CSV or JSON).
 
+### `POST /api/v1/attendance/sessions/{session_id}/coach-mark`
+
+- **Auth:** Admin or assigned coach
+- **Description:** Bulk-upsert attendance records for a session. Powers the admin Attendance tab's per-row marking AND the "Mark all expected as present" bulk button.
+- **Behavior is session-kind dependent:**
+  - **Cohort sessions** use a default-present model. Status `present` _deletes_ the exception row (reverting the member to implicit present). `excused` / `absent` / `late` upsert an explicit row.
+  - **Non-cohort sessions** (`community` / `club` / `event`) have no default-present. Status `present` upserts a real `AttendanceRecord` — this is how the bulk "Mark all expected as present" admin button turns paid bookings into attendance rows.
+
+#### Request Body
+
+```json
+{
+  "entries": [
+    {
+      "member_id": "uuid",
+      "status": "present",
+      "notes": null
+    }
+  ]
+}
+```
+
+- `status`: `present` | `absent` | `late` | `excused` | `cancelled`
+- Members not included in `entries` are untouched (cohort: implicitly present; non-cohort: still expected/unmarked).
+
+#### Response 200 – `CoachAttendanceMarkResponse`
+
+```json
+{
+  "session_id": "uuid",
+  "upserted": 3,
+  "deleted": 1,
+  "records": [
+    { "id": "uuid", "session_id": "uuid", "member_id": "uuid", "status": "present", "..." }
+  ]
+}
+```
+
+- `upserted`: number of rows created or updated.
+- `deleted`: number of exception rows removed (cohort `present` revert path).
+
+### Background Cron (attendance-worker)
+
+The attendance service ships an ARQ worker (`services.attendance_service.worker.WorkerSettings`) running two daily crons. Requires the `attendance-worker` container in `docker-compose.yml`.
+
+| Cron                      | When (UTC) | Purpose                                                                                                                                                                                               |
+| ------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `notify_stale_attendance` | 19:00      | For sessions that ended in the last 24h with ≥1 confirmed booking lacking a PRESENT/LATE attendance row, dispatches an in-app notification to the session's coaches + all admins. Dedupes via window. |
+| `sweep_no_show_bookings`  | 02:45      | For CONFIRMED bookings older than the notify cron whose session ended without a matching attendance row, auto-creates `AttendanceRecord(status=ABSENT, booking_id=<>)`. Looks back 7 days.            |
+
+The 7-hour gap between the two gives coaches an evening window to mark attendance manually before the sweep fills in ABSENT on their behalf.
+
 ---
 
 ## 5. Announcements (Communications)
@@ -814,13 +866,13 @@ The Volunteer Service manages volunteer roles, opportunities, scheduling, hours 
 
 #### Opportunities
 
-| Method   | Endpoint                                      | Description                                                                                              |
-| -------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `GET`    | `/api/v1/volunteers/opportunities`            | List open opportunities (filterable by status, role, date, **session_id**, **event_id**)                 |
-| `GET`    | `/api/v1/volunteers/opportunities/upcoming`   | Upcoming 14 days                                                                                         |
-| `GET`    | `/api/v1/volunteers/opportunities/{id}`       | Opportunity detail                                                                                       |
-| `POST`   | `/api/v1/volunteers/opportunities/{id}/claim` | Claim a slot (auto-approves for open_claim)                                                              |
-| `DELETE` | `/api/v1/volunteers/opportunities/{id}/claim` | Cancel my claim (tracks late cancellations)                                                              |
+| Method   | Endpoint                                      | Description                                                                              |
+| -------- | --------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `GET`    | `/api/v1/volunteers/opportunities`            | List open opportunities (filterable by status, role, date, **session_id**, **event_id**) |
+| `GET`    | `/api/v1/volunteers/opportunities/upcoming`   | Upcoming 14 days                                                                         |
+| `GET`    | `/api/v1/volunteers/opportunities/{id}`       | Opportunity detail                                                                       |
+| `POST`   | `/api/v1/volunteers/opportunities/{id}/claim` | Claim a slot (auto-approves for open_claim)                                              |
+| `DELETE` | `/api/v1/volunteers/opportunities/{id}/claim` | Cancel my claim (tracks late cancellations)                                              |
 
 `session_id` / `event_id` filters power the booking-time "Volunteer at this session" panel. See [VOLUNTEER_OPPORTUNITY_CONTEXT_DESIGN.md](../../docs/design/VOLUNTEER_OPPORTUNITY_CONTEXT_DESIGN.md).
 
@@ -899,32 +951,32 @@ Two template surfaces, see [VOLUNTEER_OPPORTUNITY_CONTEXT_DESIGN.md](../../docs/
 
 Session-template volunteer slots — fan out automatically when sessions_service generates a session from the parent template:
 
-| Method   | Endpoint                                                                          | Description                                  |
-| -------- | --------------------------------------------------------------------------------- | -------------------------------------------- |
-| `GET`    | `/api/v1/admin/volunteers/session-templates/{session_template_id}/slots`          | List volunteer needs for a session template  |
-| `POST`   | `/api/v1/admin/volunteers/session-templates/{session_template_id}/slots`          | Attach a new volunteer need                  |
-| `PATCH`  | `/api/v1/admin/volunteers/session-templates/{session_template_id}/slots/{slot_id}`| Update a slot row                            |
-| `DELETE` | `/api/v1/admin/volunteers/session-templates/{session_template_id}/slots/{slot_id}`| Remove a slot row                            |
+| Method   | Endpoint                                                                           | Description                                 |
+| -------- | ---------------------------------------------------------------------------------- | ------------------------------------------- |
+| `GET`    | `/api/v1/admin/volunteers/session-templates/{session_template_id}/slots`           | List volunteer needs for a session template |
+| `POST`   | `/api/v1/admin/volunteers/session-templates/{session_template_id}/slots`           | Attach a new volunteer need                 |
+| `PATCH`  | `/api/v1/admin/volunteers/session-templates/{session_template_id}/slots/{slot_id}` | Update a slot row                           |
+| `DELETE` | `/api/v1/admin/volunteers/session-templates/{session_template_id}/slots/{slot_id}` | Remove a slot row                           |
 
 Standalone volunteer-opportunity templates — recurring opportunities not tied to a session:
 
-| Method   | Endpoint                                                                | Description                                  |
-| -------- | ----------------------------------------------------------------------- | -------------------------------------------- |
-| `GET`    | `/api/v1/admin/volunteers/opportunity-templates?active_only=`           | List standalone templates                    |
-| `POST`   | `/api/v1/admin/volunteers/opportunity-templates`                        | Create template                              |
-| `PATCH`  | `/api/v1/admin/volunteers/opportunity-templates/{template_id}`          | Update template                              |
-| `DELETE` | `/api/v1/admin/volunteers/opportunity-templates/{template_id}`          | Delete template                              |
+| Method   | Endpoint                                                                   | Description                                                 |
+| -------- | -------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `GET`    | `/api/v1/admin/volunteers/opportunity-templates?active_only=`              | List standalone templates                                   |
+| `POST`   | `/api/v1/admin/volunteers/opportunity-templates`                           | Create template                                             |
+| `PATCH`  | `/api/v1/admin/volunteers/opportunity-templates/{template_id}`             | Update template                                             |
+| `DELETE` | `/api/v1/admin/volunteers/opportunity-templates/{template_id}`             | Delete template                                             |
 | `POST`   | `/api/v1/admin/volunteers/opportunity-templates/{template_id}/materialise` | Generate concrete opportunities through a date (idempotent) |
 
 ### Internal Endpoints (Service-to-Service Only)
 
-| Method | Endpoint                                                           | Description                                                          |
-| ------ | ------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| `POST` | `/internal/volunteer/ensure-profile`                               | Create a VolunteerProfile for a member if missing (idempotent)       |
-| `POST` | `/internal/volunteer/log-hours`                                    | Idempotently credit volunteer hours (source + ext_ref tuple)         |
-| `GET`  | `/internal/volunteer/member-summary/{auth_id}?from=&to=`           | Aggregate hours for reporting                                        |
-| `POST` | `/internal/volunteer/opportunities/cancel-for-context`              | Cascade-cancel opportunities when a session/event is cancelled       |
-| `POST` | `/internal/volunteer/opportunities/from-session-template`           | Materialise SessionTemplateVolunteerSlot rows into concrete opps     |
+| Method | Endpoint                                                  | Description                                                      |
+| ------ | --------------------------------------------------------- | ---------------------------------------------------------------- |
+| `POST` | `/internal/volunteer/ensure-profile`                      | Create a VolunteerProfile for a member if missing (idempotent)   |
+| `POST` | `/internal/volunteer/log-hours`                           | Idempotently credit volunteer hours (source + ext_ref tuple)     |
+| `GET`  | `/internal/volunteer/member-summary/{auth_id}?from=&to=`  | Aggregate hours for reporting                                    |
+| `POST` | `/internal/volunteer/opportunities/cancel-for-context`    | Cascade-cancel opportunities when a session/event is cancelled   |
+| `POST` | `/internal/volunteer/opportunities/from-session-template` | Materialise SessionTemplateVolunteerSlot rows into concrete opps |
 
 ---
 

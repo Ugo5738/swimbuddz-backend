@@ -1,7 +1,15 @@
 """Pydantic schemas for the Volunteer Service."""
 
 import uuid
-from datetime import date, datetime, time
+
+# Alias `date` to `_Date` to avoid the field name `date` shadowing the
+# imported type when Pydantic v2 re-resolves annotations via
+# get_type_hints() on classes that have BOTH a `date` field AND a None
+# default (e.g. VolunteerOpportunityUpdate). Without this alias, the
+# field's type resolves to `None` literal and every incoming date value
+# fails with "Input should be None / none_required".
+from datetime import date as _Date
+from datetime import datetime, time
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -170,7 +178,7 @@ class VolunteerOpportunityBase(BaseModel):
     title: str = Field(..., max_length=200)
     description: Optional[str] = None
     role_id: Optional[uuid.UUID] = None
-    date: date
+    date: _Date
     start_time: Optional[time] = None
     end_time: Optional[time] = None
     session_id: Optional[uuid.UUID] = None
@@ -191,7 +199,7 @@ class VolunteerOpportunityUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     role_id: Optional[uuid.UUID] = None
-    date: Optional[date] = None
+    date: Optional[_Date] = None
     start_time: Optional[time] = None
     end_time: Optional[time] = None
     # Cross-service refs — plain UUIDs (no cross-service FK). See
@@ -214,7 +222,7 @@ class VolunteerOpportunityResponse(BaseModel):
     title: str
     description: Optional[str] = None
     role_id: Optional[uuid.UUID] = None
-    date: date
+    date: _Date
     start_time: Optional[time] = None
     end_time: Optional[time] = None
     session_id: Optional[uuid.UUID] = None
@@ -336,7 +344,7 @@ class VolunteerHoursLogResponse(BaseModel):
     slot_id: Optional[uuid.UUID] = None
     opportunity_id: Optional[uuid.UUID] = None
     hours: float
-    date: date
+    date: _Date
     role_id: Optional[uuid.UUID] = None
     source: str
     logged_by: Optional[uuid.UUID] = None
@@ -347,7 +355,7 @@ class VolunteerHoursLogResponse(BaseModel):
 class ManualHoursCreate(BaseModel):
     member_id: uuid.UUID
     hours: float = Field(..., gt=0, le=24)
-    date: date
+    date: _Date
     role_id: Optional[uuid.UUID] = None
     notes: Optional[str] = None
 
@@ -542,7 +550,7 @@ class VolunteerOpportunityTemplateResponse(VolunteerOpportunityTemplateBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    last_materialised_through: Optional[date] = None
+    last_materialised_through: Optional[_Date] = None
     created_at: datetime
     updated_at: datetime
     role_title: Optional[str] = None
@@ -557,7 +565,7 @@ class MaterialiseTemplateRequest(BaseModel):
     last_materialised_through.
     """
 
-    through_date: date = Field(
+    through_date: _Date = Field(
         ..., description="Generate opportunities up to and including this date."
     )
 
@@ -565,7 +573,7 @@ class MaterialiseTemplateRequest(BaseModel):
 class MaterialiseTemplateResponse(BaseModel):
     success: bool
     created_count: int
-    last_materialised_through: date
+    last_materialised_through: _Date
 
 
 class MaterialiseFromSessionTemplateRequest(BaseModel):
@@ -575,7 +583,7 @@ class MaterialiseFromSessionTemplateRequest(BaseModel):
 
     session_id: str
     session_template_id: str
-    date: date
+    date: _Date
     start_time: Optional[time] = None
     end_time: Optional[time] = None
     location_name: Optional[str] = None
