@@ -216,3 +216,63 @@ class ApplyAudioRequest(BaseModel):
     audio_track_id: uuid.UUID
     volume_mix: float = 1.0  # 0.0 = mute original, 1.0 = full replacement
     start_offset_seconds: float = 0.0  # Where in the audio track to start
+
+
+# ── Admin evidence-gallery schemas ──────────────────────────────────────
+
+
+class AdminEvidenceItemResponse(BaseModel):
+    """A single tile in the admin evidence gallery for an enrollment.
+
+    Composed by joining a ``StudentProgress`` row (fetched from the
+    academy service) with its ``MediaItem`` (looked up locally). The
+    URLs are presigned where applicable, matching the existing coach
+    view's behaviour — admins see the same view, plus a download
+    affordance.
+    """
+
+    # Media identity / playback
+    media_id: uuid.UUID
+    media_type: str  # "IMAGE" | "VIDEO" | "DOCUMENT"
+    file_url: Optional[str] = None  # Presigned for private bucket
+    thumbnail_url: Optional[str] = None  # Presigned for private bucket
+    is_processed: bool = True
+    media_created_at: datetime
+
+    # Academy context — denormalised from the StudentProgress row so
+    # the UI can render a tile without a second round-trip per item.
+    enrollment_id: uuid.UUID
+    milestone_id: uuid.UUID
+    progress_id: uuid.UUID
+    progress_status: str  # "pending" | "achieved"
+    student_notes: Optional[str] = None
+    claim_achieved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AdminEvidenceListResponse(BaseModel):
+    """Wrapper for the admin evidence-gallery list endpoint.
+
+    A wrapper rather than a bare list lets future pagination /
+    aggregate fields (total uploaded bytes, average review age, …)
+    land without a breaking change.
+    """
+
+    items: list[AdminEvidenceItemResponse]
+    enrollment_id: uuid.UUID
+    total: int
+
+
+class MediaDownloadResponse(BaseModel):
+    """Response from the admin download endpoint.
+
+    The URL is short-lived (60 seconds by design — see
+    ACADEMY_ADMIN_CONTROLS_DESIGN §9.3) and intended to be handed
+    straight to the browser. ``expires_at`` is included so the
+    client can show a "this link expires" hint and / or retry on
+    expiry.
+    """
+
+    download_url: str
+    expires_at: datetime

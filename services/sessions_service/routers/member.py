@@ -17,7 +17,10 @@ from libs.auth.dependencies import (
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
-from libs.common.service_client import internal_post
+from libs.common.service_client import (
+    cancel_opportunities_for_context,
+    internal_post,
+)
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     Session,
@@ -411,6 +414,25 @@ async def cancel_session(
         logger = logging.getLogger(__name__)
         logger.error(
             "Failed to trigger cancel notifications for session %s: %s", session_id, exc
+        )
+
+    # Cascade-cancel any volunteer opportunities tied to this session. Best
+    # effort: a volunteer-service outage must not block the cancellation
+    # response. See docs/design/VOLUNTEER_OPPORTUNITY_CONTEXT_DESIGN.md.
+    try:
+        await cancel_opportunities_for_context(
+            calling_service="sessions",
+            session_id=str(session.id),
+            reason=cancellation_reason or "Session cancelled",
+        )
+    except Exception as exc:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(
+            "Failed to cascade-cancel volunteer opportunities for session %s: %s",
+            session_id,
+            exc,
         )
 
     return session

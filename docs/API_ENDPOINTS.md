@@ -814,13 +814,15 @@ The Volunteer Service manages volunteer roles, opportunities, scheduling, hours 
 
 #### Opportunities
 
-| Method   | Endpoint                                      | Description                                                |
-| -------- | --------------------------------------------- | ---------------------------------------------------------- |
-| `GET`    | `/api/v1/volunteers/opportunities`            | List open opportunities (filterable by status, role, date) |
-| `GET`    | `/api/v1/volunteers/opportunities/upcoming`   | Upcoming 14 days                                           |
-| `GET`    | `/api/v1/volunteers/opportunities/{id}`       | Opportunity detail                                         |
-| `POST`   | `/api/v1/volunteers/opportunities/{id}/claim` | Claim a slot (auto-approves for open_claim)                |
-| `DELETE` | `/api/v1/volunteers/opportunities/{id}/claim` | Cancel my claim (tracks late cancellations)                |
+| Method   | Endpoint                                      | Description                                                                                              |
+| -------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/v1/volunteers/opportunities`            | List open opportunities (filterable by status, role, date, **session_id**, **event_id**)                 |
+| `GET`    | `/api/v1/volunteers/opportunities/upcoming`   | Upcoming 14 days                                                                                         |
+| `GET`    | `/api/v1/volunteers/opportunities/{id}`       | Opportunity detail                                                                                       |
+| `POST`   | `/api/v1/volunteers/opportunities/{id}/claim` | Claim a slot (auto-approves for open_claim)                                                              |
+| `DELETE` | `/api/v1/volunteers/opportunities/{id}/claim` | Cancel my claim (tracks late cancellations)                                                              |
+
+`session_id` / `event_id` filters power the booking-time "Volunteer at this session" panel. See [VOLUNTEER_OPPORTUNITY_CONTEXT_DESIGN.md](../../docs/design/VOLUNTEER_OPPORTUNITY_CONTEXT_DESIGN.md).
 
 #### Hours & Leaderboard
 
@@ -890,6 +892,39 @@ The Volunteer Service manages volunteer roles, opportunities, scheduling, hours 
 | ------ | --------------------------------------------- | ---------------------------------------------------------------- |
 | `GET`  | `/api/v1/admin/volunteers/dashboard`          | Dashboard summary (active, hours, unfilled, no-show rate, top 5) |
 | `GET`  | `/api/v1/admin/volunteers/reliability-report` | Reliability report (sorted worst-first)                          |
+
+#### Template Management (Recurring Volunteer Needs)
+
+Two template surfaces, see [VOLUNTEER_OPPORTUNITY_CONTEXT_DESIGN.md](../../docs/design/VOLUNTEER_OPPORTUNITY_CONTEXT_DESIGN.md):
+
+Session-template volunteer slots — fan out automatically when sessions_service generates a session from the parent template:
+
+| Method   | Endpoint                                                                          | Description                                  |
+| -------- | --------------------------------------------------------------------------------- | -------------------------------------------- |
+| `GET`    | `/api/v1/admin/volunteers/session-templates/{session_template_id}/slots`          | List volunteer needs for a session template  |
+| `POST`   | `/api/v1/admin/volunteers/session-templates/{session_template_id}/slots`          | Attach a new volunteer need                  |
+| `PATCH`  | `/api/v1/admin/volunteers/session-templates/{session_template_id}/slots/{slot_id}`| Update a slot row                            |
+| `DELETE` | `/api/v1/admin/volunteers/session-templates/{session_template_id}/slots/{slot_id}`| Remove a slot row                            |
+
+Standalone volunteer-opportunity templates — recurring opportunities not tied to a session:
+
+| Method   | Endpoint                                                                | Description                                  |
+| -------- | ----------------------------------------------------------------------- | -------------------------------------------- |
+| `GET`    | `/api/v1/admin/volunteers/opportunity-templates?active_only=`           | List standalone templates                    |
+| `POST`   | `/api/v1/admin/volunteers/opportunity-templates`                        | Create template                              |
+| `PATCH`  | `/api/v1/admin/volunteers/opportunity-templates/{template_id}`          | Update template                              |
+| `DELETE` | `/api/v1/admin/volunteers/opportunity-templates/{template_id}`          | Delete template                              |
+| `POST`   | `/api/v1/admin/volunteers/opportunity-templates/{template_id}/materialise` | Generate concrete opportunities through a date (idempotent) |
+
+### Internal Endpoints (Service-to-Service Only)
+
+| Method | Endpoint                                                           | Description                                                          |
+| ------ | ------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| `POST` | `/internal/volunteer/ensure-profile`                               | Create a VolunteerProfile for a member if missing (idempotent)       |
+| `POST` | `/internal/volunteer/log-hours`                                    | Idempotently credit volunteer hours (source + ext_ref tuple)         |
+| `GET`  | `/internal/volunteer/member-summary/{auth_id}?from=&to=`           | Aggregate hours for reporting                                        |
+| `POST` | `/internal/volunteer/opportunities/cancel-for-context`              | Cascade-cancel opportunities when a session/event is cancelled       |
+| `POST` | `/internal/volunteer/opportunities/from-session-template`           | Materialise SessionTemplateVolunteerSlot rows into concrete opps     |
 
 ---
 

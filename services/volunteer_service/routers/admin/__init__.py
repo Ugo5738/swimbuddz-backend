@@ -26,6 +26,7 @@ from . import profiles as _profiles
 from . import rewards as _rewards
 from . import roles as _roles
 from . import slots as _slots
+from . import templates as _templates
 
 router = APIRouter(prefix="/admin/volunteers", tags=["admin-volunteers"])
 
@@ -36,5 +37,6 @@ router.include_router(_slots.router)
 router.include_router(_hours.router)
 router.include_router(_rewards.router)
 router.include_router(_dashboard.router)
+router.include_router(_templates.router)
 
 __all__ = ["router"]

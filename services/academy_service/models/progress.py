@@ -4,7 +4,7 @@ from typing import Optional
 
 from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from libs.common.datetime_utils import utc_now
@@ -242,6 +242,29 @@ class MilestoneReviewEvent(Base):
         UUID(as_uuid=True), nullable=True
     )
     score_snapshot: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # ── Override fields ──
+    # Populated only for ``event_type=OVERRIDE`` rows. ``override_of_event_id``
+    # forms a chain (override -> previous decision -> ... -> original review),
+    # allowing arbitrarily-deep override-of-override sequences to be walked
+    # for display. The chain terminates when ``override_of_event_id`` is NULL
+    # (the first review of the claim).
+    override_of_event_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("milestone_review_events.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Free text from the admin (or AI) explaining the override. Required at
+    # the API/business-rule layer for OVERRIDE events; the DB column is
+    # nullable so non-override events leave it empty without an extra check
+    # constraint.
+    override_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # JSONB blob for AI-driven overrides — typically model_version,
+    # confidence_score, and any feature-level explanations. NULL for
+    # human-driven overrides. See docs/design/ACADEMY_ADMIN_CONTROLS_DESIGN.md
+    # §9.5 for why this is JSONB rather than a separate ai_decisions table.
+    ai_metadata: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
