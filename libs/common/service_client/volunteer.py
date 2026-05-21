@@ -42,3 +42,74 @@ async def grant_challenge_volunteer_hours(
     )
     resp.raise_for_status()
     return resp.json()
+
+
+async def materialise_opportunities_from_session_template(
+    *,
+    calling_service: str,
+    session_id: str,
+    session_template_id: str,
+    date: str,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    location_name: Optional[str] = None,
+) -> dict:
+    """Tell volunteer_service to fan-out opportunities for a newly-generated session.
+
+    Called by sessions_service after committing a session generated from a
+    template. Volunteer service reads its own ``SessionTemplateVolunteerSlot``
+    rows for that template and creates one ``VolunteerOpportunity`` per
+    active slot. Idempotent on the volunteer side. Best-effort: callers
+    should treat HTTP failures as non-fatal.
+    Returns the materialise response dict from volunteer_service.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.VOLUNTEER_SERVICE_URL,
+        path="/internal/volunteer/opportunities/from-session-template",
+        calling_service=calling_service,
+        json={
+            "session_id": session_id,
+            "session_template_id": session_template_id,
+            "date": date,
+            "start_time": start_time,
+            "end_time": end_time,
+            "location_name": location_name,
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def cancel_opportunities_for_context(
+    *,
+    calling_service: str,
+    session_id: Optional[str] = None,
+    event_id: Optional[str] = None,
+    reason: Optional[str] = None,
+) -> dict:
+    """Cascade-cancel volunteer opportunities tied to a cancelled session/event.
+
+    Exactly one of ``session_id`` / ``event_id`` must be set. Already-cancelled
+    or completed opportunities are skipped on the volunteer side, so this is
+    safe to retry. Best-effort: callers should treat HTTP failures as
+    non-fatal (the session cancellation itself has already committed).
+    Returns the CancelByContextResponse dict from volunteer_service.
+    """
+    if (session_id is None) == (event_id is None):
+        raise ValueError(
+            "cancel_opportunities_for_context: exactly one of session_id/event_id must be set"
+        )
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.VOLUNTEER_SERVICE_URL,
+        path="/internal/volunteer/opportunities/cancel-for-context",
+        calling_service=calling_service,
+        json={
+            "session_id": session_id,
+            "event_id": event_id,
+            "reason": reason,
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()

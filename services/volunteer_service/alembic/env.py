@@ -18,8 +18,10 @@ sys.path.append(str(PROJECT_ROOT))
 from libs.common.config import get_settings
 from libs.db.base import Base
 from services.volunteer_service.models import (  # noqa: F401
+    SessionTemplateVolunteerSlot,
     VolunteerHoursLog,
     VolunteerOpportunity,
+    VolunteerOpportunityTemplate,
     VolunteerProfile,
     VolunteerReward,
     VolunteerRole,
@@ -41,6 +43,8 @@ SERVICE_TABLES = {
     "volunteer_slots",
     "volunteer_hours_log",
     "volunteer_rewards",
+    "session_template_volunteer_slots",
+    "volunteer_opportunity_templates",
 }
 
 url = settings.DATABASE_URL.replace("%", "%%")

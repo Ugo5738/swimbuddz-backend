@@ -1,5 +1,6 @@
 """Media Service models package."""
 
+from services.media_service.models.audit import MediaAuditLog
 from services.media_service.models.core import (
     Album,
     AlbumItem,
@@ -19,6 +20,7 @@ __all__ = [
     "AlbumType",
     "AudioTrack",
     "LicenseType",
+    "MediaAuditLog",
     "MediaItem",
     "MediaTag",
     "MediaType",

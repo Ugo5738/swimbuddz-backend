@@ -12,7 +12,7 @@ New code may import directly from a submodule
 
 from __future__ import annotations
 
-from .academy import check_cohort_enrollment
+from .academy import check_cohort_enrollment, list_enrollment_progress
 from .communications import dispatch_notification
 from .core import (
     _DEFAULT_TIMEOUT,
@@ -51,7 +51,11 @@ from .sessions import (
     get_session_by_id,
     get_session_ids_for_cohort,
 )
-from .volunteer import grant_challenge_volunteer_hours
+from .volunteer import (
+    cancel_opportunities_for_context,
+    grant_challenge_volunteer_hours,
+    materialise_opportunities_from_session_template,
+)
 from .wallet import (
     check_wallet_balance,
     credit_member_wallet,
@@ -85,6 +89,7 @@ __all__ = [
     "list_pods",
     # Academy
     "check_cohort_enrollment",
+    "list_enrollment_progress",
     # Sessions
     "get_session_by_id",
     "get_next_session_for_cohort",
@@ -99,6 +104,8 @@ __all__ = [
     "emit_rewards_event",
     # Volunteer
     "grant_challenge_volunteer_hours",
+    "cancel_opportunities_for_context",
+    "materialise_opportunities_from_session_template",
     # Payments / Paystack
     "initialize_store_payment",
     "verify_store_payment",

@@ -1,11 +1,16 @@
+import logging
 import uuid
 from datetime import datetime, timedelta
 from typing import List
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
+from libs.common.service_client import materialise_opportunities_from_session_template
 from libs.db.session import get_async_db
 from services.sessions_service.models import Session, SessionTemplate
 from services.sessions_service.schemas.templates import (
@@ -14,8 +19,8 @@ from services.sessions_service.schemas.templates import (
     SessionTemplateResponse,
     SessionTemplateUpdate,
 )
-from sqlalchemy import and_, select
-from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 # Map location slugs to display names
 LOCATION_DISPLAY_NAMES: dict[str, str] = {
@@ -251,14 +256,49 @@ async def generate_sessions(
                 "date": session_date.isoformat(),
                 "start_time": start_datetime.isoformat(),
                 "end_time": end_datetime.isoformat(),
+                # Carried only inside this function — stripped before we
+                # build the response, so the API contract is unchanged.
+                "_session_id": str(session.id),
+                "_local_date": session_date.isoformat(),
+                "_local_start_time": start_datetime.time().isoformat(),
+                "_local_end_time": end_datetime.time().isoformat(),
             }
         )
 
     await db.commit()
 
+    # Fan out volunteer opportunities for each session, based on the parent
+    # template's SessionTemplateVolunteerSlot rows. Best effort: a
+    # volunteer-service outage must not roll back the sessions we just
+    # committed. See docs/design/VOLUNTEER_OPPORTUNITY_CONTEXT_DESIGN.md.
+    for entry in created_sessions:
+        try:
+            await materialise_opportunities_from_session_template(
+                calling_service="sessions",
+                session_id=entry["_session_id"],
+                session_template_id=str(template.id),
+                date=entry["_local_date"],
+                start_time=entry["_local_start_time"],
+                end_time=entry["_local_end_time"],
+                location_name=session_location_name,
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to materialise volunteer opportunities for session %s (template %s): %s",
+                entry["_session_id"],
+                template.id,
+                exc,
+            )
+
+    # Strip internal fields from the API response.
+    response_sessions = [
+        {k: v for k, v in entry.items() if not k.startswith("_")}
+        for entry in created_sessions
+    ]
+
     return {
-        "created": len(created_sessions),
+        "created": len(response_sessions),
         "skipped": len(conflicts),
-        "sessions": created_sessions,
+        "sessions": response_sessions,
         "conflicts": conflicts,
     }

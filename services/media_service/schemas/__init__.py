@@ -1,6 +1,8 @@
 """Media Service schemas package."""
 
 from services.media_service.schemas.main import (
+    AdminEvidenceItemResponse,
+    AdminEvidenceListResponse,
     AlbumBase,
     AlbumCoverPhoto,
     AlbumCreate,
@@ -12,6 +14,7 @@ from services.media_service.schemas.main import (
     AudioTrackCreate,
     AudioTrackResponse,
     AudioTrackUpdate,
+    MediaDownloadResponse,
     MediaItemBase,
     MediaItemResponse,
     MediaItemUpdate,
@@ -25,6 +28,8 @@ from services.media_service.schemas.main import (
 )
 
 __all__ = [
+    "AdminEvidenceItemResponse",
+    "AdminEvidenceListResponse",
     "AlbumBase",
     "AlbumCoverPhoto",
     "AlbumCreate",
@@ -36,6 +41,7 @@ __all__ = [
     "AudioTrackCreate",
     "AudioTrackResponse",
     "AudioTrackUpdate",
+    "MediaDownloadResponse",
     "MediaItemBase",
     "MediaItemResponse",
     "MediaItemUpdate",

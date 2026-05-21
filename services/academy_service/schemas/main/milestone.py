@@ -65,6 +65,12 @@ class MilestoneReviewEventResponse(BaseModel):
     coach_notes_snapshot: Optional[str] = None
     evidence_media_id_snapshot: Optional[UUID] = None
     score_snapshot: Optional[int] = None
+    # Override fields — populated only for ``event_type=OVERRIDE`` rows.
+    # ``override_of_event_id`` chains back to the prior decision so the
+    # full back-and-forth can be reconstructed by walking the chain.
+    override_of_event_id: Optional[UUID] = None
+    override_reason: Optional[str] = None
+    ai_metadata: Optional[Dict[str, Any]] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
