@@ -370,9 +370,7 @@ async def _ensure_installment_plan(
     # Anchor the schedule to the later of cohort start and actual enrollment
     # date. For mid-cohort joiners this prevents back-dated installments that
     # would be marked MISSED by the compliance cron within minutes of signup.
-    enrollment_anchor = (
-        enrollment.enrolled_at or enrollment.created_at or utc_now()
-    )
+    enrollment_anchor = enrollment.enrolled_at or enrollment.created_at or utc_now()
 
     try:
         schedule = build_schedule(
