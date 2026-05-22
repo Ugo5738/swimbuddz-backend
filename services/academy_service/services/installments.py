@@ -73,12 +73,18 @@ def build_schedule(
     total_fee: int,
     duration_weeks: int,
     cohort_start: datetime,
+    enrolled_at: datetime | None = None,
     count_override: int | None = None,
     deposit_override: int | None = None,
 ) -> list[dict]:
     """
     Build the installment schedule for an enrollment.
 
+    - ``enrolled_at``: when the student actually enrolled. The schedule is
+      anchored to ``max(cohort_start, enrolled_at)`` so mid-cohort joiners
+      don't receive back-dated installments (the bug that previously caused
+      DROPOUT_PENDING within minutes of registration). Default ``None`` keeps
+      back-compat with callers that don't need late-join awareness.
     - ``count_override``: admin-set total number of installments; defaults to
       ``installment_count(total_fee, duration_weeks)``.
     - ``deposit_override``: admin-set first-installment amount (kobo); if set,
@@ -114,7 +120,13 @@ def build_schedule(
     else:
         amounts = split_amounts(total_fee, count)
 
-    anchor_wat = monday_00_wat(cohort_start)
+    cohort_anchor = monday_00_wat(cohort_start)
+    if enrolled_at is not None:
+        # Anchor to the later of cohort start and enrollment date.
+        # max() works on tz-aware datetimes; both anchors are WAT here.
+        anchor_wat = max(cohort_anchor, monday_00_wat(enrolled_at))
+    else:
+        anchor_wat = cohort_anchor
 
     schedule: list[dict] = []
     for idx, amount_kobo in enumerate(amounts, start=1):
@@ -306,36 +318,38 @@ def sync_enrollment_installment_state(
 ) -> None:
     """Recalculate and apply enrollment status based on current installment state.
 
-    Key behavioral rules:
-    - missed_installments_count is a permanent behavioral counter. It only ever goes up.
-      Paying late restores access but does NOT reduce the missed count.
-    - At missed_count >= 2:
-        - If admin_dropout_approval is True on the cohort: move to DROPOUT_PENDING (admin must confirm).
+    Key behavioral rules (founder-confirmed May 2026):
+    - ``missed_installments_count`` is LIVE — it reflects how many installments
+      currently have status MISSED. Paying a late installment flips that
+      installment to PAID and decreases the counter, giving the student a real
+      path back from a late payment. (Previous behavior was cumulative —
+      counter only ever went up — which created permanent DROPOUT_PENDING
+      states from a single late payment.)
+    - An installment is "due" when its ``due_at + GRACE`` is in the past.
+      Compliance is driven by per-installment ``due_at``, NOT by block index.
+      This decouples cash-flow cadence from cohort calendar — mid-cohort
+      joiners whose installments are anchored to their enrollment date no
+      longer trip the suspension check just because the calendar advanced.
+    - At currently-missed >= 2:
+        - If ``admin_dropout_approval`` is True on the cohort:
+          move to DROPOUT_PENDING (admin must confirm).
         - Otherwise: move directly to DROPPED.
-    - Suspension triggers when a required installment is unpaid (after grace window).
+    - Suspension triggers when a required (past-due) installment is unpaid.
     - Paying a late installment lifts suspension immediately.
-    - access_suspended reflects current payment state, not behavioral history.
+    - DROPOUT_PENDING auto-reverts to ENROLLED if the student catches up
+      (missed_count drops below 2). DROPPED is final — admin-only reversal.
     """
     effective_now = now or utc_now()
+    grace = timedelta(hours=GRACE_HOURS)
     total = len(installments)
     paid_statuses = {InstallmentStatus.PAID, InstallmentStatus.WAIVED}
     paid_count = sum(1 for i in installments if i.status in paid_statuses)
-
-    # IMPORTANT: missed_count is counted from the installments table only.
-    # We do NOT use enrollment.missed_installments_count as source of truth here
-    # because it's a derived/cached value. The installments list is authoritative.
-    # Once an installment is MISSED it stays MISSED even if paid later — the
-    # installment record itself tracks the behavioral history.
     missed_count = sum(1 for i in installments if i.status == InstallmentStatus.MISSED)
 
     enrollment.total_installments = total
     enrollment.paid_installments_count = paid_count
-    # Never decrease missed_installments_count — it is a permanent behavioral counter.
-    # If the DB value is already higher than what we count (shouldn't happen but defensive),
-    # keep the higher value.
-    enrollment.missed_installments_count = max(
-        missed_count, enrollment.missed_installments_count
-    )
+    # Live counter — reflects the present, not the cumulative history.
+    enrollment.missed_installments_count = missed_count
 
     if enrollment.status == EnrollmentStatus.WAITLIST:
         enrollment.access_suspended = False
@@ -344,43 +358,41 @@ def sync_enrollment_installment_state(
         )
         return
 
-    required_block = current_block_number(
-        now=effective_now,
-        cohort_start=cohort_start,
-        duration_weeks=duration_weeks,
-    )
-    required_installments = min(required_block, total)
-
+    # Due-date-based compliance: an installment is "required" only if its own
+    # due_at + grace window has passed. Ignores block index entirely so a
+    # student whose installment is due next month isn't flagged because the
+    # cohort calendar's block boundary has rolled over.
     is_required_installment_unpaid = any(
-        i.installment_number <= required_installments and i.status not in paid_statuses
+        i.due_at + grace <= effective_now and i.status not in paid_statuses
         for i in installments
     )
 
-    # Use the definitive behavioral count from the model (never decreases)
-    effective_missed = enrollment.missed_installments_count
-
-    if effective_missed >= 2:
+    if missed_count >= 2:
         # Do not re-trigger if already fully dropped (e.g. admin already confirmed)
         if enrollment.status not in (
             EnrollmentStatus.DROPPED,
             EnrollmentStatus.DROPOUT_PENDING,
         ):
             if admin_dropout_approval:
-                # Requires admin confirmation before dropping
                 enrollment.status = EnrollmentStatus.DROPOUT_PENDING
             else:
                 enrollment.status = EnrollmentStatus.DROPPED
             # Stamp the drop time on first transition so coach payout
             # calculations know when to stop counting eligible sessions.
-            # Preserve any existing value if status flips DROPOUT_PENDING ->
-            # DROPPED later (the drop began at the earlier date).
             if enrollment.dropped_at is None:
                 enrollment.dropped_at = effective_now
 
         enrollment.access_suspended = True
         enrollment.payment_status = PaymentStatus.FAILED
     else:
-        # Fewer than 2 misses — access depends solely on current payment state
+        # Fewer than 2 misses currently — access depends on current payment state.
+        # Auto-revert DROPOUT_PENDING: the trigger that caused it (2 misses) is
+        # no longer true, so lift the pending dropout. DROPPED is left alone —
+        # an admin must explicitly reverse a confirmed drop.
+        if enrollment.status == EnrollmentStatus.DROPOUT_PENDING:
+            enrollment.status = EnrollmentStatus.ENROLLED
+            enrollment.dropped_at = None
+
         enrollment.access_suspended = is_required_installment_unpaid
         if paid_count == 0:
             enrollment.payment_status = PaymentStatus.PENDING
