@@ -8,7 +8,7 @@ Covers:
   - Due-date-based compliance + live missed_installments_count (May 2026).
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -248,9 +248,7 @@ class TestBuildScheduleMidCohortAnchoring:
     def test_enrollment_before_cohort_starts_uses_cohort_anchor(self):
         # Member who signs up two weeks early: schedule still anchors to
         # cohort start, not enrollment date (we don't accelerate billing).
-        schedule = self._schedule(
-            enrolled_at=datetime(2026, 4, 4, tzinfo=timezone.utc)
-        )
+        schedule = self._schedule(enrolled_at=datetime(2026, 4, 4, tzinfo=timezone.utc))
         assert schedule[0]["due_at"] == self._wat_monday(2026, 4, 13)
 
     def test_enrollment_at_cohort_start_uses_cohort_anchor(self):
