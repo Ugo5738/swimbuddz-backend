@@ -367,11 +367,19 @@ async def _ensure_installment_plan(
     count_override: int | None = getattr(cohort, "installment_count", None)
     deposit_override: int | None = getattr(cohort, "installment_deposit_amount", None)
 
+    # Anchor the schedule to the later of cohort start and actual enrollment
+    # date. For mid-cohort joiners this prevents back-dated installments that
+    # would be marked MISSED by the compliance cron within minutes of signup.
+    enrollment_anchor = (
+        enrollment.enrolled_at or enrollment.created_at or utc_now()
+    )
+
     try:
         schedule = build_schedule(
             total_fee=total_fee,
             duration_weeks=int(program.duration_weeks),
             cohort_start=cohort.start_date,
+            enrolled_at=enrollment_anchor,
             count_override=count_override,
             deposit_override=deposit_override,
         )
