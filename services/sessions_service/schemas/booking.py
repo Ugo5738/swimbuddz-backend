@@ -45,6 +45,16 @@ class BookingConfirmRequest(BaseModel):
     wallet_transaction_id: Optional[uuid.UUID] = None
 
 
+class RunningLateRequest(BaseModel):
+    """Member toggles their "I'll be late" flag on a booking.
+
+    The flag is stored as a sentinel prefix in ``booking.notes`` to avoid
+    requiring a schema migration. Set ``running_late=False`` to clear it.
+    """
+
+    running_late: bool = True
+
+
 class AdminWalkInRequest(BaseModel):
     """Admin creates a CONFIRMED booking for a member who showed up without
     pre-booking online (the "walk-in" case).

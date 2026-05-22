@@ -6,6 +6,7 @@ from services.sessions_service.schemas.booking import (
     BulkBookingItem,
     BulkBookingRequest,
     BulkBookingResponse,
+    RunningLateRequest,
     SessionBookingCreate,
     SessionBookingResponse,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "BulkBookingRequest",
     "BulkBookingResponse",
     "GenerateSessionsRequest",
+    "RunningLateRequest",
     "SessionBase",
     "SessionBookingCreate",
     "SessionBookingResponse",
