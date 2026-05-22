@@ -6,13 +6,21 @@ Computes per-block coach payouts using the formula:
     per_student_block_total = per_session_per_student × delivered_sessions
     block_total = Σ student_totals + makeup_credits
 
-Defaults to "present unless marked otherwise" — paid+enrolled students count
-as having attended each session in the block by default. The coach only marks
-exceptions: EXCUSED (with notice → make-up owed) or ABSENT (no notice → still
-counted as a held session for pay purposes).
+Founder-confirmed policy (May 2026): coach is paid PER LESSON ACTUALLY HELD
+WITH THE STUDENT. A coach earns credit for a (student, session) pair iff an
+``AttendanceRecord`` exists with status ``PRESENT`` or ``LATE``. Anything
+else — ``ABSENT``, ``CANCELLED``, ``EXCUSED``, or no attendance row at all —
+does NOT credit the coach.
 
-Make-ups completed during the block also generate pay credits attributed to
-the block in which they were delivered.
+This is a behavioral change from the previous default-present model. Coaches
+must affirmatively mark attendance via the admin/coach attendance page (or
+via the member self-sign-in flow that produces a PRESENT row) for pay to
+accrue. Pairs with Phase 1 of the attendance restructure, which switched
+the UI to require an explicit booking + an explicit attendance mark.
+
+Make-ups still work the same way: EXCUSED creates a ``CohortMakeupObligation``
+that the coach gets paid for once they actually deliver the make-up (the
+make-up's COMPLETED row credits pay in its block).
 
 This module reads cross-service tables (cohorts, sessions, enrollments,
 attendance_records) directly via SQL — they all live in the same `public`
@@ -40,12 +48,40 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = get_logger(__name__)
 
 
-# Statuses that count as "session was held for this student" — coach earns pay.
-DELIVERED_STATUSES = ("present", "late", "absent")
+# Statuses that count as "lesson was actually held with the student" — coach
+# earns pay. ABSENT used to be in this set under the legacy default-present
+# model (no-shows still counted as held sessions). Now: a no-show means no
+# lesson happened, so the coach does NOT earn pay for it.
+DELIVERED_STATUSES = ("present", "late")
 # Status that marks an excused absence (with notice). No pay; make-up owed.
 EXCUSED_STATUS = "excused"
 # Status that means the session itself was cancelled (not held). No pay.
 CANCELLED_STATUS = "cancelled"
+
+
+def classify_session_for_payout(status: Optional[str]) -> str:
+    """Pure classifier — categorise a (student, session) attendance row for
+    payout purposes.
+
+    Returns one of:
+        "delivered" — coach is paid for this session
+        "excused"   — coach is not paid here, but a make-up obligation is owed
+        "skip"      — coach is not paid; session was cancelled or the student
+                      simply didn't attend (no Present/Late row exists)
+
+    ``status`` may be ``None`` (no attendance row recorded). Under the
+    explicit-attendance policy that case is "skip" — coaches must mark
+    attendance to be credited.
+    """
+    if status is None:
+        return "skip"
+    s = status.lower()
+    if s in DELIVERED_STATUSES:
+        return "delivered"
+    if s == EXCUSED_STATUS:
+        return "excused"
+    # Anything else (absent, cancelled, unknown) → not paid, no makeup.
+    return "skip"
 
 
 @dataclass(frozen=True)
@@ -335,9 +371,14 @@ async def compute_block_payout(
         delivered_count = 0
         for s in eligible_sessions:
             status = attendance.get(s["id"])  # None if no row recorded
-            if status == EXCUSED_STATUS:
+            classification = classify_session_for_payout(status)
+            if classification == "delivered":
+                # Explicit Present/Late attendance row — coach taught the
+                # student. Paid.
+                delivered_count += 1
+            elif classification == "excused":
+                # Excused absence — coach owes a make-up, paid when delivered.
                 excused_count += 1
-                # Excused = make-up owed
                 new_makeup_obligations.append(
                     {
                         "cohort_id": config.cohort_id,
@@ -347,12 +388,11 @@ async def compute_block_payout(
                         "reason": MakeupReason.EXCUSED_ABSENCE,
                     }
                 )
-            elif status == CANCELLED_STATUS:
-                # Session cancelled at attendance level; not delivered, not excused.
-                pass
             else:
-                # PRESENT / LATE / ABSENT (no notice) / no record → delivered.
-                delivered_count += 1
+                # "skip" — Absent (no-show), Cancelled, or no record at all.
+                # Under the explicit-attendance policy the coach is not paid
+                # for sessions where no lesson was held with the student.
+                pass
 
         makeups_completed = makeup_counts.get(student_id, 0)
         student_total = (delivered_count + makeups_completed) * per_session_kobo
