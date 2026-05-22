@@ -43,6 +43,7 @@ from services.sessions_service.models import (
     SessionBookingStatus,
 )
 from services.sessions_service.schemas import (
+    AdminWalkInRequest,
     BookingConfirmRequest,
     SessionBookingCreate,
     SessionBookingResponse,
@@ -265,6 +266,123 @@ async def confirm_booking(
         booking.wallet_transaction_id = confirm_in.wallet_transaction_id
     await db.commit()
     await db.refresh(booking)
+    return booking
+
+
+# ---------------------------------------------------------------------------
+# Admin: walk-in booking
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/sessions/{session_id}/admin/walk-in",
+    response_model=SessionBookingResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def admin_walk_in_booking(
+    session_id: uuid.UUID,
+    payload: AdminWalkInRequest,
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Admin creates a CONFIRMED booking for a member who showed up without
+    pre-booking online. Used by the attendance UI's "Mark walk-in" action.
+
+    Behavior:
+      - Looks up the session to default ``fee_amount_kobo`` to the session's
+        own ``pool_fee`` when the caller didn't specify one.
+      - Idempotent: if a PENDING or CONFIRMED booking already exists for
+        ``(session_id, member_id)``, returns it instead of creating a new one.
+        Cancelled/expired bookings raise 409 (admin must investigate).
+      - Channel is hard-coded to ``ADMIN`` so the row is distinguishable from
+        member-self bookings in reporting.
+      - Coach payouts pick this up like any other booking — paying happens
+        when an attendance row records Present/Late for this booking.
+    """
+    session = (
+        await db.execute(select(Session).where(Session.id == session_id))
+    ).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Resolve the member to fill member_auth_id (the booking row needs both).
+    # We can't use _resolve_member_for_user here — the admin isn't the
+    # booking subject — so look up by member id directly via members-service.
+    from libs.common.service_client import get_member_by_id
+
+    member = await get_member_by_id(str(payload.member_id), calling_service="sessions")
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    member_auth_id = member.get("auth_id")
+    if not member_auth_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Member is missing auth_id — cannot create a booking.",
+        )
+
+    fee_kobo = (
+        payload.fee_amount_kobo
+        if payload.fee_amount_kobo is not None
+        else int(session.pool_fee or 0)
+    )
+
+    # Idempotency: return existing PENDING/CONFIRMED if any.
+    existing = (
+        await db.execute(
+            select(SessionBooking).where(
+                SessionBooking.session_id == session_id,
+                SessionBooking.member_id == payload.member_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        if existing.status in (
+            SessionBookingStatus.PENDING,
+            SessionBookingStatus.CONFIRMED,
+        ):
+            # Upgrade PENDING to CONFIRMED if needed — admin walk-in implies
+            # payment has happened (the member is physically present).
+            if existing.status == SessionBookingStatus.PENDING:
+                existing.status = SessionBookingStatus.CONFIRMED
+                existing.confirmed_at = utc_now()
+                existing.channel = BookingChannel.ADMIN
+                if not existing.notes and payload.notes:
+                    existing.notes = payload.notes
+                await db.commit()
+                await db.refresh(existing)
+            return existing
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"A prior booking for this (session, member) exists with "
+                f"status={existing.status.value}. Resolve it before recording "
+                f"a fresh walk-in."
+            ),
+        )
+
+    now = utc_now()
+    booking = SessionBooking(
+        session_id=session_id,
+        member_id=payload.member_id,
+        member_auth_id=member_auth_id,
+        status=SessionBookingStatus.CONFIRMED,
+        channel=BookingChannel.ADMIN,
+        fee_amount_kobo=fee_kobo,
+        notes=payload.notes,
+        booked_at=now,
+        confirmed_at=now,
+    )
+    db.add(booking)
+    await db.commit()
+    await db.refresh(booking)
+    logger.info(
+        "Admin %s recorded walk-in booking %s for session %s, member %s, fee %s kobo",
+        admin.email or admin.user_id,
+        booking.id,
+        session_id,
+        payload.member_id,
+        fee_kobo,
+    )
     return booking
 
 

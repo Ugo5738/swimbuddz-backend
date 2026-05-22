@@ -1,6 +1,7 @@
 """Sessions Service schemas package."""
 
 from services.sessions_service.schemas.booking import (
+    AdminWalkInRequest,
     BookingConfirmRequest,
     BulkBookingItem,
     BulkBookingRequest,
@@ -23,6 +24,7 @@ from services.sessions_service.schemas.templates import (
 )
 
 __all__ = [
+    "AdminWalkInRequest",
     "BookingConfirmRequest",
     "BulkBookingItem",
     "BulkBookingRequest",
