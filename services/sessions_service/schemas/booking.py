@@ -45,6 +45,31 @@ class BookingConfirmRequest(BaseModel):
     wallet_transaction_id: Optional[uuid.UUID] = None
 
 
+class RunningLateRequest(BaseModel):
+    """Member toggles their "I'll be late" flag on a booking.
+
+    The flag is stored as a sentinel prefix in ``booking.notes`` to avoid
+    requiring a schema migration. Set ``running_late=False`` to clear it.
+    """
+
+    running_late: bool = True
+
+
+class AdminWalkInRequest(BaseModel):
+    """Admin creates a CONFIRMED booking for a member who showed up without
+    pre-booking online (the "walk-in" case).
+
+    Used by the admin attendance UI. The admin clicks "Mark walk-in" on a
+    cohort member who paid the pool fee at the door — this creates the
+    booking record so the financials reconcile. Default fee is the session's
+    own ``pool_fee`` (in kobo); override is allowed for unusual cases.
+    """
+
+    member_id: uuid.UUID
+    fee_amount_kobo: Optional[int] = Field(default=None, ge=0)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
 class BulkBookingItem(BaseModel):
     """One entry in a corporate-bulk booking payload."""
 

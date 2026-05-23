@@ -6856,6 +6856,65 @@
         }
       }
     },
+    "/api/v1/sessions/{session_id}/admin/walk-in": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Admin Walk In Booking",
+        "description": "Admin creates a CONFIRMED booking for a member who showed up without\npre-booking online. Used by the attendance UI's \"Mark walk-in\" action.\n\nBehavior:\n  - Looks up the session to default ``fee_amount_kobo`` to the session's\n    own ``pool_fee`` when the caller didn't specify one.\n  - Idempotent: if a PENDING or CONFIRMED booking already exists for\n    ``(session_id, member_id)``, returns it instead of creating a new one.\n    Cancelled/expired bookings raise 409 (admin must investigate).\n  - Channel is hard-coded to ``ADMIN`` so the row is distinguishable from\n    member-self bookings in reporting.\n  - Coach payouts pick this up like any other booking \u2014 paying happens\n    when an attendance row records Present/Late for this booking.",
+        "operationId": "admin_walk_in_booking_sessions__session_id__admin_walk_in_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminWalkInRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sessions/bookings/{booking_id}/cancel": {
       "post": {
         "tags": [
@@ -6881,6 +6940,114 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/bookings/{booking_id}/excuse": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Excuse Booking",
+        "description": "Member self-excuses a booking \u2014 \"I can't make it\".\n\nDistinct from cancel:\n  - For COHORT sessions, the pool fee is not refunded. Instead, an\n    EXCUSED attendance record is created which the coach payout cron\n    converts into a CohortMakeupObligation. The member gets a make-up\n    session later. This matches the cohort model: program fee is a\n    commitment, not a per-session refundable purchase.\n  - For non-cohort sessions, callers should use the regular\n    ``/cancel`` endpoint instead (which refunds in Bubbles). This\n    endpoint rejects non-cohort bookings.\n\nValidates:\n  - Booking belongs to the caller.\n  - Session is in the future AND at least ``CANCELLATION_CUTOFF_HOURS``\n    away. Late self-excuses get a 422 \u2014 admin can still override via\n    the coach-mark endpoint if circumstances warrant.",
+        "operationId": "excuse_booking_sessions_bookings__booking_id__excuse_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/bookings/{booking_id}/running-late": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Set Running Late",
+        "description": "Member toggles their \"I'll be late\" flag on a booking.\n\nPure signal \u2014 no business consequence. Coach sees the flag on the\nattendance roster so they know not to mark the member absent yet.\nOnce the member arrives and is marked Present/Late, the flag is\ninformational history.\n\nStored as a sentinel prefix in ``booking.notes`` rather than its own\ncolumn \u2014 keeps this feature shippable without a migration.",
+        "operationId": "set_running_late_sessions_bookings__booking_id__running_late_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunningLateRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -24222,6 +24389,53 @@
         }
       }
     },
+    "/api/v1/internal/wallet/corporate/create": {
+      "post": {
+        "tags": [
+          "internal-wallet"
+        ],
+        "summary": "Create Corporate Wallet",
+        "description": "Create a CorporateWallet for a corporate program.\n\nCalled by corporate_service after a deal is won. The wallet's\n``id`` is returned and stored on the corporate program as the\ncross-service handle. Stores the calling corporate_program_id in\n``corp_metadata`` for reverse lookup.\n\nBody fields (all required except ``member_bubble_limit``):\n    corporate_program_id: UUID string \u2014 set in metadata for traceability\n    company_name: str\n    company_email: str\n    admin_auth_id: str \u2014 the admin user who owns the wallet\n    budget_kobo: int \u2014 translated to ``budget_total`` / ``budget_remaining``\n    member_bubble_limit: Optional[int]",
+        "operationId": "create_corporate_wallet_internal_wallet_corporate_create_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Body"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/internal/wallet/events": {
       "post": {
         "tags": [
@@ -37776,6 +37990,2312 @@
           }
         ]
       }
+    },
+    "/api/v1/corporate/leads": {
+      "post": {
+        "tags": [
+          "public-corporate"
+        ],
+        "summary": "Create Public Lead",
+        "description": "Capture an inbound corporate-wellness enquiry from the marketing site.\n\nReturns 201 with a generic acknowledgement regardless of whether we\ntreated the submission as a duplicate or net-new \u2014 we don't want to\nleak \"you already submitted this\" to bots probing the endpoint, and\nlegitimate users get the same friendly message either way.",
+        "operationId": "create_public_lead_corporate_leads_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicLeadCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicLeadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/corporate/leads/health": {
+      "get": {
+        "tags": [
+          "public-corporate"
+        ],
+        "summary": "Leads Health",
+        "description": "Lightweight health hint for the marketing site to ping at page-load.\n\nFront-end can use this to gate the form's enabled state (e.g. show a\nfallback mailto: link if the API is down). Public so the marketing\nsite can call it without any auth handshake.",
+        "operationId": "leads_health_corporate_leads_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Leads Health Corporate Leads Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/corporate/me/auth/request-link": {
+      "post": {
+        "tags": [
+          "corporate-me-auth"
+        ],
+        "summary": "Request Magic Link",
+        "description": "Send a magic link to a corporate contact's email.\n\nAlways returns ``sent=true``. If the email doesn't match an active\ncontact, we still return success but skip the send \u2014 this stops naive\nemail-enumeration attacks. Rate limit keeps a single IP from spamming\nrequests for many emails.",
+        "operationId": "request_magic_link_corporate_me_auth_request_link_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestMagicLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestMagicLinkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/corporate/me/auth/verify": {
+      "post": {
+        "tags": [
+          "corporate-me-auth"
+        ],
+        "summary": "Verify Magic Link",
+        "description": "Swap a magic-link token for a session token.\n\nRe-asserts the contact is still active so admins can revoke access by\nsoft-deleting the contact even after a magic link was emailed.",
+        "operationId": "verify_magic_link_corporate_me_auth_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyMagicLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyMagicLinkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/corporate/me": {
+      "get": {
+        "tags": [
+          "corporate-me"
+        ],
+        "summary": "Get My Account",
+        "description": "Identity hint for the portal frontend \u2014 used to render the header.",
+        "operationId": "get_my_account_corporate_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get My Account Corporate Me Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/corporate/me/programs": {
+      "get": {
+        "tags": [
+          "corporate-me"
+        ],
+        "summary": "List My Programs",
+        "description": "List all programs belonging to the caller's company.",
+        "operationId": "list_my_programs_corporate_me_programs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PortalProgramSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List My Programs Corporate Me Programs Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/corporate/me/programs/{program_id}": {
+      "get": {
+        "tags": [
+          "corporate-me"
+        ],
+        "summary": "Get My Program",
+        "operationId": "get_my_program_corporate_me_programs__program_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalProgramSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/corporate/me/programs/{program_id}/employees": {
+      "get": {
+        "tags": [
+          "corporate-me"
+        ],
+        "summary": "List My Program Employees",
+        "description": "HR can view their employee roster + status (no edits).",
+        "operationId": "list_my_program_employees_corporate_me_programs__program_id__employees_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PortalEmployeeRow"
+                  },
+                  "title": "Response List My Program Employees Corporate Me Programs  Program Id  Employees Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/corporate/me/programs/{program_id}/report": {
+      "get": {
+        "tags": [
+          "corporate-me"
+        ],
+        "summary": "Get My Program Report",
+        "description": "Same SwimBuddz Wrapped report as the admin sees, scoped to the\ncaller's company. Build is identical \u2014 only the auth gate differs.",
+        "operationId": "get_my_program_report_corporate_me_programs__program_id__report_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramOutcomeReportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/contacts/{contact_id}/touchpoints": {
+      "post": {
+        "tags": [
+          "admin-corporate-touchpoints"
+        ],
+        "summary": "Create Touchpoint",
+        "description": "Log a touchpoint (email, call, demo, note) against a contact.",
+        "operationId": "create_touchpoint_admin_corporate_contacts__contact_id__touchpoints_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorporateTouchpointCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateTouchpointResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "admin-corporate-touchpoints"
+        ],
+        "summary": "List Touchpoints",
+        "description": "List all touchpoints for a contact, newest first.",
+        "operationId": "list_touchpoints_admin_corporate_contacts__contact_id__touchpoints_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CorporateTouchpointResponse"
+                  },
+                  "title": "Response List Touchpoints Admin Corporate Contacts  Contact Id  Touchpoints Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/contacts/{contact_id}/deals": {
+      "post": {
+        "tags": [
+          "admin-corporate-deals"
+        ],
+        "summary": "Create Deal",
+        "description": "Open a new deal under an existing contact.",
+        "operationId": "create_deal_admin_corporate_contacts__contact_id__deals_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorporateDealCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateDealResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/deals": {
+      "get": {
+        "tags": [
+          "admin-corporate-deals"
+        ],
+        "summary": "List Deals",
+        "description": "Pipeline view \u2014 list deals across all contacts.",
+        "operationId": "list_deals_admin_corporate_deals_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "stage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DealStage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stage"
+            }
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Id"
+            }
+          },
+          {
+            "name": "owner_auth_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner Auth Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateDealListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/deals/{deal_id}": {
+      "get": {
+        "tags": [
+          "admin-corporate-deals"
+        ],
+        "summary": "Get Deal",
+        "operationId": "get_deal_admin_corporate_deals__deal_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "deal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateDealResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "admin-corporate-deals"
+        ],
+        "summary": "Update Deal",
+        "operationId": "update_deal_admin_corporate_deals__deal_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "deal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorporateDealUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateDealResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/deals/{deal_id}/win": {
+      "post": {
+        "tags": [
+          "admin-corporate-deals"
+        ],
+        "summary": "Win Deal",
+        "description": "Mark a deal as won and create the corresponding CorporateProgram (DRAFT).\n\nThe resulting program is the orchestration root for everything that follows:\nemployee manifest, cohort linking, wallet provisioning, bulk enrollment.",
+        "operationId": "win_deal_admin_corporate_deals__deal_id__win_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "deal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorporateDealWinRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateProgramResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/deals/{deal_id}/lose": {
+      "post": {
+        "tags": [
+          "admin-corporate-deals"
+        ],
+        "summary": "Lose Deal",
+        "description": "Close a deal as lost with a reason.",
+        "operationId": "lose_deal_admin_corporate_deals__deal_id__lose_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "deal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Deal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorporateDealLossRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateDealResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/programs/{program_id}/employees": {
+      "get": {
+        "tags": [
+          "admin-corporate-employees"
+        ],
+        "summary": "List Employees",
+        "description": "List the employee manifest for a program.",
+        "operationId": "list_employees_admin_corporate_programs__program_id__employees_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CorporateProgramEmployeeResponse"
+                  },
+                  "title": "Response List Employees Admin Corporate Programs  Program Id  Employees Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin-corporate-employees"
+        ],
+        "summary": "Bulk Add Employees",
+        "description": "Bulk-add employees to a program (idempotent on email per program).",
+        "operationId": "bulk_add_employees_admin_corporate_programs__program_id__employees_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeeBulkAddRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeBulkAddResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/programs/{program_id}/employees/{employee_id}": {
+      "delete": {
+        "tags": [
+          "admin-corporate-employees"
+        ],
+        "summary": "Remove Employee",
+        "description": "Remove an employee from a program's manifest.\n\nDoes NOT undo any session bookings already created for them \u2014 admin must\ncancel those separately if needed.",
+        "operationId": "remove_employee_admin_corporate_programs__program_id__employees__employee_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          },
+          {
+            "name": "employee_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Employee Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/programs/{program_id}/employees/match-members": {
+      "post": {
+        "tags": [
+          "admin-corporate-employees"
+        ],
+        "summary": "Match Employees To Members",
+        "description": "Resolve employee emails to existing member accounts.\n\nFor every PENDING / INVITED employee row whose ``member_id`` is null,\nlook up members_service by email. If a member exists, set ``member_id``\n+ ``member_auth_id`` and bump status \u2192 REGISTERED.",
+        "operationId": "match_employees_to_members_admin_corporate_programs__program_id__employees_match_members_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchMembersResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/programs/{program_id}/link-cohort": {
+      "post": {
+        "tags": [
+          "admin-corporate-orchestration"
+        ],
+        "summary": "Link Cohort",
+        "description": "Link an academy cohort to this corporate program.\n\nVerifies the cohort exists by calling academy_service; if so, stores the\ncohort_id on the program. (We DO NOT mutate the cohort row directly \u2014\ncross-service writes happen via the academy admin API or a dedicated\ninternal endpoint added separately.)",
+        "operationId": "link_cohort_admin_corporate_programs__program_id__link_cohort_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkCohortRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateProgramResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/programs/{program_id}/provision-wallet": {
+      "post": {
+        "tags": [
+          "admin-corporate-orchestration"
+        ],
+        "summary": "Provision Wallet",
+        "description": "Create the CorporateWallet for this program in wallet_service.\n\nBudget defaults to the program's ``total_kobo``. The wallet's\nadmin_auth_id is set to the currently-logged-in admin so they own the\nwallet from day 1; can be reassigned later.",
+        "operationId": "provision_wallet_admin_corporate_programs__program_id__provision_wallet_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionWalletRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateProgramResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/programs/{program_id}/enroll-all": {
+      "post": {
+        "tags": [
+          "admin-corporate-orchestration"
+        ],
+        "summary": "Enroll All Employees",
+        "description": "Bulk-enroll every REGISTERED employee into every session of the cohort.\n\nCalls sessions_service /internal/sessions/bookings/bulk. Employees\nwithout a resolved ``member_id`` are skipped (run match-members first).\nThe sessions endpoint is idempotent \u2014 re-running this is safe.",
+        "operationId": "enroll_all_employees_admin_corporate_programs__program_id__enroll_all_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollAllResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/contacts/{contact_id}/outreach": {
+      "get": {
+        "tags": [
+          "admin-corporate-outreach"
+        ],
+        "summary": "Get Outreach State",
+        "operationId": "get_outreach_state_admin_corporate_contacts__contact_id__outreach_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/contacts/{contact_id}/outreach/start": {
+      "post": {
+        "tags": [
+          "admin-corporate-outreach"
+        ],
+        "summary": "Start Outreach",
+        "description": "Kick off the 3-email sequence. The next scheduler tick (or a manual\n/send-now) will pick this up immediately.",
+        "operationId": "start_outreach_admin_corporate_contacts__contact_id__outreach_start_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OutreachStartRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": " Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/contacts/{contact_id}/outreach/pause": {
+      "post": {
+        "tags": [
+          "admin-corporate-outreach"
+        ],
+        "summary": "Pause Outreach",
+        "operationId": "pause_outreach_admin_corporate_contacts__contact_id__outreach_pause_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/contacts/{contact_id}/outreach/resume": {
+      "post": {
+        "tags": [
+          "admin-corporate-outreach"
+        ],
+        "summary": "Resume Outreach",
+        "operationId": "resume_outreach_admin_corporate_contacts__contact_id__outreach_resume_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/contacts/{contact_id}/outreach/preview": {
+      "get": {
+        "tags": [
+          "admin-corporate-outreach"
+        ],
+        "summary": "Preview Outreach",
+        "description": "Render all 3 emails for this contact so admins can review the copy\nbefore kicking off the sequence.",
+        "operationId": "preview_outreach_admin_corporate_contacts__contact_id__outreach_preview_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OutreachPreviewResponse"
+                  },
+                  "title": "Response Preview Outreach Admin Corporate Contacts  Contact Id  Outreach Preview Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/contacts/{contact_id}/outreach/send-now": {
+      "post": {
+        "tags": [
+          "admin-corporate-outreach"
+        ],
+        "summary": "Send Now",
+        "description": "Force-send the next email in the sequence right now.\n\nHonours pause / paused-by-reply / sequence-exhausted guards \u2014 so it's\nsafe to click without re-checking state first. Returns ``sent=false``\nwith a human-readable reason when nothing was due.",
+        "operationId": "send_now_admin_corporate_contacts__contact_id__outreach_send_now_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachSendResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/outreach/run-cycle": {
+      "post": {
+        "tags": [
+          "admin-corporate-outreach"
+        ],
+        "summary": "Run Cycle",
+        "description": "Manually trigger one tick of the outreach scheduler.\n\nSends the next-due email to every contact whose gap is up. Idempotent\non minutes \u2014 running twice in a row will only fire once because the\ngap floor is days.",
+        "operationId": "run_cycle_admin_corporate_outreach_run_cycle_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachCycleResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/corporate/programs/{program_id}/report": {
+      "get": {
+        "tags": [
+          "admin-corporate-reports"
+        ],
+        "summary": "Get Program Outcome Report",
+        "description": "Build a fresh SwimBuddz Wrapped report for a program.\n\nAggregates attendance + milestones per employee from attendance_service\nand academy_service. Safe to call as often as needed \u2014 there's no\nwrite side-effect; the touchpoint is only logged when the report is\n*emailed* via the sibling endpoint.",
+        "operationId": "get_program_outcome_report_admin_corporate_programs__program_id__report_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramOutcomeReportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/programs/{program_id}/report/email": {
+      "post": {
+        "tags": [
+          "admin-corporate-reports"
+        ],
+        "summary": "Email Program Outcome Report",
+        "description": "Email the outcome snapshot to the program's HR contact.\n\nLogs a touchpoint of type ``email_followup_1`` (closest stock fit \u2014\n\"Wrapped report sent\") on the contact so it shows up in their history.\nReturns ``delivered=False`` if the email send fails but still logs the\nattempt; the admin sees both via the returned payload.",
+        "operationId": "email_program_outcome_report_admin_corporate_programs__program_id__report_email_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailReportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/programs": {
+      "post": {
+        "tags": [
+          "admin-corporate-programs"
+        ],
+        "summary": "Create Program",
+        "description": "Create a corporate program directly (skipping the deal pipeline).\n\nUsed when a deal closes outside the CRM (legacy contract, partnership\npre-dating this service, etc.). If the caller doesn't pre-compute pricing,\nwe fill it in from the discount tier \u00d7 employee count.",
+        "operationId": "create_program_admin_corporate_programs_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorporateProgramCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateProgramResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "admin-corporate-programs"
+        ],
+        "summary": "List Programs",
+        "description": "List programs with optional status / contact filter.",
+        "operationId": "list_programs_admin_corporate_programs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProgramStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateProgramListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/programs/{program_id}": {
+      "get": {
+        "tags": [
+          "admin-corporate-programs"
+        ],
+        "summary": "Get Program",
+        "operationId": "get_program_admin_corporate_programs__program_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateProgramResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "admin-corporate-programs"
+        ],
+        "summary": "Update Program",
+        "operationId": "update_program_admin_corporate_programs__program_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorporateProgramUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateProgramResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin-corporate-programs"
+        ],
+        "summary": "Cancel Program",
+        "description": "Cancel a program (soft cancel; sets status=CANCELLED).\n\nDoes NOT call out to other services to undo bookings or close the\nwallet \u2014 that's a separate ops decision and a future endpoint.",
+        "operationId": "cancel_program_admin_corporate_programs__program_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/contacts": {
+      "get": {
+        "tags": [
+          "admin-corporate-contacts"
+        ],
+        "summary": "List Contacts",
+        "description": "List corporate contacts with filters.",
+        "operationId": "list_contacts_admin_corporate_contacts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "industry",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CompanyIndustry"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Industry"
+            }
+          },
+          {
+            "name": "company_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CompanySize"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Company Size"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ContactSource"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "is_active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Match company_name or contact email/name",
+              "title": "Search"
+            },
+            "description": "Match company_name or contact email/name"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateContactListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin-corporate-contacts"
+        ],
+        "summary": "Create Contact",
+        "description": "Create a new corporate contact.",
+        "operationId": "create_contact_admin_corporate_contacts_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorporateContactCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateContactResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/corporate/contacts/{contact_id}": {
+      "get": {
+        "tags": [
+          "admin-corporate-contacts"
+        ],
+        "summary": "Get Contact",
+        "description": "Get a corporate contact by id.",
+        "operationId": "get_contact_admin_corporate_contacts__contact_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateContactResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "admin-corporate-contacts"
+        ],
+        "summary": "Update Contact",
+        "description": "Patch fields on a corporate contact.",
+        "operationId": "update_contact_admin_corporate_contacts__contact_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorporateContactUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporateContactResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin-corporate-contacts"
+        ],
+        "summary": "Delete Contact",
+        "description": "Soft-delete a corporate contact (is_active=False).",
+        "operationId": "delete_contact_admin_corporate_contacts__contact_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -48271,6 +50791,45 @@
         "title": "MemberMembershipResponse",
         "description": "Membership tiers, billing, and gamification."
       },
+      "AdminWalkInRequest": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "fee_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Amount Kobo"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id"
+        ],
+        "title": "AdminWalkInRequest",
+        "description": "Admin creates a CONFIRMED booking for a member who showed up without\npre-booking online (the \"walk-in\" case).\n\nUsed by the admin attendance UI. The admin clicks \"Mark walk-in\" on a\ncohort member who paid the pool fee at the door \u2014 this creates the\nbooking record so the financials reconcile. Default fee is the session's\nown ``pool_fee`` (in kobo); override is allowed for unusual cases."
+      },
       "BookingChannel": {
         "type": "string",
         "enum": [
@@ -48519,6 +51078,18 @@
           "title"
         ],
         "title": "NextSessionResponse"
+      },
+      "RunningLateRequest": {
+        "properties": {
+          "running_late": {
+            "type": "boolean",
+            "title": "Running Late",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "RunningLateRequest",
+        "description": "Member toggles their \"I'll be late\" flag on a booking.\n\nThe flag is stored as a sentinel prefix in ``booking.notes`` to avoid\nrequiring a schema migration. Set ``running_late=False`` to clear it."
       },
       "SessionBasic": {
         "properties": {
@@ -83687,6 +86258,2909 @@
         ],
         "title": "RetentionPolicy",
         "description": "Per-channel retention policy. See design \u00a79."
+      },
+      "CompanyIndustry": {
+        "type": "string",
+        "enum": [
+          "tech",
+          "bank_finance",
+          "consultancy",
+          "telco",
+          "mda_parastatal",
+          "fmcg",
+          "healthcare",
+          "education",
+          "ngo",
+          "other"
+        ],
+        "title": "CompanyIndustry",
+        "description": "Industry classification for corporate buyers \u2014 drives ICP scoring & playbook routing."
+      },
+      "CompanySize": {
+        "type": "string",
+        "enum": [
+          "under_50",
+          "50_to_250",
+          "250_to_1000",
+          "over_1000"
+        ],
+        "title": "CompanySize",
+        "description": "Employee-count buckets \u2014 informs deal sizing and procurement complexity."
+      },
+      "ContactSource": {
+        "type": "string",
+        "enum": [
+          "cold_outbound",
+          "warm_intro",
+          "referral",
+          "inbound_email",
+          "inbound_web",
+          "event",
+          "other"
+        ],
+        "title": "ContactSource",
+        "description": "How the company entered our pipeline."
+      },
+      "CorporateContactCreate": {
+        "properties": {
+          "company_name": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Company Name"
+          },
+          "company_website": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Website"
+          },
+          "industry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompanyIndustry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "company_size": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompanySize"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hq_location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hq Location"
+          },
+          "primary_contact_name": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Primary Contact Name"
+          },
+          "primary_contact_role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Contact Role"
+          },
+          "primary_contact_email": {
+            "type": "string",
+            "format": "email",
+            "title": "Primary Contact Email"
+          },
+          "primary_contact_phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Contact Phone"
+          },
+          "primary_contact_whatsapp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Contact Whatsapp"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ContactSource",
+            "default": "cold_outbound"
+          },
+          "owner_auth_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Auth Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "company_name",
+          "primary_contact_name",
+          "primary_contact_email"
+        ],
+        "title": "CorporateContactCreate"
+      },
+      "CorporateContactListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CorporateContactResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "CorporateContactListResponse"
+      },
+      "CorporateContactResponse": {
+        "properties": {
+          "company_name": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Company Name"
+          },
+          "company_website": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Website"
+          },
+          "industry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompanyIndustry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "company_size": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompanySize"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hq_location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hq Location"
+          },
+          "primary_contact_name": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Primary Contact Name"
+          },
+          "primary_contact_role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Contact Role"
+          },
+          "primary_contact_email": {
+            "type": "string",
+            "format": "email",
+            "title": "Primary Contact Email"
+          },
+          "primary_contact_phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Contact Phone"
+          },
+          "primary_contact_whatsapp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Contact Whatsapp"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ContactSource",
+            "default": "cold_outbound"
+          },
+          "owner_auth_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Auth Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "company_name",
+          "primary_contact_name",
+          "primary_contact_email",
+          "id",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CorporateContactResponse"
+      },
+      "CorporateContactUpdate": {
+        "properties": {
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name"
+          },
+          "company_website": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Website"
+          },
+          "industry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompanyIndustry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "company_size": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompanySize"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hq_location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hq Location"
+          },
+          "primary_contact_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Contact Name"
+          },
+          "primary_contact_role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Contact Role"
+          },
+          "primary_contact_email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Contact Email"
+          },
+          "primary_contact_phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Contact Phone"
+          },
+          "primary_contact_whatsapp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Contact Whatsapp"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContactSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owner_auth_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Auth Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "title": "CorporateContactUpdate"
+      },
+      "CorporateDealCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Title"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/DealStage",
+            "default": "lead"
+          },
+          "expected_employees": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Employees"
+          },
+          "expected_discount_tier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscountTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_total_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Total Kobo"
+          },
+          "expected_close_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Close Date"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action"
+          },
+          "next_action_due": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action Due"
+          },
+          "owner_auth_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Auth Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "CorporateDealCreate"
+      },
+      "CorporateDealListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CorporateDealResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "CorporateDealListResponse"
+      },
+      "CorporateDealLossRequest": {
+        "properties": {
+          "lost_reason": {
+            "$ref": "#/components/schemas/DealLostReason"
+          },
+          "lost_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lost Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lost_reason"
+        ],
+        "title": "CorporateDealLossRequest",
+        "description": "Close a deal as lost."
+      },
+      "CorporateDealResponse": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Title"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/DealStage",
+            "default": "lead"
+          },
+          "expected_employees": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Employees"
+          },
+          "expected_discount_tier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscountTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_total_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Total Kobo"
+          },
+          "expected_close_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Close Date"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action"
+          },
+          "next_action_due": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action Due"
+          },
+          "owner_auth_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Auth Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Id"
+          },
+          "actual_close_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Close Date"
+          },
+          "last_touch_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Touch At"
+          },
+          "lost_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DealLostReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lost_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lost Notes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "id",
+          "contact_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CorporateDealResponse"
+      },
+      "CorporateDealUpdate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DealStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_employees": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Employees"
+          },
+          "expected_discount_tier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscountTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_total_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Total Kobo"
+          },
+          "expected_close_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Close Date"
+          },
+          "actual_close_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Close Date"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action"
+          },
+          "next_action_due": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action Due"
+          },
+          "last_touch_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Touch At"
+          },
+          "lost_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DealLostReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lost_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lost Notes"
+          },
+          "owner_auth_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Auth Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "title": "CorporateDealUpdate"
+      },
+      "CorporateDealWinRequest": {
+        "properties": {
+          "program_name": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Program Name"
+          },
+          "employee_count": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Employee Count"
+          },
+          "discount_tier": {
+            "$ref": "#/components/schemas/DiscountTier"
+          },
+          "payment_terms": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Terms"
+          },
+          "is_pilot_partner": {
+            "type": "boolean",
+            "title": "Is Pilot Partner",
+            "default": false
+          },
+          "expected_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Start Date"
+          },
+          "expected_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected End Date"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "program_name",
+          "employee_count",
+          "discount_tier"
+        ],
+        "title": "CorporateDealWinRequest",
+        "description": "Promote a deal to a CorporateProgram.\n\nOptional fields override what the deal already records; required fields\nare the bits a deal doesn't carry (program name + payment terms choice)."
+      },
+      "CorporateProgramCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Name"
+          },
+          "employee_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Employee Count",
+            "default": 0
+          },
+          "discount_tier": {
+            "$ref": "#/components/schemas/DiscountTier",
+            "default": "full_price"
+          },
+          "per_employee_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Per Employee Kobo"
+          },
+          "total_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Kobo"
+          },
+          "payment_terms": {
+            "$ref": "#/components/schemas/PaymentTerms",
+            "default": "deposit_half"
+          },
+          "deposit_paid_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Deposit Paid Kobo",
+            "default": 0
+          },
+          "balance_paid_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Balance Paid Kobo",
+            "default": 0
+          },
+          "expected_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Start Date"
+          },
+          "expected_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected End Date"
+          },
+          "is_pilot_partner": {
+            "type": "boolean",
+            "title": "Is Pilot Partner",
+            "default": false
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Id"
+          },
+          "deal_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deal Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProgramStatus",
+            "default": "draft"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "per_employee_kobo",
+          "total_kobo",
+          "contact_id"
+        ],
+        "title": "CorporateProgramCreate"
+      },
+      "CorporateProgramEmployeeResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "program_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Program Id"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "member_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Auth Id"
+          },
+          "enrollment_status": {
+            "$ref": "#/components/schemas/EmployeeEnrollmentStatus"
+          },
+          "invitation_sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invitation Sent At"
+          },
+          "registered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registered At"
+          },
+          "enrolled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrolled At"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "program_id",
+          "full_name",
+          "email",
+          "enrollment_status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CorporateProgramEmployeeResponse"
+      },
+      "CorporateProgramListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CorporateProgramResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "CorporateProgramListResponse"
+      },
+      "CorporateProgramResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Name"
+          },
+          "employee_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Employee Count",
+            "default": 0
+          },
+          "discount_tier": {
+            "$ref": "#/components/schemas/DiscountTier",
+            "default": "full_price"
+          },
+          "per_employee_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Per Employee Kobo"
+          },
+          "total_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Kobo"
+          },
+          "payment_terms": {
+            "$ref": "#/components/schemas/PaymentTerms",
+            "default": "deposit_half"
+          },
+          "deposit_paid_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Deposit Paid Kobo",
+            "default": 0
+          },
+          "balance_paid_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Balance Paid Kobo",
+            "default": 0
+          },
+          "expected_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Start Date"
+          },
+          "expected_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected End Date"
+          },
+          "is_pilot_partner": {
+            "type": "boolean",
+            "title": "Is Pilot Partner",
+            "default": false
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Id"
+          },
+          "deal_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deal Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProgramStatus"
+          },
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id"
+          },
+          "corporate_wallet_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corporate Wallet Id"
+          },
+          "actual_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Start Date"
+          },
+          "actual_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual End Date"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "per_employee_kobo",
+          "total_kobo",
+          "id",
+          "contact_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CorporateProgramResponse"
+      },
+      "CorporateProgramUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProgramStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "employee_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Count"
+          },
+          "discount_tier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscountTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "per_employee_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Employee Kobo"
+          },
+          "total_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Kobo"
+          },
+          "payment_terms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentTerms"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deposit_paid_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deposit Paid Kobo"
+          },
+          "balance_paid_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance Paid Kobo"
+          },
+          "expected_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Start Date"
+          },
+          "actual_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Start Date"
+          },
+          "expected_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected End Date"
+          },
+          "actual_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual End Date"
+          },
+          "is_pilot_partner": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Pilot Partner"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "title": "CorporateProgramUpdate"
+      },
+      "CorporateTouchpointCreate": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/TouchpointType"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/TouchpointDirection",
+            "default": "outbound"
+          },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred At"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action"
+          },
+          "deal_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deal Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "CorporateTouchpointCreate"
+      },
+      "CorporateTouchpointResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/TouchpointType"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/TouchpointDirection",
+            "default": "outbound"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action"
+          },
+          "deal_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deal Id"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Id"
+          },
+          "logged_by_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logged By Auth Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "occurred_at",
+          "id",
+          "contact_id",
+          "created_at"
+        ],
+        "title": "CorporateTouchpointResponse"
+      },
+      "DealLostReason": {
+        "type": "string",
+        "enum": [
+          "price",
+          "timing",
+          "internal_priorities",
+          "budget_frozen",
+          "competitor",
+          "logistics",
+          "no_response",
+          "other"
+        ],
+        "title": "DealLostReason",
+        "description": "Why a deal closed unsuccessfully \u2014 informs ICP refinement."
+      },
+      "DealStage": {
+        "type": "string",
+        "enum": [
+          "lead",
+          "contacted",
+          "intro_scheduled",
+          "intro_done",
+          "proposal_sent",
+          "negotiating",
+          "won",
+          "lost"
+        ],
+        "title": "DealStage",
+        "description": "Sales pipeline stages \u2014 matches the playbook outreach sequence."
+      },
+      "DiscountTier": {
+        "type": "string",
+        "enum": [
+          "full_price",
+          "bulk_5_9",
+          "bulk_10_plus"
+        ],
+        "title": "DiscountTier",
+        "description": "Per-employee pricing tier \u2014 drives the total_price calculation."
+      },
+      "EmailReportRequest": {
+        "properties": {
+          "custom_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Note"
+          },
+          "report_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Url"
+          }
+        },
+        "type": "object",
+        "title": "EmailReportRequest",
+        "description": "Send the outcome report URL to the program's HR contact.\n\nThe URL points to the admin frontend's read-only view of the report \u2014\nPhase 3.3 (HR portal) will add a real HR-facing view scoped to that\ncontact's company; until then this just shares the admin URL via email,\nwith a note. ``custom_note`` lets the admin add a personal line."
+      },
+      "EmailReportResponse": {
+        "properties": {
+          "delivered": {
+            "type": "boolean",
+            "title": "Delivered"
+          },
+          "recipient_email": {
+            "type": "string",
+            "title": "Recipient Email"
+          },
+          "touchpoint_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Touchpoint Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "delivered",
+          "recipient_email",
+          "touchpoint_id"
+        ],
+        "title": "EmailReportResponse"
+      },
+      "EmployeeBulkAddRequest": {
+        "properties": {
+          "employees": {
+            "items": {
+              "$ref": "#/components/schemas/EmployeeRow"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Employees"
+          }
+        },
+        "type": "object",
+        "required": [
+          "employees"
+        ],
+        "title": "EmployeeBulkAddRequest",
+        "description": "Bulk-add employees to a program.\n\nIdempotent on email \u2014 rows whose email already exists on the program are\nskipped (existing row unchanged). Returned counts let the caller report\n\"added 7, skipped 1 duplicate\" to the admin user."
+      },
+      "EmployeeBulkAddResponse": {
+        "properties": {
+          "added": {
+            "type": "integer",
+            "title": "Added"
+          },
+          "skipped_duplicates": {
+            "type": "integer",
+            "title": "Skipped Duplicates"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CorporateProgramEmployeeResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "added",
+          "skipped_duplicates",
+          "items"
+        ],
+        "title": "EmployeeBulkAddResponse"
+      },
+      "EmployeeEnrollmentStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "invited",
+          "registered",
+          "enrolled",
+          "opted_out"
+        ],
+        "title": "EmployeeEnrollmentStatus",
+        "description": "Where each employee is in the onboarding funnel."
+      },
+      "EmployeeReportRow": {
+        "properties": {
+          "employee_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Employee Id"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "enrollment_status": {
+            "$ref": "#/components/schemas/EmployeeEnrollmentStatus"
+          },
+          "sessions_attended": {
+            "type": "integer",
+            "title": "Sessions Attended"
+          },
+          "sessions_total": {
+            "type": "integer",
+            "title": "Sessions Total"
+          },
+          "attendance_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendance Rate"
+          },
+          "milestones_achieved": {
+            "type": "integer",
+            "title": "Milestones Achieved"
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_id",
+          "full_name",
+          "email",
+          "enrollment_status",
+          "sessions_attended",
+          "sessions_total",
+          "milestones_achieved"
+        ],
+        "title": "EmployeeReportRow"
+      },
+      "EmployeeRow": {
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Full Name"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "full_name",
+          "email"
+        ],
+        "title": "EmployeeRow",
+        "description": "A single row in a bulk-add request."
+      },
+      "EnrollAllResponse": {
+        "properties": {
+          "enrolled": {
+            "type": "integer",
+            "title": "Enrolled"
+          },
+          "skipped_no_member_id": {
+            "type": "integer",
+            "title": "Skipped No Member Id"
+          },
+          "skipped_already_booked": {
+            "type": "integer",
+            "title": "Skipped Already Booked"
+          },
+          "employee_count": {
+            "type": "integer",
+            "title": "Employee Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enrolled",
+          "skipped_no_member_id",
+          "skipped_already_booked",
+          "employee_count"
+        ],
+        "title": "EnrollAllResponse"
+      },
+      "LinkCohortRequest": {
+        "properties": {
+          "cohort_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Cohort Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cohort_id"
+        ],
+        "title": "LinkCohortRequest"
+      },
+      "MatchMembersResponse": {
+        "properties": {
+          "matched": {
+            "type": "integer",
+            "title": "Matched"
+          },
+          "already_matched": {
+            "type": "integer",
+            "title": "Already Matched"
+          },
+          "unresolved": {
+            "type": "integer",
+            "title": "Unresolved"
+          }
+        },
+        "type": "object",
+        "required": [
+          "matched",
+          "already_matched",
+          "unresolved"
+        ],
+        "title": "MatchMembersResponse",
+        "description": "Result of resolving employee emails against members_service."
+      },
+      "OutreachCycleResult": {
+        "properties": {
+          "considered": {
+            "type": "integer",
+            "title": "Considered"
+          },
+          "sent": {
+            "type": "integer",
+            "title": "Sent"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "considered",
+          "sent",
+          "skipped"
+        ],
+        "title": "OutreachCycleResult",
+        "description": "Result of the scheduler run-now action."
+      },
+      "OutreachPreviewResponse": {
+        "properties": {
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "plain": {
+            "type": "string",
+            "title": "Plain"
+          },
+          "html": {
+            "type": "string",
+            "title": "Html"
+          }
+        },
+        "type": "object",
+        "required": [
+          "number",
+          "subject",
+          "plain",
+          "html"
+        ],
+        "title": "OutreachPreviewResponse"
+      },
+      "OutreachSendResult": {
+        "properties": {
+          "sent": {
+            "type": "boolean",
+            "title": "Sent"
+          },
+          "email_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Number"
+          },
+          "touchpoint_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Touchpoint Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sent"
+        ],
+        "title": "OutreachSendResult",
+        "description": "Result of a 'send next outreach email now' action."
+      },
+      "OutreachStartRequest": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "OutreachStartRequest",
+        "description": "Optional metadata at sequence kickoff."
+      },
+      "OutreachStateResponse": {
+        "properties": {
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Id"
+          },
+          "outreach_paused": {
+            "type": "boolean",
+            "title": "Outreach Paused"
+          },
+          "outreach_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outreach Started At"
+          },
+          "last_outbound_email_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Outbound Email At"
+          },
+          "last_outbound_email_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Outbound Email Type"
+          },
+          "next_email_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Email Number"
+          },
+          "has_inbound_reply": {
+            "type": "boolean",
+            "title": "Has Inbound Reply"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contact_id",
+          "outreach_paused",
+          "has_inbound_reply"
+        ],
+        "title": "OutreachStateResponse",
+        "description": "Current outreach status for one contact \u2014 used by the admin UI."
+      },
+      "PaymentTerms": {
+        "type": "string",
+        "enum": [
+          "full_upfront",
+          "deposit_half",
+          "net_30",
+          "net_60",
+          "custom"
+        ],
+        "title": "PaymentTerms",
+        "description": "Agreed payment schedule for the program."
+      },
+      "PortalEmployeeRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "enrollment_status": {
+            "type": "string",
+            "title": "Enrollment Status"
+          },
+          "invitation_sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invitation Sent At"
+          },
+          "registered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registered At"
+          },
+          "enrolled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrolled At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "full_name",
+          "email",
+          "enrollment_status"
+        ],
+        "title": "PortalEmployeeRow",
+        "description": "Single employee on the HR-side manifest \u2014 read-only."
+      },
+      "PortalProgramSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProgramStatus"
+          },
+          "employee_count": {
+            "type": "integer",
+            "title": "Employee Count"
+          },
+          "expected_start_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Start Date"
+          },
+          "expected_end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected End Date"
+          },
+          "actual_start_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Start Date"
+          },
+          "actual_end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual End Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "employee_count"
+        ],
+        "title": "PortalProgramSummary",
+        "description": "Slim view of a CorporateProgram for the portal dashboard."
+      },
+      "ProgramOutcomeReportResponse": {
+        "properties": {
+          "program_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Program Id"
+          },
+          "program_name": {
+            "type": "string",
+            "title": "Program Name"
+          },
+          "company_name": {
+            "type": "string",
+            "title": "Company Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "period_from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period From"
+          },
+          "period_to": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period To"
+          },
+          "employee_count": {
+            "type": "integer",
+            "title": "Employee Count"
+          },
+          "enrollment_funnel": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Enrollment Funnel"
+          },
+          "sessions_in_cohort": {
+            "type": "integer",
+            "title": "Sessions In Cohort"
+          },
+          "aggregate_sessions_attended": {
+            "type": "integer",
+            "title": "Aggregate Sessions Attended"
+          },
+          "aggregate_sessions_possible": {
+            "type": "integer",
+            "title": "Aggregate Sessions Possible"
+          },
+          "aggregate_attendance_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aggregate Attendance Rate"
+          },
+          "aggregate_milestones_achieved": {
+            "type": "integer",
+            "title": "Aggregate Milestones Achieved"
+          },
+          "employees": {
+            "items": {
+              "$ref": "#/components/schemas/EmployeeReportRow"
+            },
+            "type": "array",
+            "title": "Employees"
+          }
+        },
+        "type": "object",
+        "required": [
+          "program_id",
+          "program_name",
+          "company_name",
+          "status",
+          "generated_at",
+          "period_from",
+          "period_to",
+          "employee_count",
+          "enrollment_funnel",
+          "sessions_in_cohort",
+          "aggregate_sessions_attended",
+          "aggregate_sessions_possible",
+          "aggregate_milestones_achieved",
+          "employees"
+        ],
+        "title": "ProgramOutcomeReportResponse",
+        "description": "SwimBuddz Wrapped \u2014 outcome snapshot for one corporate program."
+      },
+      "ProgramStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "ready",
+          "active",
+          "completed",
+          "cancelled"
+        ],
+        "title": "ProgramStatus",
+        "description": "Lifecycle of a sold corporate program."
+      },
+      "ProvisionWalletRequest": {
+        "properties": {
+          "budget_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Kobo"
+          },
+          "member_bubble_limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Bubble Limit"
+          }
+        },
+        "type": "object",
+        "title": "ProvisionWalletRequest",
+        "description": "Optional override for wallet budget; defaults to program total_kobo."
+      },
+      "PublicLeadCreate": {
+        "properties": {
+          "company_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Company Name"
+          },
+          "primary_contact_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Primary Contact Name"
+          },
+          "primary_contact_email": {
+            "type": "string",
+            "format": "email",
+            "title": "Primary Contact Email"
+          },
+          "employee_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Count"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "website": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website"
+          }
+        },
+        "type": "object",
+        "required": [
+          "company_name",
+          "primary_contact_name",
+          "primary_contact_email"
+        ],
+        "title": "PublicLeadCreate",
+        "description": "Minimal-friction inbound lead from swimbuddz.com/corporate.\n\nHoneypot field ``website`` is included to catch naive bots \u2014 legitimate\nbrowsers leave it empty; bots that auto-fill all inputs trip the trap.\nThe intake route rejects any submission where it's set."
+      },
+      "PublicLeadResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": "Thanks \u2014 we've received your enquiry and will be in touch within one working day."
+          }
+        },
+        "type": "object",
+        "title": "PublicLeadResponse",
+        "description": "Returned to the marketing site after a successful submission.\n\nIntentionally opaque \u2014 we do not echo back the created contact id, just a\nconfirmation. The admin sees the new contact in the pipeline view."
+      },
+      "RequestMagicLinkRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "callback_url": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Callback Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "callback_url"
+        ],
+        "title": "RequestMagicLinkRequest",
+        "description": "Body for POST /corporate/me/auth/request-link."
+      },
+      "RequestMagicLinkResponse": {
+        "properties": {
+          "sent": {
+            "type": "boolean",
+            "title": "Sent",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "RequestMagicLinkResponse",
+        "description": "Returned generically \u2014 always {sent: true} so we don't leak which\nemails are on file. The email lands only if a matching active contact\nexists. Identical-looking responses kill email-enumeration attacks."
+      },
+      "TouchpointDirection": {
+        "type": "string",
+        "enum": [
+          "outbound",
+          "inbound"
+        ],
+        "title": "TouchpointDirection",
+        "description": "Who initiated the touchpoint."
+      },
+      "TouchpointType": {
+        "type": "string",
+        "enum": [
+          "email_intro",
+          "email_followup_1",
+          "email_followup_2",
+          "intro_call",
+          "proposal_shared",
+          "demo",
+          "whatsapp",
+          "phone_call",
+          "in_person",
+          "note"
+        ],
+        "title": "TouchpointType",
+        "description": "Outreach interaction types \u2014 covers the playbook's 3-email sequence + calls."
+      },
+      "VerifyMagicLinkRequest": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "VerifyMagicLinkRequest",
+        "description": "Body for POST /corporate/me/auth/verify \u2014 sent by the frontend\nonce it has lifted the ``token`` query param off the magic link."
+      },
+      "VerifyMagicLinkResponse": {
+        "properties": {
+          "session_token": {
+            "type": "string",
+            "title": "Session Token"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Id"
+          },
+          "company_name": {
+            "type": "string",
+            "title": "Company Name"
+          },
+          "primary_contact_name": {
+            "type": "string",
+            "title": "Primary Contact Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_token",
+          "expires_at",
+          "contact_id",
+          "company_name",
+          "primary_contact_name"
+        ],
+        "title": "VerifyMagicLinkResponse"
       }
     }
   }

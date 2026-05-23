@@ -22,6 +22,7 @@ SERVICES=(
   "wallet_service"
   "pools_service"
   "chat_service"
+  "corporate_service"
 )
 
 TIMESTAMP=$(date +"%Y%m%d%H%M%S")

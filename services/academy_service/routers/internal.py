@@ -96,7 +96,13 @@ async def get_enrollment_internal(
         db, enrollment, use_installments=use_installments
     )
     await db.commit()
-    return enrollment
+    # The sync above may have just built the installment schedule on demand
+    # (member opted in via use_installments=true). The relationship loaded
+    # above is stale at that point, so re-run the eager-load query to
+    # serialize the fresh rows — otherwise payments_service sees an empty
+    # installments list and falls back to the full cohort price.
+    refreshed = await db.execute(query)
+    return refreshed.scalar_one()
 
 
 @router.get("/cohorts")

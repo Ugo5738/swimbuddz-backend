@@ -17,7 +17,7 @@ See docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §C.
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 import httpx
@@ -28,6 +28,7 @@ from libs.common.currency import kobo_to_bubbles
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import (
+    check_cohort_enrollment,
     credit_member_wallet,
     debit_member_wallet,
     get_member_by_auth_id,
@@ -43,7 +44,9 @@ from services.sessions_service.models import (
     SessionBookingStatus,
 )
 from services.sessions_service.schemas import (
+    AdminWalkInRequest,
     BookingConfirmRequest,
+    RunningLateRequest,
     SessionBookingCreate,
     SessionBookingResponse,
 )
@@ -115,6 +118,38 @@ async def book_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     member_id, member_auth_id = await _resolve_member_for_user(current_user)
+
+    # Cohort sessions are auto-rostered from academy enrollments. Block
+    # ad-hoc self-bookings from members who aren't enrolled in the session's
+    # cohort — otherwise they end up paying for and "attending" cohorts
+    # they aren't part of. Admin walk-in still bypasses this check so
+    # coaches can admit legitimate drop-ins.
+    if session.cohort_id is not None:
+        try:
+            check = await check_cohort_enrollment(
+                cohort_id=str(session.cohort_id),
+                member_id=str(member_id),
+                calling_service="sessions",
+            )
+        except httpx.HTTPError as e:
+            logger.warning(
+                "check_cohort_enrollment failed for session=%s member=%s: %s",
+                session_id,
+                member_id,
+                e,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Could not verify cohort enrollment. Please try again.",
+            )
+        if not check or not check.get("enrolled"):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "This session is restricted to members enrolled in its "
+                    "academy cohort. Enroll in the cohort first to book."
+                ),
+            )
 
     # Idempotency: pre-existing PENDING/CONFIRMED for this (session, member)
     # → return it. CANCELLED/EXPIRED → require admin re-issue.
@@ -269,6 +304,123 @@ async def confirm_booking(
 
 
 # ---------------------------------------------------------------------------
+# Admin: walk-in booking
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/sessions/{session_id}/admin/walk-in",
+    response_model=SessionBookingResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def admin_walk_in_booking(
+    session_id: uuid.UUID,
+    payload: AdminWalkInRequest,
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Admin creates a CONFIRMED booking for a member who showed up without
+    pre-booking online. Used by the attendance UI's "Mark walk-in" action.
+
+    Behavior:
+      - Looks up the session to default ``fee_amount_kobo`` to the session's
+        own ``pool_fee`` when the caller didn't specify one.
+      - Idempotent: if a PENDING or CONFIRMED booking already exists for
+        ``(session_id, member_id)``, returns it instead of creating a new one.
+        Cancelled/expired bookings raise 409 (admin must investigate).
+      - Channel is hard-coded to ``ADMIN`` so the row is distinguishable from
+        member-self bookings in reporting.
+      - Coach payouts pick this up like any other booking — paying happens
+        when an attendance row records Present/Late for this booking.
+    """
+    session = (
+        await db.execute(select(Session).where(Session.id == session_id))
+    ).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Resolve the member to fill member_auth_id (the booking row needs both).
+    # We can't use _resolve_member_for_user here — the admin isn't the
+    # booking subject — so look up by member id directly via members-service.
+    from libs.common.service_client import get_member_by_id
+
+    member = await get_member_by_id(str(payload.member_id), calling_service="sessions")
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    member_auth_id = member.get("auth_id")
+    if not member_auth_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Member is missing auth_id — cannot create a booking.",
+        )
+
+    fee_kobo = (
+        payload.fee_amount_kobo
+        if payload.fee_amount_kobo is not None
+        else int(session.pool_fee or 0)
+    )
+
+    # Idempotency: return existing PENDING/CONFIRMED if any.
+    existing = (
+        await db.execute(
+            select(SessionBooking).where(
+                SessionBooking.session_id == session_id,
+                SessionBooking.member_id == payload.member_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        if existing.status in (
+            SessionBookingStatus.PENDING,
+            SessionBookingStatus.CONFIRMED,
+        ):
+            # Upgrade PENDING to CONFIRMED if needed — admin walk-in implies
+            # payment has happened (the member is physically present).
+            if existing.status == SessionBookingStatus.PENDING:
+                existing.status = SessionBookingStatus.CONFIRMED
+                existing.confirmed_at = utc_now()
+                existing.channel = BookingChannel.ADMIN
+                if not existing.notes and payload.notes:
+                    existing.notes = payload.notes
+                await db.commit()
+                await db.refresh(existing)
+            return existing
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"A prior booking for this (session, member) exists with "
+                f"status={existing.status.value}. Resolve it before recording "
+                f"a fresh walk-in."
+            ),
+        )
+
+    now = utc_now()
+    booking = SessionBooking(
+        session_id=session_id,
+        member_id=payload.member_id,
+        member_auth_id=member_auth_id,
+        status=SessionBookingStatus.CONFIRMED,
+        channel=BookingChannel.ADMIN,
+        fee_amount_kobo=fee_kobo,
+        notes=payload.notes,
+        booked_at=now,
+        confirmed_at=now,
+    )
+    db.add(booking)
+    await db.commit()
+    await db.refresh(booking)
+    logger.info(
+        "Admin %s recorded walk-in booking %s for session %s, member %s, fee %s kobo",
+        admin.email or admin.user_id,
+        booking.id,
+        session_id,
+        payload.member_id,
+        fee_kobo,
+    )
+    return booking
+
+
+# ---------------------------------------------------------------------------
 # Member or admin: cancel
 # ---------------------------------------------------------------------------
 
@@ -359,6 +511,225 @@ async def cancel_booking(
                 exc,
             )
 
+    return booking
+
+
+# ---------------------------------------------------------------------------
+# Member: self-report — "I can't make it" + "I'll be late"
+# ---------------------------------------------------------------------------
+
+# Cancellation cutoff for self-excuse. Members must signal "I can't make it"
+# at least this many hours before session start to qualify for the make-up
+# (cohort) or refund (non-cohort) workflow. Late cancels still record the
+# absence but skip the make-up obligation downstream. Hardcoded for now —
+# can be promoted to a per-program field if/when ops needs differentiation.
+CANCELLATION_CUTOFF_HOURS = 24
+
+# Sentinel marker stored in booking.notes to indicate a member has signalled
+# they will arrive late. Coach sees this on the attendance roster. Kept as a
+# string prefix (rather than a dedicated column) so this feature ships
+# without an alembic migration.
+LATE_FLAG_PREFIX = "[running_late_at:"
+LATE_FLAG_END = "]"
+
+
+def _has_late_flag(notes: Optional[str]) -> bool:
+    return bool(notes) and notes.startswith(LATE_FLAG_PREFIX)
+
+
+def _strip_late_flag(notes: Optional[str]) -> str:
+    """Return ``notes`` with the running-late sentinel removed, if present."""
+    if not notes or not notes.startswith(LATE_FLAG_PREFIX):
+        return notes or ""
+    end_idx = notes.find(LATE_FLAG_END)
+    if end_idx == -1:
+        return notes
+    rest = notes[end_idx + 1 :].lstrip("\n ")
+    return rest
+
+
+def _with_late_flag(notes: Optional[str], now: datetime) -> str:
+    base = _strip_late_flag(notes)
+    flag = f"{LATE_FLAG_PREFIX}{now.isoformat()}{LATE_FLAG_END}"
+    return f"{flag}\n{base}" if base else flag
+
+
+@router.post(
+    "/sessions/bookings/{booking_id}/excuse",
+    response_model=SessionBookingResponse,
+)
+async def excuse_booking(
+    booking_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Member self-excuses a booking — "I can't make it".
+
+    Distinct from cancel:
+      - For COHORT sessions, the pool fee is not refunded. Instead, an
+        EXCUSED attendance record is created which the coach payout cron
+        converts into a CohortMakeupObligation. The member gets a make-up
+        session later. This matches the cohort model: program fee is a
+        commitment, not a per-session refundable purchase.
+      - For non-cohort sessions, callers should use the regular
+        ``/cancel`` endpoint instead (which refunds in Bubbles). This
+        endpoint rejects non-cohort bookings.
+
+    Validates:
+      - Booking belongs to the caller.
+      - Session is in the future AND at least ``CANCELLATION_CUTOFF_HOURS``
+        away. Late self-excuses get a 422 — admin can still override via
+        the coach-mark endpoint if circumstances warrant.
+    """
+    booking = (
+        await db.execute(select(SessionBooking).where(SessionBooking.id == booking_id))
+    ).scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.member_auth_id != current_user.user_id:
+        raise HTTPException(
+            status_code=403, detail="You can only excuse your own bookings."
+        )
+    if booking.status != SessionBookingStatus.CONFIRMED:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Cannot excuse a booking with status={booking.status.value}. "
+                f"Only confirmed bookings can be self-excused."
+            ),
+        )
+
+    session = (
+        await db.execute(select(Session).where(Session.id == booking.session_id))
+    ).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Underlying session not found")
+
+    if session.cohort_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "This endpoint is for cohort sessions only. For community "
+                "or club sessions, cancel the booking to get a Bubbles refund."
+            ),
+        )
+
+    now = utc_now()
+    if session.starts_at <= now:
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot excuse a booking after the session has started.",
+        )
+    hours_to_session = (session.starts_at - now).total_seconds() / 3600
+    if hours_to_session < CANCELLATION_CUTOFF_HOURS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Self-excuse must be requested at least "
+                f"{CANCELLATION_CUTOFF_HOURS} hours before the session "
+                f"({hours_to_session:.1f}h remaining). Contact an admin if "
+                f"there's a genuine emergency."
+            ),
+        )
+
+    # Create the EXCUSED attendance record via attendance-service. The
+    # coach-payout cron picks this up on its next run and materializes a
+    # CohortMakeupObligation downstream — same path as a coach marking the
+    # student EXCUSED in person.
+    from libs.auth.dependencies import _service_role_jwt
+    from libs.common.config import get_settings
+
+    settings = get_settings()
+    headers = {"Authorization": f"Bearer {_service_role_jwt('sessions')}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            f"{settings.ATTENDANCE_SERVICE_URL}/attendance/sessions/{session.id}/attendance/public",
+            json={
+                "member_id": str(booking.member_id),
+                "status": "excused",
+                "role": "swimmer",
+                "notes": "Self-excused via member app",
+            },
+            headers=headers,
+        )
+        if resp.status_code >= 400:
+            logger.error(
+                "Failed to create EXCUSED attendance for booking %s: %s %s",
+                booking.id,
+                resp.status_code,
+                resp.text,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to record self-excuse. Please try again.",
+            )
+
+    # Append an audit hint to the booking notes so the coach can see why
+    # the EXCUSED row appeared. Doesn't change booking status — the booking
+    # remains CONFIRMED as the audit trail of "I paid for this seat, but
+    # excused myself; coach owes me a make-up."
+    excuse_note = f"[self_excused_at:{now.isoformat()}]"
+    booking.notes = (
+        f"{excuse_note}\n{_strip_late_flag(booking.notes)}".strip()
+        if booking.notes
+        else excuse_note
+    )
+    await db.commit()
+    await db.refresh(booking)
+    return booking
+
+
+@router.post(
+    "/sessions/bookings/{booking_id}/running-late",
+    response_model=SessionBookingResponse,
+)
+async def set_running_late(
+    booking_id: uuid.UUID,
+    payload: RunningLateRequest,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Member toggles their "I'll be late" flag on a booking.
+
+    Pure signal — no business consequence. Coach sees the flag on the
+    attendance roster so they know not to mark the member absent yet.
+    Once the member arrives and is marked Present/Late, the flag is
+    informational history.
+
+    Stored as a sentinel prefix in ``booking.notes`` rather than its own
+    column — keeps this feature shippable without a migration.
+    """
+    booking = (
+        await db.execute(select(SessionBooking).where(SessionBooking.id == booking_id))
+    ).scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.member_auth_id != current_user.user_id:
+        raise HTTPException(
+            status_code=403, detail="You can only update your own bookings."
+        )
+    if booking.status != SessionBookingStatus.CONFIRMED:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot flag a {booking.status.value} booking.",
+        )
+
+    session = (
+        await db.execute(select(Session).where(Session.id == booking.session_id))
+    ).scalar_one_or_none()
+    if session is not None and session.ends_at <= utc_now():
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot flag a session that has already ended.",
+        )
+
+    now = utc_now()
+    if payload.running_late:
+        booking.notes = _with_late_flag(booking.notes, now)
+    else:
+        booking.notes = _strip_late_flag(booking.notes) or None
+    await db.commit()
+    await db.refresh(booking)
     return booking
 
 

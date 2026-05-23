@@ -127,27 +127,45 @@ async def self_enroll(
             )
 
     # 3. Check Existing Enrollment/Request
-    # Only block enrolling in the SAME COHORT twice.
-    # Allow:
-    #   - Different cohorts in same program (e.g., future cohorts)
-    #   - Different programs simultaneously
-    if cohort_id:
-        query = select(Enrollment).where(
-            Enrollment.member_id == member["id"],
-            Enrollment.cohort_id == cohort_id,  # Only check same cohort, not program
-            Enrollment.status.in_(
-                [EnrollmentStatus.ENROLLED, EnrollmentStatus.PENDING_APPROVAL]
-            ),
+    # Block creating a new enrollment when the member already has an active
+    # enrollment in this program (any cohort). Prevents accidental duplicate
+    # signups across cohorts of the same program — to switch cohorts the
+    # member must drop or have an admin drop the existing enrollment first.
+    if program_id:
+        query = (
+            select(Enrollment)
+            .where(
+                Enrollment.member_id == member["id"],
+                Enrollment.program_id == program_id,
+                Enrollment.status.in_(
+                    [
+                        EnrollmentStatus.ENROLLED,
+                        EnrollmentStatus.PENDING_APPROVAL,
+                        EnrollmentStatus.WAITLIST,
+                    ]
+                ),
+            )
+            .options(selectinload(Enrollment.cohort))
         )
         result = await db.execute(query)
         existing = result.scalar_one_or_none()
 
         if existing:
-            detail = (
-                "You are already enrolled in this cohort"
-                if existing.status == EnrollmentStatus.ENROLLED
-                else "You already have a pending request for this cohort"
-            )
+            if existing.cohort_id == cohort_id:
+                detail = (
+                    "You are already enrolled in this cohort"
+                    if existing.status == EnrollmentStatus.ENROLLED
+                    else "You already have a pending request for this cohort"
+                )
+            else:
+                existing_cohort_name = (
+                    existing.cohort.name if existing.cohort else "another cohort"
+                )
+                detail = (
+                    f"You already have an active enrollment in this program "
+                    f"({existing_cohort_name}). To switch cohorts, drop your "
+                    f"existing enrollment first or contact support."
+                )
             raise HTTPException(status_code=400, detail=detail)
 
     # 4. Check Capacity and Determine Status

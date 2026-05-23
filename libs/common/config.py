@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     POOLS_SERVICE_URL: str = "http://pools-service:8014"
     REPORTING_SERVICE_URL: str = "http://reporting-service:8015"
     CHAT_SERVICE_URL: str = "http://chat-service:8016"
+    CORPORATE_SERVICE_URL: str = "http://corporate-service:8017"
 
     # AI Service
     AI_DEFAULT_MODEL: str = "gpt-4o-mini"

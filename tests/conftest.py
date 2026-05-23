@@ -487,6 +487,20 @@ async def chat_client(db_session):
 
 
 @pytest_asyncio.fixture
+async def corporate_client(db_session):
+    """AsyncClient for the corporate service with admin auth."""
+    from services.corporate_service.app.main import app as corporate_app
+
+    _wire_app(corporate_app, db_session)
+    async with AsyncClient(
+        transport=ASGITransport(app=corporate_app),
+        base_url="http://test",
+    ) as client:
+        yield client
+    corporate_app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
 async def ai_client(db_session):
     """AsyncClient for the ai service with admin auth."""
     from services.ai_service.app.main import app as ai_app
