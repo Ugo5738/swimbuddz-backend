@@ -28,6 +28,7 @@ from libs.common.currency import kobo_to_bubbles
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import (
+    check_cohort_enrollment,
     credit_member_wallet,
     debit_member_wallet,
     get_member_by_auth_id,
@@ -117,6 +118,38 @@ async def book_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     member_id, member_auth_id = await _resolve_member_for_user(current_user)
+
+    # Cohort sessions are auto-rostered from academy enrollments. Block
+    # ad-hoc self-bookings from members who aren't enrolled in the session's
+    # cohort — otherwise they end up paying for and "attending" cohorts
+    # they aren't part of. Admin walk-in still bypasses this check so
+    # coaches can admit legitimate drop-ins.
+    if session.cohort_id is not None:
+        try:
+            check = await check_cohort_enrollment(
+                cohort_id=str(session.cohort_id),
+                member_id=str(member_id),
+                calling_service="sessions",
+            )
+        except httpx.HTTPError as e:
+            logger.warning(
+                "check_cohort_enrollment failed for session=%s member=%s: %s",
+                session_id,
+                member_id,
+                e,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Could not verify cohort enrollment. Please try again.",
+            )
+        if not check or not check.get("enrolled"):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "This session is restricted to members enrolled in its "
+                    "academy cohort. Enroll in the cohort first to book."
+                ),
+            )
 
     # Idempotency: pre-existing PENDING/CONFIRMED for this (session, member)
     # → return it. CANCELLED/EXPIRED → require admin re-issue.
