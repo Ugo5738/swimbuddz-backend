@@ -37,7 +37,7 @@ def _signature_plain() -> str:
 
 def _signature_html() -> str:
     return (
-        '<p>Thanks,<br>Daniel<br>SwimBuddz | '
+        "<p>Thanks,<br>Daniel<br>SwimBuddz | "
         '<a href="https://swimbuddz.com">swimbuddz.com</a></p>'
     )
 
@@ -89,7 +89,7 @@ def render_email_1(*, contact_name: str, company_name: str) -> OutreachEmail:
         "<li>Lifelong skill — measurable, photogenic outcomes</li>"
         "<li>Group format builds team cohesion</li>"
         "</ul>"
-        '<p>You can read the full pitch and pricing at '
+        "<p>You can read the full pitch and pricing at "
         '<a href="https://swimbuddz.com/corporate">swimbuddz.com/corporate</a>.</p>'
         "<p>Worth a 20-min call to discuss?</p>"
         f"{_signature_html()}"
@@ -150,7 +150,9 @@ def render_email_3(*, contact_name: str, company_name: str) -> OutreachEmail:
     )
 
 
-def render_email(number: EmailNumber, *, contact_name: str, company_name: str) -> OutreachEmail:
+def render_email(
+    number: EmailNumber, *, contact_name: str, company_name: str
+) -> OutreachEmail:
     """Pick and render the Nth email in the sequence."""
     if number == 1:
         return render_email_1(contact_name=contact_name, company_name=company_name)
@@ -173,7 +175,9 @@ OUTREACH_TYPES_IN_ORDER: tuple[TouchpointType, ...] = (
 )
 
 
-def next_email_number(last_touchpoint_type: TouchpointType | None) -> EmailNumber | None:
+def next_email_number(
+    last_touchpoint_type: TouchpointType | None,
+) -> EmailNumber | None:
     """Given the most recent outreach touchpoint type for a contact, return
     the next email number (1, 2, or 3) — or None if the sequence is done."""
     if last_touchpoint_type is None:

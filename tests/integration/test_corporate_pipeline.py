@@ -208,7 +208,10 @@ async def test_bulk_add_employees_idempotent_on_email(corporate_client):
             "employees": [
                 {"full_name": "A One", "email": "a@x.example.com"},
                 {"full_name": "B Two", "email": "b@x.example.com"},
-                {"full_name": "A Dup", "email": "a@x.example.com"},  # within-payload dup
+                {
+                    "full_name": "A Dup",
+                    "email": "a@x.example.com",
+                },  # within-payload dup
             ]
         },
     )
@@ -315,9 +318,7 @@ async def test_orchestration_link_provision_enroll(corporate_client):
         assert body["skipped_no_member_id"] == 2
 
         # 4. Set member_id manually via the DB (would normally come from match-members)
-        from sqlalchemy import update
 
-        from services.corporate_service.models import CorporateProgramEmployee
 
         # We need access to the test db_session — corporate_client uses it via
         # the same override, so opening a new connection would be a separate

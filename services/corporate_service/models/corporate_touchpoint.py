@@ -73,9 +73,7 @@ class CorporateTouchpoint(Base):
     outcome: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     next_action: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    logged_by_auth_id: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True
-    )
+    logged_by_auth_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False

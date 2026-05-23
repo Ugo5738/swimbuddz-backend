@@ -125,12 +125,16 @@ async def bulk_add_employees(
 
     # Keep program.employee_count in sync with the manifest.
     new_total = (
-        await db.execute(
-            select(CorporateProgramEmployee).where(
-                CorporateProgramEmployee.program_id == program_id
+        (
+            await db.execute(
+                select(CorporateProgramEmployee).where(
+                    CorporateProgramEmployee.program_id == program_id
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     program.employee_count = len(new_total)
     await db.commit()
 
@@ -232,13 +236,17 @@ async def match_employees_to_members(
         matched += 1
 
     already_matched = (
-        await db.execute(
-            select(CorporateProgramEmployee).where(
-                CorporateProgramEmployee.program_id == program_id,
-                CorporateProgramEmployee.member_id.is_not(None),
+        (
+            await db.execute(
+                select(CorporateProgramEmployee).where(
+                    CorporateProgramEmployee.program_id == program_id,
+                    CorporateProgramEmployee.member_id.is_not(None),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     if matched > 0:
         await db.commit()

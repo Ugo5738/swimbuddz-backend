@@ -50,9 +50,7 @@ from services.corporate_service.services.outreach_templates import (
 router = APIRouter(tags=["admin-corporate-outreach"])
 
 
-async def _load_contact(
-    db: AsyncSession, contact_id: uuid.UUID
-) -> CorporateContact:
+async def _load_contact(db: AsyncSession, contact_id: uuid.UUID) -> CorporateContact:
     contact = (
         await db.execute(
             select(CorporateContact).where(CorporateContact.id == contact_id)
@@ -223,11 +221,11 @@ async def send_now(
     """
     contact = await _load_contact(db, contact_id)
     if contact.outreach_paused:
-        return OutreachSendResult(sent=False, reason="Outreach is paused for this contact")
-    if contact.outreach_started_at is None:
         return OutreachSendResult(
-            sent=False, reason="Outreach hasn't been started yet"
+            sent=False, reason="Outreach is paused for this contact"
         )
+    if contact.outreach_started_at is None:
+        return OutreachSendResult(sent=False, reason="Outreach hasn't been started yet")
     touchpoint = await send_next_outreach_email(db, contact)
     if touchpoint is None:
         return OutreachSendResult(sent=False, reason="No outreach email is due")

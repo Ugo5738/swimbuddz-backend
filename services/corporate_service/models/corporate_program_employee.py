@@ -95,4 +95,6 @@ class CorporateProgramEmployee(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<CorporateProgramEmployee {self.email} ({self.enrollment_status.value})>"
+        return (
+            f"<CorporateProgramEmployee {self.email} ({self.enrollment_status.value})>"
+        )

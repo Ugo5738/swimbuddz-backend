@@ -10,7 +10,7 @@ service so they can follow up within the playbook's 24h SLA.
 
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -113,7 +113,11 @@ async def create_public_lead(
         direction=TouchpointDirection.INBOUND,
         occurred_at=utc_now(),
         summary=summary[:500],
-        outcome=("Inbound web form submission" if is_new else "Repeat submission (dedupe window)"),
+        outcome=(
+            "Inbound web form submission"
+            if is_new
+            else "Repeat submission (dedupe window)"
+        ),
     )
     db.add(touchpoint)
     await db.commit()

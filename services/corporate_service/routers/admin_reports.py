@@ -58,9 +58,7 @@ async def _load_program_with_context(
 
     contact = (
         await db.execute(
-            select(CorporateContact).where(
-                CorporateContact.id == program.contact_id
-            )
+            select(CorporateContact).where(CorporateContact.id == program.contact_id)
         )
     ).scalar_one()
 
@@ -140,8 +138,7 @@ def _build_email_body(
     if report_url:
         body_text += f"\nView the full breakdown: {report_url}\n"
     body_text += (
-        "\nLet me know if you'd like to walk through this on a call.\n\n"
-        "— SwimBuddz"
+        "\nLet me know if you'd like to walk through this on a call.\n\n" "— SwimBuddz"
     )
 
     html = (
@@ -159,9 +156,7 @@ def _build_email_body(
     if custom_note:
         html += f"<p>{custom_note.strip()}</p>"
     if report_url:
-        html += (
-            f'<p><a href="{report_url}">View the full breakdown</a></p>'
-        )
+        html += f'<p><a href="{report_url}">View the full breakdown</a></p>'
     html += (
         "<p>Let me know if you'd like to walk through this on a call.</p>"
         "<p>— SwimBuddz</p>"

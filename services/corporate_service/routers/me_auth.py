@@ -139,9 +139,7 @@ async def request_magic_link(
     # Log a touchpoint so admins can see HR users are actually using
     # (or trying to use) the portal. Helpful for diagnosing "I never
     # got the email" complaints.
-    summary = (
-        f"Magic-link email {'sent' if delivered else 'attempted (send failed)'}"
-    )
+    summary = f"Magic-link email {'sent' if delivered else 'attempted (send failed)'}"
     db.add(
         CorporateTouchpoint(
             contact_id=contact.id,

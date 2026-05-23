@@ -153,9 +153,7 @@ def verify_token(token: str, *, expected_purpose: TokenPurpose) -> CorporateToke
 
 
 async def require_corporate_admin(
-    creds: Annotated[
-        Optional[HTTPAuthorizationCredentials], Depends(_security)
-    ] = None,
+    creds: Annotated[Optional[HTTPAuthorizationCredentials], Depends(_security)] = None,
     db: AsyncSession = Depends(get_async_db),
 ) -> CorporateContact:
     """Resolve the calling HR contact from their bearer token.

@@ -32,7 +32,9 @@ async def list_contacts(
     company_size: Optional[CompanySize] = None,
     source: Optional[ContactSource] = None,
     is_active: Optional[bool] = None,
-    search: Optional[str] = Query(None, description="Match company_name or contact email/name"),
+    search: Optional[str] = Query(
+        None, description="Match company_name or contact email/name"
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     _: AuthUser = Depends(require_admin),

@@ -26,9 +26,7 @@ def discount_tier_for_count(employee_count: int) -> DiscountTier:
     return DiscountTier.FULL_PRICE
 
 
-def compute_program_pricing(
-    employee_count: int, tier: DiscountTier
-) -> tuple[int, int]:
+def compute_program_pricing(employee_count: int, tier: DiscountTier) -> tuple[int, int]:
     """Return ``(per_employee_kobo, total_kobo)`` for a program.
 
     The caller picks the tier (so admins can override — e.g. extending a 5-tier

@@ -1,6 +1,8 @@
 """Corporate service routers package."""
 
-from services.corporate_service.routers.admin_contacts import router as admin_contacts_router
+from services.corporate_service.routers.admin_contacts import (
+    router as admin_contacts_router,
+)
 from services.corporate_service.routers.admin_deals import router as admin_deals_router
 from services.corporate_service.routers.admin_employees import (
     router as admin_employees_router,

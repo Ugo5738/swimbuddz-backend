@@ -39,9 +39,7 @@ from services.corporate_service.services.clients import (
 router = APIRouter(tags=["admin-corporate-orchestration"])
 
 
-async def _load_program(
-    db: AsyncSession, program_id: uuid.UUID
-) -> CorporateProgram:
+async def _load_program(db: AsyncSession, program_id: uuid.UUID) -> CorporateProgram:
     program = (
         await db.execute(
             select(CorporateProgram).where(CorporateProgram.id == program_id)
@@ -126,13 +124,13 @@ async def provision_wallet(
 
     contact = (
         await db.execute(
-            select(CorporateContact).where(
-                CorporateContact.id == program.contact_id
-            )
+            select(CorporateContact).where(CorporateContact.id == program.contact_id)
         )
     ).scalar_one()
 
-    budget = payload.budget_kobo if payload.budget_kobo is not None else program.total_kobo
+    budget = (
+        payload.budget_kobo if payload.budget_kobo is not None else program.total_kobo
+    )
     wallet = await provision_corporate_wallet(
         program_id=program.id,
         company_name=contact.company_name,

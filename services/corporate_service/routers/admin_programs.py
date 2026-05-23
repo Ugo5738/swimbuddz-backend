@@ -44,9 +44,7 @@ async def create_program(
     """
     contact_exists = (
         await db.execute(
-            select(CorporateContact.id).where(
-                CorporateContact.id == payload.contact_id
-            )
+            select(CorporateContact.id).where(CorporateContact.id == payload.contact_id)
         )
     ).scalar_one_or_none()
     if not contact_exists:
