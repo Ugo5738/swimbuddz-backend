@@ -6856,6 +6856,37 @@
         }
       }
     },
+    "/api/v1/sessions/bookings/me/unpaid": {
+      "get": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "List My Unpaid Bookings",
+        "description": "List the current member's CONFIRMED bookings with an outstanding fee.\n\nA booking is \"unpaid\" when:\n  - status = CONFIRMED\n  - fee_amount_kobo > 0\n  - no payment_intent_id linked (no Paystack payment recorded)\n  - no wallet_transaction_id linked (not paid via Bubbles)\n\nThe typical source is admin walk-in records: the coach marked a member\npresent at the pool, but the member hadn't booked online. The billing\nUI surfaces this list so the member can pay the pool fee after-the-fact\nvia a generated Paystack link (POST /api/v1/payments/intents with\npurpose=session_booking, payment_metadata.booking_id=<this id>).",
+        "operationId": "list_my_unpaid_bookings_sessions_bookings_me_unpaid_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UnpaidBookingResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List My Unpaid Bookings Sessions Bookings Me Unpaid Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/sessions/{session_id}/admin/walk-in": {
       "post": {
         "tags": [
@@ -52629,6 +52660,70 @@
         },
         "type": "object",
         "title": "SessionUpdate"
+      },
+      "UnpaidBookingResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "session_title": {
+            "type": "string",
+            "title": "Session Title"
+          },
+          "session_starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Session Starts At"
+          },
+          "session_ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Session Ends At"
+          },
+          "fee_amount_kobo": {
+            "type": "integer",
+            "title": "Fee Amount Kobo"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/BookingChannel"
+          },
+          "booked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Booked At"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "session_id",
+          "session_title",
+          "session_starts_at",
+          "session_ends_at",
+          "fee_amount_kobo",
+          "channel",
+          "booked_at"
+        ],
+        "title": "UnpaidBookingResponse",
+        "description": "A confirmed booking with an outstanding pool fee.\n\nReturned by GET /sessions/bookings/me/unpaid so the billing UI can\nsurface \"you owe \u20a6X,XXX for Session Y\" with a one-click Pay button.\n\nA booking lands here when fee_amount_kobo > 0 and neither a payment\nintent nor a wallet transaction is linked \u2014 typically admin-recorded\nwalk-ins where the member hadn't paid online at session time."
       },
       "AttendanceCreate": {
         "properties": {

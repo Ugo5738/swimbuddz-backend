@@ -114,3 +114,27 @@ class BulkBookingResponse(BaseModel):
     created: int
     skipped: int  # (session, member) pairs that already had a booking
     bookings: List[SessionBookingResponse]
+
+
+class UnpaidBookingResponse(BaseModel):
+    """A confirmed booking with an outstanding pool fee.
+
+    Returned by GET /sessions/bookings/me/unpaid so the billing UI can
+    surface "you owe ₦X,XXX for Session Y" with a one-click Pay button.
+
+    A booking lands here when fee_amount_kobo > 0 and neither a payment
+    intent nor a wallet transaction is linked — typically admin-recorded
+    walk-ins where the member hadn't paid online at session time.
+    """
+
+    id: uuid.UUID
+    session_id: uuid.UUID
+    session_title: str
+    session_starts_at: datetime
+    session_ends_at: datetime
+    fee_amount_kobo: int
+    channel: BookingChannel
+    booked_at: datetime
+    notes: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)

@@ -9,6 +9,7 @@ from services.sessions_service.schemas.booking import (
     RunningLateRequest,
     SessionBookingCreate,
     SessionBookingResponse,
+    UnpaidBookingResponse,
 )
 from services.sessions_service.schemas.main import (
     SessionBase,
@@ -42,4 +43,5 @@ __all__ = [
     "SessionTemplateResponse",
     "SessionTemplateUpdate",
     "SessionUpdate",
+    "UnpaidBookingResponse",
 ]

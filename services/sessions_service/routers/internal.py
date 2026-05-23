@@ -518,6 +518,27 @@ async def internal_confirm_booking(
     if booking is None:
         raise HTTPException(status_code=404, detail="Booking not found")
     if booking.status == SessionBookingStatus.CONFIRMED:
+        # Walk-in flow: admin recorded the booking as CONFIRMED at the pool,
+        # member later paid via a generated Paystack link. Backfill the
+        # payment linkage so reports can join booking → payment without
+        # going through the metadata JSON. Only fill blanks — never
+        # overwrite an existing link.
+        updated = False
+        if (
+            confirm_in.payment_intent_id is not None
+            and booking.payment_intent_id is None
+        ):
+            booking.payment_intent_id = confirm_in.payment_intent_id
+            updated = True
+        if (
+            confirm_in.wallet_transaction_id is not None
+            and booking.wallet_transaction_id is None
+        ):
+            booking.wallet_transaction_id = confirm_in.wallet_transaction_id
+            updated = True
+        if updated:
+            await db.commit()
+            await db.refresh(booking)
         return booking
     if booking.status != SessionBookingStatus.PENDING:
         raise HTTPException(
