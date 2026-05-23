@@ -1871,3 +1871,80 @@ The endpoints below were added to close gaps surfaced by the May 2026 payment-pa
 Per founder policy (May 2026), academy cohort installments must be paid in real money (card/bank transfer). Bubbles wallet remains usable for session fees and ride share via the existing `bubbles_to_apply` field on `CreatePaymentIntentRequest`. The cron task `attempt_wallet_auto_deduction` was updated in the same change to skip the wallet-debit branch and only email Paystack checkout links.
 
 ---
+
+### Corporate Wellness — Phase 1 Backend (May 2026)
+
+New `corporate_service` on port 8017. Admin-only surface exposed via gateway at `/api/v1/admin/corporate/*`. The pricing rules, sales cycle, and outreach playbook are documented in [docs/marketing/CORPORATE_WELLNESS.md](../../docs/marketing/CORPORATE_WELLNESS.md).
+
+#### Contacts (sales accounts)
+- `GET    /api/v1/admin/corporate/contacts` — list with filters (`industry`, `company_size`, `source`, `is_active`, `search`)
+- `POST   /api/v1/admin/corporate/contacts` — create
+- `GET    /api/v1/admin/corporate/contacts/{id}` — detail
+- `PATCH  /api/v1/admin/corporate/contacts/{id}` — update
+- `DELETE /api/v1/admin/corporate/contacts/{id}` — soft-delete (`is_active=false`)
+
+#### Touchpoints (outreach log)
+- `POST /api/v1/admin/corporate/contacts/{contact_id}/touchpoints` — log a touchpoint (email/call/note). Cascades `last_touch_at` onto the linked deal if `deal_id` is passed.
+- `GET  /api/v1/admin/corporate/contacts/{contact_id}/touchpoints` — list, newest first
+
+#### Deals (pipeline)
+- `POST  /api/v1/admin/corporate/contacts/{contact_id}/deals` — open a new deal
+- `GET   /api/v1/admin/corporate/deals` — pipeline view (filter by `stage`, `contact_id`, `owner_auth_id`)
+- `GET   /api/v1/admin/corporate/deals/{id}` — detail
+- `PATCH /api/v1/admin/corporate/deals/{id}` — update (cannot set stage to `won`/`lost` — use dedicated endpoints)
+- `POST  /api/v1/admin/corporate/deals/{id}/win` — close-won; creates a draft `CorporateProgram` with auto-priced totals
+- `POST  /api/v1/admin/corporate/deals/{id}/lose` — close-lost with `lost_reason`
+
+#### Programs (sold cohorts)
+- `POST   /api/v1/admin/corporate/programs` — direct create (skips pipeline; auto-prices if `per_employee_kobo` / `total_kobo` = 0)
+- `GET    /api/v1/admin/corporate/programs` — list (filter by `status`, `contact_id`)
+- `GET    /api/v1/admin/corporate/programs/{id}` — detail
+- `PATCH  /api/v1/admin/corporate/programs/{id}` — update (recomputes pricing if `employee_count` or `discount_tier` changes and explicit prices aren't passed)
+- `DELETE /api/v1/admin/corporate/programs/{id}` — soft-cancel (status → `cancelled`)
+
+#### Employees (program manifest)
+- `GET    /api/v1/admin/corporate/programs/{id}/employees` — list manifest
+- `POST   /api/v1/admin/corporate/programs/{id}/employees` — bulk-add (idempotent on email, within and across requests; max 500 per call)
+- `DELETE /api/v1/admin/corporate/programs/{id}/employees/{employee_id}` — remove
+- `POST   /api/v1/admin/corporate/programs/{id}/employees/match-members` — resolve emails against `members_service`, set `member_id` + `member_auth_id`, bump status → `registered`
+
+#### Orchestration (calls into other services)
+- `POST /api/v1/admin/corporate/programs/{id}/link-cohort` — verify cohort exists in `academy_service`, store `cohort_id`
+- `POST /api/v1/admin/corporate/programs/{id}/provision-wallet` — create a `CorporateWallet` in `wallet_service` (budget defaults to program `total_kobo`)
+- `POST /api/v1/admin/corporate/programs/{id}/enroll-all` — call `sessions_service` `/internal/sessions/bookings/bulk` to enroll every `member_id`-resolved employee in every cohort session; bumps program status to `active`
+
+Cross-service IDs (`cohort_id`, `corporate_wallet_id`, `member_id`, `member_auth_id`) are stored as plain UUIDs / strings without FK constraints — corporate_service never reads other services' tables directly.
+
+Companion endpoint added on wallet_service (called only by corporate_service):
+- `POST /internal/wallet/corporate/create` — provisions the `CorporateWallet` row (Phase 5 stub tables in wallet_service got their first writer here).
+
+---
+
+### Corporate Wellness — Phase 2 (May 2026)
+
+#### Public landing page
+- `POST /api/v1/corporate/leads` — inbound lead from `swimbuddz.com/corporate`. Public (no auth), rate-limited 5/min, honeypot field `website`, dedupe window 24h on email. Creates a `CorporateContact` (source=inbound_web) + a `CorporateTouchpoint` summarising the submission; best-effort admin notification.
+
+#### Outcome reports (SwimBuddz Wrapped) — admin
+- `GET /api/v1/admin/corporate/programs/{id}/report` — aggregate attendance + milestone summary built live from `attendance_service` + `academy_service` per employee. Always fresh (no persisted report).
+- `POST /api/v1/admin/corporate/programs/{id}/report/email` — email the report to the contact's primary email; logs an `email_followup_1` touchpoint.
+
+#### HR self-serve portal — magic-link auth
+- `POST /api/v1/corporate/me/auth/request-link` — send a magic link (24h TTL). Anti-enumeration: always returns `{sent: true}`.
+- `POST /api/v1/corporate/me/auth/verify` — exchange magic-link token for a 7-day session JWT.
+- `GET  /api/v1/corporate/me` — identity hint for the portal header.
+- `GET  /api/v1/corporate/me/programs` — list programs for the caller's company.
+- `GET  /api/v1/corporate/me/programs/{id}` — scoped program detail.
+- `GET  /api/v1/corporate/me/programs/{id}/employees` — read-only manifest.
+- `GET  /api/v1/corporate/me/programs/{id}/report` — same outcome report as admin, scoped to the caller's company.
+
+#### Automated outreach — admin
+- `GET    /api/v1/admin/corporate/contacts/{id}/outreach` — current sequence state (next-due email number, last-send timestamp, paused flag, inbound-reply detection).
+- `POST   /api/v1/admin/corporate/contacts/{id}/outreach/start`  — kick off the sequence.
+- `POST   /api/v1/admin/corporate/contacts/{id}/outreach/pause`  — suspend.
+- `POST   /api/v1/admin/corporate/contacts/{id}/outreach/resume` — resume.
+- `GET    /api/v1/admin/corporate/contacts/{id}/outreach/preview` — render all 3 emails as text + HTML.
+- `POST   /api/v1/admin/corporate/contacts/{id}/outreach/send-now` — force the next email now (honours pause / done / inbound-reply guards).
+- `POST   /api/v1/admin/corporate/outreach/run-cycle` — manually tick the scheduler.
+
+Outreach scheduler runs daily at 07:00 UTC via the `corporate-worker` ARQ container (`arq services.corporate_service.worker.WorkerSettings`).

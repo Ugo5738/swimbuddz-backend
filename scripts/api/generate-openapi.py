@@ -18,6 +18,7 @@ from services.ai_service.app.main import app as ai_app
 from services.attendance_service.app.main import app as attendance_app
 from services.chat_service.app.main import app as chat_app
 from services.communications_service.app.main import app as comms_app
+from services.corporate_service.app.main import app as corporate_app
 from services.events_service.app.main import app as events_app
 from services.media_service.app.main import app as media_app
 from services.members_service.app.main import app as members_app
@@ -63,6 +64,7 @@ def merge_openapi_schemas():
         ("events", events_app),
         ("media", media_app),
         ("chat", chat_app),
+        ("corporate", corporate_app),
     ]
 
     for prefix, app in services:

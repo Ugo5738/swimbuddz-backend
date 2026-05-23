@@ -60,6 +60,7 @@ SERVICES=(
   "wallet_service"
   "pools_service"
   "chat_service"
+  "corporate_service"
 )
 
 PRE_MIGRATION_TASKS=(

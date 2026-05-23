@@ -50,6 +50,7 @@ SERVICES = [
     "pools_service",
     "reporting_service",
     "chat_service",
+    "corporate_service",
 ]
 
 OUTPUT = DOCS_ROOT / "docs" / "reference" / "DATABASE_SCHEMA_TABLES.md"

@@ -556,6 +556,40 @@ def create_app() -> FastAPI:
         return await proxy_request(clients.chat_client, f"/admin/chat/{path}", request)
 
     # ==================================================================
+    # CORPORATE SERVICE PROXY
+    # ==================================================================
+    # Public path — powers the marketing site's intake form at
+    # swimbuddz.com/corporate. Rate limiting + honeypot live in
+    # corporate_service itself, not here.
+    @app.api_route(
+        "/api/v1/corporate/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_corporate(path: str, request: Request):
+        """Proxy all /api/v1/corporate/* requests to corporate service."""
+        target = f"/corporate/{path}" if path else "/corporate"
+        return await proxy_request(clients.corporate_client, target, request)
+
+    # Admin path — full CRUD over the pipeline.
+    @app.api_route(
+        "/api/v1/admin/corporate",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_admin_corporate_root(request: Request):
+        return await proxy_request(
+            clients.corporate_client, "/admin/corporate", request
+        )
+
+    @app.api_route(
+        "/api/v1/admin/corporate/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_admin_corporate(path: str, request: Request):
+        """Proxy all /api/v1/admin/corporate/* requests to corporate service."""
+        target = f"/admin/corporate/{path}" if path else "/admin/corporate"
+        return await proxy_request(clients.corporate_client, target, request)
+
+    # ==================================================================
     # DASHBOARD (Gateway-specific aggregation)
     # ==================================================================
     from services.gateway_service.app.routers.cleanup import router as cleanup_router

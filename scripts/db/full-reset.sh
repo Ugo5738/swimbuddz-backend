@@ -57,6 +57,7 @@ SERVICES=(
   "pools_service"
   "reporting_service"
   "chat_service"
+  "corporate_service"
 )
 
 PRE_MIGRATION_TASKS=(

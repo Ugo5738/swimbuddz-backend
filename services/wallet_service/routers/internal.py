@@ -607,3 +607,74 @@ async def get_ecosystem_stats(
         total_topup_bubbles=total_topup_bubbles,
         spend_distribution=spend_distribution,
     )
+
+
+# ---------------------------------------------------------------------------
+# Corporate wallet provisioning (called by corporate_service)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/corporate/create")
+async def create_corporate_wallet(
+    body: dict,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Create a CorporateWallet for a corporate program.
+
+    Called by corporate_service after a deal is won. The wallet's
+    ``id`` is returned and stored on the corporate program as the
+    cross-service handle. Stores the calling corporate_program_id in
+    ``corp_metadata`` for reverse lookup.
+
+    Body fields (all required except ``member_bubble_limit``):
+        corporate_program_id: UUID string — set in metadata for traceability
+        company_name: str
+        company_email: str
+        admin_auth_id: str — the admin user who owns the wallet
+        budget_kobo: int — translated to ``budget_total`` / ``budget_remaining``
+        member_bubble_limit: Optional[int]
+    """
+    import uuid as _uuid
+
+    from services.wallet_service.models.corporate import CorporateWallet
+
+    required = {
+        "corporate_program_id",
+        "company_name",
+        "company_email",
+        "admin_auth_id",
+        "budget_kobo",
+    }
+    missing = required - body.keys()
+    if missing:
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=400, detail=f"Missing required fields: {sorted(missing)}"
+        )
+
+    wallet = CorporateWallet(
+        wallet_id=_uuid.uuid4(),
+        company_name=body["company_name"],
+        company_email=body["company_email"],
+        admin_auth_id=body["admin_auth_id"],
+        budget_total=int(body["budget_kobo"]),
+        budget_remaining=int(body["budget_kobo"]),
+        member_bubble_limit=body.get("member_bubble_limit"),
+        corp_metadata={"corporate_program_id": str(body["corporate_program_id"])},
+    )
+    db.add(wallet)
+    await db.commit()
+    await db.refresh(wallet)
+    return {
+        "id": str(wallet.id),
+        "wallet_id": str(wallet.wallet_id),
+        "company_name": wallet.company_name,
+        "company_email": wallet.company_email,
+        "budget_total": wallet.budget_total,
+        "budget_remaining": wallet.budget_remaining,
+        "member_bubble_limit": wallet.member_bubble_limit,
+        "is_active": wallet.is_active,
+        "created_at": wallet.created_at.isoformat(),
+    }

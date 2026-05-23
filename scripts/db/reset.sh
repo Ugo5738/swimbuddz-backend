@@ -62,6 +62,7 @@ SERVICES=(
   "pools_service"
   "reporting_service"
   "chat_service"
+  "corporate_service"
 )
 
 POST_RESET_TASKS=(
