@@ -49,6 +49,7 @@ from services.sessions_service.schemas import (
     RunningLateRequest,
     SessionBookingCreate,
     SessionBookingResponse,
+    UnpaidBookingResponse,
 )
 
 logger = get_logger(__name__)
@@ -301,6 +302,62 @@ async def confirm_booking(
     await db.commit()
     await db.refresh(booking)
     return booking
+
+
+# ---------------------------------------------------------------------------
+# Member: list unpaid bookings (outstanding pool fees)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/sessions/bookings/me/unpaid",
+    response_model=List[UnpaidBookingResponse],
+)
+async def list_my_unpaid_bookings(
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List the current member's CONFIRMED bookings with an outstanding fee.
+
+    A booking is "unpaid" when:
+      - status = CONFIRMED
+      - fee_amount_kobo > 0
+      - no payment_intent_id linked (no Paystack payment recorded)
+      - no wallet_transaction_id linked (not paid via Bubbles)
+
+    The typical source is admin walk-in records: the coach marked a member
+    present at the pool, but the member hadn't booked online. The billing
+    UI surfaces this list so the member can pay the pool fee after-the-fact
+    via a generated Paystack link (POST /api/v1/payments/intents with
+    purpose=session_booking, payment_metadata.booking_id=<this id>).
+    """
+    member_id, _ = await _resolve_member_for_user(current_user)
+    query = (
+        select(
+            SessionBooking.id,
+            SessionBooking.session_id,
+            Session.title.label("session_title"),
+            Session.starts_at.label("session_starts_at"),
+            Session.ends_at.label("session_ends_at"),
+            SessionBooking.fee_amount_kobo,
+            SessionBooking.channel,
+            SessionBooking.booked_at,
+            SessionBooking.notes,
+        )
+        .join(Session, Session.id == SessionBooking.session_id)
+        .where(
+            SessionBooking.member_id == member_id,
+            SessionBooking.status == SessionBookingStatus.CONFIRMED,
+            SessionBooking.fee_amount_kobo > 0,
+            SessionBooking.payment_intent_id.is_(None),
+            SessionBooking.wallet_transaction_id.is_(None),
+        )
+        .order_by(SessionBooking.booked_at.desc())
+    )
+    rows = (await db.execute(query)).mappings().all()
+    # Mappings → UnpaidBookingResponse via Pydantic (from_attributes works on
+    # dict-like rows too).
+    return [UnpaidBookingResponse(**dict(r)) for r in rows]
 
 
 # ---------------------------------------------------------------------------
