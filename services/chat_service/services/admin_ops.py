@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-
 from services.chat_service.models import (
     ChannelMemberRole,
     ChatAuditAction,
@@ -318,6 +317,31 @@ async def list_audit_log(
     if has_more:
         rows = rows[:limit]
 
-    items = [AuditLogItem.model_validate(r) for r in rows]
+    items = [_audit_row_to_item(r) for r in rows]
     next_before_id = rows[-1].id if has_more else None
     return AuditLogPage(items=items, next_before_id=next_before_id, has_more=has_more)
+
+
+def _audit_row_to_item(row: ChatAuditLog) -> AuditLogItem:
+    """Project a canonical-shape ChatAuditLog row to the legacy
+    ``AuditLogItem`` admin contract.
+
+    The DB now stores ``action`` as a namespaced string (``"chat.<verb>"``)
+    and the per-action diff as ``old_value``/``new_value`` columns, but
+    the admin API still hands back the un-namespaced enum value plus a
+    legacy ``payload`` dict (``new_value`` if present, else ``old_value``,
+    else ``{}``). ``message_id`` is reconstructed from ``entity_id`` for
+    rows whose ``entity_type`` is ``"message"`` — for other action
+    families the legacy column was always None anyway.
+    """
+    action_verb = row.action.removeprefix("chat.") if row.action else row.action
+    return AuditLogItem(
+        id=row.id,
+        actor_id=row.actor_id,
+        action=ChatAuditAction(action_verb),
+        channel_id=row.channel_id,
+        message_id=row.entity_id if row.entity_type == "message" else None,
+        subject_member_id=row.subject_member_id,
+        payload=row.new_value or row.old_value or {},
+        created_at=row.created_at,
+    )
