@@ -7,6 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
+from libs.common.audit import AuditLogMixin
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from sqlalchemy import (
@@ -26,7 +27,6 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from services.store_service.models.enums import (
-    AuditEntityType,
     CartStatus,
     FulfillmentType,
     OrderStatus,
@@ -473,43 +473,21 @@ class StoreCreditTransaction(Base):
 # ============================================================================
 
 
-class StoreAuditLog(Base):
-    """Audit log for sensitive store operations."""
+class StoreAuditLog(AuditLogMixin, Base):
+    """Audit log for sensitive store operations.
+
+    Adopts the canonical shape from :class:`libs.common.audit.AuditLogMixin`
+    (B4 unification). The service-local ``AuditEntityType`` enum is kept
+    in code as a validation/typing aid at the write site, but the DB
+    column is a free string (canonical shape) so the per-service
+    vocabulary can grow without DB migrations.
+    """
 
     __tablename__ = "store_audit_logs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-
-    entity_type: Mapped[AuditEntityType] = mapped_column(
-        SAEnum(
-            AuditEntityType,
-            values_callable=enum_values,
-            name="store_audit_entity_type_enum",
-        ),
-        nullable=False,
-    )
-    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-
-    action: Mapped[str] = mapped_column(
-        String(50), nullable=False
-    )  # e.g., "price_changed", "stock_adjusted"
-
-    old_value: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    new_value: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-
-    performed_by: Mapped[str] = mapped_column(String(255), nullable=False)
-    performed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now
-    )
-
-    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-
     __table_args__ = (
-        Index("ix_store_audit_logs_entity", "entity_type", "entity_id"),
-        Index("ix_store_audit_logs_performed_at", "performed_at"),
+        Index("ix_store_audit_entity_created", "entity_id", "created_at"),
+        Index("ix_store_audit_created_at", "created_at"),
     )
 
     def __repr__(self):
