@@ -51,11 +51,7 @@ async def reconcile_trip_chat_memberships(db: AsyncSession) -> dict[str, int]:
     cutoff = utc_now() - _RECONCILE_WINDOW
 
     bookings = (
-        (
-            await db.execute(
-                select(RideBooking).where(RideBooking.created_at >= cutoff)
-            )
-        )
+        (await db.execute(select(RideBooking).where(RideBooking.created_at >= cutoff)))
         .scalars()
         .all()
     )

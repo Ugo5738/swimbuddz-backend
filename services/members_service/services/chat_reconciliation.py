@@ -24,7 +24,6 @@ from libs.common.logging import get_logger
 from services.members_service.models import (
     MemberProfile,
     Pod,
-    PodAssignment,
     PodStatus,
 )
 from services.members_service.services.chat_sync import (
@@ -91,15 +90,12 @@ async def reconcile_location_chat_memberships(db: AsyncSession) -> dict[str, int
     walk profiles directly and read ``member_id`` from the join row.
     """
     profiles = (
-        (
-            await db.execute(
-                select(MemberProfile.member_id, MemberProfile.city).where(
-                    MemberProfile.city.isnot(None)
-                )
+        await db.execute(
+            select(MemberProfile.member_id, MemberProfile.city).where(
+                MemberProfile.city.isnot(None)
             )
         )
-        .all()
-    )
+    ).all()
 
     by_city: dict[str, list] = {}
     for member_id, city in profiles:

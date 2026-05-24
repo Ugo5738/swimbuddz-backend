@@ -119,9 +119,9 @@ def test_mixin_exposes_canonical_columns() -> None:
 def test_column_nullability_matches_canonical(col_name: str, expected: tuple) -> None:
     _py_type, expected_nullable = expected
     col = _FixtureAuditLog.__table__.c[col_name]
-    assert col.nullable is expected_nullable, (
-        f"{col_name}: expected nullable={expected_nullable}, got {col.nullable}"
-    )
+    assert (
+        col.nullable is expected_nullable
+    ), f"{col_name}: expected nullable={expected_nullable}, got {col.nullable}"
 
 
 def test_uuid_columns_use_postgres_uuid_type() -> None:
