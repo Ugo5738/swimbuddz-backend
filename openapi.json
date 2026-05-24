@@ -8436,6 +8436,55 @@
         }
       }
     },
+    "/api/v1/internal/sessions/bookings/{booking_id}": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Booking Internal",
+        "description": "Service-role: fetch a single SessionBooking by id.\n\nUsed by payments_service to generate an admin-issued pay link for a\nbooking (purpose=session_booking). Returns 404 if not found.",
+        "operationId": "get_booking_internal_internal_sessions_bookings__booking_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/sessions/bookings/{booking_id}/confirm": {
       "post": {
         "tags": [
@@ -14449,6 +14498,65 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PaymentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/bookings/{booking_id}/payment-link": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Admin Generate Booking Pay Link",
+        "description": "Generate a Paystack checkout link for an outstanding-fee booking.\n\nLooks up the booking + member via the sessions/members services,\ninserts a PENDING SESSION_BOOKING payment row tied to the booking,\ninitializes Paystack, and returns the authorization URL for the\nadmin to forward to the member (WhatsApp / email / SMS).\n\nValidation:\n  - booking exists, status=confirmed, fee_amount_kobo > 0\n  - no existing PAID payment already references the booking_id\n\nOnce the member pays, the standard webhook flow flips the payment to\nPAID and the session_booking entitlement handler backfills the\nbooking's payment_intent_id (already-confirmed case).",
+        "operationId": "admin_generate_booking_pay_link_payments_admin_bookings__booking_id__payment_link_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminBookingPayLinkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminBookingPayLinkResponse"
                 }
               }
             }
@@ -58810,6 +58918,73 @@
         ],
         "title": "WithdrawEnrollmentResponse",
         "description": "Summary of a withdrawal action \u2014 what was refunded and waived."
+      },
+      "AdminBookingPayLinkRequest": {
+        "properties": {
+          "amount_naira": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Naira"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "AdminBookingPayLinkRequest",
+        "description": "Optional overrides when generating an admin pay-link for a booking."
+      },
+      "AdminBookingPayLinkResponse": {
+        "properties": {
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "authorization_url": {
+            "type": "string",
+            "title": "Authorization Url"
+          },
+          "payer_email": {
+            "type": "string",
+            "title": "Payer Email"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "booking_id": {
+            "type": "string",
+            "title": "Booking Id"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reference",
+          "authorization_url",
+          "payer_email",
+          "amount",
+          "booking_id",
+          "session_id"
+        ],
+        "title": "AdminBookingPayLinkResponse"
       },
       "AdminReviewRequest": {
         "properties": {

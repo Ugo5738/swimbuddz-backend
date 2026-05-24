@@ -62,6 +62,25 @@ async def get_session_ids_for_cohort(
     return resp.json()
 
 
+async def get_booking_by_id(booking_id: str, *, calling_service: str) -> Optional[dict]:
+    """Fetch a SessionBooking by id.
+
+    Used by payments_service when an admin generates a pay link for a
+    booking (typically a walk-in with an outstanding fee).
+    Returns dict or None.
+    """
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.SESSIONS_SERVICE_URL,
+        path=f"/internal/sessions/bookings/{booking_id}",
+        calling_service=calling_service,
+    )
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    return resp.json()
+
+
 async def get_confirmed_booking_for_session_member(
     *, session_id: str, member_id: str, calling_service: str
 ) -> Optional[dict]:

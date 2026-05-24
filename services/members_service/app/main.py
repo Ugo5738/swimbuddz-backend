@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from libs.common.health import register_health_check
 from services.members_service.routers import (
     admin_router,
+    admin_tasks_router,
     assessments_router,
     challenge_router,
     clubs_router,
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(members_router)
     app.include_router(registration_router)  # Registration flow endpoints
     app.include_router(admin_router)  # Admin approval endpoints
+    app.include_router(admin_tasks_router)  # Admin-triggered manual tasks
     # NOTE: volunteer_router removed — now handled by volunteer_service (port 8012)
     app.include_router(challenge_router)
     app.include_router(clubs_router)

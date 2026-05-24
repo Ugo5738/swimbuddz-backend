@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
+from libs.common.audit import DOMAIN_WALLET, make_action, parse_uuid_or_none
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import get_member_by_auth_id, search_members
@@ -257,9 +258,12 @@ async def freeze_wallet(
     wallet.frozen_by = admin.user_id
 
     audit = WalletAuditLog(
-        wallet_id=wallet_id,
-        action=AuditAction.FREEZE,
-        performed_by=admin.user_id,
+        domain=DOMAIN_WALLET,
+        entity_type="wallet",
+        entity_id=wallet_id,
+        action=make_action(DOMAIN_WALLET, AuditAction.FREEZE.value),
+        actor_id=parse_uuid_or_none(admin.user_id),
+        actor_label=admin.user_id,
         old_value={"status": old_status},
         new_value={"status": WalletStatus.FROZEN.value, "reason": body.reason},
         reason=body.reason,
@@ -295,9 +299,12 @@ async def unfreeze_wallet(
     wallet.frozen_by = None
 
     audit = WalletAuditLog(
-        wallet_id=wallet_id,
-        action=AuditAction.UNFREEZE,
-        performed_by=admin.user_id,
+        domain=DOMAIN_WALLET,
+        entity_type="wallet",
+        entity_id=wallet_id,
+        action=make_action(DOMAIN_WALLET, AuditAction.UNFREEZE.value),
+        actor_id=parse_uuid_or_none(admin.user_id),
+        actor_label=admin.user_id,
         old_value={"status": WalletStatus.FROZEN.value},
         new_value={"status": WalletStatus.ACTIVE.value},
         reason=body.reason,
@@ -359,9 +366,12 @@ async def adjust_balance(
     await db.refresh(wallet)
 
     audit = WalletAuditLog(
-        wallet_id=wallet_id,
-        action=audit_action,
-        performed_by=admin.user_id,
+        domain=DOMAIN_WALLET,
+        entity_type="wallet",
+        entity_id=wallet_id,
+        action=make_action(DOMAIN_WALLET, audit_action.value),
+        actor_id=parse_uuid_or_none(admin.user_id),
+        actor_label=admin.user_id,
         old_value={"balance": old_balance},
         new_value={"balance": wallet.balance},
         reason=body.reason,
@@ -542,8 +552,21 @@ async def list_all_transactions(
 async def get_audit_log(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=200),
-    wallet_id: Optional[uuid.UUID] = None,
-    action: Optional[AuditAction] = None,
+    wallet_id: Optional[uuid.UUID] = Query(
+        None,
+        description=(
+            "Filter to a single wallet (queries the canonical entity_id "
+            "column). Kept named `wallet_id` for caller compatibility."
+        ),
+    ),
+    action: Optional[AuditAction] = Query(
+        None,
+        description=(
+            "Filter to a single action. Accepts the wallet-local enum "
+            "value (e.g. `freeze`); converted to the namespaced "
+            "`wallet.freeze` string before querying."
+        ),
+    ),
     _admin: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -552,11 +575,12 @@ async def get_audit_log(
     count_query = select(func.count()).select_from(WalletAuditLog)
 
     if wallet_id:
-        query = query.where(WalletAuditLog.wallet_id == wallet_id)
-        count_query = count_query.where(WalletAuditLog.wallet_id == wallet_id)
+        query = query.where(WalletAuditLog.entity_id == wallet_id)
+        count_query = count_query.where(WalletAuditLog.entity_id == wallet_id)
     if action:
-        query = query.where(WalletAuditLog.action == action)
-        count_query = count_query.where(WalletAuditLog.action == action)
+        namespaced = make_action(DOMAIN_WALLET, action.value)
+        query = query.where(WalletAuditLog.action == namespaced)
+        count_query = count_query.where(WalletAuditLog.action == namespaced)
 
     total = (await db.execute(count_query)).scalar() or 0
     result = await db.execute(

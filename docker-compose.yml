@@ -396,6 +396,72 @@ services:
     volumes:
       - .:/app
 
+  members-worker:
+    build:
+      context: .
+      dockerfile: services/members_service/Dockerfile
+    container_name: swimbuddz_members_worker
+    env_file:
+      - .env.dev
+    environment:
+      - PYTHONPATH=/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      members-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.members_service.tasks.worker.WorkerSettings
+    volumes:
+      - .:/app
+
+  events-worker:
+    build:
+      context: .
+      dockerfile: services/events_service/Dockerfile
+    container_name: swimbuddz_events_worker
+    env_file:
+      - .env.dev
+    environment:
+      - PYTHONPATH=/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      events-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.events_service.tasks.worker.WorkerSettings
+    volumes:
+      - .:/app
+
+  transport-worker:
+    build:
+      context: .
+      dockerfile: services/transport_service/Dockerfile
+    container_name: swimbuddz_transport_worker
+    env_file:
+      - .env.dev
+    environment:
+      - PYTHONPATH=/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      transport-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.transport_service.tasks.worker.WorkerSettings
+    volumes:
+      - .:/app
+
   communications-worker:
     build:
       context: .

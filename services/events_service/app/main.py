@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 
 from libs.common.health import register_health_check
+from services.events_service.routers.admin_tasks import router as admin_tasks_router
 from services.events_service.routers.member import router as events_router
 
 
@@ -18,6 +19,7 @@ def create_app() -> FastAPI:
 
     # Include events router
     app.include_router(events_router)
+    app.include_router(admin_tasks_router)
 
     return app
 
