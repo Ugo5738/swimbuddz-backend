@@ -5,6 +5,7 @@ from services.academy_service.tasks.billing import (
     evaluate_installment_compliance,
     send_installment_payment_reminders,
 )
+from services.academy_service.tasks.chat import reconcile_chat_memberships
 from services.academy_service.tasks.enrollment import (
     process_waitlist,
     send_enrollment_reminders,
@@ -26,4 +27,5 @@ __all__ = [
     "check_and_issue_certificates",
     "send_weekly_progress_reports",
     "check_attendance_and_notify",
+    "reconcile_chat_memberships",
 ]

@@ -152,6 +152,11 @@ async def update_current_member(
     membership_update = update_data.pop("membership", None)
     preferences_update = update_data.pop("preferences", None)
 
+    # Snapshot city BEFORE applying profile updates — used after commit to
+    # reconcile the location chat channel if it changed. ``profile`` may
+    # be None when the member hasn't been profiled yet; default to None.
+    _old_city = member.profile.city if member.profile else None
+
     # Update core Member fields
     for field, value in update_data.items():
         if hasattr(member, field):
@@ -214,6 +219,29 @@ async def update_current_member(
     db.add(member)
     await db.commit()
     await db.refresh(member)
+
+    # Reconcile location (city) chat channel if it changed. Best-effort:
+    # chat downtime never blocks profile edits. Helpers are idempotent.
+    _new_city = member.profile.city if member.profile else None
+    if (_old_city or "").strip() != (_new_city or "").strip():
+        from services.members_service.services.chat_sync import (
+            ensure_location_channel,
+            reconcile_location_membership,
+        )
+
+        if _old_city and _old_city.strip():
+            await reconcile_location_membership(
+                city=_old_city,
+                member_id=member.id,
+                action="remove",
+            )
+        if _new_city and _new_city.strip():
+            await ensure_location_channel(city=_new_city)
+            await reconcile_location_membership(
+                city=_new_city,
+                member_id=member.id,
+                action="add",
+            )
 
     query = (
         select(Member)

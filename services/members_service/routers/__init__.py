@@ -1,6 +1,7 @@
 """Members service routers package."""
 
 from services.members_service.routers.admin import router as admin_router
+from services.members_service.routers.admin_tasks import router as admin_tasks_router
 from services.members_service.routers.assessments import router as assessments_router
 from services.members_service.routers.challenges import (
     challenge_router,
@@ -51,6 +52,7 @@ __all__ = [
     "members_router",
     "coaches_router",
     "admin_router",
+    "admin_tasks_router",
     "assessments_router",
     "internal_router",
     "coach_application_router",

@@ -13,6 +13,9 @@ from services.academy_service.routers._shared import (
     transition_cohort_statuses,
     uuid,
 )
+from services.academy_service.services.chat_reconciliation import (
+    reconcile_cohort_chat_memberships,
+)
 
 router = APIRouter(tags=["academy"])
 logger = get_logger(__name__)
@@ -33,6 +36,21 @@ async def trigger_cohort_status_transitions(
 
     await transition_cohort_statuses()
     return {"message": "Cohort status transitions triggered successfully"}
+
+
+@router.post("/admin/tasks/reconcile-chat-memberships")
+async def trigger_chat_reconciliation(
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Manually run the cohort chat reconciliation pass.
+
+    Same logic the academy-worker runs hourly (and at startup). Use to
+    immediately heal drift after a chat-service outage or a known missed
+    hook, without waiting for the next cron tick.
+    """
+    counters = await reconcile_cohort_chat_memberships(db)
+    return counters
 
 
 @router.delete("/admin/members/{member_id}")

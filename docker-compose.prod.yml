@@ -258,6 +258,57 @@ services:
     command: arq services.academy_service.tasks.worker.WorkerSettings
     restart: unless-stopped
 
+  members-worker:
+    image: ${DOCKER_USERNAME}/swimbuddz-members-service:latest
+    container_name: swimbuddz_members_worker
+    env_file:
+      - .env.prod
+    depends_on:
+      redis:
+        condition: service_healthy
+      members-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.members_service.tasks.worker.WorkerSettings
+    restart: unless-stopped
+
+  events-worker:
+    image: ${DOCKER_USERNAME}/swimbuddz-events-service:latest
+    container_name: swimbuddz_events_worker
+    env_file:
+      - .env.prod
+    depends_on:
+      redis:
+        condition: service_healthy
+      events-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.events_service.tasks.worker.WorkerSettings
+    restart: unless-stopped
+
+  transport-worker:
+    image: ${DOCKER_USERNAME}/swimbuddz-transport-service:latest
+    container_name: swimbuddz_transport_worker
+    env_file:
+      - .env.prod
+    depends_on:
+      redis:
+        condition: service_healthy
+      transport-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.transport_service.tasks.worker.WorkerSettings
+    restart: unless-stopped
+
   communications-worker:
     image: ${DOCKER_USERNAME}/swimbuddz-communications-service:latest
     container_name: swimbuddz_communications_worker

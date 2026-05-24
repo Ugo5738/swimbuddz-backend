@@ -28,7 +28,10 @@ from services.academy_service.schemas import (
     EnrollmentMarkPaidRequest,
     EnrollmentResponse,
 )
-from services.academy_service.services.chat_sync import reconcile_cohort_membership
+from services.academy_service.services.chat_sync import (
+    ensure_cohort_channel,
+    reconcile_cohort_membership,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -190,6 +193,30 @@ async def admin_mark_enrollment_paid(
                 enrollment.status = EnrollmentStatus.ENROLLED
 
     await db.commit()
+
+    # Best-effort: reconcile chat-channel membership. Idempotent — safe to
+    # call on every mark-paid hit (Paystack webhook + verify fallback +
+    # subsequent installment payments). Closes the gap where a member who
+    # self-enrolled (PENDING_APPROVAL) becomes ENROLLED only via payment
+    # but no other code path tells chat about it. See
+    # CHAT_SERVICE_DESIGN.md §4.2 for the derived-membership contract.
+    if (
+        enrollment.status == EnrollmentStatus.ENROLLED
+        and enrollment.cohort_id is not None
+    ):
+        cohort = enrollment.cohort
+        if cohort is not None:
+            await ensure_cohort_channel(
+                cohort_id=cohort.id,
+                cohort_name=cohort.name,
+                created_by_member_id=cohort.coach_id,
+            )
+        await reconcile_cohort_membership(
+            cohort_id=enrollment.cohort_id,
+            member_id=enrollment.member_id,
+            enrollment_id=enrollment.id,
+            action="add",
+        )
 
     should_send_confirmation = (
         not was_any_installment_paid and enrollment.paid_installments_count > 0
