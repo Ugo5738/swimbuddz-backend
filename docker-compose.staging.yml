@@ -185,6 +185,59 @@ services:
     volumes:
       - .:/app
 
+  members-worker-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-members-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_members_worker_staging
+    env_file:
+      - .env.staging
+    depends_on:
+      redis-staging:
+        condition: service_healthy
+      members-service-staging:
+        condition: service_started
+      # chat-service-staging not declared in this file; if it's added,
+      # include it as a service_started dependency. Worker is best-effort
+      # and tolerates chat being unreachable (logs warnings, retries
+      # next tick).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.members_service.tasks.worker.WorkerSettings
+    volumes:
+      - .:/app
+
+  events-worker-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-events-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_events_worker_staging
+    env_file:
+      - .env.staging
+    depends_on:
+      redis-staging:
+        condition: service_healthy
+      events-service-staging:
+        condition: service_started
+      # chat-service-staging dep omitted — same reason as members-worker.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.events_service.tasks.worker.WorkerSettings
+    volumes:
+      - .:/app
+
+  transport-worker-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-transport-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_transport_worker_staging
+    env_file:
+      - .env.staging
+    depends_on:
+      redis-staging:
+        condition: service_healthy
+      transport-service-staging:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.transport_service.tasks.worker.WorkerSettings
+    volumes:
+      - .:/app
+
   communications-worker-staging:
     image: ${DOCKER_USERNAME}/swimbuddz-communications-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_communications_worker_staging

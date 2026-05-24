@@ -630,6 +630,31 @@ async def complete_pending_registration(
         volunteer_interests=profile_data.get("volunteer_interest"),
     )
 
+    # Add new member to their city's location chat channel. Best-effort —
+    # chat downtime never blocks registration. If a city is set later via
+    # PATCH /me, the same hook lives there; the periodic reconciliation
+    # worker is the safety net.
+    registration_city = profile_data.get("city")
+    if registration_city and registration_city.strip():
+        try:
+            from services.members_service.services.chat_sync import (
+                ensure_location_channel,
+                reconcile_location_membership,
+            )
+
+            await ensure_location_channel(city=registration_city)
+            await reconcile_location_membership(
+                city=registration_city,
+                member_id=member.id,
+                action="add",
+            )
+        except Exception as exc:
+            logger.warning(
+                "location chat sync failed on registration for member=%s: %s",
+                member.id,
+                exc,
+            )
+
     # Sync member roles to Supabase app_metadata so JWT reflects them
     # This ensures roles like "coach" set during registration are in the token
     if member.roles and set(member.roles) != {"member"}:

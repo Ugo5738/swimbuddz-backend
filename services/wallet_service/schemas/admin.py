@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
-from services.wallet_service.models.enums import AuditAction
+
 from services.wallet_service.schemas.topup import TopupResponse
 from services.wallet_service.schemas.transaction import TransactionResponse
 from services.wallet_service.schemas.wallet import WalletResponse
@@ -75,13 +75,23 @@ class AdminTopupListResponse(BaseModel):
 
 
 class AuditLogEntry(BaseModel):
+    """Wallet-flavoured view of a canonical audit row (B4).
+
+    Mirrors :class:`libs.common.audit.AuditLogRead` field-for-field —
+    callers (admin UI) get the full canonical surface, namespaced
+    action strings included (e.g. ``"wallet.freeze"``).
+    """
+
     id: uuid.UUID
-    wallet_id: uuid.UUID
-    action: AuditAction
-    performed_by: str
+    domain: str
+    entity_type: str
+    entity_id: uuid.UUID
+    action: str
+    actor_id: Optional[uuid.UUID] = None
+    actor_label: Optional[str] = None
     old_value: Optional[dict] = None
     new_value: Optional[dict] = None
-    reason: str
+    reason: Optional[str] = None
     ip_address: Optional[str] = None
     created_at: datetime
 

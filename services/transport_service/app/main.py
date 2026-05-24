@@ -4,6 +4,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from libs.common.health import register_health_check
+from services.transport_service.routers.admin_tasks import (
+    router as admin_tasks_router,
+)
 from services.transport_service.routers.areas import router as areas_router
 from services.transport_service.routers.bookings import router as bookings_router
 from services.transport_service.routers.internal import router as internal_router
@@ -35,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(areas_router)
     app.include_router(routes_router)
     app.include_router(bookings_router)
+    app.include_router(admin_tasks_router)
 
     # Internal service-to-service routes (not proxied by gateway)
     app.include_router(internal_router)

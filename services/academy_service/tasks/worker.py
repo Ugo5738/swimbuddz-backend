@@ -70,6 +70,14 @@ async def task_check_attendance_and_notify(ctx: dict):
     await check_attendance_and_notify()
 
 
+async def task_reconcile_chat_memberships(ctx: dict):
+    """Re-assert cohort chat channels + memberships against current enrollments."""
+    from services.academy_service.tasks import reconcile_chat_memberships
+
+    logger.info("Running: reconcile_chat_memberships")
+    await reconcile_chat_memberships()
+
+
 # ── Worker configuration ──
 
 
@@ -88,6 +96,7 @@ class WorkerSettings:
         task_check_and_issue_certificates,
         task_send_weekly_progress_reports,
         task_check_attendance_and_notify,
+        task_reconcile_chat_memberships,
     ]
 
     cron_jobs = [
@@ -133,5 +142,13 @@ class WorkerSettings:
             hour=9,
             minute=0,
             run_at_startup=False,
+        ),
+        # Chat reconciliation safety net (CHAT_SERVICE_DESIGN.md §4.2).
+        # Hourly at :50, plus once at worker startup so a fresh deploy
+        # heals any drift accumulated while the worker was down.
+        cron(
+            task_reconcile_chat_memberships,
+            minute=50,
+            run_at_startup=True,
         ),
     ]
