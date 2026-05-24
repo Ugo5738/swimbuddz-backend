@@ -1608,14 +1608,14 @@
         }
       }
     },
-    "/api/v1/admin/tasks/reconcile-pod-chat-memberships": {
+    "/api/v1/admin/members/tasks/reconcile-pod-chat-memberships": {
       "post": {
         "tags": [
           "admin-tasks"
         ],
         "summary": "Trigger Pod Chat Reconciliation",
         "description": "Manually run the pod chat reconciliation pass.\n\nSame logic the members-worker runs hourly (and at startup). Use to\nimmediately heal drift after a chat-service outage or known missed\nhook, without waiting for the next cron tick.",
-        "operationId": "trigger_pod_chat_reconciliation_admin_tasks_reconcile_pod_chat_memberships_post",
+        "operationId": "trigger_pod_chat_reconciliation_admin_members_tasks_reconcile_pod_chat_memberships_post",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1633,14 +1633,14 @@
         ]
       }
     },
-    "/api/v1/admin/tasks/reconcile-location-chat-memberships": {
+    "/api/v1/admin/members/tasks/reconcile-location-chat-memberships": {
       "post": {
         "tags": [
           "admin-tasks"
         ],
         "summary": "Trigger Location Chat Reconciliation",
         "description": "Manually run the location (city) chat reconciliation pass.\n\nWalks every distinct ``Member.city`` and re-asserts the city's\nchat channel + every member assigned to that city. Idempotent.",
-        "operationId": "trigger_location_chat_reconciliation_admin_tasks_reconcile_location_chat_memberships_post",
+        "operationId": "trigger_location_chat_reconciliation_admin_members_tasks_reconcile_location_chat_memberships_post",
         "responses": {
           "200": {
             "description": "Successful Response",
