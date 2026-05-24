@@ -12,11 +12,11 @@ from services.members_service.services.chat_reconciliation import (
     reconcile_pod_chat_memberships,
 )
 
-router = APIRouter(tags=["admin-tasks"])
+router = APIRouter(prefix="/admin/members/tasks", tags=["admin-tasks"])
 logger = get_logger(__name__)
 
 
-@router.post("/admin/tasks/reconcile-pod-chat-memberships")
+@router.post("/reconcile-pod-chat-memberships")
 async def trigger_pod_chat_reconciliation(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
@@ -31,7 +31,7 @@ async def trigger_pod_chat_reconciliation(
     return counters
 
 
-@router.post("/admin/tasks/reconcile-location-chat-memberships")
+@router.post("/reconcile-location-chat-memberships")
 async def trigger_location_chat_reconciliation(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),

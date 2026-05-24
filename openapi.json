@@ -1608,6 +1608,56 @@
         }
       }
     },
+    "/api/v1/admin/members/tasks/reconcile-pod-chat-memberships": {
+      "post": {
+        "tags": [
+          "admin-tasks"
+        ],
+        "summary": "Trigger Pod Chat Reconciliation",
+        "description": "Manually run the pod chat reconciliation pass.\n\nSame logic the members-worker runs hourly (and at startup). Use to\nimmediately heal drift after a chat-service outage or known missed\nhook, without waiting for the next cron tick.",
+        "operationId": "trigger_pod_chat_reconciliation_admin_members_tasks_reconcile_pod_chat_memberships_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/members/tasks/reconcile-location-chat-memberships": {
+      "post": {
+        "tags": [
+          "admin-tasks"
+        ],
+        "summary": "Trigger Location Chat Reconciliation",
+        "description": "Manually run the location (city) chat reconciliation pass.\n\nWalks every distinct ``Member.city`` and re-asserts the city's\nchat channel + every member assigned to that city. Idempotent.",
+        "operationId": "trigger_location_chat_reconciliation_admin_members_tasks_reconcile_location_chat_memberships_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/challenges/public/all": {
       "get": {
         "tags": [
@@ -12301,6 +12351,31 @@
         ]
       }
     },
+    "/api/v1/academy/admin/tasks/reconcile-chat-memberships": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Trigger Chat Reconciliation",
+        "description": "Manually run the cohort chat reconciliation pass.\n\nSame logic the academy-worker runs hourly (and at startup). Use to\nimmediately heal drift after a chat-service outage or a known missed\nhook, without waiting for the next cron tick.",
+        "operationId": "trigger_chat_reconciliation_academy_admin_tasks_reconcile_chat_memberships_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/academy/admin/members/{member_id}": {
       "delete": {
         "tags": [
@@ -22368,8 +22443,10 @@
                   "type": "null"
                 }
               ],
+              "description": "Filter to a single wallet (queries the canonical entity_id column). Kept named `wallet_id` for caller compatibility.",
               "title": "Wallet Id"
-            }
+            },
+            "description": "Filter to a single wallet (queries the canonical entity_id column). Kept named `wallet_id` for caller compatibility."
           },
           {
             "name": "action",
@@ -22384,8 +22461,10 @@
                   "type": "null"
                 }
               ],
+              "description": "Filter to a single action. Accepts the wallet-local enum value (e.g. `freeze`); converted to the namespaced `wallet.freeze` string before querying.",
               "title": "Action"
-            }
+            },
+            "description": "Filter to a single action. Accepts the wallet-local enum value (e.g. `freeze`); converted to the namespaced `wallet.freeze` string before querying."
           }
         ],
         "responses": {
@@ -25603,6 +25682,31 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/transport/admin/tasks/reconcile-trip-chat-memberships": {
+      "post": {
+        "tags": [
+          "admin-tasks"
+        ],
+        "summary": "Trigger Trip Chat Reconciliation",
+        "description": "Manually run the trip chat reconciliation pass.\n\nSame logic the transport-worker runs hourly (and at startup). Use to\nimmediately heal drift after a chat-service outage or known missed\nhook, without waiting for the next cron tick.",
+        "operationId": "trigger_trip_chat_reconciliation_transport_admin_tasks_reconcile_trip_chat_memberships_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/internal/transport/member-summary/{member_auth_id}": {
@@ -35213,6 +35317,31 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/events/admin/tasks/reconcile-event-chat-memberships": {
+      "post": {
+        "tags": [
+          "admin-tasks"
+        ],
+        "summary": "Trigger Event Chat Reconciliation",
+        "description": "Manually run the event chat reconciliation pass.\n\nSame logic the events-worker runs hourly (and at startup). Use to\nimmediately heal drift after a chat-service outage or known missed\nhook, without waiting for the next cron tick.",
+        "operationId": "trigger_event_chat_reconciliation_events_admin_tasks_reconcile_event_chat_memberships_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/media/albums": {
@@ -66744,17 +66873,45 @@
             "format": "uuid",
             "title": "Id"
           },
-          "wallet_id": {
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "entity_id": {
             "type": "string",
             "format": "uuid",
-            "title": "Wallet Id"
+            "title": "Entity Id"
           },
           "action": {
-            "$ref": "#/components/schemas/AuditAction"
-          },
-          "performed_by": {
             "type": "string",
-            "title": "Performed By"
+            "title": "Action"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Label"
           },
           "old_value": {
             "anyOf": [
@@ -66781,7 +66938,14 @@
             "title": "New Value"
           },
           "reason": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Reason"
           },
           "ip_address": {
@@ -66804,13 +66968,14 @@
         "type": "object",
         "required": [
           "id",
-          "wallet_id",
+          "domain",
+          "entity_type",
+          "entity_id",
           "action",
-          "performed_by",
-          "reason",
           "created_at"
         ],
-        "title": "AuditLogEntry"
+        "title": "AuditLogEntry",
+        "description": "Wallet-flavoured view of a canonical audit row (B4).\n\nMirrors :class:`libs.common.audit.AuditLogRead` field-for-field \u2014\ncallers (admin UI) get the full canonical surface, namespaced\naction strings included (e.g. ``\"wallet.freeze\"``)."
       },
       "AuditLogListResponse": {
         "properties": {
