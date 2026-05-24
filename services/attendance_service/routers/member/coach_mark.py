@@ -67,7 +67,11 @@ async def coach_mark_session_attendance(
     )
     if not session_data:
         raise HTTPException(status_code=404, detail="Session not found")
-    is_cohort_session = session_data.get("cohort_id") is not None
+    # Note: we used to branch on session_data.get("cohort_id") below — see
+    # PRESENT branch — but the May 2026 payout policy retired the
+    # default-present model. Explicit attendance is now required for the
+    # coach to get paid, so PRESENT always materialises a row regardless of
+    # session kind. See payment_service/services/payout_calculator.py.
 
     # Pull existing rows for this session for the members in the payload.
     member_ids = [e.member_id for e in payload.entries]
@@ -93,21 +97,17 @@ async def coach_mark_session_attendance(
     for entry in payload.entries:
         existing = existing_by_member.get(entry.member_id)
 
-        # PRESENT has different semantics by session kind:
-        #   - Cohort sessions are default-present, so PRESENT means
-        #     "remove the exception row" (or no-op if none exists).
-        #   - Non-cohort sessions have no default-present model, so
-        #     PRESENT must materialise a row — that's how a paid booking
-        #     becomes an actual attendance record. Without this branch
-        #     the admin bulk "mark all expected as present" button on
-        #     non-cohort sessions would silently no-op.
+        # PRESENT now materialises a row for ALL session kinds. Pre-May-2026
+        # cohort sessions had a "default-present" optimisation where no row =
+        # present and PRESENT just removed any exception. That optimisation
+        # was retired when coach payout switched to "pay only for lessons
+        # actually held with the student" — under the new policy, "no row"
+        # means "skip, coach not paid" (see
+        # services/payments_service/services/payout_calculator.py). The
+        # admin attendance UI also defaults cohort members to "absent" and
+        # expects PRESENT to land an explicit row, so the legacy branch
+        # silently no-op'd every cohort-present click.
         if entry.status == AttendanceStatus.PRESENT:
-            if is_cohort_session:
-                if existing is not None:
-                    await db.delete(existing)
-                    deleted += 1
-                continue
-            # Non-cohort: upsert as PRESENT.
             if existing is None:
                 db.add(
                     AttendanceRecord(
