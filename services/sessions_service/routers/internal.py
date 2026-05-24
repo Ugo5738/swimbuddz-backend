@@ -496,6 +496,28 @@ async def list_confirmed_bookings_since(
     return (await db.execute(query)).scalars().all()
 
 
+@router.get(
+    "/bookings/{booking_id}",
+    response_model=SessionBookingResponse,
+)
+async def get_booking_internal(
+    booking_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Service-role: fetch a single SessionBooking by id.
+
+    Used by payments_service to generate an admin-issued pay link for a
+    booking (purpose=session_booking). Returns 404 if not found.
+    """
+    booking = (
+        await db.execute(select(SessionBooking).where(SessionBooking.id == booking_id))
+    ).scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return booking
+
+
 @router.post(
     "/bookings/{booking_id}/confirm",
     response_model=SessionBookingResponse,
