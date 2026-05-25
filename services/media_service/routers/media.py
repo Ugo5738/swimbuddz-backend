@@ -2,14 +2,16 @@
 
 import uuid
 from typing import List, Optional
+from urllib.parse import urlparse
 
 from arq import create_pool
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
+from starlette.responses import RedirectResponse
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,6 +71,17 @@ async def _enqueue_video_processing(
         logger.warning(
             "Failed to enqueue video processing for %s: %s", media_item_id, e
         )
+
+
+def _private_s3_key(url: Optional[str]) -> Optional[str]:
+    """Return the object key if this URL points at our private S3 bucket."""
+    if not url or storage_service.backend != "s3":
+        return None
+    private_bucket = getattr(storage_service, "bucket_private", "") or ""
+    if not private_bucket or private_bucket not in url:
+        return None
+    key = urlparse(url).path.lstrip("/")
+    return key or None
 
 
 # ── Upload size limits per purpose ──
@@ -552,6 +565,98 @@ async def get_media_item(
         raise HTTPException(status_code=404, detail="Media item not found")
 
     return await _build_media_item_response(db, item)
+
+
+@router.api_route("/media/{media_id}/play", methods=["GET", "HEAD"])
+async def play_media_item(
+    media_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return a browser-stable playback URL for media.
+
+    Private S3 video evidence is served via presigned GET URLs, but some
+    browsers issue a HEAD probe first. A raw GET presign fails that HEAD
+    check with 403, so this endpoint answers HEAD itself and only redirects
+    GET requests to the signed object URL.
+    """
+    query = select(MediaItem).where(MediaItem.id == media_id)
+    result = await db.execute(query)
+    item = result.scalar_one_or_none()
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Media item not found")
+
+    private_key = _private_s3_key(item.file_url)
+    if private_key:
+        try:
+            head = storage_service.s3_client.head_object(
+                Bucket=storage_service.bucket_private,
+                Key=private_key,
+            )
+        except Exception as exc:
+            logger.warning("Could not head private media %s: %s", media_id, exc)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Media file is temporarily unavailable",
+            ) from exc
+
+        if head.get("DeleteMarker"):
+            raise HTTPException(status_code=404, detail="Media file not found")
+
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Content-Type": head.get("ContentType", "application/octet-stream"),
+            "Content-Length": str(head.get("ContentLength", 0)),
+            "Cache-Control": "private, max-age=300",
+        }
+
+        if item.media_type == MediaType.VIDEO:
+            headers["Content-Disposition"] = "inline"
+
+        if item.media_type == MediaType.VIDEO and item.thumbnail_url:
+            headers["X-Thumbnail-Url"] = item.thumbnail_url
+
+        if item.media_type == MediaType.VIDEO and head.get("LastModified"):
+            headers["Last-Modified"] = head["LastModified"].strftime(
+                "%a, %d %b %Y %H:%M:%S GMT"
+            )
+
+        if item.media_type == MediaType.VIDEO:
+            redirect_url = storage_service.s3_client.generate_presigned_url(
+                "get_object",
+                Params={
+                    "Bucket": storage_service.bucket_private,
+                    "Key": private_key,
+                    "ResponseContentDisposition": "inline",
+                },
+                ExpiresIn=3600,
+            )
+        else:
+            redirect_url = _maybe_presign_url(item.file_url)
+
+        if not redirect_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Media playback URL unavailable",
+            )
+
+        if request.method == "HEAD":
+            return Response(status_code=200, headers=headers)
+
+        return RedirectResponse(url=redirect_url, status_code=307)
+
+    redirect_url = _maybe_presign_url(item.file_url)
+    if not redirect_url:
+        raise HTTPException(status_code=404, detail="Media playback URL unavailable")
+
+    if request.method == "HEAD":
+        return Response(
+            status_code=200,
+            headers={"Cache-Control": "public, max-age=300"},
+        )
+
+    return RedirectResponse(url=redirect_url, status_code=307)
 
 
 @router.put("/media/{media_id}", response_model=MediaItemResponse)
