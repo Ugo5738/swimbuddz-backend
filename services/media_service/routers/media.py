@@ -11,7 +11,6 @@ from fastapi import (
     File,
     Form,
     HTTPException,
-    Request,
     Response,
     UploadFile,
     status,
@@ -577,19 +576,11 @@ async def get_media_item(
     return await _build_media_item_response(db, item)
 
 
-@router.api_route("/media/{media_id}/play", methods=["GET", "HEAD"])
-async def play_media_item(
+async def _resolve_media_playback(
     media_id: uuid.UUID,
-    request: Request,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Return a browser-stable playback URL for media.
-
-    Private S3 video evidence is served via presigned GET URLs, but some
-    browsers issue a HEAD probe first. A raw GET presign fails that HEAD
-    check with 403, so this endpoint answers HEAD itself and only redirects
-    GET requests to the signed object URL.
-    """
+    """Resolve playback headers and redirect URL for a media item."""
     query = select(MediaItem).where(MediaItem.id == media_id)
     result = await db.execute(query)
     item = result.scalar_one_or_none()
@@ -650,22 +641,44 @@ async def play_media_item(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Media playback URL unavailable",
             )
-
-        if request.method == "HEAD":
-            return Response(status_code=200, headers=headers)
-
-        return RedirectResponse(url=redirect_url, status_code=307)
+        return headers, redirect_url
 
     redirect_url = _maybe_presign_url(item.file_url)
     if not redirect_url:
         raise HTTPException(status_code=404, detail="Media playback URL unavailable")
 
-    if request.method == "HEAD":
-        return Response(
-            status_code=200,
-            headers={"Cache-Control": "public, max-age=300"},
-        )
+    return {"Cache-Control": "public, max-age=300"}, redirect_url
 
+
+@router.head(
+    "/media/{media_id}/play",
+    operation_id="head_media_item_playback",
+)
+async def head_media_item_playback(
+    media_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Answer browser HEAD probes for media playback."""
+    headers, _ = await _resolve_media_playback(media_id, db)
+    return Response(status_code=200, headers=headers)
+
+
+@router.get(
+    "/media/{media_id}/play",
+    operation_id="get_media_item_playback",
+)
+async def get_media_item_playback(
+    media_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return a browser-stable playback URL for media.
+
+    Private S3 video evidence is served via presigned GET URLs, but some
+    browsers issue a HEAD probe first. A raw GET presign fails that HEAD
+    check with 403, so this endpoint answers HEAD itself and only redirects
+    GET requests to the signed object URL.
+    """
+    _, redirect_url = await _resolve_media_playback(media_id, db)
     return RedirectResponse(url=redirect_url, status_code=307)
 
 
