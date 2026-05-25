@@ -36022,6 +36022,88 @@
         }
       }
     },
+    "/api/v1/media/media/{media_id}/play": {
+      "head": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Head Media Item Playback",
+        "description": "Answer browser HEAD probes for media playback.",
+        "operationId": "head_media_item_playback",
+        "parameters": [
+          {
+            "name": "media_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Media Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Get Media Item Playback",
+        "description": "Return a browser-stable playback URL for media.\n\nPrivate S3 video evidence is served via presigned GET URLs, but some\nbrowsers issue a HEAD probe first. A raw GET presign fails that HEAD\ncheck with 403, so this endpoint answers HEAD itself and only redirects\nGET requests to the signed object URL.",
+        "operationId": "get_media_item_playback",
+        "parameters": [
+          {
+            "name": "media_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Media Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/media/media/{media_id}/tags": {
       "post": {
         "tags": [
