@@ -1,6 +1,5 @@
 """Reporting-related background tasks: progress reports, certificates, and attendance."""
 
-import asyncio
 import secrets
 from datetime import timedelta
 
@@ -452,50 +451,8 @@ async def check_attendance_and_notify():
             break
 
 
-async def run_periodic_tasks():
-    """
-    Run all periodic tasks in a loop.
-    This can be started as a background process or via a task scheduler.
-    """
-    from services.academy_service.tasks.billing import (
-        attempt_wallet_auto_deduction,
-        evaluate_installment_compliance,
-        send_installment_payment_reminders,
-    )
-    from services.academy_service.tasks.enrollment import (
-        process_waitlist,
-        send_enrollment_reminders,
-        transition_cohort_statuses,
-    )
-
-    logger.info("Starting academy service periodic tasks...")
-
-    # Track weekly task execution
-    last_weekly_run = None
-
-    while True:
-        try:
-            await transition_cohort_statuses()
-            await send_enrollment_reminders()
-            await attempt_wallet_auto_deduction()
-            await send_installment_payment_reminders()
-            await evaluate_installment_compliance()
-            await process_waitlist()
-            await check_and_issue_certificates()
-
-            # Weekly tasks (run on Sundays)
-            now = utc_now()
-            if now.weekday() == 6:  # Sunday
-                if last_weekly_run is None or (now - last_weekly_run).days >= 1:
-                    await send_weekly_progress_reports()
-                    await check_attendance_and_notify()
-                    last_weekly_run = now
-                    logger.info(
-                        "Completed weekly progress reports and attendance alerts"
-                    )
-
-        except Exception as e:
-            logger.error(f"Error in periodic tasks: {e}")
-
-        # Run every hour
-        await asyncio.sleep(3600)
+# NOTE: the legacy `run_periodic_tasks()` while-loop scheduler was removed
+# (May 2026). Production schedules these tasks via the ARQ cron worker in
+# services/academy_service/tasks/worker.py — that is the single source of
+# truth for what runs and when. The old loop was never invoked and masked
+# the fact that the installment-reminder tasks weren't actually scheduled.
