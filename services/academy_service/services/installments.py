@@ -24,9 +24,12 @@ WAT_TZ = ZoneInfo("Africa/Lagos")
 # late-cycle balances and protects the school's cash flow.
 MIN_DEPOSIT_RATIO = 1 / 3
 
-# Payment window: installment is MISSED only after this many hours past due Monday 00:00 WAT.
-# This gives students until Monday 23:59 WAT to pay before the miss is recorded.
-GRACE_HOURS = 24
+# Payment window: an installment is only marked MISSED this many hours past its
+# due date. Founder decision (May 2026): 3-day grace — gives students a buffer
+# for mobile-money / bank-transfer delays before access is suspended. The
+# reminder emails (7/3/1 days before + due-day) land inside this window, so a
+# member who acts on any reminder is never suspended.
+GRACE_HOURS = 72
 
 
 def validate_duration_weeks(duration_weeks: int) -> None:

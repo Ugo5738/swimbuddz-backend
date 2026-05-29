@@ -46,6 +46,22 @@ async def task_evaluate_installment_compliance(ctx: dict):
     await evaluate_installment_compliance()
 
 
+async def task_send_installment_payment_reminders(ctx: dict):
+    """Email installment reminders (7/3/1 days before due) with a pay link."""
+    from services.academy_service.tasks import send_installment_payment_reminders
+
+    logger.info("Running: send_installment_payment_reminders")
+    await send_installment_payment_reminders()
+
+
+async def task_attempt_installment_due_links(ctx: dict):
+    """Email a Paystack checkout link for installments that just became due."""
+    from services.academy_service.tasks import attempt_wallet_auto_deduction
+
+    logger.info("Running: attempt_wallet_auto_deduction (due-day pay links)")
+    await attempt_wallet_auto_deduction()
+
+
 async def task_check_and_issue_certificates(ctx: dict):
     """Issue certificates for completed enrollments."""
     from services.academy_service.tasks import check_and_issue_certificates
@@ -93,6 +109,8 @@ class WorkerSettings:
         task_process_waitlist,
         task_transition_cohort_statuses,
         task_evaluate_installment_compliance,
+        task_send_installment_payment_reminders,
+        task_attempt_installment_due_links,
         task_check_and_issue_certificates,
         task_send_weekly_progress_reports,
         task_check_attendance_and_notify,
@@ -119,6 +137,24 @@ class WorkerSettings:
         cron(
             task_evaluate_installment_compliance,
             minute=45,
+            run_at_startup=False,
+        ),
+        # Due-day Paystack pay-link emails. Hourly at :20 so the task's
+        # ±60-minute "just became due" window catches every installment
+        # exactly once shortly after it falls due.
+        cron(
+            task_attempt_installment_due_links,
+            minute=20,
+            run_at_startup=False,
+        ),
+        # Upcoming-installment reminders (7/3/1 days before). Daily at
+        # 08:00 UTC (09:00 WAT) so emails land in the morning. The task
+        # self-filters to the 7/3/1-day marks and de-dupes via
+        # enrollment.reminders_sent.
+        cron(
+            task_send_installment_payment_reminders,
+            hour=8,
+            minute=0,
             run_at_startup=False,
         ),
         # Daily tasks (6 AM UTC)

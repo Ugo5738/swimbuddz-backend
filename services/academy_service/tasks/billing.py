@@ -228,13 +228,64 @@ async def send_installment_payment_reminders():
                 if not member:
                     continue
 
-                # Cohort fees are real-money only (founder policy May 2026) —
-                # the reminder no longer mentions Bubbles or top-up flows.
+                # Mint a Paystack checkout link for this installment so the
+                # reminder email carries a one-click "Pay Now" button. Mirrors
+                # attempt_wallet_auto_deduction's due-day flow. Cohort fees are
+                # real-money only (founder policy May 2026) — no Bubbles path.
+                #
+                # Idempotency note: the 7/3/1-day reminders each mint their own
+                # link. In the common case the member pays after the first one,
+                # the installment flips to PAID, and the later reminders are
+                # skipped (this query only selects PENDING installments). A
+                # procrastinator who ignores earlier reminders may accrue a few
+                # abandoned PENDING intents — harmless; Paystack drops unpaid
+                # transactions and any one valid link still applies the same
+                # installment when paid.
                 settings = get_settings()
-                enrollment_url = (
-                    f"{settings.FRONTEND_URL}/account/academy/enrollments/"
-                    f"{enrollment.id}"
-                )
+                checkout_url = None
+                try:
+                    payment_ref = f"PAY-{secrets.token_hex(3).upper()}"
+                    init_resp = await internal_post(
+                        service_url=settings.PAYMENTS_SERVICE_URL,
+                        path="/internal/payments/initialize",
+                        calling_service="academy",
+                        json={
+                            "reference": payment_ref,
+                            "member_auth_id": enrollment.member_auth_id,
+                            "amount": float(installment.amount) / KOBO_PER_NAIRA,
+                            "currency": enrollment.currency_snapshot or "NGN",
+                            "purpose": "academy_cohort",
+                            "callback_url": (
+                                f"/account/academy/enrollment-success"
+                                f"?enrollment_id={enrollment.id}"
+                            ),
+                            "metadata": {
+                                "payer_email": member["email"],
+                                "enrollment_id": str(enrollment.id),
+                                "cohort_id": str(cohort.id),
+                                "installment_id": str(installment.id),
+                                "installment_number": installment.installment_number,
+                                "total_installments": enrollment.total_installments,
+                            },
+                        },
+                    )
+                    if init_resp.status_code < 400:
+                        checkout_url = init_resp.json().get("authorization_url")
+                    else:
+                        logger.error(
+                            "Reminder: Paystack init failed for installment %s (%s): %s",
+                            installment.id,
+                            init_resp.status_code,
+                            init_resp.text,
+                        )
+                except Exception as init_err:
+                    # Non-fatal — still send the reminder; the email falls back
+                    # to the dashboard button when checkout_url is None.
+                    logger.error(
+                        "Reminder: error minting Paystack link for installment %s: %s",
+                        installment.id,
+                        init_err,
+                    )
 
                 email_client = get_email_client()
                 success = await email_client.send_template(
@@ -251,7 +302,7 @@ async def send_installment_payment_reminders():
                         "due_date": installment.due_at.strftime("%A, %B %d, %Y"),
                         "days_until": days_until,
                         "has_sufficient_balance": False,
-                        "enrollment_url": enrollment_url,
+                        "checkout_url": checkout_url,
                     },
                 )
 
