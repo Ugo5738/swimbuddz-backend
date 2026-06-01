@@ -1,0 +1,108 @@
+# SwimBuddz — sports_club chart-of-accounts template
+#
+# Seeded on organization creation (consumed by scripts/seed/ledger_org.py in
+# PR-1). Mirrors LEDGER_SERVICE_DESIGN.md §5.
+#
+# Field reference:
+#   code           org-local account code (UNIQUE per org). Codes belong to the
+#                  org and may differ per customer.
+#   name           human-readable account name.
+#   type           asset | liability | equity | revenue | expense | contra_asset
+#   normal_balance debit | credit (the side that increases the account).
+#   parent         code of the rollup parent (for the account hierarchy).
+#   postable       true = a detail/leaf account you can post journal lines to;
+#                  false = a rollup header (no direct postings).
+#   maps_to        STABLE cross-org reference. Emitters reference accounts by
+#                  this value, never by code (design doc §6/§8). NEVER rename a
+#                  maps_to value — doing so breaks every emitter.
+#   is_system      true = seeded & protected (cannot be renamed/deleted by org
+#                  admins). All template accounts are system accounts.
+#
+# Cross-checked against design doc §8 integration mappings. Two refs used in §8
+# but missing a maps_to in the §5 listing were added here and flagged back to
+# the design doc: `accounts_payable` (2110; §8.3 inventory, §8.5 driver pay) and
+# `expense_marketing` (6300; §8.2 welcome bonus + promo grants).
+
+version: 1
+vertical: sports_club
+
+accounts:
+  # ===== 1000 ASSETS =====
+  - { code: "1000", name: "Assets", type: asset, normal_balance: debit, postable: false, is_system: true }
+  - { code: "1100", name: "Cash & Bank", type: asset, normal_balance: debit, parent: "1000", postable: false, is_system: true }
+  - { code: "1110", name: "Bank — Operating (NGN)", type: asset, normal_balance: debit, parent: "1100", postable: true, is_system: true, maps_to: bank_operating_ngn }
+  - { code: "1120", name: "Bank — Operating (USD)", type: asset, normal_balance: debit, parent: "1100", postable: true, is_system: true, maps_to: bank_operating_usd }
+  - { code: "1130", name: "Petty Cash", type: asset, normal_balance: debit, parent: "1100", postable: true, is_system: true }
+  - { code: "1200", name: "Receivables", type: asset, normal_balance: debit, parent: "1000", postable: false, is_system: true }
+  - { code: "1210", name: "Paystack Clearing", type: asset, normal_balance: debit, parent: "1200", postable: true, is_system: true, maps_to: paystack_clearing }
+  - { code: "1220", name: "Flutterwave Clearing", type: asset, normal_balance: debit, parent: "1200", postable: true, is_system: true, maps_to: flutterwave_clearing }
+  - { code: "1230", name: "Accounts Receivable", type: asset, normal_balance: debit, parent: "1200", postable: true, is_system: true, maps_to: accounts_receivable }
+  - { code: "1240", name: "Unbilled Receivables", type: asset, normal_balance: debit, parent: "1200", postable: true, is_system: true, maps_to: unbilled_receivables }
+  - { code: "1300", name: "Inventory", type: asset, normal_balance: debit, parent: "1000", postable: false, is_system: true }
+  - { code: "1310", name: "Store Inventory", type: asset, normal_balance: debit, parent: "1300", postable: true, is_system: true, maps_to: store_inventory }
+  - { code: "1400", name: "Other Current Assets", type: asset, normal_balance: debit, parent: "1000", postable: false, is_system: true }
+  - { code: "1410", name: "Prepaid Expenses", type: asset, normal_balance: debit, parent: "1400", postable: true, is_system: true }
+  - { code: "1500", name: "Fixed Assets", type: asset, normal_balance: debit, parent: "1000", postable: false, is_system: true }
+  - { code: "1510", name: "Equipment", type: asset, normal_balance: debit, parent: "1500", postable: true, is_system: true }
+  - { code: "1520", name: "Accumulated Depreciation", type: contra_asset, normal_balance: credit, parent: "1500", postable: true, is_system: true }
+  - { code: "1800", name: "Tax Receivable", type: asset, normal_balance: debit, parent: "1000", postable: false, is_system: true }
+  - { code: "1810", name: "VAT Input Receivable", type: asset, normal_balance: debit, parent: "1800", postable: true, is_system: true, maps_to: vat_input_receivable }
+  - { code: "1820", name: "WHT Receivable", type: asset, normal_balance: debit, parent: "1800", postable: true, is_system: true, maps_to: wht_receivable }
+
+  # ===== 2000 LIABILITIES =====
+  - { code: "2000", name: "Liabilities", type: liability, normal_balance: credit, postable: false, is_system: true }
+  - { code: "2100", name: "Payables", type: liability, normal_balance: credit, parent: "2000", postable: false, is_system: true }
+  - { code: "2110", name: "Accounts Payable", type: liability, normal_balance: credit, parent: "2100", postable: true, is_system: true, maps_to: accounts_payable }
+  - { code: "2120", name: "Coach Payouts Payable", type: liability, normal_balance: credit, parent: "2100", postable: true, is_system: true, maps_to: coach_payouts_payable }
+  - { code: "2130", name: "Refunds Payable", type: liability, normal_balance: credit, parent: "2100", postable: true, is_system: true, maps_to: refunds_payable }
+  - { code: "2200", name: "Wallet & Customer Liabilities", type: liability, normal_balance: credit, parent: "2000", postable: false, is_system: true }
+  - { code: "2210", name: "Bubbles Liability", type: liability, normal_balance: credit, parent: "2200", postable: true, is_system: true, maps_to: bubbles_liability }
+  - { code: "2220", name: "Bubbles Liability — Promotional", type: liability, normal_balance: credit, parent: "2200", postable: true, is_system: true, maps_to: bubbles_liability_promo }
+  - { code: "2300", name: "Deferred Revenue", type: liability, normal_balance: credit, parent: "2000", postable: false, is_system: true }
+  - { code: "2310", name: "Deferred Revenue — Academy", type: liability, normal_balance: credit, parent: "2300", postable: true, is_system: true, maps_to: deferred_revenue_academy }
+  - { code: "2320", name: "Deferred Revenue — Club Membership", type: liability, normal_balance: credit, parent: "2300", postable: true, is_system: true, maps_to: deferred_revenue_club }
+  - { code: "2330", name: "Deferred Revenue — Community", type: liability, normal_balance: credit, parent: "2300", postable: true, is_system: true, maps_to: deferred_revenue_community }
+  - { code: "2340", name: "Deferred Revenue — Session Bundles", type: liability, normal_balance: credit, parent: "2300", postable: true, is_system: true, maps_to: deferred_revenue_session_bundle }
+  - { code: "2350", name: "Customer Deposits — Pre-orders", type: liability, normal_balance: credit, parent: "2300", postable: true, is_system: true, maps_to: customer_deposits }
+  - { code: "2360", name: "Deferred Revenue — Events", type: liability, normal_balance: credit, parent: "2300", postable: true, is_system: true, maps_to: deferred_revenue_events }
+  - { code: "2400", name: "Tax Payable", type: liability, normal_balance: credit, parent: "2000", postable: false, is_system: true }
+  - { code: "2410", name: "VAT Output Payable", type: liability, normal_balance: credit, parent: "2400", postable: true, is_system: true, maps_to: vat_output_payable }
+  - { code: "2420", name: "WHT Payable", type: liability, normal_balance: credit, parent: "2400", postable: true, is_system: true, maps_to: wht_payable }
+  - { code: "2430", name: "Income Tax Payable", type: liability, normal_balance: credit, parent: "2400", postable: true, is_system: true }
+
+  # ===== 3000 EQUITY =====
+  - { code: "3000", name: "Equity", type: equity, normal_balance: credit, postable: false, is_system: true }
+  - { code: "3100", name: "Owner's Capital", type: equity, normal_balance: credit, parent: "3000", postable: true, is_system: true }
+  - { code: "3900", name: "Retained Earnings", type: equity, normal_balance: credit, parent: "3000", postable: true, is_system: true, maps_to: retained_earnings }
+  - { code: "3990", name: "Current-Year Earnings", type: equity, normal_balance: credit, parent: "3000", postable: true, is_system: true, maps_to: current_year_earnings }
+
+  # ===== 4000 REVENUE =====
+  - { code: "4000", name: "Revenue", type: revenue, normal_balance: credit, postable: false, is_system: true }
+  - { code: "4100", name: "Academy Revenue", type: revenue, normal_balance: credit, parent: "4000", postable: true, is_system: true, maps_to: revenue_academy }
+  - { code: "4200", name: "Club Revenue", type: revenue, normal_balance: credit, parent: "4000", postable: false, is_system: true }
+  - { code: "4210", name: "Club Membership Revenue", type: revenue, normal_balance: credit, parent: "4200", postable: true, is_system: true, maps_to: revenue_club_membership }
+  - { code: "4220", name: "Club Session Revenue", type: revenue, normal_balance: credit, parent: "4200", postable: true, is_system: true, maps_to: revenue_club_session }
+  - { code: "4230", name: "No-show Penalty Revenue", type: revenue, normal_balance: credit, parent: "4200", postable: true, is_system: true, maps_to: revenue_penalty }
+  - { code: "4300", name: "Community Revenue", type: revenue, normal_balance: credit, parent: "4000", postable: true, is_system: true, maps_to: revenue_community }
+  - { code: "4400", name: "Store Revenue", type: revenue, normal_balance: credit, parent: "4000", postable: true, is_system: true, maps_to: revenue_store }
+  - { code: "4500", name: "Events Revenue", type: revenue, normal_balance: credit, parent: "4000", postable: true, is_system: true, maps_to: revenue_events }
+  - { code: "4600", name: "Transport Revenue", type: revenue, normal_balance: credit, parent: "4000", postable: true, is_system: true, maps_to: revenue_transport }
+  - { code: "4900", name: "Other Revenue", type: revenue, normal_balance: credit, parent: "4000", postable: false, is_system: true }
+  - { code: "4910", name: "Bubbles Breakage", type: revenue, normal_balance: credit, parent: "4900", postable: true, is_system: true, maps_to: revenue_bubbles_breakage }
+
+  # ===== 5000 COST OF SALES =====
+  - { code: "5000", name: "Cost of Sales", type: expense, normal_balance: debit, postable: false, is_system: true }
+  - { code: "5100", name: "COGS — Store", type: expense, normal_balance: debit, parent: "5000", postable: true, is_system: true, maps_to: cogs_store }
+  - { code: "5200", name: "Pool Fees Paid", type: expense, normal_balance: debit, parent: "5000", postable: true, is_system: true, maps_to: cogs_pool_fees }
+  - { code: "5300", name: "Coach Pay — Academy", type: expense, normal_balance: debit, parent: "5000", postable: true, is_system: true, maps_to: cogs_coach_academy }
+  - { code: "5400", name: "Coach Pay — Club", type: expense, normal_balance: debit, parent: "5000", postable: true, is_system: true, maps_to: cogs_coach_club }
+  - { code: "5500", name: "Ride-share Driver Pay", type: expense, normal_balance: debit, parent: "5000", postable: true, is_system: true, maps_to: cogs_ride_driver }
+
+  # ===== 6000 OPERATING EXPENSES =====
+  - { code: "6000", name: "Operating Expenses", type: expense, normal_balance: debit, postable: false, is_system: true }
+  - { code: "6100", name: "Payment Processing Fees", type: expense, normal_balance: debit, parent: "6000", postable: true, is_system: true, maps_to: expense_psp_fees }
+  - { code: "6200", name: "Volunteer Rewards", type: expense, normal_balance: debit, parent: "6000", postable: true, is_system: true, maps_to: expense_volunteer_rewards }
+  - { code: "6300", name: "Marketing", type: expense, normal_balance: debit, parent: "6000", postable: true, is_system: true, maps_to: expense_marketing }
+  - { code: "6400", name: "Software & Infrastructure", type: expense, normal_balance: debit, parent: "6000", postable: true, is_system: true }
+  - { code: "6500", name: "Office & Admin", type: expense, normal_balance: debit, parent: "6000", postable: true, is_system: true }
+  - { code: "6900", name: "Other Expenses", type: expense, normal_balance: debit, parent: "6000", postable: true, is_system: true }
