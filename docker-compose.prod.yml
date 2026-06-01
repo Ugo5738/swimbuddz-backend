@@ -71,11 +71,6 @@ services:
     container_name: swimbuddz_payments
     env_file:
       - .env.prod
-    # Payments emits cash-in postings to the ledger and needs the same org id.
-    # Pinned for the same reason as ledger-service (survives the GPG re-decrypt
-    # on deploy). See ledger-service above.
-    environment:
-      - LEDGER_DEFAULT_ORG_ID=837da376-6700-4c8d-9000-24a81ebccaf9
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -184,13 +179,6 @@ services:
     container_name: swimbuddz_ledger
     env_file:
       - .env.prod
-    # Phase-1 single-tenant org id (seeded via scripts/seed/ledger_org.py).
-    # Pinned here, not only in .env.prod, because the deploy re-decrypts
-    # .env.prod from GPG on every run — a compose `environment` value overrides
-    # env_file and survives redeploys without needing the GPG passphrase. This
-    # is the org's UUID, not a secret. resolve_org_id() reads it; unset -> 503.
-    environment:
-      - LEDGER_DEFAULT_ORG_ID=837da376-6700-4c8d-9000-24a81ebccaf9
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
