@@ -10,12 +10,14 @@ from services.volunteer_service.services.main import (
     update_profile_aggregates,
 )
 from services.volunteer_service.services.spotlight import (
+    SPOTLIGHT_EXCLUDED_MEMBER_IDS,
     VolunteerOfMonthResult,
     apply_monthly_volunteer_spotlight,
     select_volunteer_of_month,
 )
 
 __all__ = [
+    "SPOTLIGHT_EXCLUDED_MEMBER_IDS",
     "VolunteerOfMonthResult",
     "_grant_recognition_reward",
     "apply_monthly_volunteer_spotlight",

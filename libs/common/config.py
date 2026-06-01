@@ -59,6 +59,13 @@ class Settings(BaseSettings):
     REPORTING_SERVICE_URL: str = "http://reporting-service:8015"
     CHAT_SERVICE_URL: str = "http://chat-service:8016"
     CORPORATE_SERVICE_URL: str = "http://corporate-service:8017"
+    LEDGER_SERVICE_URL: str = "http://ledger-service:8018"
+
+    # Ledger Service
+    # SwimBuddz's own organization UUID in the multi-tenant ledger. Set per
+    # environment (the org row is created by scripts/seed/ledger_org.py in PR-1).
+    # Empty until seeded; emitters resolve org_id from this value.
+    LEDGER_DEFAULT_ORG_ID: str = ""
 
     # AI Service
     AI_DEFAULT_MODEL: str = "gpt-4o-mini"

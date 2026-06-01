@@ -1,12 +1,15 @@
+"""Alembic configuration entrypoint for ledger service."""
+
+# ruff: noqa: F401
+
 import asyncio
 import sys
 from logging.config import fileConfig
 from pathlib import Path
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
-
-from alembic import context
 
 # Ensure project root on sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -14,13 +17,16 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.payments_service.models import (  # noqa: F401
-    CoachPayout,
-    CohortMakeupObligation,
-    Discount,
-    LedgerPostFailure,
-    Payment,
-    RecurringPayoutConfig,
+from services.ledger_service.models import (  # noqa: F401
+    AccountBalance,
+    AuditLog,
+    ChartOfAccounts,
+    CostCenter,
+    JournalEntry,
+    JournalLine,
+    LedgerUser,
+    Organization,
+    Period,
 )
 
 settings = get_settings()
@@ -31,17 +37,36 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+# Only migrate tables owned by this service. Populated in PR-1 (task P1.1) as
+# models are added — keep in sync with the model imports above.
+#
+# NOTE ON TABLE NAMING (shared SwimBuddz DB): all services share one Postgres
+# database, so generic names risk colliding with other services. Prefix the
+# generic ones with `ledger_` (e.g. `ledger_organizations`, `ledger_periods`,
+# `ledger_audit_log`, `ledger_users`); accounting-specific names
+# (`journal_entries`, `chart_of_accounts`, …) are safe unprefixed. This keeps
+# the B2B-extracted DB clean too. Final names decided in P1.1. Example:
+SERVICE_TABLES: set[str] = {
+    "ledger_organizations",
+    "chart_of_accounts",
+    "cost_centers",
+    "journal_entries",
+    "journal_lines",
+    "account_balances",
+    "ledger_periods",
+    "ledger_users",
+    "ledger_audit_log",
+}
+
 url = settings.DATABASE_URL.replace("%", "%%")
 config.set_main_option("sqlalchemy.url", url)
 
 
 def include_object(obj, name, type_, reflected, compare_to):
-    if reflected and name not in target_metadata.tables:
-        return False
     if type_ == "table":
-        return name in target_metadata.tables
+        return name in SERVICE_TABLES
     if type_ in ("index", "column", "foreign_key_constraint"):
-        return obj.table.name in target_metadata.tables
+        return obj.table.name in SERVICE_TABLES
     return True
 
 
@@ -52,7 +77,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        version_table="alembic_version_payments",
+        version_table="alembic_version_ledger",
         include_object=include_object,
     )
 
@@ -64,7 +89,7 @@ def do_run_migrations(connection):
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        version_table="alembic_version_payments",
+        version_table="alembic_version_ledger",
         include_object=include_object,
     )
     with context.begin_transaction():

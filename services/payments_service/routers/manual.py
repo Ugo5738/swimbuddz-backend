@@ -129,6 +129,14 @@ async def approve_manual_payment(
     await db.commit()
     await db.refresh(payment)
 
+    # Mirror the cash-in to the ledger (best-effort + dead-letter; never affects
+    # this approved payment). provider="manual_transfer" debits the bank account
+    # rather than PSP clearing. Same idempotency key as the webhook path, so a
+    # payment can never double-post.
+    from services.payments_service.services.ledger_emit import emit_payment_to_ledger
+
+    await emit_payment_to_ledger(db, payment)
+
     # Send email notification to member via centralized email service
     if payment.payer_email:
         try:

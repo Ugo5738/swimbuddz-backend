@@ -204,4 +204,15 @@ async def _mark_paid_and_apply(
     db.add(payment)
     await db.commit()
     await db.refresh(payment)
+
+    # Mirror the cash-in to the ledger. Best-effort + dead-letter: a ledger
+    # failure is parked in ledger_post_failures for replay and never affects
+    # this (already-committed) payment. Runs only on the first PAID transition —
+    # duplicate calls bail at the idempotency check above. Local import avoids
+    # any import cycle through the models package.
+    from services.payments_service.services.ledger_emit import (
+        emit_payment_to_ledger,
+    )
+
+    await emit_payment_to_ledger(db, payment)
     return payment
