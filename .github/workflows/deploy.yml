@@ -153,6 +153,9 @@ jobs:
           - context: .
             dockerfile: ./services/ledger_service/Dockerfile
             image: swimbuddz-ledger-service
+          - context: .
+            dockerfile: ./services/corporate_service/Dockerfile
+            image: swimbuddz-corporate-service
 
     steps:
       - uses: actions/checkout@v4
