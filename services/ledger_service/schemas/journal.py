@@ -73,3 +73,9 @@ class JournalEntryResult(BaseModel):
     status: str
     period_id: uuid.UUID
     idempotent_replay: bool = False
+
+
+class ReverseRequest(BaseModel):
+    """Optional body for reversing an entry."""
+
+    reason: Optional[str] = None
