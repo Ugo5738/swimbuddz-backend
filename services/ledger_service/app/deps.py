@@ -17,9 +17,13 @@ import uuid
 from typing import AsyncGenerator
 
 from fastapi import Depends, HTTPException, Request, status
+from libs.auth.dependencies import get_current_user
+from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.db.session import get_async_db
-from sqlalchemy import text
+from services.ledger_service.models import LedgerUser
+from services.ledger_service.models.enums import LEDGER_ROLE_RANK, LedgerRole
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -65,3 +69,46 @@ async def get_ledger_db(
     )
     request.state.org_id = org_id
     yield session
+
+
+def require_ledger_role(minimum: LedgerRole):
+    """Dependency factory — require an active LedgerUser with at least `minimum`.
+
+    Matches the authenticated user to a finance-team member in the request's org
+    by auth_id or email. Hierarchy: owner ⊇ admin ⊇ accountant ⊇ viewer. A login
+    with no active ledger_users row gets 403 — being a SwimBuddz admin does not
+    imply finance access. Service-role emitters use require_service_role and
+    never hit this.
+    """
+    min_rank = LEDGER_ROLE_RANK[minimum]
+
+    async def _dep(
+        request: Request,
+        user: AuthUser = Depends(get_current_user),
+        session: AsyncSession = Depends(get_ledger_db),
+    ) -> LedgerUser:
+        org_id = request.state.org_id
+        match = [LedgerUser.auth_id == user.user_id]
+        if user.email:
+            match.append(LedgerUser.email == str(user.email))
+        ledger_user = (
+            (
+                await session.execute(
+                    select(LedgerUser).where(
+                        LedgerUser.org_id == org_id,
+                        LedgerUser.deactivated_at.is_(None),
+                        or_(*match),
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if ledger_user is None or LEDGER_ROLE_RANK[ledger_user.role] < min_rank:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient ledger role",
+            )
+        return ledger_user
+
+    return _dep
