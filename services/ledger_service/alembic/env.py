@@ -17,13 +17,17 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-
-# Models are imported here in PR-1 (task P1.1) so Alembic autogenerate can see
-# them and emit DDL. Until then there are no ledger tables. Example:
-#   from services.ledger_service.models import (
-#       Organization, ChartOfAccounts, CostCenter, JournalEntry, JournalLine,
-#       AccountBalance, Period, LedgerUser, AuditLog,
-#   )
+from services.ledger_service.models import (  # noqa: F401
+    AccountBalance,
+    AuditLog,
+    ChartOfAccounts,
+    CostCenter,
+    JournalEntry,
+    JournalLine,
+    LedgerUser,
+    Organization,
+    Period,
+)
 
 settings = get_settings()
 config = context.config
@@ -43,15 +47,15 @@ target_metadata = Base.metadata
 # (`journal_entries`, `chart_of_accounts`, …) are safe unprefixed. This keeps
 # the B2B-extracted DB clean too. Final names decided in P1.1. Example:
 SERVICE_TABLES: set[str] = {
-    # "ledger_organizations",
-    # "chart_of_accounts",
-    # "cost_centers",
-    # "journal_entries",
-    # "journal_lines",
-    # "account_balances",
-    # "ledger_periods",
-    # "ledger_users",
-    # "ledger_audit_log",
+    "ledger_organizations",
+    "chart_of_accounts",
+    "cost_centers",
+    "journal_entries",
+    "journal_lines",
+    "account_balances",
+    "ledger_periods",
+    "ledger_users",
+    "ledger_audit_log",
 }
 
 url = settings.DATABASE_URL.replace("%", "%%")

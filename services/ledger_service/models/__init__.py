@@ -1,10 +1,54 @@
 """SQLAlchemy models for the Ledger Service.
 
-Models are added in PR-1 (task P1.1): Organization, ChartOfAccounts,
-CostCenter, JournalEntry, JournalLine, AccountBalance, Period, LedgerUser,
-AuditLog. See docs/design/LEDGER_SERVICE_DESIGN.md §4.
+Importing this package registers every model on ``Base.metadata`` so Alembic
+autogenerate can see them. ``alembic/env.py`` imports from here and lists the
+owned tables in ``SERVICE_TABLES``.
 
-⚠️ When adding a model, also import it in services/ledger_service/alembic/env.py
-and add its table name to SERVICE_TABLES, or Alembic autogenerate won't detect
-it (CLAUDE.md migration gotcha).
+PR-1 implements design doc §4.1 (core) + §4.5 (audit/users). Reconciliation,
+FX, tax, and invoice tables (§4.2–4.4) arrive in their respective phases.
 """
+
+from services.ledger_service.models.accounts import ChartOfAccounts, CostCenter
+from services.ledger_service.models.audit import AuditLog, LedgerUser
+from services.ledger_service.models.balances import AccountBalance
+from services.ledger_service.models.enums import (
+    LEDGER_ROLE_RANK,
+    AccountingStandard,
+    AccountType,
+    AuditActionType,
+    EntryStatus,
+    LedgerRole,
+    NormalBalance,
+    OrgStatus,
+    PeriodStatus,
+    PeriodType,
+    enum_values,
+)
+from services.ledger_service.models.journal import JournalEntry, JournalLine
+from services.ledger_service.models.organization import Organization
+from services.ledger_service.models.period import Period
+
+__all__ = [
+    # Models
+    "Organization",
+    "ChartOfAccounts",
+    "CostCenter",
+    "JournalEntry",
+    "JournalLine",
+    "AccountBalance",
+    "Period",
+    "LedgerUser",
+    "AuditLog",
+    # Enums
+    "AccountType",
+    "NormalBalance",
+    "AccountingStandard",
+    "OrgStatus",
+    "EntryStatus",
+    "PeriodType",
+    "PeriodStatus",
+    "LedgerRole",
+    "AuditActionType",
+    "LEDGER_ROLE_RANK",
+    "enum_values",
+]
