@@ -4,15 +4,13 @@ import uuid
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from libs.common.currency import kobo_to_bubbles
-from libs.common.service_client import debit_member_wallet, get_session_by_id
-from libs.common.service_client.sessions import (
-    get_confirmed_booking_for_session_member,
-)
-from libs.db.session import get_async_db
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from libs.common.currency import kobo_to_bubbles
+from libs.common.service_client import debit_member_wallet, get_session_by_id
+from libs.common.service_client.sessions import get_confirmed_booking_for_session_member
+from libs.db.session import get_async_db
 from services.attendance_service.models import (
     AttendanceRecord,
     AttendanceStatus,
@@ -174,8 +172,22 @@ async def public_sign_in_to_session(
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    # Enforce tier-based access control
-    await validate_session_access(session_data, str(attendance_in.member_id))
+    # Link this attendance row to a CONFIRMED SessionBooking when one exists
+    # (admin walk-in or pre-book), mirroring the authenticated sign-in flow.
+    # NULL booking_id = genuine walk-in with no booking row.
+    booking_data = await get_confirmed_booking_for_session_member(
+        session_id=str(session_id),
+        member_id=str(attendance_in.member_id),
+        calling_service="attendance",
+    )
+    linked_booking_id = uuid.UUID(booking_data["id"]) if booking_data else None
+
+    # A CONFIRMED booking already represents authorized access — the member
+    # either self-booked (which passed this check) or an admin recorded a
+    # walk-in (admin authority overrides tier rules). Only enforce tier-based
+    # access control when no booking vouches for the member.
+    if linked_booking_id is None:
+        await validate_session_access(session_data, str(attendance_in.member_id))
 
     # Check for existing attendance
     query = select(AttendanceRecord).where(
@@ -190,6 +202,8 @@ async def public_sign_in_to_session(
         attendance.status = attendance_in.status
         attendance.role = attendance_in.role
         attendance.notes = attendance_in.notes
+        if attendance.booking_id is None and linked_booking_id is not None:
+            attendance.booking_id = linked_booking_id
     else:
         # Create new
         attendance = AttendanceRecord(
@@ -198,6 +212,7 @@ async def public_sign_in_to_session(
             status=attendance_in.status,
             role=attendance_in.role,
             notes=attendance_in.notes,
+            booking_id=linked_booking_id,
         )
         db.add(attendance)
 
