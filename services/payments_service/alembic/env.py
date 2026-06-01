@@ -18,6 +18,7 @@ from services.payments_service.models import (  # noqa: F401
     CoachPayout,
     CohortMakeupObligation,
     Discount,
+    LedgerPostFailure,
     Payment,
     RecurringPayoutConfig,
 )
