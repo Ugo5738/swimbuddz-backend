@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Optional
 
 from dateutil.relativedelta import relativedelta
+
 from libs.common.datetime_utils import utc_now
 
 # Tier priority for sorting and comparison
@@ -88,6 +89,37 @@ def calculate_community_expiry(
     now = utc_now()
     base = current_expiry if current_expiry and current_expiry > now else now
     return base + relativedelta(years=years)
+
+
+def academy_bundle_expiry(
+    now: datetime,
+    community_paid_until: Optional[datetime],
+    club_paid_until: Optional[datetime],
+) -> tuple[datetime, datetime]:
+    """Community + Club expiry granted by an academy payment.
+
+    Academy enrollment bundles Community (1 year) and Club (3 months) access,
+    whether paid in full or by installment (docs/club/PRICING_STRATEGY.md tier
+    hierarchy: academy ⊃ club ⊃ community). Each entitlement is floored to
+    ``now + duration`` and never shortened below an existing, longer date — so
+    repeated installment payments are idempotent and a member who already paid
+    further out keeps their longer access.
+
+    Returns ``(community_paid_until, club_paid_until)``.
+    """
+    community_floor = now + relativedelta(years=1)
+    club_floor = now + relativedelta(months=3)
+    new_community = (
+        community_floor
+        if community_paid_until is None or community_paid_until < community_floor
+        else community_paid_until
+    )
+    new_club = (
+        club_floor
+        if club_paid_until is None or club_paid_until < club_floor
+        else club_paid_until
+    )
+    return new_community, new_club
 
 
 def calculate_club_expiry(
