@@ -15,7 +15,7 @@ from typing import Iterable
 import yaml
 from services.ledger_service.models import ChartOfAccounts
 from services.ledger_service.models.enums import AccountType, NormalBalance
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 _TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "coa_templates"
@@ -114,10 +114,13 @@ async def seed_chart_of_accounts(
 async def resolve_account_ids(
     session: AsyncSession, org_id: uuid.UUID, refs: Iterable[str]
 ) -> dict[str, uuid.UUID]:
-    """Map stable `maps_to` refs to account ids for an org.
+    """Map account refs to ids for an org.
 
-    Raises ValueError listing any refs that don't resolve to an active account —
-    surfacing a CoA/emitter mismatch loudly instead of silently mis-posting.
+    A ref is either a stable ``maps_to`` value (used by service emitters) or an
+    account ``code`` (used by accountants posting manual entries — they think in
+    codes, and many postable accounts have no maps_to). maps_to wins if a value
+    matches both. Raises ValueError listing any refs that don't resolve to an
+    active account — surfacing a mismatch loudly instead of silently mis-posting.
     """
     wanted = list(dict.fromkeys(refs))  # dedupe, preserve order
     if not wanted:
@@ -125,15 +128,28 @@ async def resolve_account_ids(
     maps_to = ChartOfAccounts.account_metadata["maps_to"].astext
     rows = (
         await session.execute(
-            select(maps_to, ChartOfAccounts.id).where(
+            select(ChartOfAccounts.id, maps_to, ChartOfAccounts.code).where(
                 ChartOfAccounts.org_id == org_id,
                 ChartOfAccounts.is_active.is_(True),
-                maps_to.in_(wanted),
+                or_(maps_to.in_(wanted), ChartOfAccounts.code.in_(wanted)),
             )
         )
     ).all()
-    resolved = {ref: acct_id for ref, acct_id in rows}
-    missing = [r for r in wanted if r not in resolved]
+    by_maps_to: dict[str, uuid.UUID] = {}
+    by_code: dict[str, uuid.UUID] = {}
+    for acct_id, m, code in rows:
+        if m:
+            by_maps_to[m] = acct_id
+        by_code[code] = acct_id
+    resolved: dict[str, uuid.UUID] = {}
+    missing: list[str] = []
+    for ref in wanted:
+        if ref in by_maps_to:
+            resolved[ref] = by_maps_to[ref]
+        elif ref in by_code:
+            resolved[ref] = by_code[ref]
+        else:
+            missing.append(ref)
     if missing:
         raise ValueError(f"unresolved account refs for org {org_id}: {missing}")
     return resolved

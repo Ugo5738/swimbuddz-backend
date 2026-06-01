@@ -173,3 +173,17 @@ async def test_unbalanced_entry_rejected_at_schema():
                 {"account_ref": "revenue_store", "credit": 50, "currency": "NGN"},
             ],
         )
+
+
+async def test_post_resolves_account_by_code(db_session):
+    # Manual entries reference accounts by CODE (1210 = Paystack Clearing,
+    # 4400 = Store Revenue), not maps_to — the resolver accepts both.
+    org_id = await _org_id(db_session)
+    await _set_ctx(db_session, org_id)
+    key = f"test:{uuid.uuid4()}"
+    res = await post_entry(
+        db_session,
+        org_id=org_id,
+        payload=_balanced(key, "1210", "4400", 1_000),
+    )
+    assert res.idempotent_replay is False
