@@ -120,3 +120,41 @@ async def test_monthly_spotlight_clears_feature_when_month_has_no_hours(db_sessi
         )
     ).scalar_one()
     assert profile.is_featured is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_monthly_spotlight_skips_excluded_members_and_coaches(db_session):
+    from services.volunteer_service.services import apply_monthly_volunteer_spotlight
+
+    founder = await _seed_member(db_session, first_name="Founder")
+    coach = await _seed_member(db_session, first_name="Coach")
+    winner = await _seed_member(db_session, first_name="Eligible")
+
+    db_session.add_all(
+        [
+            _profile(founder, total_hours=50),
+            _profile(coach, total_hours=30),
+            _profile(winner, total_hours=5),
+            _hours(founder, hours=10, logged_on=date(2026, 5, 3)),  # top, but excluded
+            _hours(coach, hours=7, logged_on=date(2026, 5, 4)),  # 2nd, but a coach
+            _hours(
+                winner, hours=3, logged_on=date(2026, 5, 5)
+            ),  # 3rd, eligible -> wins
+        ]
+    )
+    await db_session.commit()
+
+    async def is_coach(member_id):
+        return member_id == coach
+
+    result = await apply_monthly_volunteer_spotlight(
+        db_session,
+        now=datetime(2026, 6, 1, 0, 10, tzinfo=timezone.utc),
+        excluded_member_ids={str(founder)},
+        is_coach=is_coach,
+    )
+
+    assert result.member_id == winner
+    assert result.monthly_hours == 3.0
+    assert result.monthly_logs == 1
