@@ -51,6 +51,16 @@ dev = [
 [tool.setuptools.packages.find]
 include = ["libs*", "services*", "mcp*", "alembic*"]
 
+# Ship non-Python data files that live inside packages. The ledger
+# chart-of-accounts templates (coa_templates/*.yaml) are read at seed time by
+# seed_chart_of_accounts(); without this, `pip install .` copies only .py files
+# and the YAML is absent from site-packages, so seeding a fresh environment
+# fails with FileNotFoundError (the running service is unaffected — it only
+# reads the YAML when seeding). Add a new entry here for any future packaged
+# data file (e.g. other CoA verticals).
+[tool.setuptools.package-data]
+"services.ledger_service" = ["coa_templates/*.yaml"]
+
 [tool.ruff]
 extend-exclude = [
     "alembic/versions",
