@@ -48,6 +48,7 @@ SERVICES=(
   "reporting_service"
   "chat_service"
   "corporate_service"
+  "ledger_service"
 )
 
 # -------------------------------------------------------------------------------
