@@ -7,13 +7,13 @@ ledger_post_failures row instead of raising.
 
 import uuid
 
-import pytest
 from services.payments_service.models import Payment, PaymentPurpose
 from services.payments_service.models.ledger_failure import LedgerPostFailure
 from services.payments_service.services import ledger_emit
 from sqlalchemy import select
 
-pytestmark = pytest.mark.asyncio
+# asyncio_mode=auto (pytest.ini) auto-marks the async test; no module-level mark
+# so the sync mapping tests aren't falsely tagged asyncio.
 
 
 def _payment(

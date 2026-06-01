@@ -40646,6 +40646,626 @@
           }
         }
       }
+    },
+    "/api/v1/admin/finance/accounts": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "List Accounts",
+        "operationId": "list_accounts_admin_finance_accounts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "active_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Active Only"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AccountOut"
+                  },
+                  "title": "Response List Accounts Admin Finance Accounts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/journal-entries": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "List Journal Entries",
+        "operationId": "list_journal_entries_admin_finance_journal_entries_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "source_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Service"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JournalEntrySummary"
+                  },
+                  "title": "Response List Journal Entries Admin Finance Journal Entries Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Create Manual Entry",
+        "operationId": "create_manual_entry_admin_finance_journal_entries_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JournalEntryCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JournalEntryResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/journal-entries/{entry_id}": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Journal Entry",
+        "operationId": "get_journal_entry_admin_finance_journal_entries__entry_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "entry_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Entry Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JournalEntryDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/reports/trial-balance": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Trial Balance",
+        "operationId": "get_trial_balance_admin_finance_reports_trial_balance_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialBalanceReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/reports/profit-loss": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Profit Loss",
+        "operationId": "get_profit_loss_admin_finance_reports_profit_loss_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "To Date"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "none",
+              "title": "Group By"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfitLossReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/journal-entries/{entry_id}/reverse": {
+      "post": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Reverse Journal Entry",
+        "operationId": "reverse_journal_entry_admin_finance_journal_entries__entry_id__reverse_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "entry_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Entry Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReverseRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JournalEntryResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/users": {
+      "get": {
+        "tags": [
+          "ledger-admin-users"
+        ],
+        "summary": "List Finance Users",
+        "operationId": "list_finance_users_admin_finance_users_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LedgerUserOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Finance Users Admin Finance Users Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "ledger-admin-users"
+        ],
+        "summary": "Add Finance User",
+        "operationId": "add_finance_user_admin_finance_users_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LedgerUserCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerUserOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finance/users/{user_id}": {
+      "patch": {
+        "tags": [
+          "ledger-admin-users"
+        ],
+        "summary": "Update Finance User Role",
+        "operationId": "update_finance_user_role_admin_finance_users__user_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LedgerUserUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerUserOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "ledger-admin-users"
+        ],
+        "summary": "Deactivate Finance User",
+        "operationId": "deactivate_finance_user_admin_finance_users__user_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/ledger/journal-entries": {
+      "post": {
+        "tags": [
+          "ledger-internal"
+        ],
+        "summary": "Post Journal Entry",
+        "description": "Post a balanced journal entry (idempotent). Service-role only.\n\n400 \u2014 unbalanced or unknown account_ref; 409 \u2014 period closed; 201 \u2014 posted\n(or idempotent replay, indicated by ``idempotent_replay`` in the body).",
+        "operationId": "post_journal_entry_internal_ledger_journal_entries_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JournalEntryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JournalEntryResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -89678,6 +90298,849 @@
           "primary_contact_name"
         ],
         "title": "VerifyMagicLinkResponse"
+      },
+      "AccountOut": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "normal_balance": {
+            "type": "string",
+            "title": "Normal Balance"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "is_system": {
+            "type": "boolean",
+            "title": "Is System"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "type",
+          "normal_balance",
+          "is_active",
+          "is_system"
+        ],
+        "title": "AccountOut"
+      },
+      "JournalEntryCreate": {
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Idempotency Key"
+          },
+          "entry_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Entry Date"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Description"
+          },
+          "source_service": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Source Service"
+          },
+          "source_type": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Source Type"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "org_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org Id",
+            "description": "Phase 1: ignored; server uses LEDGER_DEFAULT_ORG_ID"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/JournalLineInput"
+            },
+            "type": "array",
+            "minItems": 2,
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "idempotency_key",
+          "entry_date",
+          "description",
+          "source_service",
+          "source_type",
+          "lines"
+        ],
+        "title": "JournalEntryCreate",
+        "description": "A balanced journal entry to post. sum(debits) must equal sum(credits)."
+      },
+      "JournalEntryDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "entry_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Entry Date"
+          },
+          "posting_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Posting Date"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "source_service": {
+            "type": "string",
+            "title": "Source Service"
+          },
+          "source_type": {
+            "type": "string",
+            "title": "Source Type"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "period_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Period Id"
+          },
+          "reversal_of_entry_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversal Of Entry Id"
+          },
+          "reversed_by_entry_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversed By Entry Id"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/JournalLineOut"
+            },
+            "type": "array",
+            "title": "Lines",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "entry_date",
+          "posting_date",
+          "description",
+          "source_service",
+          "source_type",
+          "status",
+          "period_id"
+        ],
+        "title": "JournalEntryDetail"
+      },
+      "JournalEntryResult": {
+        "properties": {
+          "entry_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Entry Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "period_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Period Id"
+          },
+          "idempotent_replay": {
+            "type": "boolean",
+            "title": "Idempotent Replay",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "entry_id",
+          "status",
+          "period_id"
+        ],
+        "title": "JournalEntryResult",
+        "description": "Returned on successful post (or idempotent replay)."
+      },
+      "JournalEntrySummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "entry_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Entry Date"
+          },
+          "posting_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Posting Date"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "source_service": {
+            "type": "string",
+            "title": "Source Service"
+          },
+          "source_type": {
+            "type": "string",
+            "title": "Source Type"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "period_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Period Id"
+          },
+          "reversal_of_entry_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversal Of Entry Id"
+          },
+          "reversed_by_entry_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversed By Entry Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "entry_date",
+          "posting_date",
+          "description",
+          "source_service",
+          "source_type",
+          "status",
+          "period_id"
+        ],
+        "title": "JournalEntrySummary"
+      },
+      "JournalLineInput": {
+        "properties": {
+          "account_ref": {
+            "type": "string",
+            "title": "Account Ref",
+            "description": "Stable CoA maps_to ref, e.g. 'paystack_clearing'"
+          },
+          "debit": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Debit",
+            "description": "Minor units (kobo); 0 for a credit line",
+            "default": 0
+          },
+          "credit": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Credit",
+            "description": "Minor units (kobo); 0 for a debit line",
+            "default": 0
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3,
+                "minLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency",
+            "description": "ISO 4217; defaults to org base"
+          },
+          "cost_center": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Center"
+          },
+          "dimension_1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension 1"
+          },
+          "dimension_2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension 2"
+          },
+          "member_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Ref"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
+          "tax_code_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Code Ref"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_ref"
+        ],
+        "title": "JournalLineInput",
+        "description": "One debit or credit line. Exactly one of debit/credit must be > 0."
+      },
+      "JournalLineOut": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id"
+          },
+          "account_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Code"
+          },
+          "debit_minor": {
+            "type": "integer",
+            "title": "Debit Minor"
+          },
+          "credit_minor": {
+            "type": "integer",
+            "title": "Credit Minor"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "cost_center_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Center Id"
+          },
+          "dimension_1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension 1"
+          },
+          "dimension_2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension 2"
+          },
+          "member_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Ref"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "debit_minor",
+          "credit_minor",
+          "currency"
+        ],
+        "title": "JournalLineOut"
+      },
+      "LedgerRole": {
+        "type": "string",
+        "enum": [
+          "viewer",
+          "accountant",
+          "admin",
+          "owner"
+        ],
+        "title": "LedgerRole",
+        "description": "Finance-team roles (design doc \u00a715). Hierarchy: owner > admin > accountant > viewer."
+      },
+      "LedgerUserCreate": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/LedgerRole"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "title": "LedgerUserCreate",
+        "description": "Register a finance-team member by email and/or auth_id."
+      },
+      "LedgerUserOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Id"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "role": {
+            "$ref": "#/components/schemas/LedgerRole"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "deactivated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deactivated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "role",
+          "created_at"
+        ],
+        "title": "LedgerUserOut"
+      },
+      "LedgerUserUpdate": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/LedgerRole"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "title": "LedgerUserUpdate"
+      },
+      "ProfitLossReport": {
+        "properties": {
+          "from_date": {
+            "type": "string",
+            "format": "date",
+            "title": "From Date"
+          },
+          "to_date": {
+            "type": "string",
+            "format": "date",
+            "title": "To Date"
+          },
+          "group_by": {
+            "type": "string",
+            "title": "Group By"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ProfitLossRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total_revenue_minor": {
+            "type": "integer",
+            "title": "Total Revenue Minor"
+          },
+          "total_expense_minor": {
+            "type": "integer",
+            "title": "Total Expense Minor"
+          },
+          "net_income_minor": {
+            "type": "integer",
+            "title": "Net Income Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_date",
+          "to_date",
+          "group_by",
+          "rows",
+          "total_revenue_minor",
+          "total_expense_minor",
+          "net_income_minor"
+        ],
+        "title": "ProfitLossReport"
+      },
+      "ProfitLossRow": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "revenue_minor": {
+            "type": "integer",
+            "title": "Revenue Minor"
+          },
+          "expense_minor": {
+            "type": "integer",
+            "title": "Expense Minor"
+          },
+          "net_minor": {
+            "type": "integer",
+            "title": "Net Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "revenue_minor",
+          "expense_minor",
+          "net_minor"
+        ],
+        "title": "ProfitLossRow"
+      },
+      "ReverseRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "title": "ReverseRequest",
+        "description": "Optional body for reversing an entry."
+      },
+      "TrialBalanceReport": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TrialBalanceRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total_debit_minor": {
+            "type": "integer",
+            "title": "Total Debit Minor"
+          },
+          "total_credit_minor": {
+            "type": "integer",
+            "title": "Total Credit Minor"
+          },
+          "balanced": {
+            "type": "boolean",
+            "title": "Balanced"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "rows",
+          "total_debit_minor",
+          "total_credit_minor",
+          "balanced"
+        ],
+        "title": "TrialBalanceReport"
+      },
+      "TrialBalanceRow": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "debit_minor": {
+            "type": "integer",
+            "title": "Debit Minor"
+          },
+          "credit_minor": {
+            "type": "integer",
+            "title": "Credit Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "type",
+          "debit_minor",
+          "credit_minor"
+        ],
+        "title": "TrialBalanceRow"
       }
     }
   }
