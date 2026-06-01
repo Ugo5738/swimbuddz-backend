@@ -14,6 +14,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from tests.factories import SessionFactory
 
 # ---------------------------------------------------------------------------
@@ -260,3 +261,59 @@ async def test_cancel_completed_session(sessions_client, db_session):
 
     assert response.status_code == 400
     assert "completed" in response.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# POST /sessions/{id}/publish — Publish session (idempotent)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_publish_already_scheduled_is_idempotent(sessions_client, db_session):
+    """Publishing an already-SCHEDULED session is a 200 no-op, not a 400,
+    and must NOT re-send member notifications.
+
+    Guards the cohort-class auto-schedule path and retry / double-click
+    behaviour, where /publish can legitimately be hit on a session that's
+    already live.
+    """
+    s = SessionFactory.create()  # defaults to SCHEDULED
+    db_session.add(s)
+    await db_session.commit()
+
+    with patch(
+        "services.sessions_service.routers.member.internal_post",
+        new_callable=AsyncMock,
+    ) as mock_notify:
+        response = await sessions_client.post(f"/sessions/{s.id}/publish")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"].lower() == "scheduled"
+    # The idempotent no-op path returns before any notification fan-out.
+    mock_notify.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_publish_cancelled_session_conflicts(sessions_client, db_session):
+    """A cancelled session is a genuine conflict — publish still returns 400."""
+    s = SessionFactory.create(status="CANCELLED")
+    db_session.add(s)
+    await db_session.commit()
+
+    response = await sessions_client.post(f"/sessions/{s.id}/publish")
+
+    assert response.status_code == 400
+    assert "cannot publish" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_publish_session_not_found(sessions_client, db_session):
+    """Publishing a non-existent session returns 404."""
+    fake_id = uuid.uuid4()
+
+    response = await sessions_client.post(f"/sessions/{fake_id}/publish")
+
+    assert response.status_code == 404
