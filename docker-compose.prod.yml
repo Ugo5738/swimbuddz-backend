@@ -324,6 +324,21 @@ services:
     command: arq services.communications_service.worker.WorkerSettings
     restart: unless-stopped
 
+  volunteer-worker:
+    image: ${DOCKER_USERNAME}/swimbuddz-volunteer-service:latest
+    container_name: swimbuddz_volunteer_worker
+    env_file:
+      - .env.prod
+    depends_on:
+      redis:
+        condition: service_healthy
+      volunteer-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.volunteer_service.worker.WorkerSettings
+    restart: unless-stopped
+
   payments-worker:
     image: ${DOCKER_USERNAME}/swimbuddz-payments-service:latest
     container_name: swimbuddz_payments_worker
