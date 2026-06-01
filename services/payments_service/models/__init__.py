@@ -17,12 +17,14 @@ from services.payments_service.models.enums import (
     MakeupStatus,
     RecurringPayoutStatus,
 )
+from services.payments_service.models.ledger_failure import LedgerPostFailure
 
 __all__ = [
     "CoachPayout",
     "CohortMakeupObligation",
     "Discount",
     "DiscountType",
+    "LedgerPostFailure",
     "MakeupReason",
     "MakeupStatus",
     "Payment",

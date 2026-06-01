@@ -590,6 +590,23 @@ def create_app() -> FastAPI:
         return await proxy_request(clients.corporate_client, target, request)
 
     # ==================================================================
+    # LEDGER SERVICE PROXY
+    # ==================================================================
+    # Admin / finance surface only. Internal posting (/internal/ledger/*) is
+    # service-to-service (direct call, service-role JWT) and intentionally NOT
+    # proxied. /api/v1/ledger/* is reserved for future member-facing endpoints
+    # (e.g. a member viewing their own invoices) — not implemented in Phase 1.
+    @app.api_route(
+        "/api/v1/admin/finance/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_admin_finance(path: str, request: Request):
+        """Proxy all /api/v1/admin/finance/* requests to ledger service."""
+        return await proxy_request(
+            clients.ledger_client, f"/admin/finance/{path}", request
+        )
+
+    # ==================================================================
     # DASHBOARD (Gateway-specific aggregation)
     # ==================================================================
     from services.gateway_service.app.routers.cleanup import router as cleanup_router
