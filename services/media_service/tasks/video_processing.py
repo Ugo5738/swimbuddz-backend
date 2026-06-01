@@ -22,6 +22,29 @@ from services.media_service.services.storage import BucketType, storage_service
 logger = get_logger(__name__)
 
 
+def _extract_storage_prefix(url: str, fallback: str = "uploads") -> str:
+    """Return the directory portion of an S3-style URL's key.
+
+    The upload endpoint stores files under purpose-specific prefixes
+    (``milestone-evidence/``, ``milestone-videos/``, ``product-videos/``,
+    etc. — see ``services/media_service/routers/media.py``). When the
+    worker re-uploads a transcoded video or generated thumbnail it
+    must reuse the **same prefix** as the original so that the
+    transcoded artefact stays grouped with its source — both for
+    operational sanity (everything for one purpose in one prefix)
+    and for the deletion / audit logic that scans by prefix.
+
+    Returns ``fallback`` if the URL is empty, has no path, or has
+    only a bare filename with no directory component.
+    """
+    if not url:
+        return fallback
+    path = urlparse(url).path.lstrip("/")
+    if not path or "/" not in path:
+        return fallback
+    return path.rsplit("/", 1)[0]
+
+
 async def _resolve_download_url(url: str) -> str:
     """Return a URL the worker can actually fetch.
 
@@ -286,11 +309,20 @@ async def process_video_upload(
         new_file_url = None
         new_thumbnail_url = None
 
+        # Preserve the purpose-specific prefix that the upload endpoint
+        # used for the original file (``milestone-evidence/``,
+        # ``milestone-videos/``, ``product-videos/`` etc.). Hardcoding
+        # ``product-videos/`` here misroutes every transcoded artefact
+        # regardless of the original purpose — see
+        # services/media_service/routers/media.py for the canonical
+        # prefix map.
+        storage_prefix = _extract_storage_prefix(original_file_url)
+
         if transcoded_path and os.path.exists(transcoded_path):
             with open(transcoded_path, "rb") as f:
                 transcoded_data = f.read()
 
-            storage_name = f"product-videos/{uuid.uuid4()}.mp4"
+            storage_name = f"{storage_prefix}/{uuid.uuid4()}.mp4"
             new_file_url, _ = await storage_service.upload_media(
                 transcoded_data,
                 storage_name,
@@ -303,7 +335,11 @@ async def process_video_upload(
             with open(thumbnail_path, "rb") as f:
                 thumb_data = f.read()
 
-            thumb_name = f"product-videos/{uuid.uuid4()}_thumb.jpg"
+            # Thumbnails always go to the public bucket so the gallery
+            # can render them without a presigned URL. The prefix still
+            # mirrors the source so admins inspecting the bucket can
+            # find the thumbnail alongside its purpose.
+            thumb_name = f"{storage_prefix}/{uuid.uuid4()}_thumb.jpg"
             new_thumbnail_url, _ = await storage_service.upload_media(
                 thumb_data,
                 thumb_name,
@@ -571,7 +607,11 @@ async def apply_audio_overlay(
         with open(output_path, "rb") as f:
             output_data = f.read()
 
-        storage_name = f"product-videos/{uuid.uuid4()}_audio.mp4"
+        # Same purpose-preserving rule as the transcode path above —
+        # keep the audio-overlaid result in the same prefix as the
+        # source video.
+        storage_prefix = _extract_storage_prefix(video_url)
+        storage_name = f"{storage_prefix}/{uuid.uuid4()}_audio.mp4"
         new_file_url, _ = await storage_service.upload_media(
             output_data,
             storage_name,
