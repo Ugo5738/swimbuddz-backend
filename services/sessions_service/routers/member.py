@@ -17,10 +17,7 @@ from libs.auth.dependencies import (
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
-from libs.common.service_client import (
-    cancel_opportunities_for_context,
-    internal_post,
-)
+from libs.common.service_client import cancel_opportunities_for_context, internal_post
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     Session,
@@ -288,7 +285,10 @@ async def publish_session(
     If the session starts within 6 hours, it's marked as "short notice" and
     only applicable reminders are scheduled.
     """
-    query = select(Session).where(Session.id == session_id)
+    # Lock the row for the transaction so two concurrent publish calls can't
+    # both run the DRAFT→SCHEDULED transition and double-fire member
+    # notifications. The loser of the race observes SCHEDULED below and no-ops.
+    query = select(Session).where(Session.id == session_id).with_for_update()
     result = await db.execute(query)
     session = result.scalar_one_or_none()
 
@@ -298,10 +298,19 @@ async def publish_session(
             detail="Session not found",
         )
 
+    # Idempotent publish: a session that's already SCHEDULED is a success
+    # no-op. Cohort-class sessions are auto-scheduled at creation, and
+    # retries / double-clicks can re-hit this endpoint — none of those should
+    # surface a 400 or re-send notifications. Return the session unchanged.
+    if session.status == SessionStatus.SCHEDULED:
+        return session
+
+    # Any other non-DRAFT state (in_progress / completed / cancelled) is a
+    # genuine conflict: those can't transition into a freshly published session.
     if session.status != SessionStatus.DRAFT:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Session is already {session.status.value}, cannot publish",
+            detail=f"Session is {session.status.value}, cannot publish",
         )
 
     now = utc_now()

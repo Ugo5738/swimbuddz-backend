@@ -22,7 +22,10 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from libs.auth.dependencies import get_current_user, require_admin
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from libs.auth.dependencies import _service_role_jwt, get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.currency import kobo_to_bubbles
 from libs.common.datetime_utils import utc_now
@@ -34,9 +37,6 @@ from libs.common.service_client import (
     get_member_by_auth_id,
 )
 from libs.db.session import get_async_db
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.sessions_service.models import (
     BookingChannel,
     Session,
@@ -365,6 +365,55 @@ async def list_my_unpaid_bookings(
 # ---------------------------------------------------------------------------
 
 
+async def _record_walk_in_attendance(
+    session_id: uuid.UUID, member_id: uuid.UUID
+) -> None:
+    """Best-effort: mark a walk-in member PRESENT in attendance_service.
+
+    A walk-in means the member is physically at the pool, so attendance is
+    recorded immediately — this is what makes walk-ins count in quarterly
+    reports and stops the nightly NO_SHOW sweep from later marking them ABSENT.
+    The public attendance endpoint is an idempotent upsert keyed on
+    (session, member); it links the CONFIRMED booking and trusts it for access,
+    so repeat calls are safe. A transient attendance-service failure must not
+    fail the walk-in record itself, so errors are logged rather than raised.
+    """
+    from libs.common.config import get_settings
+
+    settings = get_settings()
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                f"{settings.ATTENDANCE_SERVICE_URL}"
+                f"/attendance/sessions/{session_id}/attendance/public",
+                json={
+                    "member_id": str(member_id),
+                    # attendance_service AttendanceStatus.PRESENT / AttendanceRole.SWIMMER
+                    # wire values (lowercase). Sent as literals — cross-service
+                    # models must not be imported across service boundaries.
+                    "status": "present",
+                    "role": "swimmer",
+                    "notes": "Admin walk-in",
+                },
+                headers={"Authorization": f"Bearer {_service_role_jwt('sessions')}"},
+            )
+        if resp.status_code >= 400:
+            logger.warning(
+                "Walk-in attendance not recorded (session=%s member=%s): %s %s",
+                session_id,
+                member_id,
+                resp.status_code,
+                resp.text,
+            )
+    except Exception as exc:  # noqa: BLE001 - best-effort side-effect
+        logger.warning(
+            "Walk-in attendance call errored (session=%s member=%s): %s",
+            session_id,
+            member_id,
+            exc,
+        )
+
+
 @router.post(
     "/sessions/{session_id}/admin/walk-in",
     response_model=SessionBookingResponse,
@@ -441,6 +490,7 @@ async def admin_walk_in_booking(
                     existing.notes = payload.notes
                 await db.commit()
                 await db.refresh(existing)
+            await _record_walk_in_attendance(session_id, payload.member_id)
             return existing
         raise HTTPException(
             status_code=409,
@@ -474,6 +524,7 @@ async def admin_walk_in_booking(
         payload.member_id,
         fee_kobo,
     )
+    await _record_walk_in_attendance(session_id, payload.member_id)
     return booking
 
 

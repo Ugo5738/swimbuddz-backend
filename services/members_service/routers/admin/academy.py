@@ -3,16 +3,20 @@
 from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-from libs.db.session import get_async_db
 from libs.common.datetime_utils import utc_now
+from libs.db.session import get_async_db
 from services.members_service.models import Member, MemberMembership
 from services.members_service.routers._helpers import member_eager_load_options
 from services.members_service.schemas import ActivateAcademyRequest, MemberResponse
-from services.members_service.services.member_service import normalize_member_tiers
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from services.members_service.services.member_service import (
+    academy_bundle_expiry,
+    normalize_member_tiers,
+)
 
 router = APIRouter()
 
@@ -115,6 +119,21 @@ async def admin_activate_academy_membership_by_auth(
     current_until = member.membership.academy_paid_until
     if current_until is None or new_end > current_until:
         member.membership.academy_paid_until = new_end
+
+    # Academy enrollment bundles Community (1 year) and Club (3 months) access,
+    # whether paid in full or by installment (docs/club/PRICING_STRATEGY.md). The
+    # billing UI keys its "Activate Community/Club" upsell off these *_paid_until
+    # dates, and normalize_member_tiers strips any tier whose date is not in the
+    # future — so without setting them a paid academy member is wrongly shown as
+    # Community-inactive and prompted to pay again.
+    (
+        member.membership.community_paid_until,
+        member.membership.club_paid_until,
+    ) = academy_bundle_expiry(
+        utc_now(),
+        member.membership.community_paid_until,
+        member.membership.club_paid_until,
+    )
 
     # Update active_tiers to include academy (and implied club + community)
     tier_priority = {"academy": 3, "club": 2, "community": 1}
