@@ -10,18 +10,20 @@ Flow:
     (`DR deferred_revenue_* / CR revenue_*`) straight-line by elapsed days,
     idempotent per (schedule, calendar month), advancing `recognized_minor`.
 
-RECOGNITION POLICY (durations) is design §10.1, kept as a small, documented
-table because durations are a **business policy**, not code. Assumptions to
-confirm/refine:
-  * club = 30 days (monthly default). CLUB_BUNDLE also lands in
-    `deferred_revenue_club`, so a multi-month bundle currently recognises over
-    one month — refine by term when needed.
-  * academy = 84 days (~12-week cohort default); design §10.1 wants 28-day
-    blocks tied to the real cohort start — switch to that when academy_service
-    drives recognition (roadmap R2).
+RECOGNITION POLICY (durations) is a **business policy** (confirmed 2026-06):
+  * community = 365 days — flat annual entry fee.
+  * academy = 84 days — the typical 12-week "beginner freestyle" cohort (most
+    popular). Cohorts vary by goal; exact per-cohort length lands when
+    academy_service drives recognition off the real cohort dates (design §8.4 /
+    roadmap R2). Straight-line keeps the total correct; only the month-by-month
+    split is approximate.
+  * club is intentionally EXCLUDED: terms are member-selected (quarterly /
+    6-month / annual), so no single duration is correct — recognising on a
+    default would mis-state. Club stays deferred until the emitter passes the
+    real term per membership (focused R2 follow-up). Free post-cohort club
+    months are ₦0, so they never create a deferred balance to recognise.
   * session_bundle (per-attendance) and events (at event date) are
-    **delivery-based** — intentionally excluded here; they recognise via their
-    domain service in R2, not this time-based worker.
+    **delivery-based** — recognised via their domain service in R2, not here.
 """
 
 from __future__ import annotations
@@ -46,10 +48,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# deferred account ref -> (method, duration_days). Only time-based products.
+# deferred account ref -> (method, duration_days). See the module docstring for
+# the business rationale. Club is deliberately absent (member-selected terms).
 RECOGNITION_POLICY: dict[str, tuple[RecognitionMethod, int]] = {
     "deferred_revenue_community": (RecognitionMethod.STRAIGHT_LINE, 365),
-    "deferred_revenue_club": (RecognitionMethod.STRAIGHT_LINE, 30),
     "deferred_revenue_academy": (RecognitionMethod.STRAIGHT_LINE, 84),
 }
 
