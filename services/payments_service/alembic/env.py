@@ -20,6 +20,7 @@ from services.payments_service.models import (  # noqa: F401
     Discount,
     LedgerPostFailure,
     Payment,
+    PaystackSettlement,
     RecurringPayoutConfig,
 )
 

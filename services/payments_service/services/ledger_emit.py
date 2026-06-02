@@ -341,3 +341,88 @@ async def emit_payout_paid_to_ledger(db: AsyncSession, payout) -> None:
     await _post_or_dead_letter(
         db, f"{SOURCE_SERVICE}:payout_paid:{payout.id}", str(payout.id), kwargs
     )
+
+
+# ---------------------------------------------------------------------------
+# Settlement drain (design §11.1, R3) — closes paystack_clearing to the bank.
+# ---------------------------------------------------------------------------
+
+
+async def emit_settlement_to_ledger(db: AsyncSession, settlement) -> bool:
+    """Drain clearing for a Paystack settlement:
+
+        DR bank_operating_ngn (net) + DR expense_psp_fees (gross - net)
+        CR paystack_clearing       (gross)
+
+    ``gross`` is what we debited to ``paystack_clearing`` at cash-in, so crediting
+    it by ``gross`` drains exactly what went in; ``net`` is what hit the bank;
+    ``gross - net`` is the PSP fee (folding any Paystack deductions for v1 — PR2
+    reconciles those precisely). Idempotent per settlement id
+    (key payments:settlement:<id>). Returns True if posted (incl. idempotent
+    replay), False if it dead-lettered.
+    """
+    gross = int(settlement.gross_minor or 0)
+    net = int(settlement.net_minor or 0)
+    if gross <= 0:
+        return True  # nothing to drain
+    cost = gross - net  # PSP fees (+ folded deductions)
+    currency = settlement.currency or "NGN"
+    sid = str(settlement.paystack_settlement_id)
+    entry_date: date = settlement.settlement_date or utc_now().date()
+    settings = get_settings()
+
+    lines: list[dict] = [
+        {
+            "account_ref": "bank_operating_ngn",
+            "debit": net,
+            "currency": currency,
+            "external_ref": sid,
+        }
+    ]
+    if cost > 0:
+        lines.append(
+            {
+                "account_ref": "expense_psp_fees",
+                "debit": cost,
+                "currency": currency,
+                "external_ref": sid,
+            }
+        )
+    lines.append(
+        {
+            "account_ref": "paystack_clearing",
+            "credit": gross,
+            "currency": currency,
+            "external_ref": sid,
+        }
+    )
+
+    kwargs = {
+        "entry_date": entry_date.isoformat(),
+        "description": f"Paystack settlement {sid}",
+        "source_service": SOURCE_SERVICE,
+        "source_type": "settlement",
+        "source_id": sid,
+        "org_id": settings.LEDGER_DEFAULT_ORG_ID or None,
+        "metadata": {
+            "paystack_settlement_id": sid,
+            "gross": gross,
+            "net": net,
+            "fees": int(settlement.fees_minor or 0),
+        },
+        "lines": lines,
+    }
+    try:
+        await post_journal_entry(calling_service=SOURCE_SERVICE, **kwargs)
+        return True
+    except Exception as exc:  # noqa: BLE001 — never break the ingest loop
+        logger.warning(
+            "Ledger settlement post failed (%s); dead-lettering: %s",
+            sid,
+            exc,
+            exc_info=True,
+        )
+        await _dead_letter(
+            db, f"{SOURCE_SERVICE}:settlement:{sid}", sid, kwargs, str(exc)
+        )
+        return False

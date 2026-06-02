@@ -18,6 +18,7 @@ from services.payments_service.models.enums import (
     RecurringPayoutStatus,
 )
 from services.payments_service.models.ledger_failure import LedgerPostFailure
+from services.payments_service.models.settlement import PaystackSettlement
 
 __all__ = [
     "CoachPayout",
@@ -30,6 +31,7 @@ __all__ = [
     "Payment",
     "PaymentPurpose",
     "PaymentStatus",
+    "PaystackSettlement",
     "PayoutMethod",
     "PayoutStatus",
     "RecurringPayoutConfig",

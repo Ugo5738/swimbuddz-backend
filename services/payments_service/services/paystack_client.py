@@ -326,6 +326,57 @@ class PaystackClient:
 
         return 0
 
+    # =========================================================================
+    # Settlement Methods (R3 — reconciliation)
+    # =========================================================================
+
+    async def list_settlements(
+        self,
+        status: str = "success",
+        date_from: str = None,
+        date_to: str = None,
+        per_page: int = 200,
+        max_pages: int = 50,
+    ) -> List[dict]:
+        """List settlements from the Paystack Settlements API (paginated).
+
+        A settlement is a batch Paystack paid into our bank, net of fees. Each
+        item carries (amounts in kobo): ``total_amount`` (gross processed),
+        ``effective_amount`` (net settled to bank), ``total_fees``,
+        ``settlement_date``, ``status``, ``id``.
+
+        Args:
+            status: Filter by settlement status (default "success").
+            date_from / date_to: ISO date bounds (YYYY-MM-DD), optional.
+            per_page: Page size (Paystack max ~200).
+            max_pages: Safety cap on pagination.
+
+        Returns:
+            Raw settlement dicts (full payload preserved for audit/reconciliation).
+        """
+        results: List[dict] = []
+        page = 1
+        while page <= max_pages:
+            params = {"perPage": per_page, "page": page}
+            if status:
+                params["status"] = status
+            if date_from:
+                params["from"] = date_from
+            if date_to:
+                params["to"] = date_to
+
+            data = await self._request("GET", "/settlement", params=params)
+            batch = data.get("data", []) or []
+            results.extend(batch)
+
+            # Stop when this page wasn't full (last page) — robust without relying
+            # on meta.pageCount, which Paystack doesn't always populate.
+            if len(batch) < per_page:
+                break
+            page += 1
+
+        return results
+
 
 # Singleton instance for convenience
 def get_paystack_client() -> PaystackClient:

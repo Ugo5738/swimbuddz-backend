@@ -35,6 +35,13 @@ async def task_expire_overdue_makeups(ctx: dict):
     await expire_overdue_makeups()
 
 
+async def task_ingest_settlements(ctx: dict):
+    from services.payments_service.tasks import ingest_paystack_settlements
+
+    logger.info("Running: ingest_paystack_settlements")
+    await ingest_paystack_settlements(commit=True)
+
+
 class WorkerSettings:
     redis_settings = get_redis_settings()
     queue_name = "arq:payments"
@@ -44,6 +51,7 @@ class WorkerSettings:
         task_retry_payment_fulfillment,
         task_process_recurring_payouts,
         task_expire_overdue_makeups,
+        task_ingest_settlements,
     ]
 
     cron_jobs = [
@@ -72,6 +80,15 @@ class WorkerSettings:
             task_expire_overdue_makeups,
             hour={2},
             minute={30},
+            run_at_startup=False,
+        ),
+        # Ingest Paystack settlements: daily at 04:00 UTC. Posts the drain entry
+        # (DR bank + DR psp_fees / CR paystack_clearing) for each new settlement,
+        # closing paystack_clearing to the bank. Idempotent (design §11, R3).
+        cron(
+            task_ingest_settlements,
+            hour={4},
+            minute={0},
             run_at_startup=False,
         ),
     ]
