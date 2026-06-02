@@ -16,7 +16,7 @@ from services.wallet_service.models import (
     WalletStatus,
     WalletTransaction,
 )
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -160,6 +160,46 @@ async def grant_welcome_bonus_if_eligible(
 # ---------------------------------------------------------------------------
 
 
+async def _consume_promo_grants_fifo(
+    db: AsyncSession, wallet: Wallet, amount: int
+) -> tuple[int, int]:
+    """Consume `amount` Bubbles promo-first (oldest unexpired grants), then
+    purchased — design §19-B. Decrements grant.bubbles_remaining and returns
+    (promo_used, purchased_used). The caller holds the wallet row's FOR UPDATE
+    lock, so per-wallet consumption is serialised; spending promo here also
+    stops it from later expiring into breakage.
+    """
+    now = utc_now()
+    grants = (
+        (
+            await db.execute(
+                select(PromotionalBubbleGrant)
+                .where(
+                    PromotionalBubbleGrant.wallet_id == wallet.id,
+                    PromotionalBubbleGrant.bubbles_remaining > 0,
+                    or_(
+                        PromotionalBubbleGrant.expires_at.is_(None),
+                        PromotionalBubbleGrant.expires_at > now,
+                    ),
+                )
+                .order_by(PromotionalBubbleGrant.created_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    promo_used = 0
+    remaining = amount
+    for g in grants:
+        if remaining <= 0:
+            break
+        take = min(remaining, g.bubbles_remaining)
+        g.bubbles_remaining -= take
+        promo_used += take
+        remaining -= take
+    return promo_used, remaining
+
+
 async def debit_wallet(
     db: AsyncSession,
     *,
@@ -223,6 +263,17 @@ async def debit_wallet(
     balance_before = wallet.balance
     balance_after = wallet.balance - amount
 
+    # §19-B: member spends/penalties draw from promo grants first (FIFO), then
+    # purchased Bubbles. Record the split on the txn so the ledger emitter can
+    # debit the right liability sub-account.
+    meta = dict(metadata or {})
+    if transaction_type in (TransactionType.PURCHASE, TransactionType.PENALTY):
+        promo_used, purchased_used = await _consume_promo_grants_fifo(
+            db, wallet, amount
+        )
+        meta["promo_bubbles"] = promo_used
+        meta["purchased_bubbles"] = purchased_used
+
     txn = WalletTransaction(
         wallet_id=wallet.id,
         idempotency_key=idempotency_key,
@@ -237,7 +288,7 @@ async def debit_wallet(
         reference_type=reference_type,
         reference_id=reference_id,
         initiated_by=initiated_by,
-        txn_metadata=metadata,
+        txn_metadata=meta,
     )
     db.add(txn)
 
