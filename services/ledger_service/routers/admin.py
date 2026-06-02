@@ -28,6 +28,12 @@ from services.ledger_service.models.enums import (
     LedgerRole,
     PeriodStatus,
 )
+from services.ledger_service.schemas.invoice import (
+    InvoiceCreate,
+    InvoiceList,
+    InvoiceOut,
+    InvoiceVoidRequest,
+)
 from services.ledger_service.schemas.reconciliation import ReconciliationReport
 from services.ledger_service.schemas.reports import (
     AccountOut,
@@ -47,6 +53,13 @@ from services.ledger_service.schemas.reports import (
 from services.ledger_service.services.periods import (
     InvalidTransitionError,
     transition_period,
+)
+from services.ledger_service.services.invoices import (
+    InvoiceNotFound,
+    create_invoice,
+    get_invoice,
+    list_invoices,
+    void_invoice,
 )
 from services.ledger_service.services.reconciliation import reconciliation_report
 from services.ledger_service.services.reports import (
@@ -248,6 +261,80 @@ async def get_margin(
     """Gross margin (revenue − COGS) per domain over a date range (design §14)."""
     org_id = request.state.org_id
     return await margin_by_domain(session, org_id, from_date, to_date)
+
+
+# ---- Invoices (design §13) ----------------------------------------------------
+
+
+@router.post(
+    "/invoices", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED
+)
+async def admin_create_invoice(
+    payload: InvoiceCreate,
+    request: Request,
+    _acct=Depends(require_ledger_role(LedgerRole.ACCOUNTANT)),
+    session: AsyncSession = Depends(get_ledger_db),
+) -> InvoiceOut:
+    """Manually issue an invoice (accountant+) — gapless number, persisted."""
+    org_id = request.state.org_id
+    result = await create_invoice(session, org_id, payload)
+    await session.commit()
+    return result
+
+
+@router.get("/invoices", response_model=InvoiceList)
+async def admin_list_invoices(
+    request: Request,
+    _viewer=Depends(require_ledger_role(LedgerRole.VIEWER)),
+    session: AsyncSession = Depends(get_ledger_db),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> InvoiceList:
+    """List invoices, newest first (optionally filtered by status)."""
+    return await list_invoices(
+        session,
+        request.state.org_id,
+        status=status_filter,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/invoices/{invoice_id}", response_model=InvoiceOut)
+async def admin_get_invoice(
+    invoice_id: uuid.UUID,
+    request: Request,
+    _viewer=Depends(require_ledger_role(LedgerRole.VIEWER)),
+    session: AsyncSession = Depends(get_ledger_db),
+) -> InvoiceOut:
+    try:
+        return await get_invoice(session, request.state.org_id, invoice_id)
+    except InvoiceNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found"
+        ) from exc
+
+
+@router.post("/invoices/{invoice_id}/void", response_model=InvoiceOut)
+async def admin_void_invoice(
+    invoice_id: uuid.UUID,
+    payload: InvoiceVoidRequest,
+    request: Request,
+    _acct=Depends(require_ledger_role(LedgerRole.ACCOUNTANT)),
+    session: AsyncSession = Depends(get_ledger_db),
+) -> InvoiceOut:
+    """Void an invoice (accountant+). The number is retained for the audit trail."""
+    try:
+        result = await void_invoice(
+            session, request.state.org_id, invoice_id, payload.reason
+        )
+    except InvoiceNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found"
+        ) from exc
+    await session.commit()
+    return result
 
 
 @router.get("/periods", response_model=list[PeriodOut])

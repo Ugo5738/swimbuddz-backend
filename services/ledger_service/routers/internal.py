@@ -14,10 +14,12 @@ from services.ledger_service.schemas.journal import (
     JournalEntryCreate,
     JournalEntryResult,
 )
+from services.ledger_service.schemas.invoice import InvoiceCreate, InvoiceOut
 from services.ledger_service.schemas.reconciliation import (
     ExternalTransactionBatch,
     ReconciliationIntakeResult,
 )
+from services.ledger_service.services.invoices import create_invoice
 from services.ledger_service.services.posting import (
     PeriodClosedError,
     UnbalancedEntryError,
@@ -92,3 +94,25 @@ async def post_external_transactions(
     summary = await intake_external_transactions(session, org_id, payload.transactions)
     await session.commit()
     return ReconciliationIntakeResult(**summary)
+
+
+@router.post(
+    "/invoices",
+    response_model=InvoiceOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_invoice(
+    payload: InvoiceCreate,
+    request: Request,
+    _user: AuthUser = Depends(require_service_role),
+    session: AsyncSession = Depends(get_ledger_db),
+) -> InvoiceOut:
+    """Issue an invoice — allocate a gapless number + persist header/lines.
+
+    Service-role only (design §13). Other services (corporate, payments) call this
+    to issue an invoice for a deal/payment.
+    """
+    org_id = request.state.org_id
+    result = await create_invoice(session, org_id, payload)
+    await session.commit()
+    return result

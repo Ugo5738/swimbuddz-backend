@@ -157,4 +157,63 @@ async def post_external_transactions(
     return resp.json()
 
 
-__all__ = ["post_journal_entry", "post_external_transactions", "JournalLineSpec"]
+async def create_invoice(
+    *,
+    lines: list[dict],
+    calling_service: str,
+    org_id: Optional[str] = None,
+    source_service: Optional[str] = None,
+    source_type: Optional[str] = None,
+    source_id: Optional[str] = None,
+    customer_ref: Optional[str] = None,
+    customer_name: Optional[str] = None,
+    customer_email: Optional[str] = None,
+    customer_tin: Optional[str] = None,
+    currency: str = "NGN",
+    issue_date: Optional[str] = None,
+    due_date: Optional[str] = None,
+    notes: Optional[str] = None,
+    metadata: Optional[dict] = None,
+) -> dict:
+    """Issue an invoice via ledger_service (design §13). RAISES on failure.
+
+    The ledger allocates a gapless ``SB-YYYY-NNNNNN`` number and persists the
+    header + lines. ``lines`` items match ``InvoiceLineIn``:
+    ``{description, quantity, unit_price_minor, amount_minor?, dimension_1?}``.
+
+    Returns the ledger's ``InvoiceOut`` dict (incl. ``invoice_number``).
+    """
+    settings = get_settings()
+    payload: dict[str, Any] = {"lines": lines, "currency": currency}
+    optional = {
+        "org_id": org_id,
+        "source_service": source_service,
+        "source_type": source_type,
+        "source_id": source_id,
+        "customer_ref": customer_ref,
+        "customer_name": customer_name,
+        "customer_email": customer_email,
+        "customer_tin": customer_tin,
+        "issue_date": issue_date,
+        "due_date": due_date,
+        "notes": notes,
+        "metadata": metadata,
+    }
+    payload.update({k: v for k, v in optional.items() if v is not None})
+
+    resp = await internal_post(
+        service_url=settings.LEDGER_SERVICE_URL,
+        path="/internal/ledger/invoices",
+        calling_service=calling_service,
+        json=payload,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+__all__ = [
+    "post_journal_entry",
+    "post_external_transactions",
+    "create_invoice",
+    "JournalLineSpec",
+]

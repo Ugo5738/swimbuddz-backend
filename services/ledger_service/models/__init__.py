@@ -26,6 +26,11 @@ from services.ledger_service.models.enums import (
     RecognitionStatus,
     enum_values,
 )
+from services.ledger_service.models.invoice import (
+    Invoice,
+    InvoiceLine,
+    InvoiceSequence,
+)
 from services.ledger_service.models.journal import JournalEntry, JournalLine
 from services.ledger_service.models.organization import Organization
 from services.ledger_service.models.period import Period
@@ -47,6 +52,9 @@ __all__ = [
     "RevenueRecognitionSchedule",
     "ExternalTransaction",
     "ReconciliationBreak",
+    "Invoice",
+    "InvoiceLine",
+    "InvoiceSequence",
     "LedgerUser",
     "AuditLog",
     # Enums

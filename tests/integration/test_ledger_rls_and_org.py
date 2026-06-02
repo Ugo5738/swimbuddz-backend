@@ -32,6 +32,9 @@ EXPECTED_RLS_TABLES = {
     "revenue_recognition_schedules",
     "external_transactions",
     "reconciliation_breaks",
+    "invoices",
+    "invoice_lines",
+    "invoice_sequences",
 }
 
 
