@@ -22,11 +22,16 @@ from services.ledger_service.models import (  # noqa: F401
     AuditLog,
     ChartOfAccounts,
     CostCenter,
+    ExternalTransaction,
+    Invoice,
+    InvoiceLine,
+    InvoiceSequence,
     JournalEntry,
     JournalLine,
     LedgerUser,
     Organization,
     Period,
+    ReconciliationBreak,
     RevenueRecognitionSchedule,
 )
 
@@ -56,6 +61,11 @@ SERVICE_TABLES: set[str] = {
     "account_balances",
     "ledger_periods",
     "revenue_recognition_schedules",
+    "external_transactions",
+    "reconciliation_breaks",
+    "invoices",
+    "invoice_lines",
+    "invoice_sequences",
     "ledger_users",
     "ledger_audit_log",
 }

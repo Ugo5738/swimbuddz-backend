@@ -118,4 +118,102 @@ async def post_journal_entry(
     return resp.json()
 
 
-__all__ = ["post_journal_entry", "JournalLineSpec"]
+async def post_external_transactions(
+    *,
+    transactions: list[dict],
+    calling_service: str,
+    org_id: Optional[str] = None,
+) -> dict:
+    """Push PSP settlement transactions to the ledger for reconciliation (§11.2).
+
+    The ledger upserts each (idempotent per (org, psp, external_txn_id)) and
+    matches it against the books. Like ``post_journal_entry`` this RAISES on
+    failure — the caller decides whether to log/retry (reconciliation is a
+    best-effort overlay; a missed push is re-pushed on the next settlement sweep).
+
+    Args:
+        transactions: list of dicts matching ``ExternalTransactionIn``
+            (psp, external_txn_id, external_ref, settlement_ref, amount_minor,
+            fee_minor, currency, status, occurred_at, raw_payload).
+        calling_service: Name of the calling service (JWT "sub" claim).
+        org_id: Target organization UUID; omitted → server default (Phase 1).
+
+    Returns:
+        ``ReconciliationIntakeResult`` dict (received, inserted, matched,
+        breaks_opened).
+    """
+    settings = get_settings()
+    payload: dict[str, Any] = {"transactions": transactions}
+    if org_id is not None:
+        payload["org_id"] = org_id
+
+    resp = await internal_post(
+        service_url=settings.LEDGER_SERVICE_URL,
+        path="/internal/ledger/external-transactions",
+        calling_service=calling_service,
+        json=payload,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def create_invoice(
+    *,
+    lines: list[dict],
+    calling_service: str,
+    org_id: Optional[str] = None,
+    source_service: Optional[str] = None,
+    source_type: Optional[str] = None,
+    source_id: Optional[str] = None,
+    customer_ref: Optional[str] = None,
+    customer_name: Optional[str] = None,
+    customer_email: Optional[str] = None,
+    customer_tin: Optional[str] = None,
+    currency: str = "NGN",
+    issue_date: Optional[str] = None,
+    due_date: Optional[str] = None,
+    notes: Optional[str] = None,
+    metadata: Optional[dict] = None,
+) -> dict:
+    """Issue an invoice via ledger_service (design §13). RAISES on failure.
+
+    The ledger allocates a gapless ``SB-YYYY-NNNNNN`` number and persists the
+    header + lines. ``lines`` items match ``InvoiceLineIn``:
+    ``{description, quantity, unit_price_minor, amount_minor?, dimension_1?}``.
+
+    Returns the ledger's ``InvoiceOut`` dict (incl. ``invoice_number``).
+    """
+    settings = get_settings()
+    payload: dict[str, Any] = {"lines": lines, "currency": currency}
+    optional = {
+        "org_id": org_id,
+        "source_service": source_service,
+        "source_type": source_type,
+        "source_id": source_id,
+        "customer_ref": customer_ref,
+        "customer_name": customer_name,
+        "customer_email": customer_email,
+        "customer_tin": customer_tin,
+        "issue_date": issue_date,
+        "due_date": due_date,
+        "notes": notes,
+        "metadata": metadata,
+    }
+    payload.update({k: v for k, v in optional.items() if v is not None})
+
+    resp = await internal_post(
+        service_url=settings.LEDGER_SERVICE_URL,
+        path="/internal/ledger/invoices",
+        calling_service=calling_service,
+        json=payload,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+__all__ = [
+    "post_journal_entry",
+    "post_external_transactions",
+    "create_invoice",
+    "JournalLineSpec",
+]

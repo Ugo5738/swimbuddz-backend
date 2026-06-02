@@ -41039,6 +41039,514 @@
         }
       }
     },
+    "/api/v1/admin/finance/reports/reconciliation": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Reconciliation",
+        "description": "Open reconciliation breaks + match summary (PSP settlements vs the books,\ndesign \u00a711.2).",
+        "operationId": "get_reconciliation_admin_finance_reports_reconciliation_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/reports/balance-sheet": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Balance Sheet",
+        "description": "Statement of financial position (A = L + E) as of a date (design \u00a714).",
+        "operationId": "get_balance_sheet_admin_finance_reports_balance_sheet_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalanceSheetReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/reports/cash-position": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Cash Position",
+        "description": "Cash by location \u2014 settled in bank vs in-transit at the PSP (design \u00a714).",
+        "operationId": "get_cash_position_admin_finance_reports_cash_position_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashPositionReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/reports/bubbles-liability": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Bubbles Liability",
+        "description": "Outstanding Bubbles liability, purchased vs promotional (\u00a719-B).",
+        "operationId": "get_bubbles_liability_admin_finance_reports_bubbles_liability_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BubblesLiabilityReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/reports/margin": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Margin",
+        "description": "Gross margin (revenue \u2212 COGS) per domain over a date range (design \u00a714).",
+        "operationId": "get_margin_admin_finance_reports_margin_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "To Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarginReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/invoices": {
+      "post": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Admin Create Invoice",
+        "description": "Manually issue an invoice (accountant+) \u2014 gapless number, persisted.",
+        "operationId": "admin_create_invoice_admin_finance_invoices_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Admin List Invoices",
+        "description": "List invoices, newest first (optionally filtered by status).",
+        "operationId": "admin_list_invoices_admin_finance_invoices_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/invoices/{invoice_id}": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Admin Get Invoice",
+        "operationId": "admin_get_invoice_admin_finance_invoices__invoice_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/invoices/{invoice_id}/void": {
+      "post": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Admin Void Invoice",
+        "description": "Void an invoice (accountant+). The number is retained for the audit trail.",
+        "operationId": "admin_void_invoice_admin_finance_invoices__invoice_id__void_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceVoidRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/finance/periods": {
       "get": {
         "tags": [
@@ -41417,6 +41925,100 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/JournalEntryResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/ledger/external-transactions": {
+      "post": {
+        "tags": [
+          "ledger-internal"
+        ],
+        "summary": "Post External Transactions",
+        "description": "Ingest PSP settlement transactions and reconcile them against the books.\n\nEach transaction is upserted (idempotent per (org, psp, external_txn_id)) and\nmatched against ``journal_lines.external_ref``; unmatched or amount-mismatched\nitems open a reconciliation break. Service-role only (design \u00a711.2).",
+        "operationId": "post_external_transactions_internal_ledger_external_transactions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalTransactionBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationIntakeResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/ledger/invoices": {
+      "post": {
+        "tags": [
+          "ledger-internal"
+        ],
+        "summary": "Post Invoice",
+        "description": "Issue an invoice \u2014 allocate a gapless number + persist header/lines.\n\nService-role only (design \u00a713). Other services (corporate, payments) call this\nto issue an invoice for a deal/payment.",
+        "operationId": "post_invoice_internal_ledger_invoices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceOut"
                 }
               }
             }
@@ -90509,6 +91111,185 @@
         ],
         "title": "AccountOut"
       },
+      "BalanceSheetReport": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "assets": {
+            "$ref": "#/components/schemas/BalanceSheetSection"
+          },
+          "liabilities": {
+            "$ref": "#/components/schemas/BalanceSheetSection"
+          },
+          "equity": {
+            "$ref": "#/components/schemas/BalanceSheetSection"
+          },
+          "total_assets_minor": {
+            "type": "integer",
+            "title": "Total Assets Minor"
+          },
+          "total_liabilities_and_equity_minor": {
+            "type": "integer",
+            "title": "Total Liabilities And Equity Minor"
+          },
+          "balanced": {
+            "type": "boolean",
+            "title": "Balanced"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "assets",
+          "liabilities",
+          "equity",
+          "total_assets_minor",
+          "total_liabilities_and_equity_minor",
+          "balanced"
+        ],
+        "title": "BalanceSheetReport"
+      },
+      "BalanceSheetRow": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "amount_minor"
+        ],
+        "title": "BalanceSheetRow"
+      },
+      "BalanceSheetSection": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/BalanceSheetRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total_minor": {
+            "type": "integer",
+            "title": "Total Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rows",
+          "total_minor"
+        ],
+        "title": "BalanceSheetSection"
+      },
+      "BubblesLiabilityReport": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "purchased_minor": {
+            "type": "integer",
+            "title": "Purchased Minor"
+          },
+          "promotional_minor": {
+            "type": "integer",
+            "title": "Promotional Minor"
+          },
+          "total_minor": {
+            "type": "integer",
+            "title": "Total Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "purchased_minor",
+          "promotional_minor",
+          "total_minor"
+        ],
+        "title": "BubblesLiabilityReport"
+      },
+      "CashPositionReport": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CashPositionRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "bank_minor": {
+            "type": "integer",
+            "title": "Bank Minor"
+          },
+          "clearing_minor": {
+            "type": "integer",
+            "title": "Clearing Minor"
+          },
+          "total_minor": {
+            "type": "integer",
+            "title": "Total Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "rows",
+          "bank_minor",
+          "clearing_minor",
+          "total_minor"
+        ],
+        "title": "CashPositionReport"
+      },
+      "CashPositionRow": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "kind",
+          "amount_minor"
+        ],
+        "title": "CashPositionRow"
+      },
       "DeferredRevenueReport": {
         "properties": {
           "as_of": {
@@ -90573,6 +91354,708 @@
           "remaining_minor"
         ],
         "title": "DeferredRevenueRow"
+      },
+      "ExternalTransactionBatch": {
+        "properties": {
+          "org_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org Id",
+            "description": "Phase 1: ignored; server uses LEDGER_DEFAULT_ORG_ID"
+          },
+          "transactions": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalTransactionIn"
+            },
+            "type": "array",
+            "title": "Transactions"
+          }
+        },
+        "type": "object",
+        "title": "ExternalTransactionBatch",
+        "description": "Bulk intake of PSP transactions. Idempotent per (org, psp, txn id)."
+      },
+      "ExternalTransactionIn": {
+        "properties": {
+          "psp": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Psp"
+          },
+          "external_txn_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "External Txn Id"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
+          "settlement_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settlement Ref"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor",
+            "default": 0
+          },
+          "fee_minor": {
+            "type": "integer",
+            "title": "Fee Minor",
+            "default": 0
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "NGN"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred At"
+          },
+          "raw_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Payload"
+          }
+        },
+        "type": "object",
+        "required": [
+          "psp",
+          "external_txn_id"
+        ],
+        "title": "ExternalTransactionIn",
+        "description": "One PSP settlement transaction pushed for reconciliation."
+      },
+      "InvoiceCreate": {
+        "properties": {
+          "org_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org Id",
+            "description": "Phase 1: ignored; server uses LEDGER_DEFAULT_ORG_ID"
+          },
+          "source_service": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Service"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "customer_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Ref"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "customer_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Email"
+          },
+          "customer_tin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Tin"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "NGN"
+          },
+          "issue_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue Date"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "issued"
+          },
+          "prefix": {
+            "type": "string",
+            "title": "Prefix",
+            "default": "SB"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLineIn"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lines"
+        ],
+        "title": "InvoiceCreate"
+      },
+      "InvoiceLineIn": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Description"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Quantity",
+            "default": 1
+          },
+          "unit_price_minor": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Unit Price Minor"
+          },
+          "amount_minor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Minor"
+          },
+          "dimension_1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension 1"
+          }
+        },
+        "type": "object",
+        "required": [
+          "description",
+          "unit_price_minor"
+        ],
+        "title": "InvoiceLineIn"
+      },
+      "InvoiceLineOut": {
+        "properties": {
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "unit_price_minor": {
+            "type": "integer",
+            "title": "Unit Price Minor"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          },
+          "tax_code_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Code Ref"
+          },
+          "tax_minor": {
+            "type": "integer",
+            "title": "Tax Minor"
+          },
+          "dimension_1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension 1"
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "description",
+          "quantity",
+          "unit_price_minor",
+          "amount_minor",
+          "tax_minor"
+        ],
+        "title": "InvoiceLineOut"
+      },
+      "InvoiceList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InvoiceListItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "InvoiceList"
+      },
+      "InvoiceListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "invoice_number": {
+            "type": "string",
+            "title": "Invoice Number"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "total_minor": {
+            "type": "integer",
+            "title": "Total Minor"
+          },
+          "issue_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Issue Date"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "invoice_number",
+          "status",
+          "currency",
+          "total_minor",
+          "issue_date",
+          "created_at"
+        ],
+        "title": "InvoiceListItem"
+      },
+      "InvoiceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "invoice_number": {
+            "type": "string",
+            "title": "Invoice Number"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "source_service": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Service"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "customer_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Ref"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "customer_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Email"
+          },
+          "customer_tin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Tin"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "subtotal_minor": {
+            "type": "integer",
+            "title": "Subtotal Minor"
+          },
+          "tax_minor": {
+            "type": "integer",
+            "title": "Tax Minor"
+          },
+          "total_minor": {
+            "type": "integer",
+            "title": "Total Minor"
+          },
+          "issue_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Issue Date"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "irn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Irn"
+          },
+          "firs_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firs Status"
+          },
+          "voided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided At"
+          },
+          "void_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Void Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLineOut"
+            },
+            "type": "array",
+            "title": "Lines",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "invoice_number",
+          "status",
+          "currency",
+          "subtotal_minor",
+          "tax_minor",
+          "total_minor",
+          "issue_date",
+          "created_at"
+        ],
+        "title": "InvoiceOut"
+      },
+      "InvoiceVoidRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "title": "InvoiceVoidRequest"
       },
       "JournalEntryCreate": {
         "properties": {
@@ -91215,6 +92698,82 @@
         ],
         "title": "LedgerUserUpdate"
       },
+      "MarginReport": {
+        "properties": {
+          "from_date": {
+            "type": "string",
+            "format": "date",
+            "title": "From Date"
+          },
+          "to_date": {
+            "type": "string",
+            "format": "date",
+            "title": "To Date"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/MarginRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total_revenue_minor": {
+            "type": "integer",
+            "title": "Total Revenue Minor"
+          },
+          "total_cogs_minor": {
+            "type": "integer",
+            "title": "Total Cogs Minor"
+          },
+          "total_margin_minor": {
+            "type": "integer",
+            "title": "Total Margin Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_date",
+          "to_date",
+          "rows",
+          "total_revenue_minor",
+          "total_cogs_minor",
+          "total_margin_minor"
+        ],
+        "title": "MarginReport"
+      },
+      "MarginRow": {
+        "properties": {
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "revenue_minor": {
+            "type": "integer",
+            "title": "Revenue Minor"
+          },
+          "cogs_minor": {
+            "type": "integer",
+            "title": "Cogs Minor"
+          },
+          "margin_minor": {
+            "type": "integer",
+            "title": "Margin Minor"
+          },
+          "margin_pct": {
+            "type": "number",
+            "title": "Margin Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "domain",
+          "revenue_minor",
+          "cogs_minor",
+          "margin_minor",
+          "margin_pct"
+        ],
+        "title": "MarginRow"
+      },
       "PeriodOut": {
         "properties": {
           "id": {
@@ -91356,6 +92915,182 @@
           "net_minor"
         ],
         "title": "ProfitLossRow"
+      },
+      "ReconciliationBreakOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "break_type": {
+            "type": "string",
+            "title": "Break Type"
+          },
+          "psp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Psp"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
+          "external_txn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Txn Id"
+          },
+          "settlement_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settlement Ref"
+          },
+          "expected_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Minor"
+          },
+          "actual_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Minor"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "break_type",
+          "currency",
+          "status",
+          "created_at"
+        ],
+        "title": "ReconciliationBreakOut"
+      },
+      "ReconciliationIntakeResult": {
+        "properties": {
+          "received": {
+            "type": "integer",
+            "title": "Received"
+          },
+          "inserted": {
+            "type": "integer",
+            "title": "Inserted"
+          },
+          "matched": {
+            "type": "integer",
+            "title": "Matched"
+          },
+          "breaks_opened": {
+            "type": "integer",
+            "title": "Breaks Opened"
+          }
+        },
+        "type": "object",
+        "required": [
+          "received",
+          "inserted",
+          "matched",
+          "breaks_opened"
+        ],
+        "title": "ReconciliationIntakeResult"
+      },
+      "ReconciliationReport": {
+        "properties": {
+          "open_breaks": {
+            "type": "integer",
+            "title": "Open Breaks"
+          },
+          "open_break_amount_minor": {
+            "type": "integer",
+            "title": "Open Break Amount Minor"
+          },
+          "matched_count": {
+            "type": "integer",
+            "title": "Matched Count"
+          },
+          "unmatched_count": {
+            "type": "integer",
+            "title": "Unmatched Count"
+          },
+          "breaks": {
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationBreakOut"
+            },
+            "type": "array",
+            "title": "Breaks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "open_breaks",
+          "open_break_amount_minor",
+          "matched_count",
+          "unmatched_count",
+          "breaks"
+        ],
+        "title": "ReconciliationReport"
       },
       "ReverseRequest": {
         "properties": {

@@ -32,6 +32,13 @@ def _parse_iso(value: str | None) -> datetime | None:
         return None
 
 
+def _parse_settlement_date(s: dict):
+    """Best-effort settlement accounting date from a Paystack settlement dict."""
+    raw = s.get("settlement_date") or s.get("settled_at") or s.get("createdAt")
+    dt = _parse_iso(raw) if isinstance(raw, str) else None
+    return dt.date() if dt else None
+
+
 def _payment_next_retry_at(payment: Payment) -> datetime | None:
     metadata = payment.payment_metadata or {}
     fulfillment = metadata.get("fulfillment") or {}
@@ -341,3 +348,159 @@ async def expire_overdue_makeups() -> None:
         if expired:
             await db.commit()
             logger.info("Expired %d overdue make-up obligations", expired)
+
+
+# ---------------------------------------------------------------------------
+# PSP settlement reconciliation (design §11, R3)
+# ---------------------------------------------------------------------------
+
+
+async def ingest_paystack_settlements(
+    lookback_days: int = 30, commit: bool = False
+) -> dict:
+    """Pull recent Paystack settlements and post the clearing-drain entry for
+    each: DR bank_operating_ngn + DR expense_psp_fees / CR paystack_clearing.
+    This is what finally closes ``paystack_clearing`` to the bank.
+
+    Dry-run by default — fetches + reports what WOULD drain, with NO DB writes
+    and NO ledger posts. (The ledger post is an external HTTP call that a local
+    rollback can't undo, so a dry-run must never call it.) Pass commit=True to
+    persist; the worker calls it daily with commit=True.
+
+    Idempotent: settlements deduped by Paystack id; ledger entries deduped by
+    key (payments:settlement:<id>). ``ledger_posted`` skips already-drained
+    batches; the ledger's idempotency key is the ultimate backstop.
+    """
+    from services.payments_service.models import PaystackSettlement
+    from services.payments_service.services.ledger_emit import (
+        emit_settlement_to_ledger,
+    )
+    from services.payments_service.services.paystack_client import get_paystack_client
+
+    date_from = (utc_now() - timedelta(days=lookback_days)).date().isoformat()
+    try:
+        client = get_paystack_client()
+        settlements = await client.list_settlements(
+            status="success", date_from=date_from
+        )
+    except Exception as exc:  # noqa: BLE001 — surface fetch failure, don't crash worker
+        logger.error("Settlement fetch failed: %s", exc)
+        return {"error": str(exc), "fetched": 0}
+
+    summary = {
+        "fetched": len(settlements),
+        "new": 0,
+        "posted": 0,
+        "failed": 0,
+        "skipped_posted": 0,
+        "reconciled": 0,
+        "would_drain_minor": 0,
+        "commit": commit,
+    }
+
+    async with AsyncSessionLocal() as db:
+        for s in settlements:
+            sid = str(s.get("id") or "")
+            if not sid:
+                continue
+            gross = int(s.get("total_amount") or 0)
+            net = (
+                int(s["effective_amount"])
+                if s.get("effective_amount") is not None
+                else gross - int(s.get("total_fees") or 0)
+            )
+            fees = (
+                int(s["total_fees"])
+                if s.get("total_fees") is not None
+                else max(gross - net, 0)
+            )
+
+            existing = (
+                await db.execute(
+                    select(PaystackSettlement).where(
+                        PaystackSettlement.paystack_settlement_id == sid
+                    )
+                )
+            ).scalar_one_or_none()
+
+            if existing is not None and existing.ledger_posted:
+                summary["skipped_posted"] += 1
+                continue
+
+            if not commit:
+                if existing is None:
+                    summary["new"] += 1
+                summary["would_drain_minor"] += gross
+                continue
+
+            if existing is None:
+                existing = PaystackSettlement(
+                    paystack_settlement_id=sid,
+                    status=str(s.get("status") or ""),
+                    currency=str(s.get("currency") or "NGN"),
+                    gross_minor=gross,
+                    net_minor=net,
+                    fees_minor=fees,
+                    settlement_date=_parse_settlement_date(s),
+                    raw_payload=s,
+                )
+                db.add(existing)
+                await db.flush()
+                summary["new"] += 1
+
+            ok = await emit_settlement_to_ledger(db, existing)
+            if ok:
+                existing.ledger_posted = True
+                existing.ledger_posted_at = utc_now()
+                summary["posted"] += 1
+                # Reconciliation overlay (best-effort, §11.2): pull this
+                # settlement's line items and push them to the ledger to match
+                # against the books. A failure here never affects the drain.
+                try:
+                    pushed = await _reconcile_settlement_txns(client, existing)
+                    if pushed:
+                        summary["reconciled"] += 1
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "Settlement %s txn reconciliation push failed: %s",
+                        existing.paystack_settlement_id,
+                        exc,
+                    )
+            else:
+                summary["failed"] += 1
+            await db.commit()
+
+    logger.info("Settlement ingest complete: %s", summary)
+    return summary
+
+
+async def _reconcile_settlement_txns(client, settlement) -> bool:
+    """Pull a settlement's transactions and push them to the ledger for
+    line-item reconciliation (§11.2). Returns True if any were pushed."""
+    from libs.common.config import get_settings
+    from libs.common.ledger_client import post_external_transactions
+
+    txns = await client.list_settlement_transactions(settlement.paystack_settlement_id)
+    if not txns:
+        return False
+    items = [
+        {
+            "psp": "paystack",
+            "external_txn_id": str(t.get("id")),
+            "external_ref": t.get("reference"),
+            "settlement_ref": settlement.paystack_settlement_id,
+            "amount_minor": int(t.get("amount") or 0),
+            "fee_minor": int(t.get("fees") or 0),
+            "currency": t.get("currency") or "NGN",
+            "status": t.get("status"),
+            "occurred_at": t.get("paid_at"),  # ISO str; server coerces to datetime
+        }
+        for t in txns
+    ]
+    settings = get_settings()
+    await post_external_transactions(
+        transactions=items,
+        calling_service="payments",
+        org_id=settings.LEDGER_DEFAULT_ORG_ID or None,
+    )
+    return True
