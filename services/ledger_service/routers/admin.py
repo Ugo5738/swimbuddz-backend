@@ -16,16 +16,32 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from libs.common.datetime_utils import utc_now
 from services.ledger_service.app.deps import get_ledger_db, require_ledger_role
-from services.ledger_service.models import ChartOfAccounts, JournalEntry, JournalLine
-from services.ledger_service.models.enums import LedgerRole
+from services.ledger_service.models import (
+    ChartOfAccounts,
+    JournalEntry,
+    JournalLine,
+    LedgerUser,
+    Period,
+)
+from services.ledger_service.models.enums import (
+    LEDGER_ROLE_RANK,
+    LedgerRole,
+    PeriodStatus,
+)
 from services.ledger_service.schemas.reports import (
     AccountOut,
     DeferredRevenueReport,
     JournalEntryDetail,
     JournalEntrySummary,
     JournalLineOut,
+    PeriodOut,
+    PeriodTransitionRequest,
     ProfitLossReport,
     TrialBalanceReport,
+)
+from services.ledger_service.services.periods import (
+    InvalidTransitionError,
+    transition_period,
 )
 from services.ledger_service.services.reports import (
     deferred_revenue,
@@ -154,3 +170,73 @@ async def get_deferred_revenue(
     return await deferred_revenue(
         session, org_id, as_of or utc_now().astimezone(timezone.utc).date()
     )
+
+
+@router.get("/periods", response_model=list[PeriodOut])
+async def list_periods(
+    request: Request,
+    _viewer=Depends(require_ledger_role(LedgerRole.VIEWER)),
+    session: AsyncSession = Depends(get_ledger_db),
+) -> list[Period]:
+    """All accounting periods, newest first (design §10.2)."""
+    org_id = request.state.org_id
+    rows = (
+        (
+            await session.execute(
+                select(Period)
+                .where(Period.org_id == org_id)
+                .order_by(Period.period_name.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows)
+
+
+@router.post("/periods/{period_id}/transition", response_model=PeriodOut)
+async def transition_period_route(
+    period_id: uuid.UUID,
+    body: PeriodTransitionRequest,
+    request: Request,
+    actor: LedgerUser = Depends(require_ledger_role(LedgerRole.ADMIN)),
+    session: AsyncSession = Depends(get_ledger_db),
+) -> Period:
+    """Open / soft-close / hard-close a period (admin+; hard ops are owner-only)."""
+    org_id = request.state.org_id
+    try:
+        to_status = PeriodStatus(body.to_status)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"invalid status: {body.to_status}",
+        ) from exc
+
+    period = await session.get(Period, period_id)
+    if period is None or period.org_id != org_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="period not found"
+        )
+    # Hard-close and hard-reopen are owner-only (final / break-glass).
+    touches_hard = (
+        to_status == PeriodStatus.HARD_CLOSED
+        or period.status == PeriodStatus.HARD_CLOSED
+    )
+    if (
+        touches_hard
+        and LEDGER_ROLE_RANK[actor.role] < LEDGER_ROLE_RANK[LedgerRole.OWNER]
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="hard-close / hard-reopen requires the owner role",
+        )
+    try:
+        result = await transition_period(
+            session, org_id, period_id, to_status, actor.id
+        )
+    except InvalidTransitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    await session.commit()
+    return result

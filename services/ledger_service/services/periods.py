@@ -13,11 +13,29 @@ import calendar
 import uuid
 from datetime import date
 
-from services.ledger_service.models import Period
-from services.ledger_service.models.enums import PeriodStatus, PeriodType
+from libs.common.datetime_utils import utc_now
+from services.ledger_service.models import AuditLog, Period
+from services.ledger_service.models.enums import (
+    AuditActionType,
+    PeriodStatus,
+    PeriodType,
+)
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# Legal period status transitions (design §10.2). Hard-close is final-ish; a
+# hard -> soft reopen exists as an owner break-glass (gated in the route).
+ALLOWED_TRANSITIONS: set[tuple[PeriodStatus, PeriodStatus]] = {
+    (PeriodStatus.OPEN, PeriodStatus.SOFT_CLOSED),
+    (PeriodStatus.SOFT_CLOSED, PeriodStatus.OPEN),
+    (PeriodStatus.SOFT_CLOSED, PeriodStatus.HARD_CLOSED),
+    (PeriodStatus.HARD_CLOSED, PeriodStatus.SOFT_CLOSED),
+}
+
+
+class InvalidTransitionError(Exception):
+    """The requested period status transition isn't allowed."""
 
 
 def month_bounds(d: date) -> tuple[str, date, date]:
@@ -63,4 +81,52 @@ async def resolve_or_create_period(
         period = await _select_period(session, org_id, name)
         if period is None:
             raise
+    return period
+
+
+async def transition_period(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    period_id: uuid.UUID,
+    to_status: PeriodStatus,
+    actor_id: uuid.UUID,
+) -> Period:
+    """Move a period to `to_status` if the transition is legal. Audited.
+
+    Idempotent if already in `to_status`. Raises InvalidTransitionError if the
+    period is missing or the (from, to) pair isn't allowed. Caller commits.
+    """
+    period = await session.get(Period, period_id)
+    if period is None or period.org_id != org_id:
+        raise InvalidTransitionError("period not found")
+    if period.status == to_status:
+        return period
+    if (period.status, to_status) not in ALLOWED_TRANSITIONS:
+        raise InvalidTransitionError(
+            f"cannot move {period.period_name} "
+            f"from {period.status.value} to {to_status.value}"
+        )
+    old = period.status
+    period.status = to_status
+    if to_status in (PeriodStatus.SOFT_CLOSED, PeriodStatus.HARD_CLOSED):
+        period.closed_at = utc_now()
+        period.closed_by_user_id = actor_id
+    else:
+        period.closed_at = None
+        period.closed_by_user_id = None
+    session.add(
+        AuditLog(
+            org_id=org_id,
+            actor_user_id=actor_id,
+            action=AuditActionType.PERIOD_CLOSED,
+            subject_type="period",
+            subject_id=str(period.id),
+            payload={
+                "from": old.value,
+                "to": to_status.value,
+                "period": period.period_name,
+            },
+        )
+    )
+    await session.flush()
     return period

@@ -41039,6 +41039,96 @@
         }
       }
     },
+    "/api/v1/admin/finance/periods": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "List Periods",
+        "description": "All accounting periods, newest first (design \u00a710.2).",
+        "operationId": "list_periods_admin_finance_periods_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PeriodOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Periods Admin Finance Periods Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finance/periods/{period_id}/transition": {
+      "post": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Transition Period Route",
+        "description": "Open / soft-close / hard-close a period (admin+; hard ops are owner-only).",
+        "operationId": "transition_period_route_admin_finance_periods__period_id__transition_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "period_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Period Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeriodTransitionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeriodOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/finance/journal-entries/{entry_id}/reverse": {
       "post": {
         "tags": [
@@ -91124,6 +91214,72 @@
           "role"
         ],
         "title": "LedgerUserUpdate"
+      },
+      "PeriodOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "period_name": {
+            "type": "string",
+            "title": "Period Name"
+          },
+          "period_type": {
+            "type": "string",
+            "title": "Period Type"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "title": "End Date"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "period_name",
+          "period_type",
+          "start_date",
+          "end_date",
+          "status"
+        ],
+        "title": "PeriodOut"
+      },
+      "PeriodTransitionRequest": {
+        "properties": {
+          "to_status": {
+            "type": "string",
+            "title": "To Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to_status"
+        ],
+        "title": "PeriodTransitionRequest"
       },
       "ProfitLossReport": {
         "properties": {
