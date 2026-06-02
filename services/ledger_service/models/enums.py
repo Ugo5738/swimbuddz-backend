@@ -58,6 +58,18 @@ class PeriodStatus(str, enum.Enum):
     HARD_CLOSED = "hard_closed"
 
 
+class RecognitionMethod(str, enum.Enum):
+    """How a deferred-revenue obligation is recognised into earned revenue."""
+
+    STRAIGHT_LINE = "straight_line"  # ratably by elapsed days over [start, end]
+
+
+class RecognitionStatus(str, enum.Enum):
+    ACTIVE = "active"  # still recognising
+    COMPLETED = "completed"  # fully recognised
+    CANCELLED = "cancelled"  # e.g. obligation refunded/withdrawn
+
+
 class LedgerRole(str, enum.Enum):
     """Finance-team roles (design doc §15). Hierarchy: owner > admin > accountant > viewer."""
 

@@ -210,6 +210,15 @@ async def post_entry(
     )
     await session.flush()
 
+    # Auto-create revenue-recognition schedules for any deferred-revenue credit
+    # lines (design §10). Local import avoids a posting<->recognition import
+    # cycle. Only runs on a real post — replays returned at step 1.
+    from services.ledger_service.services.recognition import (
+        ensure_schedules_for_entry,
+    )
+
+    await ensure_schedules_for_entry(session, org_id, entry, payload)
+
     return _result(entry, replay=False)
 
 
