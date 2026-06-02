@@ -41090,6 +41090,233 @@
         }
       }
     },
+    "/api/v1/admin/finance/reports/balance-sheet": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Balance Sheet",
+        "description": "Statement of financial position (A = L + E) as of a date (design \u00a714).",
+        "operationId": "get_balance_sheet_admin_finance_reports_balance_sheet_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalanceSheetReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/reports/cash-position": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Cash Position",
+        "description": "Cash by location \u2014 settled in bank vs in-transit at the PSP (design \u00a714).",
+        "operationId": "get_cash_position_admin_finance_reports_cash_position_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashPositionReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/reports/bubbles-liability": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Bubbles Liability",
+        "description": "Outstanding Bubbles liability, purchased vs promotional (\u00a719-B).",
+        "operationId": "get_bubbles_liability_admin_finance_reports_bubbles_liability_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BubblesLiabilityReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/reports/margin": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Margin",
+        "description": "Gross margin (revenue \u2212 COGS) per domain over a date range (design \u00a714).",
+        "operationId": "get_margin_admin_finance_reports_margin_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "To Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarginReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/finance/periods": {
       "get": {
         "tags": [
@@ -90607,6 +90834,185 @@
         ],
         "title": "AccountOut"
       },
+      "BalanceSheetReport": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "assets": {
+            "$ref": "#/components/schemas/BalanceSheetSection"
+          },
+          "liabilities": {
+            "$ref": "#/components/schemas/BalanceSheetSection"
+          },
+          "equity": {
+            "$ref": "#/components/schemas/BalanceSheetSection"
+          },
+          "total_assets_minor": {
+            "type": "integer",
+            "title": "Total Assets Minor"
+          },
+          "total_liabilities_and_equity_minor": {
+            "type": "integer",
+            "title": "Total Liabilities And Equity Minor"
+          },
+          "balanced": {
+            "type": "boolean",
+            "title": "Balanced"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "assets",
+          "liabilities",
+          "equity",
+          "total_assets_minor",
+          "total_liabilities_and_equity_minor",
+          "balanced"
+        ],
+        "title": "BalanceSheetReport"
+      },
+      "BalanceSheetRow": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "amount_minor"
+        ],
+        "title": "BalanceSheetRow"
+      },
+      "BalanceSheetSection": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/BalanceSheetRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total_minor": {
+            "type": "integer",
+            "title": "Total Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rows",
+          "total_minor"
+        ],
+        "title": "BalanceSheetSection"
+      },
+      "BubblesLiabilityReport": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "purchased_minor": {
+            "type": "integer",
+            "title": "Purchased Minor"
+          },
+          "promotional_minor": {
+            "type": "integer",
+            "title": "Promotional Minor"
+          },
+          "total_minor": {
+            "type": "integer",
+            "title": "Total Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "purchased_minor",
+          "promotional_minor",
+          "total_minor"
+        ],
+        "title": "BubblesLiabilityReport"
+      },
+      "CashPositionReport": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CashPositionRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "bank_minor": {
+            "type": "integer",
+            "title": "Bank Minor"
+          },
+          "clearing_minor": {
+            "type": "integer",
+            "title": "Clearing Minor"
+          },
+          "total_minor": {
+            "type": "integer",
+            "title": "Total Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "rows",
+          "bank_minor",
+          "clearing_minor",
+          "total_minor"
+        ],
+        "title": "CashPositionReport"
+      },
+      "CashPositionRow": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "kind",
+          "amount_minor"
+        ],
+        "title": "CashPositionRow"
+      },
       "DeferredRevenueReport": {
         "properties": {
           "as_of": {
@@ -91432,6 +91838,82 @@
           "role"
         ],
         "title": "LedgerUserUpdate"
+      },
+      "MarginReport": {
+        "properties": {
+          "from_date": {
+            "type": "string",
+            "format": "date",
+            "title": "From Date"
+          },
+          "to_date": {
+            "type": "string",
+            "format": "date",
+            "title": "To Date"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/MarginRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total_revenue_minor": {
+            "type": "integer",
+            "title": "Total Revenue Minor"
+          },
+          "total_cogs_minor": {
+            "type": "integer",
+            "title": "Total Cogs Minor"
+          },
+          "total_margin_minor": {
+            "type": "integer",
+            "title": "Total Margin Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_date",
+          "to_date",
+          "rows",
+          "total_revenue_minor",
+          "total_cogs_minor",
+          "total_margin_minor"
+        ],
+        "title": "MarginReport"
+      },
+      "MarginRow": {
+        "properties": {
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "revenue_minor": {
+            "type": "integer",
+            "title": "Revenue Minor"
+          },
+          "cogs_minor": {
+            "type": "integer",
+            "title": "Cogs Minor"
+          },
+          "margin_minor": {
+            "type": "integer",
+            "title": "Margin Minor"
+          },
+          "margin_pct": {
+            "type": "number",
+            "title": "Margin Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "domain",
+          "revenue_minor",
+          "cogs_minor",
+          "margin_minor",
+          "margin_pct"
+        ],
+        "title": "MarginRow"
       },
       "PeriodOut": {
         "properties": {

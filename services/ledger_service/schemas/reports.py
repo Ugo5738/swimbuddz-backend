@@ -102,6 +102,67 @@ class DeferredRevenueReport(BaseModel):
     total_remaining_minor: int
 
 
+class BalanceSheetRow(BaseModel):
+    code: str
+    name: str
+    amount_minor: int  # in the account's normal direction (contra shown negative)
+
+
+class BalanceSheetSection(BaseModel):
+    rows: list[BalanceSheetRow]
+    total_minor: int
+
+
+class BalanceSheetReport(BaseModel):
+    as_of: date
+    assets: BalanceSheetSection
+    liabilities: BalanceSheetSection
+    # equity includes a synthetic unclosed current-year-earnings row
+    equity: BalanceSheetSection
+    total_assets_minor: int
+    total_liabilities_and_equity_minor: int
+    balanced: bool
+
+
+class MarginRow(BaseModel):
+    domain: str
+    revenue_minor: int
+    cogs_minor: int
+    margin_minor: int
+    margin_pct: float
+
+
+class MarginReport(BaseModel):
+    from_date: date
+    to_date: date
+    rows: list[MarginRow]
+    total_revenue_minor: int
+    total_cogs_minor: int
+    total_margin_minor: int
+
+
+class BubblesLiabilityReport(BaseModel):
+    as_of: date
+    purchased_minor: int  # bubbles_liability — backed by cash top-ups
+    promotional_minor: int  # bubbles_liability_promo — granted, §19-B
+    total_minor: int
+
+
+class CashPositionRow(BaseModel):
+    code: str
+    name: str
+    kind: str  # "bank" | "clearing"
+    amount_minor: int
+
+
+class CashPositionReport(BaseModel):
+    as_of: date
+    rows: list[CashPositionRow]
+    bank_minor: int  # settled, in the bank
+    clearing_minor: int  # collected, not yet settled (in-transit at the PSP)
+    total_minor: int
+
+
 class PeriodOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

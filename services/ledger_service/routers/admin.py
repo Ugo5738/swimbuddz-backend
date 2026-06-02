@@ -31,10 +31,14 @@ from services.ledger_service.models.enums import (
 from services.ledger_service.schemas.reconciliation import ReconciliationReport
 from services.ledger_service.schemas.reports import (
     AccountOut,
+    BalanceSheetReport,
+    BubblesLiabilityReport,
+    CashPositionReport,
     DeferredRevenueReport,
     JournalEntryDetail,
     JournalEntrySummary,
     JournalLineOut,
+    MarginReport,
     PeriodOut,
     PeriodTransitionRequest,
     ProfitLossReport,
@@ -46,7 +50,11 @@ from services.ledger_service.services.periods import (
 )
 from services.ledger_service.services.reconciliation import reconciliation_report
 from services.ledger_service.services.reports import (
+    balance_sheet,
+    bubbles_liability,
+    cash_position,
     deferred_revenue,
+    margin_by_domain,
     profit_loss,
     trial_balance,
 )
@@ -185,6 +193,61 @@ async def get_reconciliation(
     design §11.2)."""
     org_id = request.state.org_id
     return await reconciliation_report(session, org_id, limit=limit)
+
+
+@router.get("/reports/balance-sheet", response_model=BalanceSheetReport)
+async def get_balance_sheet(
+    request: Request,
+    _viewer=Depends(require_ledger_role(LedgerRole.VIEWER)),
+    session: AsyncSession = Depends(get_ledger_db),
+    as_of: Optional[date] = None,
+) -> BalanceSheetReport:
+    """Statement of financial position (A = L + E) as of a date (design §14)."""
+    org_id = request.state.org_id
+    return await balance_sheet(
+        session, org_id, as_of or utc_now().astimezone(timezone.utc).date()
+    )
+
+
+@router.get("/reports/cash-position", response_model=CashPositionReport)
+async def get_cash_position(
+    request: Request,
+    _viewer=Depends(require_ledger_role(LedgerRole.VIEWER)),
+    session: AsyncSession = Depends(get_ledger_db),
+    as_of: Optional[date] = None,
+) -> CashPositionReport:
+    """Cash by location — settled in bank vs in-transit at the PSP (design §14)."""
+    org_id = request.state.org_id
+    return await cash_position(
+        session, org_id, as_of or utc_now().astimezone(timezone.utc).date()
+    )
+
+
+@router.get("/reports/bubbles-liability", response_model=BubblesLiabilityReport)
+async def get_bubbles_liability(
+    request: Request,
+    _viewer=Depends(require_ledger_role(LedgerRole.VIEWER)),
+    session: AsyncSession = Depends(get_ledger_db),
+    as_of: Optional[date] = None,
+) -> BubblesLiabilityReport:
+    """Outstanding Bubbles liability, purchased vs promotional (§19-B)."""
+    org_id = request.state.org_id
+    return await bubbles_liability(
+        session, org_id, as_of or utc_now().astimezone(timezone.utc).date()
+    )
+
+
+@router.get("/reports/margin", response_model=MarginReport)
+async def get_margin(
+    request: Request,
+    from_date: date,
+    to_date: date,
+    _viewer=Depends(require_ledger_role(LedgerRole.VIEWER)),
+    session: AsyncSession = Depends(get_ledger_db),
+) -> MarginReport:
+    """Gross margin (revenue − COGS) per domain over a date range (design §14)."""
+    org_id = request.state.org_id
+    return await margin_by_domain(session, org_id, from_date, to_date)
 
 
 @router.get("/periods", response_model=list[PeriodOut])
