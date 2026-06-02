@@ -74,6 +74,17 @@ def build_wallet_post_kwargs(
             (txn.service_source or "", txn.reference_type or "")
         ) or SPEND_CREDIT_BY_SOURCE.get(txn.service_source or "")
         if cred is None:
+            # A new service spending Bubbles with an unrecognised source would
+            # otherwise silently drop revenue (this emitter is log-only, no
+            # dead-letter). Surface it loudly so the mapping gets added.
+            logger.warning(
+                "wallet ledger emit: unmapped PURCHASE source=%s ref_type=%s "
+                "(txn %s) — revenue NOT posted; add it to "
+                "SPEND_CREDIT_BY_SOURCE[_REF]",
+                txn.service_source,
+                txn.reference_type,
+                txn.id,
+            )
             return None  # unmapped spend source
         credit_ref, domain = cred
         promo = int(meta.get("promo_bubbles", 0))
