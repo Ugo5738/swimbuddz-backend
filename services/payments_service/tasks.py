@@ -393,6 +393,7 @@ async def ingest_paystack_settlements(
         "posted": 0,
         "failed": 0,
         "skipped_posted": 0,
+        "reconciled": 0,
         "would_drain_minor": 0,
         "commit": commit,
     }
@@ -452,9 +453,54 @@ async def ingest_paystack_settlements(
                 existing.ledger_posted = True
                 existing.ledger_posted_at = utc_now()
                 summary["posted"] += 1
+                # Reconciliation overlay (best-effort, §11.2): pull this
+                # settlement's line items and push them to the ledger to match
+                # against the books. A failure here never affects the drain.
+                try:
+                    pushed = await _reconcile_settlement_txns(client, existing)
+                    if pushed:
+                        summary["reconciled"] += 1
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "Settlement %s txn reconciliation push failed: %s",
+                        existing.paystack_settlement_id,
+                        exc,
+                    )
             else:
                 summary["failed"] += 1
             await db.commit()
 
     logger.info("Settlement ingest complete: %s", summary)
     return summary
+
+
+async def _reconcile_settlement_txns(client, settlement) -> bool:
+    """Pull a settlement's transactions and push them to the ledger for
+    line-item reconciliation (§11.2). Returns True if any were pushed."""
+    from libs.common.config import get_settings
+    from libs.common.ledger_client import post_external_transactions
+
+    txns = await client.list_settlement_transactions(settlement.paystack_settlement_id)
+    if not txns:
+        return False
+    items = [
+        {
+            "psp": "paystack",
+            "external_txn_id": str(t.get("id")),
+            "external_ref": t.get("reference"),
+            "settlement_ref": settlement.paystack_settlement_id,
+            "amount_minor": int(t.get("amount") or 0),
+            "fee_minor": int(t.get("fees") or 0),
+            "currency": t.get("currency") or "NGN",
+            "status": t.get("status"),
+            "occurred_at": t.get("paid_at"),  # ISO str; server coerces to datetime
+        }
+        for t in txns
+    ]
+    settings = get_settings()
+    await post_external_transactions(
+        transactions=items,
+        calling_service="payments",
+        org_id=settings.LEDGER_DEFAULT_ORG_ID or None,
+    )
+    return True

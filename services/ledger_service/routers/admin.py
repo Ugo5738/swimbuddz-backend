@@ -28,6 +28,7 @@ from services.ledger_service.models.enums import (
     LedgerRole,
     PeriodStatus,
 )
+from services.ledger_service.schemas.reconciliation import ReconciliationReport
 from services.ledger_service.schemas.reports import (
     AccountOut,
     DeferredRevenueReport,
@@ -43,6 +44,7 @@ from services.ledger_service.services.periods import (
     InvalidTransitionError,
     transition_period,
 )
+from services.ledger_service.services.reconciliation import reconciliation_report
 from services.ledger_service.services.reports import (
     deferred_revenue,
     profit_loss,
@@ -170,6 +172,19 @@ async def get_deferred_revenue(
     return await deferred_revenue(
         session, org_id, as_of or utc_now().astimezone(timezone.utc).date()
     )
+
+
+@router.get("/reports/reconciliation", response_model=ReconciliationReport)
+async def get_reconciliation(
+    request: Request,
+    _viewer=Depends(require_ledger_role(LedgerRole.VIEWER)),
+    session: AsyncSession = Depends(get_ledger_db),
+    limit: int = Query(200, ge=1, le=1000),
+) -> ReconciliationReport:
+    """Open reconciliation breaks + match summary (PSP settlements vs the books,
+    design §11.2)."""
+    org_id = request.state.org_id
+    return await reconciliation_report(session, org_id, limit=limit)
 
 
 @router.get("/periods", response_model=list[PeriodOut])

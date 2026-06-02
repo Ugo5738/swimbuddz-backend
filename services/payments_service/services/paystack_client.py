@@ -377,6 +377,34 @@ class PaystackClient:
 
         return results
 
+    async def list_settlement_transactions(
+        self,
+        settlement_id: str,
+        per_page: int = 200,
+        max_pages: int = 50,
+    ) -> List[dict]:
+        """List the individual transactions that make up a settlement (paginated).
+
+        Each transaction carries ``id`` (Paystack txn id), ``reference``
+        (= our payment.reference), ``amount`` (gross kobo), ``fees`` (kobo),
+        ``status``, ``paid_at``. Used to reconcile a settlement against the books.
+        """
+        results: List[dict] = []
+        page = 1
+        while page <= max_pages:
+            data = await self._request(
+                "GET",
+                f"/settlement/{settlement_id}/transactions",
+                params={"perPage": per_page, "page": page},
+            )
+            batch = data.get("data", []) or []
+            results.extend(batch)
+            if len(batch) < per_page:
+                break
+            page += 1
+
+        return results
+
 
 # Singleton instance for convenience
 def get_paystack_client() -> PaystackClient:

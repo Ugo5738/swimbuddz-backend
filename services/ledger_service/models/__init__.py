@@ -30,6 +30,10 @@ from services.ledger_service.models.journal import JournalEntry, JournalLine
 from services.ledger_service.models.organization import Organization
 from services.ledger_service.models.period import Period
 from services.ledger_service.models.recognition import RevenueRecognitionSchedule
+from services.ledger_service.models.reconciliation import (
+    ExternalTransaction,
+    ReconciliationBreak,
+)
 
 __all__ = [
     # Models
@@ -41,6 +45,8 @@ __all__ = [
     "AccountBalance",
     "Period",
     "RevenueRecognitionSchedule",
+    "ExternalTransaction",
+    "ReconciliationBreak",
     "LedgerUser",
     "AuditLog",
     # Enums

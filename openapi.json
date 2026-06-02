@@ -41039,6 +41039,57 @@
         }
       }
     },
+    "/api/v1/admin/finance/reports/reconciliation": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Reconciliation",
+        "description": "Open reconciliation breaks + match summary (PSP settlements vs the books,\ndesign \u00a711.2).",
+        "operationId": "get_reconciliation_admin_finance_reports_reconciliation_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/finance/periods": {
       "get": {
         "tags": [
@@ -41417,6 +41468,53 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/JournalEntryResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/ledger/external-transactions": {
+      "post": {
+        "tags": [
+          "ledger-internal"
+        ],
+        "summary": "Post External Transactions",
+        "description": "Ingest PSP settlement transactions and reconcile them against the books.\n\nEach transaction is upserted (idempotent per (org, psp, external_txn_id)) and\nmatched against ``journal_lines.external_ref``; unmatched or amount-mismatched\nitems open a reconciliation break. Service-role only (design \u00a711.2).",
+        "operationId": "post_external_transactions_internal_ledger_external_transactions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalTransactionBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationIntakeResult"
                 }
               }
             }
@@ -90574,6 +90672,126 @@
         ],
         "title": "DeferredRevenueRow"
       },
+      "ExternalTransactionBatch": {
+        "properties": {
+          "org_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org Id",
+            "description": "Phase 1: ignored; server uses LEDGER_DEFAULT_ORG_ID"
+          },
+          "transactions": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalTransactionIn"
+            },
+            "type": "array",
+            "title": "Transactions"
+          }
+        },
+        "type": "object",
+        "title": "ExternalTransactionBatch",
+        "description": "Bulk intake of PSP transactions. Idempotent per (org, psp, txn id)."
+      },
+      "ExternalTransactionIn": {
+        "properties": {
+          "psp": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Psp"
+          },
+          "external_txn_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "External Txn Id"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
+          "settlement_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settlement Ref"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor",
+            "default": 0
+          },
+          "fee_minor": {
+            "type": "integer",
+            "title": "Fee Minor",
+            "default": 0
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "NGN"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred At"
+          },
+          "raw_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Payload"
+          }
+        },
+        "type": "object",
+        "required": [
+          "psp",
+          "external_txn_id"
+        ],
+        "title": "ExternalTransactionIn",
+        "description": "One PSP settlement transaction pushed for reconciliation."
+      },
       "JournalEntryCreate": {
         "properties": {
           "idempotency_key": {
@@ -91356,6 +91574,182 @@
           "net_minor"
         ],
         "title": "ProfitLossRow"
+      },
+      "ReconciliationBreakOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "break_type": {
+            "type": "string",
+            "title": "Break Type"
+          },
+          "psp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Psp"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
+          "external_txn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Txn Id"
+          },
+          "settlement_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settlement Ref"
+          },
+          "expected_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Minor"
+          },
+          "actual_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Minor"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "break_type",
+          "currency",
+          "status",
+          "created_at"
+        ],
+        "title": "ReconciliationBreakOut"
+      },
+      "ReconciliationIntakeResult": {
+        "properties": {
+          "received": {
+            "type": "integer",
+            "title": "Received"
+          },
+          "inserted": {
+            "type": "integer",
+            "title": "Inserted"
+          },
+          "matched": {
+            "type": "integer",
+            "title": "Matched"
+          },
+          "breaks_opened": {
+            "type": "integer",
+            "title": "Breaks Opened"
+          }
+        },
+        "type": "object",
+        "required": [
+          "received",
+          "inserted",
+          "matched",
+          "breaks_opened"
+        ],
+        "title": "ReconciliationIntakeResult"
+      },
+      "ReconciliationReport": {
+        "properties": {
+          "open_breaks": {
+            "type": "integer",
+            "title": "Open Breaks"
+          },
+          "open_break_amount_minor": {
+            "type": "integer",
+            "title": "Open Break Amount Minor"
+          },
+          "matched_count": {
+            "type": "integer",
+            "title": "Matched Count"
+          },
+          "unmatched_count": {
+            "type": "integer",
+            "title": "Unmatched Count"
+          },
+          "breaks": {
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationBreakOut"
+            },
+            "type": "array",
+            "title": "Breaks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "open_breaks",
+          "open_break_amount_minor",
+          "matched_count",
+          "unmatched_count",
+          "breaks"
+        ],
+        "title": "ReconciliationReport"
       },
       "ReverseRequest": {
         "properties": {

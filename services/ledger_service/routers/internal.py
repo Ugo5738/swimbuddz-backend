@@ -14,11 +14,18 @@ from services.ledger_service.schemas.journal import (
     JournalEntryCreate,
     JournalEntryResult,
 )
+from services.ledger_service.schemas.reconciliation import (
+    ExternalTransactionBatch,
+    ReconciliationIntakeResult,
+)
 from services.ledger_service.services.posting import (
     PeriodClosedError,
     UnbalancedEntryError,
     UnresolvedAccountError,
     post_entry,
+)
+from services.ledger_service.services.reconciliation import (
+    intake_external_transactions,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -62,3 +69,26 @@ async def post_journal_entry(
 
     await session.commit()
     return result
+
+
+@router.post(
+    "/external-transactions",
+    response_model=ReconciliationIntakeResult,
+    status_code=status.HTTP_200_OK,
+)
+async def post_external_transactions(
+    payload: ExternalTransactionBatch,
+    request: Request,
+    _user: AuthUser = Depends(require_service_role),
+    session: AsyncSession = Depends(get_ledger_db),
+) -> ReconciliationIntakeResult:
+    """Ingest PSP settlement transactions and reconcile them against the books.
+
+    Each transaction is upserted (idempotent per (org, psp, external_txn_id)) and
+    matched against ``journal_lines.external_ref``; unmatched or amount-mismatched
+    items open a reconciliation break. Service-role only (design §11.2).
+    """
+    org_id = request.state.org_id
+    summary = await intake_external_transactions(session, org_id, payload.transactions)
+    await session.commit()
+    return ReconciliationIntakeResult(**summary)

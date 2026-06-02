@@ -118,4 +118,43 @@ async def post_journal_entry(
     return resp.json()
 
 
-__all__ = ["post_journal_entry", "JournalLineSpec"]
+async def post_external_transactions(
+    *,
+    transactions: list[dict],
+    calling_service: str,
+    org_id: Optional[str] = None,
+) -> dict:
+    """Push PSP settlement transactions to the ledger for reconciliation (§11.2).
+
+    The ledger upserts each (idempotent per (org, psp, external_txn_id)) and
+    matches it against the books. Like ``post_journal_entry`` this RAISES on
+    failure — the caller decides whether to log/retry (reconciliation is a
+    best-effort overlay; a missed push is re-pushed on the next settlement sweep).
+
+    Args:
+        transactions: list of dicts matching ``ExternalTransactionIn``
+            (psp, external_txn_id, external_ref, settlement_ref, amount_minor,
+            fee_minor, currency, status, occurred_at, raw_payload).
+        calling_service: Name of the calling service (JWT "sub" claim).
+        org_id: Target organization UUID; omitted → server default (Phase 1).
+
+    Returns:
+        ``ReconciliationIntakeResult`` dict (received, inserted, matched,
+        breaks_opened).
+    """
+    settings = get_settings()
+    payload: dict[str, Any] = {"transactions": transactions}
+    if org_id is not None:
+        payload["org_id"] = org_id
+
+    resp = await internal_post(
+        service_url=settings.LEDGER_SERVICE_URL,
+        path="/internal/ledger/external-transactions",
+        calling_service=calling_service,
+        json=payload,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+__all__ = ["post_journal_entry", "post_external_transactions", "JournalLineSpec"]
