@@ -40984,6 +40984,61 @@
         }
       }
     },
+    "/api/v1/admin/finance/reports/deferred-revenue": {
+      "get": {
+        "tags": [
+          "ledger-admin"
+        ],
+        "summary": "Get Deferred Revenue",
+        "operationId": "get_deferred_revenue_admin_finance_reports_deferred_revenue_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeferredRevenueReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/finance/journal-entries/{entry_id}/reverse": {
       "post": {
         "tags": [
@@ -90363,6 +90418,71 @@
           "is_system"
         ],
         "title": "AccountOut"
+      },
+      "DeferredRevenueReport": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/DeferredRevenueRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total_remaining_minor": {
+            "type": "integer",
+            "title": "Total Remaining Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "rows",
+          "total_remaining_minor"
+        ],
+        "title": "DeferredRevenueReport"
+      },
+      "DeferredRevenueRow": {
+        "properties": {
+          "deferred_account_ref": {
+            "type": "string",
+            "title": "Deferred Account Ref"
+          },
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "schedule_count": {
+            "type": "integer",
+            "title": "Schedule Count"
+          },
+          "total_minor": {
+            "type": "integer",
+            "title": "Total Minor"
+          },
+          "recognized_minor": {
+            "type": "integer",
+            "title": "Recognized Minor"
+          },
+          "remaining_minor": {
+            "type": "integer",
+            "title": "Remaining Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deferred_account_ref",
+          "domain",
+          "schedule_count",
+          "total_minor",
+          "recognized_minor",
+          "remaining_minor"
+        ],
+        "title": "DeferredRevenueRow"
       },
       "JournalEntryCreate": {
         "properties": {

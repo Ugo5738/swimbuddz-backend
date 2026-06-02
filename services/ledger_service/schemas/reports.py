@@ -85,3 +85,18 @@ class ProfitLossReport(BaseModel):
     total_revenue_minor: int
     total_expense_minor: int
     net_income_minor: int
+
+
+class DeferredRevenueRow(BaseModel):
+    deferred_account_ref: str
+    domain: str
+    schedule_count: int
+    total_minor: int
+    recognized_minor: int
+    remaining_minor: int
+
+
+class DeferredRevenueReport(BaseModel):
+    as_of: date
+    rows: list[DeferredRevenueRow]
+    total_remaining_minor: int

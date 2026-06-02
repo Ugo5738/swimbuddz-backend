@@ -20,13 +20,18 @@ from services.ledger_service.models import ChartOfAccounts, JournalEntry, Journa
 from services.ledger_service.models.enums import LedgerRole
 from services.ledger_service.schemas.reports import (
     AccountOut,
+    DeferredRevenueReport,
     JournalEntryDetail,
     JournalEntrySummary,
     JournalLineOut,
     ProfitLossReport,
     TrialBalanceReport,
 )
-from services.ledger_service.services.reports import profit_loss, trial_balance
+from services.ledger_service.services.reports import (
+    deferred_revenue,
+    profit_loss,
+    trial_balance,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -136,3 +141,16 @@ async def get_profit_loss(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
+
+
+@router.get("/reports/deferred-revenue", response_model=DeferredRevenueReport)
+async def get_deferred_revenue(
+    request: Request,
+    _viewer=Depends(require_ledger_role(LedgerRole.VIEWER)),
+    session: AsyncSession = Depends(get_ledger_db),
+    as_of: Optional[date] = None,
+) -> DeferredRevenueReport:
+    org_id = request.state.org_id
+    return await deferred_revenue(
+        session, org_id, as_of or utc_now().astimezone(timezone.utc).date()
+    )
