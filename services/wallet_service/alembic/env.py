@@ -31,6 +31,7 @@ from services.wallet_service.models import (  # noqa: F401; Phase 1 — Active; 
     Wallet,
     WalletAuditLog,
     WalletEvent,
+    WalletLedgerPostFailure,
     WalletTopup,
     WalletTransaction,
 )
@@ -48,6 +49,7 @@ SERVICE_TABLES = {
     "wallets",
     "wallet_transactions",
     "wallet_topups",
+    "wallet_ledger_post_failures",
     "promotional_bubble_grants",
     "wallet_audit_logs",
     # Phase 3

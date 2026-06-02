@@ -52,6 +52,9 @@ from services.wallet_service.models.rewards import (  # noqa: F401
     RewardRule,
     WalletEvent,
 )
+from services.wallet_service.models.ledger_failure import (  # noqa: F401
+    WalletLedgerPostFailure,
+)
 from services.wallet_service.models.topup import WalletTopup  # noqa: F401
 from services.wallet_service.models.transaction import WalletTransaction  # noqa: F401
 
@@ -78,6 +81,7 @@ __all__ = [
     "Wallet",
     "WalletTransaction",
     "WalletTopup",
+    "WalletLedgerPostFailure",
     "PromotionalBubbleGrant",
     "WalletAuditLog",
     # Phase 3

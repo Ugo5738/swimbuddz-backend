@@ -19,7 +19,13 @@ from typing import Optional
 from libs.common.config import get_settings
 from libs.common.ledger_client import post_journal_entry
 from libs.common.logging import get_logger
-from services.wallet_service.models import TransactionType, WalletTransaction
+from services.wallet_service.models import (
+    TransactionType,
+    WalletLedgerPostFailure,
+    WalletTransaction,
+)
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -156,12 +162,14 @@ def build_wallet_post_kwargs(
 
 
 async def emit_wallet_txn_to_ledger(
-    txn: WalletTransaction, member_ref: Optional[str]
+    db: AsyncSession, txn: WalletTransaction, member_ref: Optional[str]
 ) -> None:
     """Post a wallet txn's journal entry to the ledger. NEVER raises.
 
-    Idempotent at the ledger (key wallet:<type>:<txn.id>). Best-effort: a failure
-    is logged, not retried — it never affects the (already committed) wallet op.
+    Idempotent at the ledger (key wallet:<type>:<txn.id>). On failure the intended
+    entry is parked in wallet_ledger_post_failures for replay
+    (scripts/ledger/replay_ledger_failures.py) — it never affects the (already
+    committed) wallet op.
     """
     kwargs = build_wallet_post_kwargs(txn, member_ref)
     if kwargs is None:
@@ -170,9 +178,56 @@ async def emit_wallet_txn_to_ledger(
         await post_journal_entry(calling_service="wallet", **kwargs)
     except Exception as exc:  # noqa: BLE001 — must not affect the wallet op
         logger.warning(
-            "wallet ledger emit failed for txn %s (%s): %s",
+            "wallet ledger emit failed for txn %s (%s); dead-lettering: %s",
             txn.id,
             txn.transaction_type.value,
             exc,
             exc_info=True,
         )
+        key = (
+            f"{kwargs['source_service']}:{kwargs['source_type']}:"
+            f"{kwargs['source_id']}"
+        )
+        await _dead_letter(db, key, str(kwargs["source_id"]), kwargs, str(exc))
+
+
+async def _dead_letter(
+    db: AsyncSession,
+    idempotency_key: str,
+    source_reference: str,
+    payload: dict,
+    error: str,
+) -> None:
+    """Upsert a dead-letter row for replay. Best-effort — swallows its own errors
+    so a logging-table hiccup can't break the (committed) wallet op."""
+    try:
+        existing = (
+            await db.execute(
+                select(WalletLedgerPostFailure).where(
+                    WalletLedgerPostFailure.idempotency_key == idempotency_key
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            db.add(
+                WalletLedgerPostFailure(
+                    idempotency_key=idempotency_key,
+                    source_reference=source_reference,
+                    payload=payload,
+                    attempts=1,
+                    last_error=error,
+                    status="pending",
+                )
+            )
+        else:
+            existing.attempts += 1
+            existing.last_error = error
+            existing.status = "pending"
+        await db.commit()
+    except Exception:
+        logger.error(
+            "Failed to write WalletLedgerPostFailure for %s",
+            source_reference,
+            exc_info=True,
+        )
+        await db.rollback()
