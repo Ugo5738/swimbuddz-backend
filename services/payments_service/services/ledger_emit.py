@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from dateutil.relativedelta import relativedelta
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.ledger_client import post_journal_entry
@@ -82,6 +83,20 @@ def build_post_kwargs(payment: Payment) -> dict | None:
     currency = payment.currency or "NGN"
     entry_date: date = (payment.paid_at or utc_now()).date()
     settings = get_settings()
+    metadata: dict = {
+        "payment_reference": payment.reference,
+        "purpose": payment.purpose.value,
+    }
+    # Club: pass the member's selected term so revenue recognition spans the
+    # exact membership window. payment_metadata["months"] (3/6/12) is set at
+    # intent creation from the quarterly/6mo/annual choice; convert months->days
+    # the same way members_service computes club_paid_until (via relativedelta).
+    if credit_ref == "deferred_revenue_club":
+        months = int((payment.payment_metadata or {}).get("months") or 0)
+        if months > 0:
+            metadata["recognition_days"] = (
+                entry_date + relativedelta(months=months) - entry_date
+            ).days
     return {
         "entry_date": entry_date.isoformat(),
         "description": f"Payment {payment.reference} — {payment.purpose.value}",
@@ -89,10 +104,7 @@ def build_post_kwargs(payment: Payment) -> dict | None:
         "source_type": SOURCE_TYPE,
         "source_id": payment.reference,
         "org_id": settings.LEDGER_DEFAULT_ORG_ID or None,
-        "metadata": {
-            "payment_reference": payment.reference,
-            "purpose": payment.purpose.value,
-        },
+        "metadata": metadata,
         "lines": [
             {
                 "account_ref": debit_ref,

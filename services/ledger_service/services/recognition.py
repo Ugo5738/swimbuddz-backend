@@ -17,11 +17,12 @@ RECOGNITION POLICY (durations) is a **business policy** (confirmed 2026-06):
     academy_service drives recognition off the real cohort dates (design §8.4 /
     roadmap R2). Straight-line keeps the total correct; only the month-by-month
     split is approximate.
-  * club is intentionally EXCLUDED: terms are member-selected (quarterly /
-    6-month / annual), so no single duration is correct — recognising on a
-    default would mis-state. Club stays deferred until the emitter passes the
-    real term per membership (focused R2 follow-up). Free post-cohort club
-    months are ₦0, so they never create a deferred balance to recognise.
+  * club = the member's selected term. payments_service stores the period
+    (quarterly/6mo/annual) as `months` in payment_metadata; the emitter converts
+    it to metadata["recognition_days"] so the schedule spans the exact membership
+    window. 90d (quarterly, the default cycle) is only the fallback for entries
+    lacking that hint. Free post-cohort club months are ₦0, so they never create
+    a deferred balance.
   * session_bundle (per-attendance) and events (at event date) are
     **delivery-based** — recognised via their domain service in R2, not here.
 """
@@ -53,6 +54,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 RECOGNITION_POLICY: dict[str, tuple[RecognitionMethod, int]] = {
     "deferred_revenue_community": (RecognitionMethod.STRAIGHT_LINE, 365),
     "deferred_revenue_academy": (RecognitionMethod.STRAIGHT_LINE, 84),
+    # Club: the emitter passes the real term via metadata["recognition_days"]
+    # (the member's quarterly/6mo/annual selection). 90d is the fallback default.
+    "deferred_revenue_club": (RecognitionMethod.STRAIGHT_LINE, 90),
 }
 
 # deferred account ref -> the revenue account it recognises into.
@@ -101,12 +105,16 @@ async def _create_schedule(
     dimension_1: Optional[str],
     member_ref: Optional[str],
     currency: str,
+    duration_days: Optional[int] = None,
 ) -> bool:
     """Insert one schedule; idempotent on the source unique constraint.
 
-    Returns True if a new row was created, False if it already existed.
+    `duration_days` overrides the per-account policy default — the emitter passes
+    the real term (e.g. a club member's selected period). Returns True if created,
+    False if it already existed.
     """
-    method, duration_days = RECOGNITION_POLICY[deferred_ref]
+    method, default_days = RECOGNITION_POLICY[deferred_ref]
+    days = duration_days if duration_days and duration_days > 0 else default_days
     schedule = RevenueRecognitionSchedule(
         org_id=org_id,
         source_service=source_service,
@@ -122,7 +130,7 @@ async def _create_schedule(
         recognized_minor=0,
         method=method,
         start_date=start,
-        end_date=start + timedelta(days=duration_days),
+        end_date=start + timedelta(days=days),
         status=RecognitionStatus.ACTIVE,
     )
     try:
@@ -146,6 +154,10 @@ async def ensure_schedules_for_entry(
     `account_ref`s directly (no reverse lookup). No-op for entries with no
     deferred credit line covered by RECOGNITION_POLICY.
     """
+    # The emitter may pass the real recognition window (e.g. a club member's
+    # selected term) as metadata["recognition_days"]; it applies to this entry's
+    # deferred line(s). Falls back to the per-account policy default if absent.
+    recognition_days = (payload.metadata or {}).get("recognition_days")
     for line in payload.lines:
         if line.credit <= 0 or line.account_ref not in RECOGNITION_POLICY:
             continue
@@ -162,6 +174,7 @@ async def ensure_schedules_for_entry(
             dimension_1=line.dimension_1,
             member_ref=line.member_ref,
             currency=line.currency or "NGN",
+            duration_days=recognition_days,
         )
 
 
@@ -204,6 +217,7 @@ async def backfill_schedules(session: AsyncSession, org_id: uuid.UUID) -> int:
             dimension_1=line.dimension_1,
             member_ref=line.member_ref,
             currency=line.currency or "NGN",
+            duration_days=(entry.entry_metadata or {}).get("recognition_days"),
         )
         created += int(was_created)
     return created
