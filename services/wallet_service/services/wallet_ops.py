@@ -319,6 +319,12 @@ async def debit_wallet(
         raise
     await db.refresh(txn)
 
+    # Mirror the Bubbles movement to the ledger (best-effort, design §8.2). The
+    # promo/purchased split for spends is on txn_metadata (set above).
+    from services.wallet_service.services.ledger_emit import emit_wallet_txn_to_ledger
+
+    await emit_wallet_txn_to_ledger(txn, member_auth_id)
+
     logger.info(
         "Debit %d from wallet %s (key=%s), balance %d→%d",
         amount,
@@ -428,6 +434,11 @@ async def credit_wallet(
             return existing_after_conflict
         raise
     await db.refresh(txn)
+
+    # Mirror the Bubbles movement to the ledger (best-effort, design §8.2).
+    from services.wallet_service.services.ledger_emit import emit_wallet_txn_to_ledger
+
+    await emit_wallet_txn_to_ledger(txn, member_auth_id)
 
     logger.info(
         "Credit %d to wallet %s (key=%s), balance %d→%d",
