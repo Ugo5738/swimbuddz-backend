@@ -7,7 +7,7 @@ spends that draw on those grants would debit `bubbles_liability_promo` with no
 matching credit and push it negative. This posts a single opening entry:
 
     DR expense_marketing / CR bubbles_liability_promo = SUM(active grants'
-    bubbles_remaining) x NAIRA_PER_BUBBLE
+    bubbles_remaining) x KOBO_PER_BUBBLE
 
 Idempotent (fixed source id -> ledger idempotency key). Dry-run by default.
 
@@ -27,8 +27,8 @@ from datetime import date
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.ledger_client import post_journal_entry
+from libs.common.currency import KOBO_PER_BUBBLE
 from services.wallet_service.models import PromotionalBubbleGrant
-from services.wallet_service.services.ledger_emit import NAIRA_PER_BUBBLE
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -59,7 +59,7 @@ async def main(commit: bool) -> None:
                 )
             ).scalar() or 0
 
-        kobo = int(total_bubbles) * NAIRA_PER_BUBBLE
+        kobo = int(total_bubbles) * KOBO_PER_BUBBLE
         print(
             f"active promo Bubbles outstanding: {total_bubbles} -> NGN {kobo / 100:,.2f}"
         )
