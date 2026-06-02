@@ -41123,6 +41123,33 @@
         ]
       }
     },
+    "/api/v1/admin/finance/users/me": {
+      "get": {
+        "tags": [
+          "ledger-admin-users"
+        ],
+        "summary": "Get My Finance Membership",
+        "description": "Return the caller's own finance-team membership (gated at the lowest role).\n\n403 if the caller has no active ledger_users row. The frontend calls this to\ngate the finance area for finance staff who are NOT global SwimBuddz admins,\nwithout exposing the rest of /admin. Declared before the /{user_id} routes so\n\"me\" is never captured as a user id.",
+        "operationId": "get_my_finance_membership_admin_finance_users_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerUserOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/finance/users/{user_id}": {
       "patch": {
         "tags": [

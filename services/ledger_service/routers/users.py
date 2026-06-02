@@ -74,6 +74,20 @@ async def list_finance_users(
     return list(rows)
 
 
+@router.get("/me", response_model=LedgerUserOut)
+async def get_my_finance_membership(
+    actor: LedgerUser = Depends(require_ledger_role(LedgerRole.VIEWER)),
+) -> LedgerUser:
+    """Return the caller's own finance-team membership (gated at the lowest role).
+
+    403 if the caller has no active ledger_users row. The frontend calls this to
+    gate the finance area for finance staff who are NOT global SwimBuddz admins,
+    without exposing the rest of /admin. Declared before the /{user_id} routes so
+    "me" is never captured as a user id.
+    """
+    return actor
+
+
 @router.post("", response_model=LedgerUserOut, status_code=status.HTTP_201_CREATED)
 async def add_finance_user(
     payload: LedgerUserCreate,
