@@ -102,10 +102,12 @@ async def test_ingest_dry_run_does_not_post_and_totals_gross(monkeypatch):
     class _FakeClient:
         async def list_settlements(self, **kwargs):
             return [
+                # Real Paystack shape: effective_amount == total_amount (the NET
+                # settled to bank); total_fees charged on top. Gross = net + fees.
                 {
                     "id": sid1,
                     "total_amount": 100_000,
-                    "effective_amount": 98_500,
+                    "effective_amount": 100_000,
                     "total_fees": 1_500,
                     "status": "success",
                     "currency": "NGN",
@@ -114,7 +116,7 @@ async def test_ingest_dry_run_does_not_post_and_totals_gross(monkeypatch):
                 {
                     "id": sid2,
                     "total_amount": 200_000,
-                    "effective_amount": 197_000,
+                    "effective_amount": 200_000,
                     "total_fees": 3_000,
                     "status": "success",
                     "currency": "NGN",
@@ -136,5 +138,6 @@ async def test_ingest_dry_run_does_not_post_and_totals_gross(monkeypatch):
         lookback_days=30, commit=False
     )
     assert summary["fetched"] == 2
-    assert summary["would_drain_minor"] == 300_000
+    # gross = net + fees: (100_000 + 1_500) + (200_000 + 3_000)
+    assert summary["would_drain_minor"] == 304_500
     assert emit_calls == []  # dry-run must NEVER post to the ledger
