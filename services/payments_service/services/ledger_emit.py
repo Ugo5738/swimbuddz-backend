@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from dateutil.relativedelta import relativedelta
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.ledger_client import post_journal_entry
@@ -82,6 +83,20 @@ def build_post_kwargs(payment: Payment) -> dict | None:
     currency = payment.currency or "NGN"
     entry_date: date = (payment.paid_at or utc_now()).date()
     settings = get_settings()
+    metadata: dict = {
+        "payment_reference": payment.reference,
+        "purpose": payment.purpose.value,
+    }
+    # Club: pass the member's selected term so revenue recognition spans the
+    # exact membership window. payment_metadata["months"] (3/6/12) is set at
+    # intent creation from the quarterly/6mo/annual choice; convert months->days
+    # the same way members_service computes club_paid_until (via relativedelta).
+    if credit_ref == "deferred_revenue_club":
+        months = int((payment.payment_metadata or {}).get("months") or 0)
+        if months > 0:
+            metadata["recognition_days"] = (
+                entry_date + relativedelta(months=months) - entry_date
+            ).days
     return {
         "entry_date": entry_date.isoformat(),
         "description": f"Payment {payment.reference} — {payment.purpose.value}",
@@ -89,10 +104,7 @@ def build_post_kwargs(payment: Payment) -> dict | None:
         "source_type": SOURCE_TYPE,
         "source_id": payment.reference,
         "org_id": settings.LEDGER_DEFAULT_ORG_ID or None,
-        "metadata": {
-            "payment_reference": payment.reference,
-            "purpose": payment.purpose.value,
-        },
+        "metadata": metadata,
         "lines": [
             {
                 "account_ref": debit_ref,
@@ -180,3 +192,152 @@ async def _dead_letter(
             exc_info=True,
         )
         await db.rollback()
+
+
+# ---------------------------------------------------------------------------
+# Cash-out emitters (design §8.1) — refunds + coach payouts. All best-effort:
+# never raise, dead-letter on failure (same pattern as the cash-in emitter).
+# ---------------------------------------------------------------------------
+
+
+async def _post_or_dead_letter(
+    db: AsyncSession, idempotency_key: str, source_reference: str, kwargs: dict
+) -> None:
+    try:
+        await post_journal_entry(calling_service=SOURCE_SERVICE, **kwargs)
+    except Exception as exc:  # noqa: BLE001 — must not affect the source op
+        logger.warning(
+            "Ledger post failed (%s); dead-lettering: %s",
+            idempotency_key,
+            exc,
+            exc_info=True,
+        )
+        await _dead_letter(db, idempotency_key, source_reference, kwargs, str(exc))
+
+
+async def emit_refund_disbursed_to_ledger(
+    db: AsyncSession, payment: Payment, refund_kobo: int, enrollment_id: str
+) -> None:
+    """Cash refund out: DR the account credited at cash-in / CR bank.
+
+    Reverses the original purpose's revenue/deferred account (PURPOSE_TO_CREDIT_REF).
+    Idempotent per (payment.reference, enrollment_id).
+    """
+    credit_ref = PURPOSE_TO_CREDIT_REF.get(payment.purpose)
+    if credit_ref is None or refund_kobo <= 0:
+        return
+    settings = get_settings()
+    source_id = f"{payment.reference}:{enrollment_id}"
+    currency = payment.currency or "NGN"
+    kwargs = {
+        "entry_date": utc_now().date().isoformat(),
+        "description": f"Refund {payment.reference} — {payment.purpose.value}",
+        "source_service": SOURCE_SERVICE,
+        "source_type": "refund_disbursed",
+        "source_id": source_id,
+        "org_id": settings.LEDGER_DEFAULT_ORG_ID or None,
+        "metadata": {
+            "payment_reference": payment.reference,
+            "enrollment_id": enrollment_id,
+        },
+        "lines": [
+            {
+                "account_ref": credit_ref,
+                "debit": refund_kobo,
+                "currency": currency,
+                "member_ref": payment.member_auth_id,
+                "dimension_1": PURPOSE_TO_DOMAIN.get(payment.purpose),
+                "external_ref": payment.reference,
+            },
+            {
+                "account_ref": "bank_operating_ngn",
+                "credit": refund_kobo,
+                "currency": currency,
+                "member_ref": payment.member_auth_id,
+                "external_ref": payment.reference,
+            },
+        ],
+    }
+    await _post_or_dead_letter(
+        db, f"{SOURCE_SERVICE}:refund_disbursed:{source_id}", payment.reference, kwargs
+    )
+
+
+async def emit_payout_accrual_to_ledger(db: AsyncSession, payout) -> None:
+    """Accrue coach pay at block end: DR cogs_coach_academy / CR coach_payouts_payable.
+
+    Domain is academy today — all CoachPayout earnings are academy_earnings; add a
+    cohort/source field to split cogs_coach_club later. Idempotent per payout id.
+    """
+    amount = int(payout.total_amount or 0)
+    if amount <= 0:
+        return
+    settings = get_settings()
+    end = getattr(payout, "period_end", None)
+    coach = str(payout.coach_member_id)
+    kwargs = {
+        "entry_date": (end or utc_now()).date().isoformat(),
+        "description": f"Coach payout accrual — {payout.id}",
+        "source_service": SOURCE_SERVICE,
+        "source_type": "payout_accrual",
+        "source_id": str(payout.id),
+        "org_id": settings.LEDGER_DEFAULT_ORG_ID or None,
+        "metadata": {"payout_id": str(payout.id), "coach": coach},
+        "lines": [
+            {
+                "account_ref": "cogs_coach_academy",
+                "debit": amount,
+                "currency": payout.currency or "NGN",
+                "member_ref": coach,
+                "dimension_1": "academy",
+            },
+            {
+                "account_ref": "coach_payouts_payable",
+                "credit": amount,
+                "currency": payout.currency or "NGN",
+                "member_ref": coach,
+            },
+        ],
+    }
+    await _post_or_dead_letter(
+        db, f"{SOURCE_SERVICE}:payout_accrual:{payout.id}", str(payout.id), kwargs
+    )
+
+
+async def emit_payout_paid_to_ledger(db: AsyncSession, payout) -> None:
+    """Pay coach (transfer success): DR coach_payouts_payable / CR bank.
+
+    Clears the payable the accrual booked. Idempotent per payout id.
+    """
+    amount = int(payout.total_amount or 0)
+    if amount <= 0:
+        return
+    settings = get_settings()
+    paid = getattr(payout, "paid_at", None)
+    coach = str(payout.coach_member_id)
+    kwargs = {
+        "entry_date": (paid or utc_now()).date().isoformat(),
+        "description": f"Coach payout paid — {payout.id}",
+        "source_service": SOURCE_SERVICE,
+        "source_type": "payout_paid",
+        "source_id": str(payout.id),
+        "org_id": settings.LEDGER_DEFAULT_ORG_ID or None,
+        "metadata": {"payout_id": str(payout.id), "coach": coach},
+        "lines": [
+            {
+                "account_ref": "coach_payouts_payable",
+                "debit": amount,
+                "currency": payout.currency or "NGN",
+                "member_ref": coach,
+            },
+            {
+                "account_ref": "bank_operating_ngn",
+                "credit": amount,
+                "currency": payout.currency or "NGN",
+                "member_ref": coach,
+            },
+        ],
+    }
+    await _post_or_dead_letter(
+        db, f"{SOURCE_SERVICE}:payout_paid:{payout.id}", str(payout.id), kwargs
+    )

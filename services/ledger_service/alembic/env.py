@@ -27,6 +27,7 @@ from services.ledger_service.models import (  # noqa: F401
     LedgerUser,
     Organization,
     Period,
+    RevenueRecognitionSchedule,
 )
 
 settings = get_settings()
@@ -54,6 +55,7 @@ SERVICE_TABLES: set[str] = {
     "journal_lines",
     "account_balances",
     "ledger_periods",
+    "revenue_recognition_schedules",
     "ledger_users",
     "ledger_audit_log",
 }

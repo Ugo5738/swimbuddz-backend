@@ -252,6 +252,13 @@ async def paystack_webhook(
                 payout.paid_at = utc_now()
                 db.add(payout)
                 await db.commit()
+
+                # Mirror the cash payout to the ledger (best-effort, §8.1).
+                from services.payments_service.services.ledger_emit import (
+                    emit_payout_paid_to_ledger,
+                )
+
+                await emit_payout_paid_to_ledger(db, payout)
                 logger.info(
                     f"Payout {payout.id} marked as paid via transfer webhook",
                     extra={"extra_fields": {"transfer_code": transfer_code}},

@@ -91,8 +91,13 @@ async def post_entry(
     payload: JournalEntryCreate,
     posted_by_user_id: Optional[uuid.UUID] = None,
     posted_by_service: Optional[str] = None,
+    is_adjustment: bool = False,
 ) -> JournalEntryResult:
-    """Post a balanced journal entry. Idempotent; runs in the caller's transaction."""
+    """Post a balanced journal entry. Idempotent; runs in the caller's transaction.
+
+    `is_adjustment` marks accountant adjustments/reversals, which are accepted in
+    a SOFT_CLOSED period (normal emitter posts are not). HARD_CLOSED rejects all.
+    """
     # 1. Idempotency — replays return the original, no new entry.
     existing = await _get_by_idempotency(session, org_id, payload.idempotency_key)
     if existing is not None:
@@ -112,10 +117,16 @@ async def post_entry(
     except ValueError as exc:
         raise UnresolvedAccountError(str(exc)) from exc
 
-    # 4. Period must be open.
+    # 4. Period must accept this post (design §10.2): HARD_CLOSED rejects all;
+    #    SOFT_CLOSED rejects normal emitter posts but allows accountant
+    #    adjustments/reversals; OPEN accepts everything.
     period = await resolve_or_create_period(session, org_id, payload.entry_date)
-    if period.status != PeriodStatus.OPEN:
-        raise PeriodClosedError(f"period {period.period_name} is {period.status.value}")
+    if period.status == PeriodStatus.HARD_CLOSED:
+        raise PeriodClosedError(f"period {period.period_name} is hard-closed")
+    if period.status == PeriodStatus.SOFT_CLOSED and not is_adjustment:
+        raise PeriodClosedError(
+            f"period {period.period_name} is soft-closed — only adjusting entries allowed"
+        )
 
     # 5. Org base currency + cost-center code -> id resolution.
     org = await session.get(Organization, org_id)
@@ -210,6 +221,15 @@ async def post_entry(
     )
     await session.flush()
 
+    # Auto-create revenue-recognition schedules for any deferred-revenue credit
+    # lines (design §10). Local import avoids a posting<->recognition import
+    # cycle. Only runs on a real post — replays returned at step 1.
+    from services.ledger_service.services.recognition import (
+        ensure_schedules_for_entry,
+    )
+
+    await ensure_schedules_for_entry(session, org_id, entry, payload)
+
     return _result(entry, replay=False)
 
 
@@ -248,8 +268,10 @@ async def reverse_entry(
     now = utc_now()
     today = now.date()
     period = await resolve_or_create_period(session, org_id, today)
-    if period.status != PeriodStatus.OPEN:
-        raise PeriodClosedError(f"period {period.period_name} is {period.status.value}")
+    # A reversal is an adjustment — allowed into a soft-closed period, but not a
+    # hard-closed one.
+    if period.status == PeriodStatus.HARD_CLOSED:
+        raise PeriodClosedError(f"period {period.period_name} is hard-closed")
 
     rev = JournalEntry(
         org_id=org_id,

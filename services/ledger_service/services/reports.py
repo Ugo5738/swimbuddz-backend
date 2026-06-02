@@ -10,9 +10,16 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from services.ledger_service.models import ChartOfAccounts, JournalEntry, JournalLine
+from services.ledger_service.models import (
+    ChartOfAccounts,
+    JournalEntry,
+    JournalLine,
+    RevenueRecognitionSchedule,
+)
 from services.ledger_service.models.enums import AccountType
 from services.ledger_service.schemas.reports import (
+    DeferredRevenueReport,
+    DeferredRevenueRow,
     ProfitLossReport,
     ProfitLossRow,
     TrialBalanceReport,
@@ -155,4 +162,51 @@ async def profit_loss(
         total_revenue_minor=total_revenue,
         total_expense_minor=total_expense,
         net_income_minor=total_revenue - total_expense,
+    )
+
+
+async def deferred_revenue(
+    session: AsyncSession, org_id: uuid.UUID, as_of: date
+) -> DeferredRevenueReport:
+    """Outstanding deferred-revenue obligations — what's still owed in service.
+
+    Aggregates recognition schedules (start_date <= as_of) by deferred account +
+    domain: total booked, recognised to date, and remaining (total - recognised).
+    The remaining total ties to the deferred-revenue account balances.
+    """
+    domain_col = func.coalesce(RevenueRecognitionSchedule.dimension_1, "(unassigned)")
+    rows = (
+        await session.execute(
+            select(
+                RevenueRecognitionSchedule.deferred_account_ref,
+                domain_col,
+                func.count(),
+                func.coalesce(func.sum(RevenueRecognitionSchedule.total_minor), 0),
+                func.coalesce(func.sum(RevenueRecognitionSchedule.recognized_minor), 0),
+            )
+            .where(
+                RevenueRecognitionSchedule.org_id == org_id,
+                RevenueRecognitionSchedule.start_date <= as_of,
+            )
+            .group_by(RevenueRecognitionSchedule.deferred_account_ref, domain_col)
+            .order_by(RevenueRecognitionSchedule.deferred_account_ref)
+        )
+    ).all()
+    out: list[DeferredRevenueRow] = []
+    total_remaining = 0
+    for acct, domain, count, total, recognized in rows:
+        remaining = total - recognized
+        total_remaining += remaining
+        out.append(
+            DeferredRevenueRow(
+                deferred_account_ref=acct,
+                domain=domain,
+                schedule_count=count,
+                total_minor=total,
+                recognized_minor=recognized,
+                remaining_minor=remaining,
+            )
+        )
+    return DeferredRevenueReport(
+        as_of=as_of, rows=out, total_remaining_minor=total_remaining
     )

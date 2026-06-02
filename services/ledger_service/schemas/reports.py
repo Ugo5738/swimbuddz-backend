@@ -85,3 +85,34 @@ class ProfitLossReport(BaseModel):
     total_revenue_minor: int
     total_expense_minor: int
     net_income_minor: int
+
+
+class DeferredRevenueRow(BaseModel):
+    deferred_account_ref: str
+    domain: str
+    schedule_count: int
+    total_minor: int
+    recognized_minor: int
+    remaining_minor: int
+
+
+class DeferredRevenueReport(BaseModel):
+    as_of: date
+    rows: list[DeferredRevenueRow]
+    total_remaining_minor: int
+
+
+class PeriodOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    period_name: str
+    period_type: str
+    start_date: date
+    end_date: date
+    status: str
+    closed_at: Optional[datetime] = None
+
+
+class PeriodTransitionRequest(BaseModel):
+    to_status: str  # "open" | "soft_closed" | "hard_closed"

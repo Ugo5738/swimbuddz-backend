@@ -311,6 +311,16 @@ async def mark_refund_disbursed(
     await db.commit()
     await db.refresh(payment)
 
+    # Mirror the cash refund to the ledger (best-effort, §8.1). `entry` is the
+    # matched refund_owed obligation; idempotent per (payment, enrollment).
+    from services.payments_service.services.ledger_emit import (
+        emit_refund_disbursed_to_ledger,
+    )
+
+    await emit_refund_disbursed_to_ledger(
+        db, payment, int(entry.get("refund_kobo") or 0), payload.enrollment_id
+    )
+
     logger.info(
         "Refund disbursed: payment=%s enrollment=%s admin=%s",
         reference,

@@ -53,6 +53,7 @@ async def create_manual_entry(
             payload=payload,
             posted_by_user_id=actor.id,
             posted_by_service="manual",
+            is_adjustment=True,
         )
     except (UnbalancedEntryError, UnresolvedAccountError) as exc:
         await session.rollback()

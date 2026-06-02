@@ -370,6 +370,13 @@ async def complete_manual_payout(
         await session.commit()
         await session.refresh(payout)
 
+        # Mirror the cash payout to the ledger (best-effort, §8.1).
+        from services.payments_service.services.ledger_emit import (
+            emit_payout_paid_to_ledger,
+        )
+
+        await emit_payout_paid_to_ledger(session, payout)
+
         logger.info(
             f"Payout {payout_id} marked as manually paid",
             extra={

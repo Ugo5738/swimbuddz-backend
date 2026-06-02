@@ -275,6 +275,13 @@ async def process_recurring_payouts() -> None:
 
                 db.add(config)
                 await db.commit()
+
+                # Mirror the accrued coach payout to the ledger (best-effort, §8.1).
+                from services.payments_service.services.ledger_emit import (
+                    emit_payout_accrual_to_ledger,
+                )
+
+                await emit_payout_accrual_to_ledger(db, payout)
                 processed += 1
                 logger.info(
                     "Created PENDING payout %s for coach %s (block %d/%d, total %d kobo)",
