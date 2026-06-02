@@ -403,17 +403,18 @@ async def ingest_paystack_settlements(
             sid = str(s.get("id") or "")
             if not sid:
                 continue
-            gross = int(s.get("total_amount") or 0)
+            # Paystack: total_amount / effective_amount is the NET settled to the
+            # bank; total_fees is charged ON TOP (not included). Gross — what we
+            # debited to paystack_clearing at cash-in — is net + fees, so the
+            # drain ties out and the PSP fee is expensed. (gross - net = fees
+            # keeps the drain entry balanced; verified against the live API.)
+            fees = int(s.get("total_fees") or 0)
             net = (
                 int(s["effective_amount"])
                 if s.get("effective_amount") is not None
-                else gross - int(s.get("total_fees") or 0)
+                else int(s.get("total_amount") or 0)
             )
-            fees = (
-                int(s["total_fees"])
-                if s.get("total_fees") is not None
-                else max(gross - net, 0)
-            )
+            gross = net + fees
 
             existing = (
                 await db.execute(
