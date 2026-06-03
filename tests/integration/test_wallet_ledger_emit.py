@@ -46,3 +46,27 @@ async def test_wallet_emit_dead_letters_on_ledger_failure(db_session, monkeypatc
     assert row.status == "pending"
     assert "ledger down" in (row.last_error or "")
     assert row.payload["source_id"] == str(txn.id)
+
+
+async def test_wallet_emit_values_bubble_at_100_naira(db_session, monkeypatch):
+    """1 Bubble = ₦100 = 10,000 kobo (guards the NAIRA/KOBO_PER_BUBBLE regression)."""
+    captured: dict = {}
+
+    async def _capture(**kwargs):
+        captured.update(kwargs)
+        return {"entry_id": "x", "status": "posted"}
+
+    monkeypatch.setattr(ledger_emit, "post_journal_entry", _capture)
+
+    txn = WalletTransaction(
+        id=uuid.uuid4(),
+        transaction_type=TransactionType.REWARD,
+        amount=10,  # 10 Bubbles -> ₦1,000 -> 100,000 kobo
+        created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+    )
+    await ledger_emit.emit_wallet_txn_to_ledger(db_session, txn, "auth-xyz")
+
+    lines = captured["lines"]
+    debit = sum(line.get("debit", 0) for line in lines)
+    credit = sum(line.get("credit", 0) for line in lines)
+    assert debit == credit == 100_000  # NOT 1,000 (the ₦1/Bubble bug)

@@ -1,8 +1,9 @@
 """Emit a wallet transaction's Naira-side journal entry to the ledger (design §8.2).
 
 Best-effort: a ledger failure is logged and NEVER affects the wallet operation
-(the WalletTransaction is already committed). [Follow-up: a dead-letter table for
-automated replay, like payments_service.] Bubble = NAIRA_PER_BUBBLE kobo.
+(the WalletTransaction is already committed). 1 Bubble = ₦100 = KOBO_PER_BUBBLE
+kobo (the constant is kobo-per-Bubble — the old NAIRA_PER_BUBBLE name was a trap
+that valued a Bubble at ₦1).
 
 Liability split (§19-B): grant-funded Bubbles live in `bubbles_liability_promo`,
 purchased Bubbles in `bubbles_liability`. Spends draw promo-first — wallet_ops
@@ -17,6 +18,7 @@ from __future__ import annotations
 from typing import Optional
 
 from libs.common.config import get_settings
+from libs.common.currency import KOBO_PER_BUBBLE
 from libs.common.ledger_client import post_journal_entry
 from libs.common.logging import get_logger
 from services.wallet_service.models import (
@@ -28,8 +30,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
-
-NAIRA_PER_BUBBLE = 100
 
 # A PURCHASE spend's credit account + reporting domain, by (service_source,
 # reference_type), with a fallback on service_source alone.
@@ -51,7 +51,7 @@ SPEND_CREDIT_BY_SOURCE: dict[str, tuple[str, str]] = {
 
 
 def _kobo(bubbles: int) -> int:
-    return bubbles * NAIRA_PER_BUBBLE
+    return bubbles * KOBO_PER_BUBBLE
 
 
 def _line(account_ref: str, *, debit: int = 0, credit: int = 0, **extra) -> dict:
