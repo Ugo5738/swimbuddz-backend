@@ -35,6 +35,7 @@ logger = get_logger(__name__)
 # reference_type), with a fallback on service_source alone.
 SPEND_CREDIT_BY_SOURCE_REF: dict[tuple[str, str], tuple[str, str]] = {
     ("attendance", "session"): ("revenue_club_session", "club"),
+    ("sessions", "session_booking"): ("revenue_club_session", "club"),
     ("payments_service", "session_fee"): ("revenue_club_session", "club"),
     ("store", "order"): ("revenue_store", "store"),
     ("events", "event"): ("revenue_events", "events"),
@@ -43,11 +44,19 @@ SPEND_CREDIT_BY_SOURCE_REF: dict[tuple[str, str], tuple[str, str]] = {
 }
 SPEND_CREDIT_BY_SOURCE: dict[str, tuple[str, str]] = {
     "attendance": ("revenue_club_session", "club"),
+    "sessions": ("revenue_club_session", "club"),
     "store": ("revenue_store", "store"),
     "events": ("revenue_events", "events"),
     "transport": ("revenue_transport", "transport"),
     "academy": ("deferred_revenue_academy", "academy"),
 }
+
+
+def _spend_credit(txn) -> Optional[tuple[str, str]]:
+    """The (revenue_account, domain) a Bubble spend/refund maps to, or None."""
+    return SPEND_CREDIT_BY_SOURCE_REF.get(
+        (txn.service_source or "", txn.reference_type or "")
+    ) or SPEND_CREDIT_BY_SOURCE.get(txn.service_source or "")
 
 
 def _kobo(bubbles: int) -> int:
@@ -76,9 +85,7 @@ def build_wallet_post_kwargs(
     lines: Optional[list[dict]] = None
 
     if t == TransactionType.PURCHASE:
-        cred = SPEND_CREDIT_BY_SOURCE_REF.get(
-            (txn.service_source or "", txn.reference_type or "")
-        ) or SPEND_CREDIT_BY_SOURCE.get(txn.service_source or "")
+        cred = _spend_credit(txn)
         if cred is None:
             # A new service spending Bubbles with an unrecognised source would
             # otherwise silently drop revenue (this emitter is log-only, no
@@ -135,10 +142,28 @@ def build_wallet_post_kwargs(
             _line("bubbles_liability_promo", credit=amt, member_ref=member_ref),
         ]
     elif t == TransactionType.REFUND:
-        lines = [
-            _line("refunds_payable", debit=amt, member_ref=member_ref),
-            _line("bubbles_liability", credit=amt, member_ref=member_ref),
-        ]
+        # A refund that reverses a known Bubble spend (e.g. a cancelled session
+        # booking, refunded in Bubbles) must UN-EARN that revenue and restore the
+        # liability — not leave the revenue on the books. A generic refund-to-
+        # wallet (no spend source) settles a cash-refund obligation instead.
+        cred = _spend_credit(txn)
+        if cred is not None:
+            revenue_ref, domain = cred
+            lines = [
+                _line(
+                    revenue_ref,
+                    debit=amt,
+                    member_ref=member_ref,
+                    dimension_1=domain,
+                    external_ref=txn.reference_id,
+                ),
+                _line("bubbles_liability", credit=amt, member_ref=member_ref),
+            ]
+        else:
+            lines = [
+                _line("refunds_payable", debit=amt, member_ref=member_ref),
+                _line("bubbles_liability", credit=amt, member_ref=member_ref),
+            ]
     elif t in (TransactionType.REWARD, TransactionType.REFERRAL_CREDIT):
         lines = [
             _line("expense_marketing", debit=amt, member_ref=member_ref),
