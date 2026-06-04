@@ -7045,13 +7045,72 @@
         }
       }
     },
+    "/api/v1/sessions/bookings/{booking_id}/refund-pool-fee": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Admin Refund Pool Fee",
+        "description": "Admin: refund a booking's per-session pool fee to the member's Bubbles.\n\nThe make-up case: a learner paid the ~\u20a63,500 pool fee, couldn't attend\n(rain-out / excused / marked ABSENT) and is owed it back so it funds the\nmake-up session \u2014 otherwise they'd pay the pool fee twice.\n\nWhy a dedicated endpoint (not ``/cancel`` or the Adjust-Bubbles tool):\n  - ``/cancel`` is member-only and refuses once the session has started; a\n    rain-out is marked ABSENT *during/after* the session, so it can't apply.\n  - The \"Adjust Bubbles\" admin tool posts a generic ``admin_adjustment`` the\n    ledger SKIPS \u2014 the refund would be invisible and the pool-fee revenue\n    double-counted once the make-up is rebooked.\n  - This routes through the **accounted** ``session_booking`` refund path\n    (``transaction_type=refund``), so the ledger reverses\n    ``revenue_club_session`` and restores the Bubble liability. The make-up\n    rebook re-recognises it \u2014 revenue lands once, for the delivered session.\n\nThe booking is **not** cancelled \u2014 it stays (with its ABSENT/EXCUSED\nattendance row) as the audit trail. Idempotent per booking (notes marker +\nthe wallet's shared ``booking-refund-<id>`` key). Phase 1 make-up *confirm*\nwill call this same primitive automatically; until then it's an admin tap.",
+        "operationId": "admin_refund_pool_fee_sessions_bookings__booking_id__refund_pool_fee_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPoolFeeRefundRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sessions/bookings/{booking_id}/excuse": {
       "post": {
         "tags": [
           "bookings"
         ],
         "summary": "Excuse Booking",
-        "description": "Member self-excuses a booking \u2014 \"I can't make it\".\n\nDistinct from cancel:\n  - For COHORT sessions, the pool fee is not refunded. Instead, an\n    EXCUSED attendance record is created which the coach payout cron\n    converts into a CohortMakeupObligation. The member gets a make-up\n    session later. This matches the cohort model: program fee is a\n    commitment, not a per-session refundable purchase.\n  - For non-cohort sessions, callers should use the regular\n    ``/cancel`` endpoint instead (which refunds in Bubbles). This\n    endpoint rejects non-cohort bookings.\n\nValidates:\n  - Booking belongs to the caller.\n  - Session is in the future AND at least ``CANCELLATION_CUTOFF_HOURS``\n    away. Late self-excuses get a 422 \u2014 admin can still override via\n    the coach-mark endpoint if circumstances warrant.",
+        "description": "Member self-excuses a booking \u2014 \"I can't make it\".\n\nDistinct from cancel:\n  - For COHORT sessions, this endpoint moves no money. It creates an\n    EXCUSED attendance record which the coach payout cron converts into a\n    CohortMakeupObligation \u2014 the member gets a make-up session later. The\n    *program* fee stays (a cohort commitment, not a per-session refundable\n    purchase). The *per-session pool fee* the member paid is refunded to\n    Bubbles separately \u2014 by an admin via the refund-pool-fee action, or\n    automatically on make-up confirm (Phase 1) \u2014 so it funds the make-up.\n  - For non-cohort sessions, callers should use the regular\n    ``/cancel`` endpoint instead (which refunds in Bubbles). This\n    endpoint rejects non-cohort bookings.\n\nValidates:\n  - Booking belongs to the caller.\n  - Session is in the future AND at least ``CANCELLATION_CUTOFF_HOURS``\n    away. Late self-excuses get a 422 \u2014 admin can still override via\n    the coach-mark endpoint if circumstances warrant.",
         "operationId": "excuse_booking_sessions_bookings__booking_id__excuse_post",
         "security": [
           {
@@ -41803,6 +41862,55 @@
         ]
       }
     },
+    "/api/v1/admin/finance/users/{user_id}/invite": {
+      "post": {
+        "tags": [
+          "ledger-admin-users"
+        ],
+        "summary": "Resend Finance User Invite",
+        "description": "Re-send the Supabase invite email for a finance user (admin/owner).\n\nFor when the original invite was lost. Idempotent at Supabase: an already-\nregistered user comes back as ``invite_status=\"exists\"`` (they can just log\nin); no second account is created.",
+        "operationId": "resend_finance_user_invite_admin_finance_users__user_id__invite_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerUserOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/finance/users/{user_id}": {
       "patch": {
         "tags": [
@@ -52534,6 +52642,22 @@
         ],
         "title": "MemberMembershipResponse",
         "description": "Membership tiers, billing, and gamification."
+      },
+      "AdminPoolFeeRefundRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "AdminPoolFeeRefundRequest",
+        "description": "Admin refunds a booking's per-session pool fee to the member's Bubble\nwallet \u2014 the make-up case: a learner paid the ~\u20a63,500 pool fee, couldn't\nattend (rain-out / excused), and is owed it back to fund their make-up.\n\nThe server routes this through the accounted ``session_booking`` refund\npath so the ledger reverses the pool-fee revenue \u2014 never the manual\n\"Adjust Bubbles\" tool. ``reason`` is recorded on the booking for audit."
       },
       "AdminWalkInRequest": {
         "properties": {
@@ -92676,6 +92800,17 @@
               }
             ],
             "title": "Deactivated At"
+          },
+          "invite_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invite Status"
           }
         },
         "type": "object",
