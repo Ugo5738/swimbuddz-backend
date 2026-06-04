@@ -70,6 +70,19 @@ class AdminWalkInRequest(BaseModel):
     notes: Optional[str] = Field(default=None, max_length=500)
 
 
+class AdminPoolFeeRefundRequest(BaseModel):
+    """Admin refunds a booking's per-session pool fee to the member's Bubble
+    wallet — the make-up case: a learner paid the ~₦3,500 pool fee, couldn't
+    attend (rain-out / excused), and is owed it back to fund their make-up.
+
+    The server routes this through the accounted ``session_booking`` refund
+    path so the ledger reverses the pool-fee revenue — never the manual
+    "Adjust Bubbles" tool. ``reason`` is recorded on the booking for audit.
+    """
+
+    reason: str = Field(min_length=1, max_length=300)
+
+
 class BulkBookingItem(BaseModel):
     """One entry in a corporate-bulk booking payload."""
 

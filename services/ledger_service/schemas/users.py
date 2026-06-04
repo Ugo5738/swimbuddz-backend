@@ -37,3 +37,8 @@ class LedgerUserOut(BaseModel):
     role: LedgerRole
     created_at: datetime
     deactivated_at: Optional[datetime] = None
+
+    # Set only on add / resend-invite responses — not a stored column. One of
+    # "invited" (email sent), "exists" (already had a login), "error" (send
+    # failed — fall back to a manual Supabase invite). None on list/role-change.
+    invite_status: Optional[str] = None

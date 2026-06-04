@@ -70,3 +70,48 @@ async def test_wallet_emit_values_bubble_at_100_naira(db_session, monkeypatch):
     debit = sum(line.get("debit", 0) for line in lines)
     credit = sum(line.get("credit", 0) for line in lines)
     assert debit == credit == 100_000  # NOT 1,000 (the ₦1/Bubble bug)
+
+
+def _capture(monkeypatch):
+    captured: dict = {}
+
+    async def _cap(**kw):
+        captured.update(kw)
+        return {"entry_id": "x", "status": "posted"}
+
+    monkeypatch.setattr(ledger_emit, "post_journal_entry", _cap)
+    return captured
+
+
+def _session_txn(kind):
+    return WalletTransaction(
+        id=uuid.uuid4(),
+        transaction_type=kind,
+        amount=5,  # 5 Bubbles = ₦500 = 50,000 kobo
+        service_source="sessions",
+        reference_type="session_booking",
+        reference_id="sess-1",
+        created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+    )
+
+
+async def test_session_booking_spend_posts_club_revenue(db_session, monkeypatch):
+    captured = _capture(monkeypatch)
+    await ledger_emit.emit_wallet_txn_to_ledger(
+        db_session, _session_txn(TransactionType.PURCHASE), "auth-1"
+    )
+    by = {line["account_ref"]: line for line in captured["lines"]}
+    assert by["bubbles_liability"]["debit"] == 50_000  # Bubbles spent
+    assert by["revenue_club_session"]["credit"] == 50_000  # revenue recognised
+
+
+async def test_session_refund_reverses_club_revenue(db_session, monkeypatch):
+    captured = _capture(monkeypatch)
+    await ledger_emit.emit_wallet_txn_to_ledger(
+        db_session, _session_txn(TransactionType.REFUND), "auth-1"
+    )
+    by = {line["account_ref"]: line for line in captured["lines"]}
+    # Cancelled session refunded in Bubbles: un-earn revenue, restore the liability.
+    assert by["revenue_club_session"]["debit"] == 50_000
+    assert by["bubbles_liability"]["credit"] == 50_000
+    assert "refunds_payable" not in by
