@@ -12,7 +12,9 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
+from libs.common.supabase import invite_user_by_email
 from services.ledger_service.app.deps import get_ledger_db, require_ledger_role
 from services.ledger_service.models import AuditLog, LedgerUser
 from services.ledger_service.models.enums import (
@@ -51,6 +53,19 @@ def _audit(session, org_id, actor_id, action, subject_id, payload) -> None:
             payload=payload,
         )
     )
+
+
+async def _invite_finance_user(email: str) -> str:
+    """Send the Supabase invite for a finance user; return its status string.
+
+    Best-effort — the caller has already committed the ledger_users row, so a
+    failed send must not raise. The invite link lands on the password-set page.
+    """
+    settings = get_settings()
+    result = await invite_user_by_email(
+        email, redirect_to=f"{settings.FRONTEND_URL}/reset-password"
+    )
+    return result["status"]
 
 
 @router.get("", response_model=list[LedgerUserOut])
@@ -94,7 +109,7 @@ async def add_finance_user(
     request: Request,
     actor: LedgerUser = Depends(require_ledger_role(LedgerRole.ADMIN)),
     session: AsyncSession = Depends(get_ledger_db),
-) -> LedgerUser:
+) -> LedgerUserOut:
     org_id = request.state.org_id
     _guard_rank(actor, payload.role)
 
@@ -136,7 +151,46 @@ async def add_finance_user(
     )
     await session.commit()
     await session.refresh(ledger_user)
-    return ledger_user
+
+    # Provision the login: email them a Supabase invite to set a password, so an
+    # admin never has to add them in the Supabase dashboard. Best-effort — the
+    # membership row is already saved; the status tells the caller what happened.
+    out = LedgerUserOut.model_validate(ledger_user)
+    if ledger_user.email:
+        out.invite_status = await _invite_finance_user(ledger_user.email)
+    return out
+
+
+@router.post("/{user_id}/invite", response_model=LedgerUserOut)
+async def resend_finance_user_invite(
+    user_id: uuid.UUID,
+    request: Request,
+    actor: LedgerUser = Depends(require_ledger_role(LedgerRole.ADMIN)),
+    session: AsyncSession = Depends(get_ledger_db),
+) -> LedgerUserOut:
+    """Re-send the Supabase invite email for a finance user (admin/owner).
+
+    For when the original invite was lost. Idempotent at Supabase: an already-
+    registered user comes back as ``invite_status="exists"`` (they can just log
+    in); no second account is created.
+    """
+    org_id = request.state.org_id
+    ledger_user = (
+        await session.execute(
+            select(LedgerUser).where(
+                LedgerUser.org_id == org_id, LedgerUser.id == user_id
+            )
+        )
+    ).scalar_one_or_none()
+    if ledger_user is None:
+        raise HTTPException(status_code=404, detail="Finance user not found")
+    if not ledger_user.email:
+        raise HTTPException(
+            status_code=422, detail="This finance user has no email to invite."
+        )
+    out = LedgerUserOut.model_validate(ledger_user)
+    out.invite_status = await _invite_finance_user(ledger_user.email)
+    return out
 
 
 @router.patch("/{user_id}", response_model=LedgerUserOut)
