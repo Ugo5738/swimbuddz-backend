@@ -5,6 +5,7 @@ Routes (mounted under /sessions by app/main.py):
   POST /sessions/{session_id}/book               — member self-book (PENDING)
   POST /sessions/bookings/{booking_id}/confirm   — flip PENDING → CONFIRMED after payment
   POST /sessions/bookings/{booking_id}/cancel    — member or admin cancel
+  POST /sessions/bookings/{booking_id}/refund-pool-fee — admin: refund pool fee → Bubbles (make-up)
   GET  /sessions/{session_id}/bookings           — admin: list CONFIRMED bookings for a session
 
 The booking lifecycle is intent-only. Day-of attendance still goes through
@@ -44,6 +45,7 @@ from services.sessions_service.models import (
     SessionBookingStatus,
 )
 from services.sessions_service.schemas import (
+    AdminPoolFeeRefundRequest,
     AdminWalkInRequest,
     BookingConfirmRequest,
     RunningLateRequest,
@@ -623,6 +625,124 @@ async def cancel_booking(
 
 
 # ---------------------------------------------------------------------------
+# Admin: refund a booking's pool fee (rain-out / make-up)
+# ---------------------------------------------------------------------------
+
+# Audit + idempotency marker appended to booking.notes when an admin refunds
+# the pool fee. Presence of the prefix means "already refunded" — short-circuits
+# a second call and lets the UI show the refund. The wallet credit is *also*
+# idempotent (key booking-refund-<id>), so a double-call can't double-credit.
+POOL_REFUND_PREFIX = "[pool_fee_refunded_at:"
+
+
+def _has_pool_refund_marker(notes: Optional[str]) -> bool:
+    return bool(notes) and POOL_REFUND_PREFIX in notes
+
+
+def _with_pool_refund_marker(notes: Optional[str], now: datetime, reason: str) -> str:
+    # Appended (not prepended) so any leading self-excuse / running-late
+    # sentinel that other code detects with startswith() stays at position 0.
+    marker = f"{POOL_REFUND_PREFIX}{now.isoformat()}] {reason}".strip()
+    return f"{notes}\n{marker}".strip() if notes else marker
+
+
+@router.post(
+    "/sessions/bookings/{booking_id}/refund-pool-fee",
+    response_model=SessionBookingResponse,
+)
+async def admin_refund_pool_fee(
+    booking_id: uuid.UUID,
+    payload: AdminPoolFeeRefundRequest,
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Admin: refund a booking's per-session pool fee to the member's Bubbles.
+
+    The make-up case: a learner paid the ~₦3,500 pool fee, couldn't attend
+    (rain-out / excused / marked ABSENT) and is owed it back so it funds the
+    make-up session — otherwise they'd pay the pool fee twice.
+
+    Why a dedicated endpoint (not ``/cancel`` or the Adjust-Bubbles tool):
+      - ``/cancel`` is member-only and refuses once the session has started; a
+        rain-out is marked ABSENT *during/after* the session, so it can't apply.
+      - The "Adjust Bubbles" admin tool posts a generic ``admin_adjustment`` the
+        ledger SKIPS — the refund would be invisible and the pool-fee revenue
+        double-counted once the make-up is rebooked.
+      - This routes through the **accounted** ``session_booking`` refund path
+        (``transaction_type=refund``), so the ledger reverses
+        ``revenue_club_session`` and restores the Bubble liability. The make-up
+        rebook re-recognises it — revenue lands once, for the delivered session.
+
+    The booking is **not** cancelled — it stays (with its ABSENT/EXCUSED
+    attendance row) as the audit trail. Idempotent per booking (notes marker +
+    the wallet's shared ``booking-refund-<id>`` key). Phase 1 make-up *confirm*
+    will call this same primitive automatically; until then it's an admin tap.
+    """
+    booking = (
+        await db.execute(select(SessionBooking).where(SessionBooking.id == booking_id))
+    ).scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.status != SessionBookingStatus.CONFIRMED:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Only a CONFIRMED booking can have its pool fee refunded "
+                f"(this one is {booking.status.value}). A cancelled booking was "
+                f"already refunded via /cancel."
+            ),
+        )
+    if booking.fee_amount_kobo <= 0:
+        raise HTTPException(
+            status_code=422, detail="This booking has no pool fee to refund."
+        )
+    # Don't hand out money for a seat that was never paid (e.g. an unpaid
+    # admin walk-in — CONFIRMED but no payment intent or wallet debit).
+    if booking.wallet_transaction_id is None and booking.payment_intent_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="This booking's pool fee hasn't been paid yet — nothing to refund.",
+        )
+    # Idempotent: already refunded → return unchanged.
+    if _has_pool_refund_marker(booking.notes):
+        return booking
+
+    try:
+        await credit_member_wallet(
+            booking.member_auth_id,
+            amount=kobo_to_bubbles(booking.fee_amount_kobo),
+            idempotency_key=f"booking-refund-{booking.id}",
+            description=(
+                f"Pool-fee refund (admin) for booking {booking.id}: {payload.reason}"
+            ),
+            calling_service="sessions",
+            transaction_type="refund",
+            reference_type="session_booking",
+            reference_id=str(booking.id),
+        )
+    except httpx.HTTPError as exc:
+        logger.error("Admin pool-fee refund failed for booking %s: %s", booking.id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Refund could not be issued to the wallet. Please retry.",
+        )
+
+    now = utc_now()
+    booking.notes = _with_pool_refund_marker(booking.notes, now, payload.reason)
+    await db.commit()
+    await db.refresh(booking)
+    logger.info(
+        "Admin %s refunded pool fee (%s kobo) for booking %s, member %s: %s",
+        admin.email or admin.user_id,
+        booking.fee_amount_kobo,
+        booking.id,
+        booking.member_id,
+        payload.reason,
+    )
+    return booking
+
+
+# ---------------------------------------------------------------------------
 # Member: self-report — "I can't make it" + "I'll be late"
 # ---------------------------------------------------------------------------
 
@@ -674,11 +794,13 @@ async def excuse_booking(
     """Member self-excuses a booking — "I can't make it".
 
     Distinct from cancel:
-      - For COHORT sessions, the pool fee is not refunded. Instead, an
-        EXCUSED attendance record is created which the coach payout cron
-        converts into a CohortMakeupObligation. The member gets a make-up
-        session later. This matches the cohort model: program fee is a
-        commitment, not a per-session refundable purchase.
+      - For COHORT sessions, this endpoint moves no money. It creates an
+        EXCUSED attendance record which the coach payout cron converts into a
+        CohortMakeupObligation — the member gets a make-up session later. The
+        *program* fee stays (a cohort commitment, not a per-session refundable
+        purchase). The *per-session pool fee* the member paid is refunded to
+        Bubbles separately — by an admin via the refund-pool-fee action, or
+        automatically on make-up confirm (Phase 1) — so it funds the make-up.
       - For non-cohort sessions, callers should use the regular
         ``/cancel`` endpoint instead (which refunds in Bubbles). This
         endpoint rejects non-cohort bookings.
