@@ -7,6 +7,7 @@ from libs.common.health import register_health_check
 from services.sessions_service.routers.bookings import router as bookings_router
 from services.sessions_service.routers.bundles import router as bundles_router
 from services.sessions_service.routers.internal import router as internal_router
+from services.sessions_service.routers.makeups import router as makeups_router
 from services.sessions_service.routers.member import router as sessions_router
 from services.sessions_service.routers.templates import router as templates_router
 
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     # sessions_router for the same reason: /sessions/bookings/* and
     # /sessions/{id}/book would otherwise hit the {id} catch-all first.
     app.include_router(bookings_router)
+    app.include_router(makeups_router)
     app.include_router(sessions_router)
 
     # Internal service-to-service endpoints (not exposed via gateway)

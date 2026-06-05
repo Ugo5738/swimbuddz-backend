@@ -170,6 +170,12 @@ class CoachProfile(Base):
         Boolean, default=True, server_default="true"
     )
     availability_calendar: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    # Per-coach spacing override: minimum hours between a learner's sessions.
+    # null → use the 48h policy default. See Missed-Session policy §4 / Coach
+    # Agreement §2.4 and docs/design/AVAILABILITY_AND_MAKEUP_SCHEDULING_DESIGN.md.
+    min_hours_between_sessions: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
 
     # Pricing
     currency: Mapped[str] = mapped_column(String, default="NGN", server_default="NGN")

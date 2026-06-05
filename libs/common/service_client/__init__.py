@@ -25,6 +25,7 @@ from .core import (
 from .members import (
     get_admin_members,
     get_birthdays_today,
+    get_coach_availability,
     get_coach_profile,
     get_coach_readiness_data,
     get_eligible_coaches,
@@ -43,6 +44,7 @@ from .payments import (
     paystack_create_recipient,
     paystack_list_banks,
     paystack_resolve_account,
+    schedule_makeup_obligation,
     validate_discount_code,
     verify_store_payment,
 )
@@ -80,6 +82,7 @@ __all__ = [
     "search_members",
     "get_member_by_id",
     "get_members_bulk",
+    "get_coach_availability",
     "get_coach_profile",
     "get_member_membership",
     "get_coach_readiness_data",
@@ -112,6 +115,7 @@ __all__ = [
     "initialize_store_payment",
     "verify_store_payment",
     "validate_discount_code",
+    "schedule_makeup_obligation",
     "PaystackProxyError",
     "_proxy_error_from",
     "paystack_list_banks",

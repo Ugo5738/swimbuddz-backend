@@ -35,6 +35,18 @@ class CoachProfileBasic(BaseModel):
     group_session_rate_per_hour: int | None = None
 
 
+class CoachAvailabilityInternal(BaseModel):
+    """Coach availability calendar + spacing override (service-to-service).
+
+    ``availability_calendar`` is the raw stored JSONB; the caller
+    (sessions_service) parses it. None when the coach hasn't published.
+    """
+
+    member_id: str
+    availability_calendar: dict | None = None
+    min_hours_between_sessions: int | None = None
+
+
 class CoachBankAccountResponse(BaseModel):
     id: str
     member_id: str

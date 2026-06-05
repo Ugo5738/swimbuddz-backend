@@ -13,6 +13,7 @@ from services.members_service.routers import (
     coach_agreements_router,
     coach_application_admin_router,
     coach_application_router,
+    coach_availability_router,
     coach_banking_router,
     coach_grades_admin_router,
     coach_grades_router,
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(coach_application_router)
     app.include_router(coach_application_admin_router)
     app.include_router(coach_banking_router)
+    app.include_router(coach_availability_router)  # Coach availability editor (Phase 0)
     app.include_router(coach_grades_router)
     app.include_router(coach_grades_admin_router)
     app.include_router(coach_agreements_router)

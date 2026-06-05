@@ -1,11 +1,20 @@
 """Coach-specific schemas for application, onboarding, and admin review."""
 
+import re
 import uuid
 from datetime import date, datetime
 from enum import Enum
 from typing import Optional
+from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 # ============================================================================
 # ENUMS (mirror the model enums for API serialization)
@@ -198,6 +207,122 @@ class CoachProfileUpdate(BaseModel):
     max_swimmers_per_session: Optional[int] = None
     max_cohorts_at_once: Optional[int] = None
     preferred_cohort_types: Optional[list[str]] = None
+
+
+# === Coach Availability (Phase 0) ===
+# Typed shape for CoachProfile.availability_calendar (JSONB). See
+# docs/design/AVAILABILITY_AND_MAKEUP_SCHEDULING_DESIGN.md §6a.
+
+
+_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")  # 24-hour 'HH:MM'
+
+
+class WeekdayEnum(str, Enum):
+    """Lowercase 3-letter weekday keys for recurring availability."""
+
+    MON = "mon"
+    TUE = "tue"
+    WED = "wed"
+    THU = "thu"
+    FRI = "fri"
+    SAT = "sat"
+    SUN = "sun"
+
+
+class RecurringBlockInput(BaseModel):
+    """A weekly availability window, sliced into bookable slots downstream."""
+
+    weekday: WeekdayEnum
+    start: str = Field(..., description="Local start time, 24-hour 'HH:MM'")
+    end: str = Field(..., description="Local end time, 24-hour 'HH:MM'")
+
+    @field_validator("start", "end")
+    @classmethod
+    def _valid_time(cls, v: str) -> str:
+        if not _TIME_RE.match(v):
+            raise ValueError("time must be 24-hour 'HH:MM' (e.g. '06:30')")
+        return v
+
+    @model_validator(mode="after")
+    def _end_after_start(self) -> "RecurringBlockInput":
+        if self.start >= self.end:
+            raise ValueError(f"end ({self.end}) must be after start ({self.start})")
+        return self
+
+
+class BlackoutDateInput(BaseModel):
+    """A date range the coach is unavailable (subtracts from recurring blocks)."""
+
+    start: date
+    end: date
+    reason: Optional[str] = Field(None, max_length=200)
+
+    @model_validator(mode="after")
+    def _end_after_start(self) -> "BlackoutDateInput":
+        if self.end < self.start:
+            raise ValueError("blackout end must be on or after start")
+        return self
+
+
+class CoachAvailabilityCalendar(BaseModel):
+    """Canonical shape of CoachProfile.availability_calendar (JSONB).
+
+    Recurring weekly blocks + blackout dates in the coach's local timezone.
+    sessions_service slices this into bookable make-up slots.
+    """
+
+    version: int = 1
+    timezone: str = Field("Africa/Lagos", description="IANA timezone name")
+    recurring: list[RecurringBlockInput] = Field(default_factory=list)
+    blackouts: list[BlackoutDateInput] = Field(default_factory=list)
+    slot_minutes: int = Field(
+        60, ge=15, le=240, description="Default lesson/make-up length in minutes"
+    )
+    buffer_minutes: int = Field(
+        0, ge=0, le=120, description="Gap between consecutive slots in minutes"
+    )
+
+    @field_validator("timezone")
+    @classmethod
+    def _valid_timezone(cls, v: str) -> str:
+        try:
+            ZoneInfo(v)
+        except Exception as exc:  # ZoneInfoNotFoundError or bad input
+            raise ValueError(f"unknown timezone: {v!r}") from exc
+        return v
+
+    @model_validator(mode="after")
+    def _no_same_day_overlaps(self) -> "CoachAvailabilityCalendar":
+        by_day: dict[str, list[tuple[str, str]]] = {}
+        for block in self.recurring:
+            by_day.setdefault(block.weekday.value, []).append((block.start, block.end))
+        for day, ranges in by_day.items():
+            ranges.sort()
+            for (_, end_prev), (start_next, _) in zip(ranges, ranges[1:]):
+                if start_next < end_prev:
+                    raise ValueError(f"overlapping availability blocks on {day}")
+        return self
+
+
+class CoachAvailabilityUpdate(BaseModel):
+    """PUT body: a coach sets their own availability + spacing override."""
+
+    availability: CoachAvailabilityCalendar
+    min_hours_between_sessions: Optional[int] = Field(
+        None,
+        ge=0,
+        le=336,
+        description="Per-coach spacing override in hours; null → 48h policy default",
+    )
+
+
+class CoachAvailabilityResponse(BaseModel):
+    """GET response: a coach's current availability + spacing override."""
+
+    availability: Optional[CoachAvailabilityCalendar] = None
+    min_hours_between_sessions: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # === Admin Coach Review ===

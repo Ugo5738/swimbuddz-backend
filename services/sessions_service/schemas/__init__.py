@@ -18,6 +18,12 @@ from services.sessions_service.schemas.main import (
     SessionResponse,
     SessionUpdate,
 )
+from services.sessions_service.schemas.makeup import (
+    BookableSlotResponse,
+    BookableSlotsResponse,
+    MakeupBookingCreate,
+    MakeupBookingResponse,
+)
 from services.sessions_service.schemas.templates import (
     GenerateSessionsRequest,
     SessionTemplateBase,
@@ -29,11 +35,15 @@ from services.sessions_service.schemas.templates import (
 __all__ = [
     "AdminPoolFeeRefundRequest",
     "AdminWalkInRequest",
+    "BookableSlotResponse",
+    "BookableSlotsResponse",
     "BookingConfirmRequest",
     "BulkBookingItem",
     "BulkBookingRequest",
     "BulkBookingResponse",
     "GenerateSessionsRequest",
+    "MakeupBookingCreate",
+    "MakeupBookingResponse",
     "RunningLateRequest",
     "SessionBase",
     "SessionBookingCreate",

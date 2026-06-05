@@ -17,11 +17,21 @@ from services.sessions_service.models.core import (
 )
 from services.sessions_service.models.enums import (
     BookingChannel,
+    MakeupBlockKind,
+    MakeupLearnerType,
+    MakeupOrigin,
+    MakeupStatus,
     SessionBookingStatus,
 )
+from services.sessions_service.models.makeup import MakeupBooking
 
 __all__ = [
     "BookingChannel",
+    "MakeupBlockKind",
+    "MakeupBooking",
+    "MakeupLearnerType",
+    "MakeupOrigin",
+    "MakeupStatus",
     "Session",
     "SessionBooking",
     "SessionBookingStatus",
