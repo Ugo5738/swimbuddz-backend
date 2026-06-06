@@ -80,6 +80,7 @@ class MakeupBookingResponse(BaseModel):
     used_grace: bool
     notice_hours_at_request: int | None = None
     notes: str | None = None
+    completed_at: datetime | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

@@ -258,3 +258,43 @@ async def test_obligation_flip_failure_does_not_block(
     )
     # flip failure is logged, the booking still confirms
     assert r.status_code == 201, r.text
+
+
+def _confirmed_makeup(status=MakeupStatus.CONFIRMED):
+    return MakeupBooking(
+        learner_member_id=uuid.uuid4(),
+        coach_member_id=uuid.uuid4(),
+        origin=MakeupOrigin.EXCUSED_ABSENCE,
+        status=status,
+    )
+
+
+async def test_complete_makeup(sessions_client, db_session):
+    mk = _confirmed_makeup()
+    db_session.add(mk)
+    await db_session.commit()
+
+    r = await sessions_client.post(f"/makeups/bookings/{mk.id}/complete")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "completed"
+    assert body["completed_at"] is not None
+
+
+async def test_cancel_makeup(sessions_client, db_session):
+    mk = _confirmed_makeup()
+    db_session.add(mk)
+    await db_session.commit()
+
+    r = await sessions_client.post(f"/makeups/bookings/{mk.id}/cancel")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "cancelled"
+
+
+async def test_complete_terminal_rejected(sessions_client, db_session):
+    mk = _confirmed_makeup(status=MakeupStatus.CANCELLED)
+    db_session.add(mk)
+    await db_session.commit()
+
+    r = await sessions_client.post(f"/makeups/bookings/{mk.id}/complete")
+    assert r.status_code == 422

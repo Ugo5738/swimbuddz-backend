@@ -148,6 +148,13 @@ These are mounted on the members service directly (not exposed through the gatew
 - **Query Params:** `learner_id`, `coach_id`, `status` (all optional).
 - **Response 200:** `MakeupBookingResponse[]`
 
+#### `POST /api/v1/makeups/bookings/{id}/complete` · `…/{id}/cancel`
+
+- **Auth:** Admin
+- **Description:** Mark a make-up **delivered** (`complete` → COMPLETED + `completed_at`) or **cancel** it (`cancel` → CANCELLED). Terminal states are rejected. The linked cohort payout obligation is **not** flipped here — that completes via payments' attendance-driven flow.
+- **Response 200:** `MakeupBookingResponse`
+- **Errors:** `404` not found; `422` invalid state transition.
+
 ---
 
 ## 4. Attendance & Sign-In

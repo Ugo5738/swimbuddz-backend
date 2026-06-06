@@ -415,3 +415,67 @@ async def list_makeup_bookings(
     query = query.order_by(MakeupBooking.created_at.desc()).limit(200)
     rows = (await db.execute(query)).scalars().all()
     return list(rows)
+
+
+@router.post("/bookings/{booking_id}/complete", response_model=MakeupBookingResponse)
+async def complete_makeup_booking(
+    booking_id: uuid.UUID,
+    _: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+) -> MakeupBookingResponse:
+    """Mark a make-up as delivered (admin). Sets COMPLETED + completed_at.
+
+    The linked cohort payout obligation completes via payments' own
+    attendance-driven flow — it is not flipped here, to avoid payout side effects.
+    """
+    makeup = (
+        await db.execute(select(MakeupBooking).where(MakeupBooking.id == booking_id))
+    ).scalar_one_or_none()
+    if makeup is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Make-up not found."
+        )
+    if makeup.status not in (
+        MakeupStatus.CONFIRMED,
+        MakeupStatus.HELD,
+        MakeupStatus.REQUESTED,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Cannot complete a make-up in status {makeup.status.value}.",
+        )
+    makeup.status = MakeupStatus.COMPLETED
+    makeup.completed_at = utc_now()
+    await db.commit()
+    await db.refresh(makeup)
+    return makeup
+
+
+@router.post("/bookings/{booking_id}/cancel", response_model=MakeupBookingResponse)
+async def cancel_makeup_booking(
+    booking_id: uuid.UUID,
+    _: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+) -> MakeupBookingResponse:
+    """Cancel a make-up (admin). Sets CANCELLED; terminal states are rejected."""
+    makeup = (
+        await db.execute(select(MakeupBooking).where(MakeupBooking.id == booking_id))
+    ).scalar_one_or_none()
+    if makeup is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Make-up not found."
+        )
+    if makeup.status in (
+        MakeupStatus.COMPLETED,
+        MakeupStatus.CANCELLED,
+        MakeupStatus.EXPIRED,
+        MakeupStatus.FORFEITED,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Cannot cancel a make-up in status {makeup.status.value}.",
+        )
+    makeup.status = MakeupStatus.CANCELLED
+    await db.commit()
+    await db.refresh(makeup)
+    return makeup

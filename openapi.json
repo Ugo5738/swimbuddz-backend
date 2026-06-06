@@ -7692,6 +7692,104 @@
         }
       }
     },
+    "/api/v1/makeups/bookings/{booking_id}/complete": {
+      "post": {
+        "tags": [
+          "makeups"
+        ],
+        "summary": "Complete Makeup Booking",
+        "description": "Mark a make-up as delivered (admin). Sets COMPLETED + completed_at.\n\nThe linked cohort payout obligation completes via payments' own\nattendance-driven flow \u2014 it is not flipped here, to avoid payout side effects.",
+        "operationId": "complete_makeup_booking_makeups_bookings__booking_id__complete_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MakeupBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/makeups/bookings/{booking_id}/cancel": {
+      "post": {
+        "tags": [
+          "makeups"
+        ],
+        "summary": "Cancel Makeup Booking",
+        "description": "Cancel a make-up (admin). Sets CANCELLED; terminal states are rejected.",
+        "operationId": "cancel_makeup_booking_makeups_bookings__booking_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MakeupBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sessions/": {
       "get": {
         "tags": [
@@ -53898,6 +53996,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
           },
           "created_at": {
             "type": "string",
