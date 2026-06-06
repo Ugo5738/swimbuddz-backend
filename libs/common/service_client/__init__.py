@@ -13,6 +13,7 @@ New code may import directly from a submodule
 from __future__ import annotations
 
 from .academy import check_cohort_enrollment, list_enrollment_progress
+from .attendance import get_member_attendance
 from .communications import dispatch_notification
 from .core import (
     _DEFAULT_TIMEOUT,
@@ -94,6 +95,8 @@ __all__ = [
     # Academy
     "check_cohort_enrollment",
     "list_enrollment_progress",
+    # Attendance
+    "get_member_attendance",
     # Sessions
     "get_booking_by_id",
     "get_session_by_id",

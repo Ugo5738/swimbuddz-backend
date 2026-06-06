@@ -147,3 +147,16 @@ def test_makeup_window():
     )
     assert is_within_makeup_window(date(2026, 6, 10), date(2026, 6, 1)) is True
     assert is_within_makeup_window(date(2026, 6, 20), date(2026, 6, 1)) is False
+
+
+def test_makeup_outcome():
+    from services.sessions_service.models import MakeupStatus
+    from services.sessions_service.tasks import _makeup_outcome
+
+    assert _makeup_outcome({"present"}) is MakeupStatus.COMPLETED
+    assert _makeup_outcome({"late"}) is MakeupStatus.COMPLETED
+    assert _makeup_outcome({"absent"}) is MakeupStatus.FORFEITED
+    # attended wins if both somehow present
+    assert _makeup_outcome({"present", "absent"}) is MakeupStatus.COMPLETED
+    assert _makeup_outcome({"excused"}) is None
+    assert _makeup_outcome(set()) is None
