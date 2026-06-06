@@ -18,7 +18,10 @@ from __future__ import annotations
 
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-from libs.common.service_client import get_member_attendance
+from libs.common.service_client import (
+    complete_makeup_obligation,
+    get_member_attendance,
+)
 from libs.db.config import AsyncSessionLocal
 from services.sessions_service.models import (
     MakeupBooking,
@@ -99,6 +102,7 @@ async def sweep_complete_makeups() -> dict:
     """
     now = utc_now()
     checked = completed = forfeited = 0
+    obligations_to_complete: list[str] = []
     async with AsyncSessionLocal() as db:
         makeups = (
             (
@@ -134,11 +138,25 @@ async def sweep_complete_makeups() -> dict:
                 makeup.status = MakeupStatus.COMPLETED
                 makeup.completed_at = now
                 completed += 1
+                if makeup.obligation_id is not None:
+                    obligations_to_complete.append(str(makeup.obligation_id))
             elif outcome is MakeupStatus.FORFEITED:
                 makeup.status = MakeupStatus.FORFEITED
                 forfeited += 1
         if completed or forfeited:
             await db.commit()
+
+    # Close the payout loop: a completed make-up completes its cohort obligation
+    # so the coach is paid for delivery (best-effort; retried next sweep on fail).
+    for obligation_id in obligations_to_complete:
+        try:
+            await complete_makeup_obligation(obligation_id, calling_service="sessions")
+        except Exception as exc:  # noqa: BLE001 — best-effort, logged
+            logger.warning(
+                "sweep_complete_makeups: obligation %s completion failed: %s",
+                obligation_id,
+                exc,
+            )
 
     result = {"checked": checked, "completed": completed, "forfeited": forfeited}
     logger.info("sweep_complete_makeups: %s", result)

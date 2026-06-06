@@ -47,6 +47,28 @@ async def schedule_makeup_obligation(
     return resp.json()
 
 
+async def complete_makeup_obligation(
+    obligation_id: str,
+    *,
+    calling_service: str,
+) -> Optional[dict]:
+    """Mark a cohort make-up obligation COMPLETED (coach gets paid for delivery).
+
+    Returns the updated obligation dict, or None if it can't be completed
+    (404 missing / 409 wrong state) — callers treat the call as best-effort.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path=f"/internal/payments/makeup-obligations/{obligation_id}/complete",
+        calling_service=calling_service,
+    )
+    if resp.status_code in (404, 409):
+        return None
+    resp.raise_for_status()
+    return resp.json()
+
+
 # ---------------------------------------------------------------------------
 # Store payment flow
 # ---------------------------------------------------------------------------

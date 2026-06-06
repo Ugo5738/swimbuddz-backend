@@ -86,6 +86,45 @@ async def internal_schedule_makeup_obligation(
 
 
 @router.post(
+    "/makeup-obligations/{obligation_id}/complete",
+    response_model=MakeupObligationResponse,
+    dependencies=[Depends(require_service_role)],
+    tags=["internal-payments"],
+)
+async def internal_complete_makeup_obligation(
+    obligation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Mark a cohort make-up obligation COMPLETED (service-to-service).
+
+    Called by sessions_service when a make-up is delivered (attended). Sets
+    ``completed_at`` so the coach's payout for the covering block includes it.
+    Idempotent: an already-COMPLETED obligation is returned unchanged.
+    """
+    obligation = (
+        await db.execute(
+            select(CohortMakeupObligation).where(
+                CohortMakeupObligation.id == obligation_id
+            )
+        )
+    ).scalar_one_or_none()
+    if not obligation:
+        raise HTTPException(status_code=404, detail="Obligation not found")
+    if obligation.status == MakeupStatus.COMPLETED:
+        return MakeupObligationResponse.model_validate(obligation)
+    if obligation.status not in (MakeupStatus.PENDING, MakeupStatus.SCHEDULED):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot complete obligation in status {obligation.status.value}",
+        )
+    obligation.status = MakeupStatus.COMPLETED
+    obligation.completed_at = utc_now()
+    await db.commit()
+    await db.refresh(obligation)
+    return MakeupObligationResponse.model_validate(obligation)
+
+
+@router.post(
     "/initialize",
     response_model=InternalInitializeResponse,
     dependencies=[Depends(require_service_role)],

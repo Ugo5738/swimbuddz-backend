@@ -17,6 +17,7 @@ from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import (
+    complete_makeup_obligation,
     get_coach_availability,
     get_member_by_id,
     schedule_makeup_obligation,
@@ -448,6 +449,22 @@ async def complete_makeup_booking(
     makeup.completed_at = utc_now()
     await db.commit()
     await db.refresh(makeup)
+
+    # Close the payout loop (best-effort): completing a make-up completes its
+    # cohort obligation so the coach is paid for delivery.
+    if makeup.obligation_id is not None:
+        try:
+            await complete_makeup_obligation(
+                str(makeup.obligation_id), calling_service="sessions"
+            )
+        except Exception as exc:  # noqa: BLE001 — best-effort, never block the response
+            logger.warning(
+                "Make-up %s completed but obligation %s completion failed: %s",
+                makeup.id,
+                makeup.obligation_id,
+                exc,
+            )
+
     return makeup
 
 

@@ -55,3 +55,31 @@ async def test_internal_schedule_missing_obligation_404(payments_client):
         json={"scheduled_session_id": str(uuid.uuid4())},
     )
     assert r.status_code == 404
+
+
+async def test_internal_complete_flips_obligation(payments_client, db_session):
+    obligation = CohortMakeupObligation(
+        cohort_id=uuid.uuid4(),
+        student_member_id=uuid.uuid4(),
+        coach_member_id=uuid.uuid4(),
+        reason=MakeupReason.EXCUSED_ABSENCE,
+        status=MakeupStatus.SCHEDULED,
+    )
+    db_session.add(obligation)
+    await db_session.commit()
+
+    r = await payments_client.post(
+        f"/internal/payments/makeup-obligations/{obligation.id}/complete"
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "completed"
+
+    refreshed = (
+        await db_session.execute(
+            select(CohortMakeupObligation).where(
+                CohortMakeupObligation.id == obligation.id
+            )
+        )
+    ).scalar_one()
+    assert refreshed.status == MakeupStatus.COMPLETED
+    assert refreshed.completed_at is not None

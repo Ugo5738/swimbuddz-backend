@@ -6915,7 +6915,7 @@
           "bookings"
         ],
         "summary": "Book Session",
-        "description": "Pre-book a session as the authenticated member.\n\nCreates a SessionBooking(status=PENDING) with a 15-minute TTL.\nFrontend / payments_service is expected to call\nPOST /sessions/bookings/{id}/confirm after payment clears.",
+        "description": "Book a session as the authenticated member.\n\nReconciles against the single existing booking row for this\n(session, member), if any (a unique constraint forbids a second row):\n\n* CONFIRMED already \u2192 returned unchanged (idempotent; never re-charged).\n* PENDING (payment in flight / abandoned) or dead (EXPIRED / CANCELLED)\n  \u2192 driven forward by *this* attempt rather than rejected. A dead row is\n  revived with its stale payment linkage cleared.\n\nThen, for that row (existing or freshly created):\n\n* ``pay_with_bubbles`` (or a free session) \u2192 debit the wallet for the\n  pool fee, if any, and flip to CONFIRMED in one transaction.\n* otherwise \u2192 PENDING with a 15-minute TTL; the frontend pays via\n  Paystack and confirms on verify (the sweep retires it if payment\n  never clears).",
         "operationId": "book_session_sessions__session_id__book_post",
         "security": [
           {
@@ -15534,6 +15534,56 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MakeupObligationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/payments/makeup-obligations/{obligation_id}/complete": {
+      "post": {
+        "tags": [
+          "internal",
+          "internal-payments"
+        ],
+        "summary": "Internal Complete Makeup Obligation",
+        "description": "Mark a cohort make-up obligation COMPLETED (service-to-service).\n\nCalled by sessions_service when a make-up is delivered (attended). Sets\n``completed_at`` so the coach's payout for the covering block includes it.\nIdempotent: an already-COMPLETED obligation is returned unchanged.",
+        "operationId": "internal_complete_makeup_obligation_internal_payments_makeup_obligations__obligation_id__complete_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "obligation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Obligation Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",

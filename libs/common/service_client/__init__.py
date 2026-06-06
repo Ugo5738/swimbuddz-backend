@@ -41,6 +41,7 @@ from .members import (
 from .payments import (
     PaystackProxyError,
     _proxy_error_from,
+    complete_makeup_obligation,
     initialize_store_payment,
     paystack_create_recipient,
     paystack_list_banks,
@@ -119,6 +120,7 @@ __all__ = [
     "verify_store_payment",
     "validate_discount_code",
     "schedule_makeup_obligation",
+    "complete_makeup_obligation",
     "PaystackProxyError",
     "_proxy_error_from",
     "paystack_list_banks",

@@ -298,3 +298,27 @@ async def test_complete_terminal_rejected(sessions_client, db_session):
 
     r = await sessions_client.post(f"/makeups/bookings/{mk.id}/complete")
     assert r.status_code == 422
+
+
+async def test_complete_completes_obligation(sessions_client, db_session, monkeypatch):
+    calls = []
+
+    async def _fake(obligation_id, *, calling_service):
+        calls.append(obligation_id)
+        return {"id": obligation_id, "status": "completed"}
+
+    monkeypatch.setattr(makeups_mod, "complete_makeup_obligation", _fake)
+    oid = uuid.uuid4()
+    mk = MakeupBooking(
+        learner_member_id=uuid.uuid4(),
+        coach_member_id=uuid.uuid4(),
+        origin=MakeupOrigin.EXCUSED_ABSENCE,
+        status=MakeupStatus.CONFIRMED,
+        obligation_id=oid,
+    )
+    db_session.add(mk)
+    await db_session.commit()
+
+    r = await sessions_client.post(f"/makeups/bookings/{mk.id}/complete")
+    assert r.status_code == 200, r.text
+    assert calls == [str(oid)]
