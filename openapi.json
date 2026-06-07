@@ -7790,6 +7790,202 @@
         }
       }
     },
+    "/api/v1/makeups/me/options": {
+      "get": {
+        "tags": [
+          "makeups"
+        ],
+        "summary": "Get My Bookable Options",
+        "description": "A learner's own bookable make-up options for a coach over [from, to].",
+        "operationId": "get_my_bookable_options_makeups_me_options_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "coach_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Coach member id",
+              "title": "Coach Id"
+            },
+            "description": "Coach member id"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookableSlotsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/makeups/me/requests": {
+      "get": {
+        "tags": [
+          "makeups"
+        ],
+        "summary": "List My Makeups",
+        "description": "The authenticated learner's make-up bookings (newest first).",
+        "operationId": "list_my_makeups_makeups_me_requests_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MakeupBookingResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List My Makeups Makeups Me Requests Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "makeups"
+        ],
+        "summary": "Request Makeup",
+        "description": "A learner requests a make-up against a chosen session (REQUESTED + soft hold).\n\nAdmin one-tap confirms it later (booking the learner in + the obligation flip\nhappen then). Light gates: a reason for reschedules (1b), one outstanding\nmake-up at a time, and the session must exist, be led by the coach, and have\nroom.",
+        "operationId": "request_makeup_makeups_me_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MakeupRequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MakeupBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/makeups/bookings/{booking_id}/confirm": {
+      "post": {
+        "tags": [
+          "makeups"
+        ],
+        "summary": "Confirm Makeup Request",
+        "description": "Admin one-tap confirm of a learner's REQUESTED/HELD make-up.\n\nBooks the learner into the session (capacity-checked) and flips the linked\nobligation, mirroring the direct-confirm tail.",
+        "operationId": "confirm_makeup_request_makeups_bookings__booking_id__confirm_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MakeupBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sessions/": {
       "get": {
         "tags": [
@@ -54098,6 +54294,55 @@
         ],
         "title": "MakeupOrigin",
         "description": "Why a make-up exists."
+      },
+      "MakeupRequestCreate": {
+        "properties": {
+          "coach_member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Coach Member Id"
+          },
+          "scheduled_session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Scheduled Session Id"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/MakeupOrigin",
+            "default": "learner_reschedule"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "original_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "coach_member_id",
+          "scheduled_session_id"
+        ],
+        "title": "MakeupRequestCreate",
+        "description": "A learner's self-serve make-up request (admin confirms it later)."
       },
       "MakeupStatus": {
         "type": "string",

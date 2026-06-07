@@ -155,6 +155,13 @@ These are mounted on the members service directly (not exposed through the gatew
 - **Response 200:** `MakeupBookingResponse`
 - **Errors:** `404` not found; `422` invalid state transition.
 
+#### Learner self-serve (Phase 1.5)
+
+- **`GET /api/v1/makeups/me/options`** — *Auth: Member.* A learner's own bookable options for a coach (`coach_id`, `from`, `to`); same shape as the admin bookable-slots, scoped to the authenticated learner.
+- **`POST /api/v1/makeups/me/requests`** — *Auth: Member.* Learner requests a make-up against a chosen session → `REQUESTED` + a soft hold. Body `MakeupRequestCreate` — `{ coach_member_id, scheduled_session_id, origin, reason?, original_session_id? }`. Gates: reason for `learner_reschedule`, one outstanding at a time, session led by the coach + has room. Booking the learner in happens on admin confirm.
+- **`GET /api/v1/makeups/me/requests`** — *Auth: Member.* The learner's own make-up bookings.
+- **`POST /api/v1/makeups/bookings/{id}/confirm`** — *Auth: Admin.* One-tap confirm of a `REQUESTED`/`HELD` request → books the learner in (capacity-checked) + flips the obligation → `CONFIRMED`.
+
 ---
 
 ## 4. Attendance & Sign-In

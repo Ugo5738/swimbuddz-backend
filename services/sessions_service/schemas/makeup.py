@@ -64,6 +64,16 @@ class MakeupBookingCreate(BaseModel):
     spacing_overridden: bool = False
 
 
+class MakeupRequestCreate(BaseModel):
+    """A learner's self-serve make-up request (admin confirms it later)."""
+
+    coach_member_id: uuid.UUID
+    scheduled_session_id: uuid.UUID
+    origin: MakeupOrigin = MakeupOrigin.LEARNER_RESCHEDULE
+    reason: str | None = Field(None, max_length=500)
+    original_session_id: uuid.UUID | None = None
+
+
 class MakeupBookingResponse(BaseModel):
     """A make-up booking record."""
 
