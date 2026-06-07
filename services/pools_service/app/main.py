@@ -10,6 +10,10 @@ from services.pools_service.routers import (
     public_router,
     submissions_router,
 )
+from services.pools_service.weather.routers import (
+    admin_router as weather_admin_router,
+    member_router as weather_member_router,
+)
 
 
 def create_app() -> FastAPI:
@@ -39,6 +43,11 @@ def create_app() -> FastAPI:
 
     # Admin routes (full CRUD, all pools)
     app.include_router(admin_router, prefix="/admin/pools")
+
+    # Weather module — cached forecasts for pool locations. Hosted here because
+    # pools owns the coordinates the forecast keys on (no cross-service hop).
+    app.include_router(weather_member_router, prefix="/weather")
+    app.include_router(weather_admin_router, prefix="/admin/weather")
 
     return app
 

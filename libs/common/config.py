@@ -67,6 +67,15 @@ class Settings(BaseSettings):
     # Empty until seeded; emitters resolve org_id from this value.
     LEDGER_DEFAULT_ORG_ID: str = ""
 
+    # Weather Service
+    # Provider for forecast data. "open-meteo" (default) needs no API key, but
+    # its free tier is NON-COMMERCIAL — point this at a commercial provider and
+    # set WEATHER_API_KEY for production. See docs/design/WEATHER_SERVICE_DESIGN.md.
+    WEATHER_PROVIDER: str = "open-meteo"
+    WEATHER_API_KEY: str = ""
+    WEATHER_FORECAST_DAYS: int = 14  # forecast horizon to cache (Open-Meteo max 16)
+    WEATHER_CACHE_TTL_MINUTES: int = 180  # snapshot freshness window before refetch
+
     # AI Service
     AI_DEFAULT_MODEL: str = "gpt-4o-mini"
     OPENAI_API_KEY: str = ""
