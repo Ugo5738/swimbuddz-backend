@@ -16,6 +16,60 @@ from libs.common.config import get_settings
 from .core import internal_get, internal_post
 
 # ---------------------------------------------------------------------------
+# Make-up obligations
+# ---------------------------------------------------------------------------
+
+
+async def schedule_makeup_obligation(
+    obligation_id: str,
+    scheduled_session_id: str,
+    *,
+    calling_service: str,
+    notes: Optional[str] = None,
+) -> Optional[dict]:
+    """Flip a cohort make-up obligation to SCHEDULED, linking the make-up session.
+
+    Called by sessions_service when an admin confirms a make-up that satisfies an
+    existing cohort obligation. Returns the updated obligation dict, or None if it
+    can't be scheduled (404 missing / 409 wrong state) — callers treat the flip as
+    best-effort and reconcile via the obligation_id link if needed.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path=f"/internal/payments/makeup-obligations/{obligation_id}/schedule",
+        calling_service=calling_service,
+        json={"scheduled_session_id": scheduled_session_id, "notes": notes},
+    )
+    if resp.status_code in (404, 409):
+        return None
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def complete_makeup_obligation(
+    obligation_id: str,
+    *,
+    calling_service: str,
+) -> Optional[dict]:
+    """Mark a cohort make-up obligation COMPLETED (coach gets paid for delivery).
+
+    Returns the updated obligation dict, or None if it can't be completed
+    (404 missing / 409 wrong state) — callers treat the call as best-effort.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path=f"/internal/payments/makeup-obligations/{obligation_id}/complete",
+        calling_service=calling_service,
+    )
+    if resp.status_code in (404, 409):
+        return None
+    resp.raise_for_status()
+    return resp.json()
+
+
+# ---------------------------------------------------------------------------
 # Store payment flow
 # ---------------------------------------------------------------------------
 

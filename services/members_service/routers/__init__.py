@@ -20,6 +20,9 @@ from services.members_service.routers.coach_application import (
 from services.members_service.routers.coach_application import (
     router as coach_application_router,
 )
+from services.members_service.routers.coach_availability import (
+    router as coach_availability_router,
+)
 from services.members_service.routers.coach_banking import (
     router as coach_banking_router,
 )
@@ -57,6 +60,7 @@ __all__ = [
     "internal_router",
     "coach_application_router",
     "coach_application_admin_router",
+    "coach_availability_router",
     "coach_banking_router",
     "coach_grades_router",
     "coach_grades_admin_router",

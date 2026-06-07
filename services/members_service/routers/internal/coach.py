@@ -22,6 +22,7 @@ from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ._schemas import (
+    CoachAvailabilityInternal,
     CoachBankAccountResponse,
     CoachProfileBasic,
     CoachReadinessData,
@@ -127,6 +128,32 @@ async def get_coach_profile(
         academy_cohort_stipend=profile.academy_cohort_stipend,
         one_to_one_rate_per_hour=profile.one_to_one_rate_per_hour,
         group_session_rate_per_hour=profile.group_session_rate_per_hour,
+    )
+
+
+@router.get(
+    "/coaches/{member_id}/availability", response_model=CoachAvailabilityInternal
+)
+async def get_coach_availability(
+    member_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return a coach's availability calendar + spacing override.
+
+    Service-to-service: consumed by sessions_service to compute bookable
+    make-up slots. Returns the raw stored calendar (caller parses it).
+    """
+    result = await db.execute(
+        select(CoachProfile).where(CoachProfile.member_id == member_id)
+    )
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Coach profile not found")
+    return CoachAvailabilityInternal(
+        member_id=str(profile.member_id),
+        availability_calendar=profile.availability_calendar,
+        min_hours_between_sessions=profile.min_hours_between_sessions,
     )
 
 

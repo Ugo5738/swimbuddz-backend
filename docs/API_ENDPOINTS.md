@@ -121,6 +121,40 @@ These are mounted on the members service directly (not exposed through the gatew
 - **Description:** Retrieve details for a single session.
 - **Response 200:** `SessionRead`
 
+### Make-up Scheduling
+
+> See [docs/design/AVAILABILITY_AND_MAKEUP_SCHEDULING_DESIGN.md](./design/AVAILABILITY_AND_MAKEUP_SCHEDULING_DESIGN.md). Internally, sessions_service reads a coach's calendar via `GET /internal/members/coaches/{member_id}/availability` (service-role).
+
+#### `GET /api/v1/makeups/bookable-slots`
+
+- **Auth:** Admin
+- **Description:** Compute a coach's make-up options for a learner over a date window: **`open`** slots (published availability − blackouts − booked time, sliced) and **`join_session`** options (existing sessions with room — a make-up needn't be 1:1). Each is **flagged** (not removed) for spacing against the learner's other sessions (48h default / per-coach override / back-to-back day). `availability_set: false` when the coach hasn't published a calendar (join options may still return).
+- **Query Params:** `coach_id` (uuid), `learner_id` (uuid), `from` (date), `to` (date, inclusive; max 60-day window).
+- **Response 200:** `BookableSlotsResponse` — `{ coach_id, learner_id, availability_set, slots: [{ start, end, kind, session_id?, session_title?, spots_left?, ok, warnings[] }] }`
+- **Errors:** `400` inverted or oversized window.
+
+#### `POST /api/v1/makeups/bookings`
+
+- **Auth:** Admin
+- **Description:** Confirm a make-up for a learner against a chosen session (a pre-created dedicated slot, or an existing session to join). Enforces: a **reason** for `learner_reschedule` (1b), **one outstanding make-up** at a time, **one grace per block**, the **14-day window** (from the original session), and **session capacity**. Books the learner into the session (CONFIRMED) and writes a CONFIRMED `MakeupBooking`. The cohort-term block is **auto-derived** from the original session's cohort when not supplied; if `obligation_id` is set, the matching cohort payout obligation is flipped to `SCHEDULED` (best-effort, via the internal `POST /internal/payments/makeup-obligations/{id}/schedule`).
+- **Body:** `MakeupBookingCreate` — `{ learner_member_id, coach_member_id, scheduled_session_id, origin, reason?, original_session_id?, block_kind?, block_id?, obligation_id?, used_grace?, spacing_overridden? }`
+- **Response 201:** `MakeupBookingResponse`
+- **Errors:** `404` session/learner not found; `409` outstanding make-up exists / session full; `422` reason missing / grace already used / past window / coach not assigned to session.
+
+#### `GET /api/v1/makeups/bookings`
+
+- **Auth:** Admin
+- **Description:** List make-up bookings (newest first, max 200).
+- **Query Params:** `learner_id`, `coach_id`, `status` (all optional).
+- **Response 200:** `MakeupBookingResponse[]`
+
+#### `POST /api/v1/makeups/bookings/{id}/complete` · `…/{id}/cancel`
+
+- **Auth:** Admin
+- **Description:** Mark a make-up **delivered** (`complete` → COMPLETED + `completed_at`) or **cancel** it (`cancel` → CANCELLED). Terminal states are rejected. The linked cohort payout obligation is **not** flipped here — that completes via payments' attendance-driven flow.
+- **Response 200:** `MakeupBookingResponse`
+- **Errors:** `404` not found; `422` invalid state transition.
+
 ---
 
 ## 4. Attendance & Sign-In
@@ -768,6 +802,24 @@ The opt-out lives on `notification_preferences.email_birthday` (boolean, default
 ---
 
 ## 13. Coach Management (Members Service)
+
+### Coach Availability (Coach-facing)
+
+> Phase 0 of make-up scheduling — see [docs/design/AVAILABILITY_AND_MAKEUP_SCHEDULING_DESIGN.md](./design/AVAILABILITY_AND_MAKEUP_SCHEDULING_DESIGN.md).
+
+#### `GET /api/v1/coaches/me/availability`
+
+- **Auth:** Required (coach)
+- **Description:** Get the current coach's availability calendar (recurring weekly blocks + blackout dates) and per-coach spacing override. Returns `availability: null` if not yet set (or if legacy data fails typed validation).
+- **Response 200:** `CoachAvailabilityResponse` — `{ availability: { version, timezone, recurring[], blackouts[], slot_minutes, buffer_minutes } | null, min_hours_between_sessions: int | null }`
+
+#### `PUT /api/v1/coaches/me/availability`
+
+- **Auth:** Required (coach)
+- **Description:** Replace the coach's availability calendar (and optional spacing override). Fully validated: lowercase weekday, 24-hour `HH:MM` times, end-after-start, no same-day overlaps, known IANA timezone. `min_hours_between_sessions` is left unchanged when omitted.
+- **Body:** `CoachAvailabilityUpdate` — `{ "availability": { "timezone": "Africa/Lagos", "recurring": [{ "weekday": "tue", "start": "06:00", "end": "10:00" }], "blackouts": [{ "start": "2026-06-15", "end": "2026-06-22", "reason": "travel" }], "slot_minutes": 60, "buffer_minutes": 0 }, "min_hours_between_sessions": 48 }`
+- **Response 200:** `CoachAvailabilityResponse`
+- **Errors:** `404` not a coach; `422` validation failure (bad time / weekday / timezone / overlap)
 
 ### Coach Agreement (Coach-facing)
 

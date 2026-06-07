@@ -65,3 +65,44 @@ class BookingChannel(str, enum.Enum):
 # Pod-related enums (PodVisibility, PodStatus, PodAssignmentSource) moved
 # to services.members_service.models.enums in May 2026 alongside the Pod
 # model itself. See docs/club/POD_OPERATIONS.md.
+
+
+# ============================================================================
+# Make-up scheduling (Phase 0) — see
+# docs/design/AVAILABILITY_AND_MAKEUP_SCHEDULING_DESIGN.md §6b
+# ============================================================================
+
+
+class MakeupStatus(str, enum.Enum):
+    """Lifecycle of a MakeupBooking (individual-learner make-up / reschedule)."""
+
+    REQUESTED = "requested"  # learner asked (self-serve); awaiting confirm
+    HELD = "held"  # slot soft-held pending admin confirmation
+    CONFIRMED = "confirmed"  # admin confirmed; make-up session created/linked
+    COMPLETED = "completed"  # make-up attended (PRESENT/LATE)
+    FORFEITED = "forfeited"  # late-cancel / no-show with no grace left
+    EXPIRED = "expired"  # window passed unbooked
+    CANCELLED = "cancelled"  # admin cancelled
+
+
+class MakeupOrigin(str, enum.Enum):
+    """Why a make-up exists."""
+
+    LEARNER_RESCHEDULE = "learner_reschedule"  # learner-initiated (>=24h notice)
+    EXCUSED_ABSENCE = "excused_absence"  # coach marked EXCUSED
+    SESSION_CANCELLED = "session_cancelled"  # a scheduled session was cancelled
+    LATE_JOIN = "late_join"  # enrolled after sessions began
+
+
+class MakeupLearnerType(str, enum.Enum):
+    """Which learner population the make-up belongs to."""
+
+    COHORT = "cohort"  # academy cohort learner (Phase 1)
+    ONE_ON_ONE = "one_on_one"  # individual 1:1 learner (Phase 2)
+
+
+class MakeupBlockKind(str, enum.Enum):
+    """What the make-up's grace/window 'block' is anchored to."""
+
+    COHORT_TERM = "cohort_term"  # academy cohort enrollment term
+    LESSON_PACKAGE = "lesson_package"  # purchased N-session bundle (1:1)

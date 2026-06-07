@@ -1,5 +1,6 @@
 """Service-to-service internal endpoints for payment initialization and verification."""
 
+import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -16,8 +17,10 @@ from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.payments_service.models import (
+    CohortMakeupObligation,
     Discount,
     DiscountType,
+    MakeupStatus,
     Payment,
     PaymentPurpose,
     PaymentStatus,
@@ -33,11 +36,92 @@ from services.payments_service.schemas import (
     InternalInitializeRequest,
     InternalInitializeResponse,
     InternalPaystackVerifyResponse,
+    MakeupObligationResponse,
+    MakeupScheduleRequest,
 )
 
 router = APIRouter(prefix="/internal/payments", tags=["internal"])
 settings = get_settings()
 logger = get_logger(__name__)
+
+
+@router.post(
+    "/makeup-obligations/{obligation_id}/schedule",
+    response_model=MakeupObligationResponse,
+    dependencies=[Depends(require_service_role)],
+    tags=["internal-payments"],
+)
+async def internal_schedule_makeup_obligation(
+    obligation_id: uuid.UUID,
+    payload: MakeupScheduleRequest,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Schedule a cohort make-up obligation to a session (service-to-service).
+
+    Called by sessions_service when an admin confirms a make-up that satisfies an
+    existing cohort obligation: links the session and flips PENDING/SCHEDULED →
+    SCHEDULED so the coach's payout includes it. Mirrors the admin endpoint.
+    """
+    obligation = (
+        await db.execute(
+            select(CohortMakeupObligation).where(
+                CohortMakeupObligation.id == obligation_id
+            )
+        )
+    ).scalar_one_or_none()
+    if not obligation:
+        raise HTTPException(status_code=404, detail="Obligation not found")
+    if obligation.status not in (MakeupStatus.PENDING, MakeupStatus.SCHEDULED):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot schedule obligation in status {obligation.status.value}",
+        )
+    obligation.scheduled_session_id = payload.scheduled_session_id
+    obligation.status = MakeupStatus.SCHEDULED
+    if payload.notes:
+        obligation.notes = payload.notes
+    await db.commit()
+    await db.refresh(obligation)
+    return MakeupObligationResponse.model_validate(obligation)
+
+
+@router.post(
+    "/makeup-obligations/{obligation_id}/complete",
+    response_model=MakeupObligationResponse,
+    dependencies=[Depends(require_service_role)],
+    tags=["internal-payments"],
+)
+async def internal_complete_makeup_obligation(
+    obligation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Mark a cohort make-up obligation COMPLETED (service-to-service).
+
+    Called by sessions_service when a make-up is delivered (attended). Sets
+    ``completed_at`` so the coach's payout for the covering block includes it.
+    Idempotent: an already-COMPLETED obligation is returned unchanged.
+    """
+    obligation = (
+        await db.execute(
+            select(CohortMakeupObligation).where(
+                CohortMakeupObligation.id == obligation_id
+            )
+        )
+    ).scalar_one_or_none()
+    if not obligation:
+        raise HTTPException(status_code=404, detail="Obligation not found")
+    if obligation.status == MakeupStatus.COMPLETED:
+        return MakeupObligationResponse.model_validate(obligation)
+    if obligation.status not in (MakeupStatus.PENDING, MakeupStatus.SCHEDULED):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot complete obligation in status {obligation.status.value}",
+        )
+    obligation.status = MakeupStatus.COMPLETED
+    obligation.completed_at = utc_now()
+    await db.commit()
+    await db.refresh(obligation)
+    return MakeupObligationResponse.model_validate(obligation)
 
 
 @router.post(

@@ -109,6 +109,26 @@ async def get_coach_profile(member_id: str, *, calling_service: str) -> Optional
     return resp.json()
 
 
+async def get_coach_availability(
+    member_id: str, *, calling_service: str
+) -> Optional[dict]:
+    """Look up a coach's availability calendar + spacing override.
+
+    Returns {member_id, availability_calendar, min_hours_between_sessions} or
+    None if the member has no coach profile.
+    """
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.MEMBERS_SERVICE_URL,
+        path=f"/internal/members/coaches/{member_id}/availability",
+        calling_service=calling_service,
+    )
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    return resp.json()
+
+
 async def get_member_membership(
     member_id: str, *, calling_service: str
 ) -> Optional[dict]:

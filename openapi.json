@@ -3948,6 +3948,78 @@
         ]
       }
     },
+    "/api/v1/coaches/me/availability": {
+      "get": {
+        "tags": [
+          "coaches"
+        ],
+        "summary": "Get My Availability",
+        "description": "Return the current coach's availability calendar + spacing override.",
+        "operationId": "get_my_availability_coaches_me_availability_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachAvailabilityResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "coaches"
+        ],
+        "summary": "Set My Availability",
+        "description": "Replace the current coach's availability calendar (and spacing override).\n\nThe body is fully validated (weekday, 24-hour times, no same-day overlaps,\nknown IANA timezone). ``min_hours_between_sessions`` is left unchanged when\nomitted. Stored as JSON on the coach profile.",
+        "operationId": "set_my_availability_coaches_me_availability_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoachAvailabilityUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachAvailabilityResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/coaches/me/grades": {
       "get": {
         "tags": [
@@ -6095,6 +6167,55 @@
         }
       }
     },
+    "/api/v1/internal/members/coaches/{member_id}/availability": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Coach Availability",
+        "description": "Return a coach's availability calendar + spacing override.\n\nService-to-service: consumed by sessions_service to compute bookable\nmake-up slots. Returns the raw stored calendar (caller parses it).",
+        "operationId": "get_coach_availability_internal_members_coaches__member_id__availability_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachAvailabilityInternal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/members/coaches/{member_id}/readiness": {
       "get": {
         "tags": [
@@ -6794,7 +6915,7 @@
           "bookings"
         ],
         "summary": "Book Session",
-        "description": "Pre-book a session as the authenticated member.\n\nCreates a SessionBooking(status=PENDING) with a 15-minute TTL.\nFrontend / payments_service is expected to call\nPOST /sessions/bookings/{id}/confirm after payment clears.",
+        "description": "Book a session as the authenticated member.\n\nReconciles against the single existing booking row for this\n(session, member), if any (a unique constraint forbids a second row):\n\n* CONFIRMED already \u2192 returned unchanged (idempotent; never re-charged).\n* PENDING (payment in flight / abandoned) or dead (EXPIRED / CANCELLED)\n  \u2192 driven forward by *this* attempt rather than rejected. A dead row is\n  revived with its stale payment linkage cleared.\n\nThen, for that row (existing or freshly created):\n\n* ``pay_with_bubbles`` (or a free session) \u2192 debit the wallet for the\n  pool fee, if any, and flip to CONFIRMED in one transaction.\n* otherwise \u2192 PENDING with a 15-minute TTL; the frontend pays via\n  Paystack and confirms on verify (the sweep retires it if payment\n  never clears).",
         "operationId": "book_session_sessions__session_id__book_post",
         "security": [
           {
@@ -7323,6 +7444,335 @@
                     "$ref": "#/components/schemas/SessionBookingResponse"
                   },
                   "title": "Response List Session Bookings Sessions  Session Id  Bookings Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/makeups/bookable-slots": {
+      "get": {
+        "tags": [
+          "makeups"
+        ],
+        "summary": "Get Bookable Slots",
+        "description": "Return bookable make-up options for a coach + learner over [from, to].\n\nAdmin-facing (the booker, per policy \u00a73). Returns \"open\" slots (gaps in the\ncoach's published availability) and \"join_session\" options (existing sessions\nwith room \u2014 a make-up needn't be 1:1, policy \u00a71). Spacing violations are\n*flagged*, not removed (decision D2). ``availability_set`` is False when the\ncoach hasn't published a calendar \u2014 join options may still be returned.",
+        "operationId": "get_bookable_slots_makeups_bookable_slots_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "coach_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Coach member id",
+              "title": "Coach Id"
+            },
+            "description": "Coach member id"
+          },
+          {
+            "name": "learner_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Learner member id",
+              "title": "Learner Id"
+            },
+            "description": "Learner member id"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Window start (coach-local date)",
+              "title": "From"
+            },
+            "description": "Window start (coach-local date)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Window end, inclusive",
+              "title": "To"
+            },
+            "description": "Window end, inclusive"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookableSlotsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/makeups/bookings": {
+      "post": {
+        "tags": [
+          "makeups"
+        ],
+        "summary": "Confirm Makeup Booking",
+        "description": "Confirm a make-up for a learner against a chosen session (admin; policy \u00a73).\n\nThe session is either a dedicated make-up session (pre-created) or an existing\none the learner joins (policy \u00a71). Enforces: a reason for reschedules (1b), one\noutstanding make-up at a time, one grace per block, the 14-day window, and\nsession capacity. Writes a CONFIRMED MakeupBooking and books the learner in.",
+        "operationId": "confirm_makeup_booking_makeups_bookings_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MakeupBookingCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MakeupBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "makeups"
+        ],
+        "summary": "List Makeup Bookings",
+        "description": "List make-up bookings (admin), newest first; filter by learner/coach/status.",
+        "operationId": "list_makeup_bookings_makeups_bookings_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "learner_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by learner",
+              "title": "Learner Id"
+            },
+            "description": "Filter by learner"
+          },
+          {
+            "name": "coach_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by coach",
+              "title": "Coach Id"
+            },
+            "description": "Filter by coach"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MakeupStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by make-up status",
+              "title": "Status"
+            },
+            "description": "Filter by make-up status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MakeupBookingResponse"
+                  },
+                  "title": "Response List Makeup Bookings Makeups Bookings Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/makeups/bookings/{booking_id}/complete": {
+      "post": {
+        "tags": [
+          "makeups"
+        ],
+        "summary": "Complete Makeup Booking",
+        "description": "Mark a make-up as delivered (admin). Sets COMPLETED + completed_at.\n\nThe linked cohort payout obligation completes via payments' own\nattendance-driven flow \u2014 it is not flipped here, to avoid payout side effects.",
+        "operationId": "complete_makeup_booking_makeups_bookings__booking_id__complete_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MakeupBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/makeups/bookings/{booking_id}/cancel": {
+      "post": {
+        "tags": [
+          "makeups"
+        ],
+        "summary": "Cancel Makeup Booking",
+        "description": "Cancel a make-up (admin). Sets CANCELLED; terminal states are rejected.",
+        "operationId": "cancel_makeup_booking_makeups_bookings__booking_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MakeupBookingResponse"
                 }
               }
             }
@@ -15032,6 +15482,116 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/payments/makeup-obligations/{obligation_id}/schedule": {
+      "post": {
+        "tags": [
+          "internal",
+          "internal-payments"
+        ],
+        "summary": "Internal Schedule Makeup Obligation",
+        "description": "Schedule a cohort make-up obligation to a session (service-to-service).\n\nCalled by sessions_service when an admin confirms a make-up that satisfies an\nexisting cohort obligation: links the session and flips PENDING/SCHEDULED \u2192\nSCHEDULED so the coach's payout includes it. Mirrors the admin endpoint.",
+        "operationId": "internal_schedule_makeup_obligation_internal_payments_makeup_obligations__obligation_id__schedule_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "obligation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Obligation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MakeupScheduleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MakeupObligationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/payments/makeup-obligations/{obligation_id}/complete": {
+      "post": {
+        "tags": [
+          "internal",
+          "internal-payments"
+        ],
+        "summary": "Internal Complete Makeup Obligation",
+        "description": "Mark a cohort make-up obligation COMPLETED (service-to-service).\n\nCalled by sessions_service when a make-up is delivered (attended). Sets\n``completed_at`` so the coach's payout for the covering block includes it.\nIdempotent: an already-COMPLETED obligation is returned unchanged.",
+        "operationId": "internal_complete_makeup_obligation_internal_payments_makeup_obligations__obligation_id__complete_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "obligation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Obligation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MakeupObligationResponse"
+                }
               }
             }
           },
@@ -43214,6 +43774,39 @@
         ],
         "title": "BirthdayMember"
       },
+      "BlackoutDateInput": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date",
+            "title": "End"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "BlackoutDateInput",
+        "description": "A date range the coach is unavailable (subtracts from recurring blocks)."
+      },
       "BulkMembersRequest": {
         "properties": {
           "ids": {
@@ -46134,6 +46727,194 @@
         ],
         "title": "CoachApplicationStatusResponse",
         "description": "Minimal status response for coaches checking their application."
+      },
+      "CoachAvailabilityCalendar-Input": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "IANA timezone name",
+            "default": "Africa/Lagos"
+          },
+          "recurring": {
+            "items": {
+              "$ref": "#/components/schemas/RecurringBlockInput"
+            },
+            "type": "array",
+            "title": "Recurring"
+          },
+          "blackouts": {
+            "items": {
+              "$ref": "#/components/schemas/BlackoutDateInput"
+            },
+            "type": "array",
+            "title": "Blackouts"
+          },
+          "slot_minutes": {
+            "type": "integer",
+            "maximum": 240.0,
+            "minimum": 15.0,
+            "title": "Slot Minutes",
+            "description": "Default lesson/make-up length in minutes",
+            "default": 60
+          },
+          "buffer_minutes": {
+            "type": "integer",
+            "maximum": 120.0,
+            "minimum": 0.0,
+            "title": "Buffer Minutes",
+            "description": "Gap between consecutive slots in minutes",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "CoachAvailabilityCalendar",
+        "description": "Canonical shape of CoachProfile.availability_calendar (JSONB).\n\nRecurring weekly blocks + blackout dates in the coach's local timezone.\nsessions_service slices this into bookable make-up slots."
+      },
+      "CoachAvailabilityCalendar-Output": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "IANA timezone name",
+            "default": "Africa/Lagos"
+          },
+          "recurring": {
+            "items": {
+              "$ref": "#/components/schemas/RecurringBlockInput"
+            },
+            "type": "array",
+            "title": "Recurring"
+          },
+          "blackouts": {
+            "items": {
+              "$ref": "#/components/schemas/BlackoutDateInput"
+            },
+            "type": "array",
+            "title": "Blackouts"
+          },
+          "slot_minutes": {
+            "type": "integer",
+            "maximum": 240.0,
+            "minimum": 15.0,
+            "title": "Slot Minutes",
+            "description": "Default lesson/make-up length in minutes",
+            "default": 60
+          },
+          "buffer_minutes": {
+            "type": "integer",
+            "maximum": 120.0,
+            "minimum": 0.0,
+            "title": "Buffer Minutes",
+            "description": "Gap between consecutive slots in minutes",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "CoachAvailabilityCalendar",
+        "description": "Canonical shape of CoachProfile.availability_calendar (JSONB).\n\nRecurring weekly blocks + blackout dates in the coach's local timezone.\nsessions_service slices this into bookable make-up slots."
+      },
+      "CoachAvailabilityInternal": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "title": "Member Id"
+          },
+          "availability_calendar": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Availability Calendar"
+          },
+          "min_hours_between_sessions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Hours Between Sessions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id"
+        ],
+        "title": "CoachAvailabilityInternal",
+        "description": "Coach availability calendar + spacing override (service-to-service).\n\n``availability_calendar`` is the raw stored JSONB; the caller\n(sessions_service) parses it. None when the coach hasn't published."
+      },
+      "CoachAvailabilityResponse": {
+        "properties": {
+          "availability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoachAvailabilityCalendar-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "min_hours_between_sessions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Hours Between Sessions"
+          }
+        },
+        "type": "object",
+        "title": "CoachAvailabilityResponse",
+        "description": "GET response: a coach's current availability + spacing override."
+      },
+      "CoachAvailabilityUpdate": {
+        "properties": {
+          "availability": {
+            "$ref": "#/components/schemas/CoachAvailabilityCalendar-Input"
+          },
+          "min_hours_between_sessions": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 336.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Hours Between Sessions",
+            "description": "Per-coach spacing override in hours; null \u2192 48h policy default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "availability"
+        ],
+        "title": "CoachAvailabilityUpdate",
+        "description": "PUT body: a coach sets their own availability + spacing override."
       },
       "CoachBankAccountResponse": {
         "properties": {
@@ -51880,6 +52661,31 @@
         "title": "ProgramCategoryEnum",
         "description": "Program categories for grade assignment."
       },
+      "RecurringBlockInput": {
+        "properties": {
+          "weekday": {
+            "$ref": "#/components/schemas/WeekdayEnum"
+          },
+          "start": {
+            "type": "string",
+            "title": "Start",
+            "description": "Local start time, 24-hour 'HH:MM'"
+          },
+          "end": {
+            "type": "string",
+            "title": "End",
+            "description": "Local end time, 24-hour 'HH:MM'"
+          }
+        },
+        "type": "object",
+        "required": [
+          "weekday",
+          "start",
+          "end"
+        ],
+        "title": "RecurringBlockInput",
+        "description": "A weekly availability window, sliced into bookable slots downstream."
+      },
       "ResolveAccountRequest": {
         "properties": {
           "bank_code": {
@@ -52316,6 +53122,20 @@
         "title": "VolunteerRoleUpdate",
         "description": "Schema for updating a volunteer role."
       },
+      "WeekdayEnum": {
+        "type": "string",
+        "enum": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri",
+          "sat",
+          "sun"
+        ],
+        "title": "WeekdayEnum",
+        "description": "Lowercase 3-letter weekday keys for recurring availability."
+      },
       "services__members_service__routers__internal___schemas__MemberMembershipResponse": {
         "properties": {
           "member_id": {
@@ -52698,6 +53518,109 @@
         "title": "AdminWalkInRequest",
         "description": "Admin creates a CONFIRMED booking for a member who showed up without\npre-booking online (the \"walk-in\" case).\n\nUsed by the admin attendance UI. The admin clicks \"Mark walk-in\" on a\ncohort member who paid the pool fee at the door \u2014 this creates the\nbooking record so the financials reconcile. Default fee is the session's\nown ``pool_fee`` (in kobo); override is allowed for unusual cases."
       },
+      "BookableSlotResponse": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "default": "open"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "session_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Title"
+          },
+          "spots_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spots Left"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "BookableSlotResponse",
+        "description": "A candidate make-up option (UTC) with policy spacing flags.\n\n``kind`` is \"open\" (a dedicated availability gap) or \"join_session\" (an\nexisting session the learner can join \u2014 policy \u00a71). For \"join_session\",\nsession_id / session_title / spots_left describe the session."
+      },
+      "BookableSlotsResponse": {
+        "properties": {
+          "coach_id": {
+            "type": "string",
+            "title": "Coach Id"
+          },
+          "learner_id": {
+            "type": "string",
+            "title": "Learner Id"
+          },
+          "availability_set": {
+            "type": "boolean",
+            "title": "Availability Set"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/BookableSlotResponse"
+            },
+            "type": "array",
+            "title": "Slots"
+          }
+        },
+        "type": "object",
+        "required": [
+          "coach_id",
+          "learner_id",
+          "availability_set",
+          "slots"
+        ],
+        "title": "BookableSlotsResponse",
+        "description": "Bookable slots for a coach + learner over a date window."
+      },
       "BookingChannel": {
         "type": "string",
         "enum": [
@@ -52917,6 +53840,278 @@
           "weeks"
         ],
         "title": "GenerateSessionsRequest"
+      },
+      "MakeupBlockKind": {
+        "type": "string",
+        "enum": [
+          "cohort_term",
+          "lesson_package"
+        ],
+        "title": "MakeupBlockKind",
+        "description": "What the make-up's grace/window 'block' is anchored to."
+      },
+      "MakeupBookingCreate": {
+        "properties": {
+          "learner_member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Learner Member Id"
+          },
+          "coach_member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Coach Member Id"
+          },
+          "scheduled_session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Scheduled Session Id"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/MakeupOrigin"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "original_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Session Id"
+          },
+          "block_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MakeupBlockKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id"
+          },
+          "obligation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Obligation Id"
+          },
+          "used_grace": {
+            "type": "boolean",
+            "title": "Used Grace",
+            "default": false
+          },
+          "spacing_overridden": {
+            "type": "boolean",
+            "title": "Spacing Overridden",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "learner_member_id",
+          "coach_member_id",
+          "scheduled_session_id",
+          "origin"
+        ],
+        "title": "MakeupBookingCreate",
+        "description": "Admin request to confirm a make-up for a learner against a chosen session.\n\nThe session is either a dedicated make-up session (pre-created) or an\nexisting one the learner joins (policy \u00a71). ``reason`` is required when\n``origin`` is ``learner_reschedule`` (policy \u00a74 / 1b)."
+      },
+      "MakeupBookingResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "learner_member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Learner Member Id"
+          },
+          "coach_member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Coach Member Id"
+          },
+          "learner_type": {
+            "$ref": "#/components/schemas/MakeupLearnerType"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/MakeupOrigin"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MakeupStatus"
+          },
+          "block_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MakeupBlockKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id"
+          },
+          "original_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Session Id"
+          },
+          "scheduled_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Session Id"
+          },
+          "used_grace": {
+            "type": "boolean",
+            "title": "Used Grace"
+          },
+          "notice_hours_at_request": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice Hours At Request"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "learner_member_id",
+          "coach_member_id",
+          "learner_type",
+          "origin",
+          "status",
+          "used_grace",
+          "created_at"
+        ],
+        "title": "MakeupBookingResponse",
+        "description": "A make-up booking record."
+      },
+      "MakeupLearnerType": {
+        "type": "string",
+        "enum": [
+          "cohort",
+          "one_on_one"
+        ],
+        "title": "MakeupLearnerType",
+        "description": "Which learner population the make-up belongs to."
+      },
+      "MakeupOrigin": {
+        "type": "string",
+        "enum": [
+          "learner_reschedule",
+          "excused_absence",
+          "session_cancelled",
+          "late_join"
+        ],
+        "title": "MakeupOrigin",
+        "description": "Why a make-up exists."
+      },
+      "MakeupStatus": {
+        "type": "string",
+        "enum": [
+          "requested",
+          "held",
+          "confirmed",
+          "completed",
+          "forfeited",
+          "expired",
+          "cancelled"
+        ],
+        "title": "MakeupStatus",
+        "description": "Lifecycle of a MakeupBooking (individual-learner make-up / reschedule)."
       },
       "NextSessionResponse": {
         "properties": {
@@ -62304,18 +63499,6 @@
         ],
         "title": "MakeupScheduleRequest",
         "description": "Coach (or admin override) schedules a make-up by linking it to a\nsessions row they've created in the cohort."
-      },
-      "MakeupStatus": {
-        "type": "string",
-        "enum": [
-          "pending",
-          "scheduled",
-          "completed",
-          "expired",
-          "cancelled"
-        ],
-        "title": "MakeupStatus",
-        "description": "Lifecycle of a make-up obligation owed to a student."
       },
       "MarkRefundDisbursedRequest": {
         "properties": {

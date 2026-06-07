@@ -13,6 +13,7 @@ New code may import directly from a submodule
 from __future__ import annotations
 
 from .academy import check_cohort_enrollment, list_enrollment_progress
+from .attendance import get_member_attendance
 from .communications import dispatch_notification
 from .core import (
     _DEFAULT_TIMEOUT,
@@ -25,6 +26,7 @@ from .core import (
 from .members import (
     get_admin_members,
     get_birthdays_today,
+    get_coach_availability,
     get_coach_profile,
     get_coach_readiness_data,
     get_eligible_coaches,
@@ -39,10 +41,12 @@ from .members import (
 from .payments import (
     PaystackProxyError,
     _proxy_error_from,
+    complete_makeup_obligation,
     initialize_store_payment,
     paystack_create_recipient,
     paystack_list_banks,
     paystack_resolve_account,
+    schedule_makeup_obligation,
     validate_discount_code,
     verify_store_payment,
 )
@@ -80,6 +84,7 @@ __all__ = [
     "search_members",
     "get_member_by_id",
     "get_members_bulk",
+    "get_coach_availability",
     "get_coach_profile",
     "get_member_membership",
     "get_coach_readiness_data",
@@ -91,6 +96,8 @@ __all__ = [
     # Academy
     "check_cohort_enrollment",
     "list_enrollment_progress",
+    # Attendance
+    "get_member_attendance",
     # Sessions
     "get_booking_by_id",
     "get_session_by_id",
@@ -112,6 +119,8 @@ __all__ = [
     "initialize_store_payment",
     "verify_store_payment",
     "validate_discount_code",
+    "schedule_makeup_obligation",
+    "complete_makeup_obligation",
     "PaystackProxyError",
     "_proxy_error_from",
     "paystack_list_banks",

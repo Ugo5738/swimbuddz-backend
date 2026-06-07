@@ -85,6 +85,60 @@ async def _resolve_member_for_user(
     return uuid.UUID(member["id"]), user.user_id
 
 
+async def _debit_booking_fee(
+    *,
+    member_auth_id: str,
+    session_id: uuid.UUID,
+    member_id: uuid.UUID,
+    booked_at: datetime,
+    fee_amount_kobo: int,
+    session_title: str,
+) -> Optional[uuid.UUID]:
+    """Debit a member's wallet for a booking's pool fee.
+
+    Returns the wallet transaction id, or ``None`` when there's no fee to
+    charge (free session). Translates wallet errors into member-facing
+    HTTP errors (402 insufficient, 403 inactive).
+
+    The idempotency key includes ``booked_at`` so each fresh booking
+    *attempt* debits independently — a brand-new booking, or a revived
+    EXPIRED/CANCELLED row whose ``booked_at`` was reset, each get a
+    distinct key — while a double-submit of the *same* attempt replays the
+    same key and never double-charges.
+    """
+    if fee_amount_kobo <= 0:
+        return None
+    try:
+        result_txn = await debit_member_wallet(
+            member_auth_id,
+            amount=kobo_to_bubbles(fee_amount_kobo),
+            idempotency_key=(
+                f"booking-fee-{session_id}-{member_id}-{int(booked_at.timestamp())}"
+            ),
+            description=f"Session booking — {session_title}",
+            calling_service="sessions",
+            transaction_type="purchase",
+            reference_type="session_booking",
+            reference_id=f"{session_id}",
+        )
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 400:
+            detail = e.response.json().get("detail", "")
+            if "Insufficient" in detail:
+                raise HTTPException(
+                    status_code=402,
+                    detail="Insufficient Bubbles. Please top up your wallet.",
+                )
+            if "frozen" in detail.lower() or "suspended" in detail.lower():
+                raise HTTPException(
+                    status_code=403,
+                    detail="Wallet is inactive. Please contact support.",
+                )
+        raise
+    txn = result_txn.get("transaction_id")
+    return uuid.UUID(txn) if txn else None
+
+
 # ---------------------------------------------------------------------------
 # Member: book a session
 # ---------------------------------------------------------------------------
@@ -101,11 +155,23 @@ async def book_session(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Pre-book a session as the authenticated member.
+    """Book a session as the authenticated member.
 
-    Creates a SessionBooking(status=PENDING) with a 15-minute TTL.
-    Frontend / payments_service is expected to call
-    POST /sessions/bookings/{id}/confirm after payment clears.
+    Reconciles against the single existing booking row for this
+    (session, member), if any (a unique constraint forbids a second row):
+
+    * CONFIRMED already → returned unchanged (idempotent; never re-charged).
+    * PENDING (payment in flight / abandoned) or dead (EXPIRED / CANCELLED)
+      → driven forward by *this* attempt rather than rejected. A dead row is
+      revived with its stale payment linkage cleared.
+
+    Then, for that row (existing or freshly created):
+
+    * ``pay_with_bubbles`` (or a free session) → debit the wallet for the
+      pool fee, if any, and flip to CONFIRMED in one transaction.
+    * otherwise → PENDING with a 15-minute TTL; the frontend pays via
+      Paystack and confirms on verify (the sweep retires it if payment
+      never clears).
     """
     if booking_in.session_id != session_id:
         raise HTTPException(
@@ -154,8 +220,11 @@ async def book_session(
                 ),
             )
 
-    # Idempotency: pre-existing PENDING/CONFIRMED for this (session, member)
-    # → return it. CANCELLED/EXPIRED → require admin re-issue.
+    now = utc_now()
+
+    # At most one booking row per (session, member) exists — enforced by the
+    # uq_session_bookings_session_member constraint — so there's a single row
+    # to reconcile against this incoming attempt.
     existing = (
         await db.execute(
             select(SessionBooking).where(
@@ -164,57 +233,75 @@ async def book_session(
             )
         )
     ).scalar_one_or_none()
+
     if existing is not None:
-        if existing.status in (
-            SessionBookingStatus.PENDING,
-            SessionBookingStatus.CONFIRMED,
-        ):
+        # Already paid → idempotent return. A CONFIRMED booking is never
+        # re-charged (covers a duplicate submit or the member revisiting).
+        if existing.status == SessionBookingStatus.CONFIRMED:
             return existing
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"A previous booking for this session exists with "
-                f"status={existing.status.value}. Contact support to re-book."
-            ),
-        )
 
-    now = utc_now()
+        # PENDING (payment in flight / abandoned online attempt) or dead
+        # (EXPIRED / CANCELLED). The unique constraint forbids a second row,
+        # so drive *this* row forward instead of rejecting the re-book.
+        # Reviving a dead row clears its stale payment linkage so a prior
+        # intent/txn is never reused and the debit idempotency window (keyed
+        # on booked_at) reopens for the fresh attempt.
+        if existing.status in (
+            SessionBookingStatus.EXPIRED,
+            SessionBookingStatus.CANCELLED,
+        ):
+            existing.payment_intent_id = None
+            existing.wallet_transaction_id = None
+            existing.confirmed_at = None
+            existing.cancelled_at = None
+            existing.channel = BookingChannel.MEMBER_SELF
+            existing.booked_at = now
 
-    # Fast path: free session OR member elected to pay full Bubbles.
-    # Mirrors the existing one-click sign-in UX: create PENDING → debit
-    # wallet (if non-zero fee) → flip CONFIRMED in one transaction.
+        existing.fee_amount_kobo = booking_in.fee_amount_kobo
+        if booking_in.notes is not None:
+            existing.notes = booking_in.notes
+
+        if booking_in.pay_with_bubbles:
+            # Bubbles / free → debit (if any fee) and confirm this row. This
+            # is the core fix: an existing PENDING row used to short-circuit
+            # with `return existing` *before* the debit ran, so re-booking
+            # with Bubbles silently left the booking PENDING and unpaid.
+            existing.wallet_transaction_id = await _debit_booking_fee(
+                member_auth_id=member_auth_id,
+                session_id=session_id,
+                member_id=member_id,
+                booked_at=existing.booked_at,
+                fee_amount_kobo=booking_in.fee_amount_kobo,
+                session_title=session.title,
+            )
+            existing.status = SessionBookingStatus.CONFIRMED
+            existing.confirmed_at = now
+            existing.expires_at = None
+        else:
+            # Paystack → (re)open the PENDING window; the frontend creates a
+            # fresh payment intent against this booking id and confirms on
+            # verify. Refreshing expires_at stops the sweep retiring the row
+            # mid-payment.
+            existing.status = SessionBookingStatus.PENDING
+            existing.expires_at = now + timedelta(minutes=PENDING_TTL_MINUTES)
+
+        await db.commit()
+        await db.refresh(existing)
+        return existing
+
+    # No prior booking for this (session, member) → create one.
+    #
+    # Fast path: free session OR member elected to pay full Bubbles. Mirrors
+    # the one-click sign-in UX: debit wallet (if non-zero fee) → CONFIRMED.
     if booking_in.pay_with_bubbles:
-        wallet_txn_id: Optional[uuid.UUID] = None
-        if booking_in.fee_amount_kobo > 0:
-            try:
-                result_txn = await debit_member_wallet(
-                    member_auth_id,
-                    amount=kobo_to_bubbles(booking_in.fee_amount_kobo),
-                    idempotency_key=f"booking-fee-{session_id}-{member_id}",
-                    description=f"Session booking — {session.title}",
-                    calling_service="sessions",
-                    transaction_type="purchase",
-                    reference_type="session_booking",
-                    reference_id=f"{session_id}",
-                )
-                txn = result_txn.get("transaction_id")
-                if txn:
-                    wallet_txn_id = uuid.UUID(txn)
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 400:
-                    detail = e.response.json().get("detail", "")
-                    if "Insufficient" in detail:
-                        raise HTTPException(
-                            status_code=402,
-                            detail="Insufficient Bubbles. Please top up your wallet.",
-                        )
-                    if "frozen" in detail.lower() or "suspended" in detail.lower():
-                        raise HTTPException(
-                            status_code=403,
-                            detail="Wallet is inactive. Please contact support.",
-                        )
-                raise
-
+        wallet_txn_id = await _debit_booking_fee(
+            member_auth_id=member_auth_id,
+            session_id=session_id,
+            member_id=member_id,
+            booked_at=now,
+            fee_amount_kobo=booking_in.fee_amount_kobo,
+            session_title=session.title,
+        )
         booking = SessionBooking(
             session_id=session_id,
             member_id=member_id,
