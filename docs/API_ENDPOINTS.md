@@ -141,6 +141,14 @@ These are mounted on the members service directly (not exposed through the gatew
 - **Response 201:** `MakeupBookingResponse`
 - **Errors:** `404` session/learner not found; `409` outstanding make-up exists / session full; `422` reason missing / grace already used / past window / coach not assigned to session.
 
+#### `POST /api/v1/makeups/open-slot`
+
+- **Auth:** Admin
+- **Description:** Create a **dedicated** make-up session in a coach's *open* availability slot and confirm the learner into it in **one step** (the join-an-existing-session path is `POST /makeups/bookings`). Builds a `COHORT_CLASS` session at `[starts_at, ends_at]` (cohort from `cohort_id`, else derived from `original_session_id`), attaches the coach as lead, then runs the same eligibility + booking + obligation-flip tail as `/bookings`. Fails fast **before** any session is created on a future-slot / outstanding-make-up violation; refuses a slot that **overlaps** a session the coach already runs (use the join path instead).
+- **Body:** `MakeupOpenSlotCreate` — `{ learner_member_id, coach_member_id, starts_at, ends_at, origin, cohort_id?|original_session_id? (one required), reason?, pool_id?, title?, capacity?=1, block_kind?, block_id?, obligation_id?, used_grace?, spacing_overridden? }`
+- **Response 201:** `MakeupBookingResponse`
+- **Errors:** `409` outstanding make-up exists / coach has an overlapping session / new session full; `422` slot not in the future / `ends_at` ≤ `starts_at` / neither cohort nor original session given / cohort not derivable / reason missing / grace used / past window.
+
 #### `GET /api/v1/makeups/bookings`
 
 - **Auth:** Admin

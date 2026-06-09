@@ -42904,6 +42904,53 @@
           }
         ]
       }
+    },
+    "/api/v1/makeups/open-slot": {
+      "post": {
+        "tags": [
+          "makeups"
+        ],
+        "summary": "Create Open Slot Makeup",
+        "description": "Create a dedicated make-up session in a coach's open slot and confirm the\nlearner into it in one step (admin; design \u00a74 Phase 2).\n\nUse this for a brand-new dedicated slot; to drop a learner into a session the\ncoach already runs, use ``POST /makeups/bookings`` (policy \u00a71). The new\nsession is a COHORT_CLASS whose cohort is ``cohort_id`` or is derived from\n``original_session_id``. Eligibility (one-outstanding, window, grace) is\nenforced by the shared core *after* the session is built; if it fails the\nrequest rolls back and no orphan session is left behind.",
+        "operationId": "create_open_slot_makeup_makeups_open_slot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MakeupOpenSlotCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MakeupBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -94742,6 +94789,154 @@
           "credit_minor"
         ],
         "title": "TrialBalanceRow"
+      },
+      "MakeupOpenSlotCreate": {
+        "properties": {
+          "learner_member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Learner Member Id"
+          },
+          "coach_member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Coach Member Id"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/MakeupOrigin"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "original_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Session Id"
+          },
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "capacity": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Capacity",
+            "default": 1
+          },
+          "block_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MakeupBlockKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id"
+          },
+          "obligation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Obligation Id"
+          },
+          "used_grace": {
+            "type": "boolean",
+            "title": "Used Grace",
+            "default": false
+          },
+          "spacing_overridden": {
+            "type": "boolean",
+            "title": "Spacing Overridden",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "learner_member_id",
+          "coach_member_id",
+          "starts_at",
+          "ends_at",
+          "origin"
+        ],
+        "title": "MakeupOpenSlotCreate",
+        "description": "Admin request to create a dedicated make-up session in a coach's *open*\navailability slot and confirm a learner into it in one step (design \u00a74\nPhase 2). The join-an-existing-session path is ``POST /makeups/bookings``;\nthis is for booking a brand-new dedicated slot.\n\nThe new session is a ``COHORT_CLASS`` whose cohort comes from ``cohort_id``\nif given, else derived from ``original_session_id``. ``reason`` is required\nwhen ``origin`` is ``learner_reschedule`` (policy \u00a74 / 1b)."
       }
     }
   }

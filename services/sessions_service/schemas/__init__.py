@@ -23,6 +23,7 @@ from services.sessions_service.schemas.makeup import (
     BookableSlotsResponse,
     MakeupBookingCreate,
     MakeupBookingResponse,
+    MakeupOpenSlotCreate,
     MakeupRequestCreate,
 )
 from services.sessions_service.schemas.templates import (
@@ -45,6 +46,7 @@ __all__ = [
     "GenerateSessionsRequest",
     "MakeupBookingCreate",
     "MakeupBookingResponse",
+    "MakeupOpenSlotCreate",
     "MakeupRequestCreate",
     "RunningLateRequest",
     "SessionBase",
