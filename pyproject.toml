@@ -47,6 +47,25 @@ dev = [
     "ruff>=0.2,<0.5",
     "pytest-cov>=5.0,<6.0",
 ]
+# Stroke Lab — swim-video analyser (YOLOv8 + MediaPipe pose). HEAVY:
+# ultralytics pulls torch (~600MB on arm64). Kept out of the base
+# `dependencies` so non-AI services don't pay the cost on every build.
+# Only the ai_service Dockerfile installs this extra (`.[strokelab]`).
+#
+# Version notes:
+#   * mediapipe linux-arm64 wheels currently top out at 0.10.18 — keep
+#     the floor below that so docker arm64 builds resolve. macOS dev
+#     boxes will still pick up newer wheels naturally.
+#   * ultralytics + opencv-python-headless versions are aligned with
+#     what was validated in the Week 1 kill-gate on 2026-05-13.
+#   * ffmpeg system binary is required separately
+#     (apt install ffmpeg in services/ai_service/Dockerfile).
+strokelab = [
+    "ultralytics>=8.3,<9.0",
+    "mediapipe>=0.10.13,<0.11",
+    "opencv-python-headless>=4.10,<5.0",
+    "ffmpeg-python>=0.2,<0.3",
+]
 
 [tool.setuptools.packages.find]
 include = ["libs*", "services*", "mcp*", "alembic*"]

@@ -234,7 +234,7 @@ async def cleanup_member(
     await run_call(
         "media",
         clients.media_client.delete(
-            f"/api/v1/media/admin/members/{member_id}", headers=headers
+            f"/media/admin/members/{member_id}", headers=headers
         ),
     )
     await run_call(

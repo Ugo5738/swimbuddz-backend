@@ -97,7 +97,7 @@ async def test_cleanup_hard_mode_handles_204_responses(client):
     try:
         response = await client.post(
             f"/api/v1/admin/cleanup/members/{member_id}",
-            json={"mode": "HARD"},
+            json={"mode": "hard"},
         )
     finally:
         clients.members_client = original_clients["members"]

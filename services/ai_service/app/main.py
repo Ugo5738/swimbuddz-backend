@@ -3,6 +3,16 @@
 from fastapi import FastAPI
 
 from libs.common.health import register_health_check
+from services.ai_service.routers.admin_analyze import (
+    admin_router as strokelab_admin_router,
+)
+from services.ai_service.routers.analyze import router as analyze_router
+from services.ai_service.routers.founding_members import (
+    internal_router as founding_internal_router,
+)
+from services.ai_service.routers.founding_members import (
+    router as founding_members_router,
+)
 from services.ai_service.routers.member import admin_router, router
 
 
@@ -21,6 +31,14 @@ def create_app() -> FastAPI:
 
     # Include admin endpoints
     app.include_router(admin_router, prefix="/ai")
+
+    # Stroke Lab — swim-video analysis endpoints
+    app.include_router(analyze_router, prefix="/ai")
+    app.include_router(strokelab_admin_router, prefix="/ai")
+    app.include_router(founding_members_router, prefix="/ai")
+    # Internal router is mounted at root so payments_service can reach
+    # /internal/ai/founding-members/confirm (no /ai prefix).
+    app.include_router(founding_internal_router)
 
     return app
 

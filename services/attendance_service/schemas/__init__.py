@@ -9,6 +9,7 @@ from services.attendance_service.schemas.main import (
     CoachAttendanceMarkRequest,
     CoachAttendanceMarkResponse,
     CohortAttendanceSummary,
+    GuestAttendanceCreate,
     PublicAttendanceCreate,
     StudentAttendanceSummary,
 )
@@ -21,6 +22,7 @@ __all__ = [
     "CoachAttendanceMarkRequest",
     "CoachAttendanceMarkResponse",
     "CohortAttendanceSummary",
+    "GuestAttendanceCreate",
     "PublicAttendanceCreate",
     "RideShareOption",
     "StudentAttendanceSummary",

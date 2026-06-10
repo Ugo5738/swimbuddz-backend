@@ -220,3 +220,82 @@ async def test_get_scheduled_sessions(sessions_client, db_session):
     titles = [s["title"] for s in data]
     assert "Active" in titles
     assert "Cancelled" not in titles
+
+
+# ---------------------------------------------------------------------------
+# Regression: date-range filters on the scheduled / completed-ids endpoints.
+# start_date/end_date were typed Optional[str] and compared against the
+# timestamptz `starts_at`, raising psycopg UndefinedFunction (500). The bare
+# (no-date) tests above never exercised this path.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_get_scheduled_sessions_date_range(sessions_client, db_session):
+    """Scheduled endpoint filters by start_date/end_date without 500ing."""
+    now = datetime.now(timezone.utc)
+    in_window = SessionFactory.create(
+        status="SCHEDULED",
+        title="InWindow",
+        starts_at=now + timedelta(days=2),
+        ends_at=now + timedelta(days=2) + timedelta(hours=2),
+    )
+    after_window = SessionFactory.create(
+        status="SCHEDULED",
+        title="AfterWindow",
+        starts_at=now + timedelta(days=10),
+        ends_at=now + timedelta(days=10) + timedelta(hours=2),
+    )
+    db_session.add_all([in_window, after_window])
+    await db_session.commit()
+
+    response = await sessions_client.get(
+        "/internal/sessions/scheduled",
+        params={
+            "start_date": (now + timedelta(days=1)).isoformat(),
+            "end_date": (now + timedelta(days=5)).isoformat(),
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    titles = [s["title"] for s in response.json()]
+    assert "InWindow" in titles
+    assert "AfterWindow" not in titles
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_get_completed_session_ids_date_range(sessions_client, db_session):
+    """Completed-ids endpoint filters by start_date/end_date without 500ing."""
+    import uuid
+
+    cohort_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    in_window = SessionFactory.create(
+        cohort_id=cohort_id,
+        status="COMPLETED",
+        starts_at=now - timedelta(days=3),
+        ends_at=now - timedelta(days=3) + timedelta(hours=2),
+    )
+    out_window = SessionFactory.create(
+        cohort_id=cohort_id,
+        status="COMPLETED",
+        starts_at=now - timedelta(days=30),
+        ends_at=now - timedelta(days=30) + timedelta(hours=2),
+    )
+    db_session.add_all([in_window, out_window])
+    await db_session.commit()
+
+    response = await sessions_client.get(
+        f"/internal/sessions/cohorts/{cohort_id}/completed-session-ids",
+        params={
+            "start_date": (now - timedelta(days=7)).isoformat(),
+            "end_date": now.isoformat(),
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert str(in_window.id) in data
+    assert str(out_window.id) not in data

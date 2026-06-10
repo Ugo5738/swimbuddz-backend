@@ -6,7 +6,7 @@ See docs/design/AVAILABILITY_AND_MAKEUP_SCHEDULING_DESIGN.md §8.
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from services.sessions_service.models import (
     MakeupBlockKind,
@@ -62,6 +62,55 @@ class MakeupBookingCreate(BaseModel):
     obligation_id: uuid.UUID | None = None
     used_grace: bool = False
     spacing_overridden: bool = False
+
+
+class MakeupRequestCreate(BaseModel):
+    """A learner's self-serve make-up request (admin confirms it later)."""
+
+    coach_member_id: uuid.UUID
+    scheduled_session_id: uuid.UUID
+    origin: MakeupOrigin = MakeupOrigin.LEARNER_RESCHEDULE
+    reason: str | None = Field(None, max_length=500)
+    original_session_id: uuid.UUID | None = None
+
+
+class MakeupOpenSlotCreate(BaseModel):
+    """Admin request to create a dedicated make-up session in a coach's *open*
+    availability slot and confirm a learner into it in one step (design §4
+    Phase 2). The join-an-existing-session path is ``POST /makeups/bookings``;
+    this is for booking a brand-new dedicated slot.
+
+    The new session is a ``COHORT_CLASS`` whose cohort comes from ``cohort_id``
+    if given, else derived from ``original_session_id``. ``reason`` is required
+    when ``origin`` is ``learner_reschedule`` (policy §4 / 1b).
+    """
+
+    learner_member_id: uuid.UUID
+    coach_member_id: uuid.UUID
+    starts_at: datetime
+    ends_at: datetime
+    origin: MakeupOrigin
+    reason: str | None = Field(None, max_length=500)
+    original_session_id: uuid.UUID | None = None
+    cohort_id: uuid.UUID | None = None
+    pool_id: uuid.UUID | None = None
+    title: str | None = Field(None, max_length=200)
+    # A dedicated make-up defaults to a single learner; raise it to also let
+    # others join the new slot.
+    capacity: int = Field(1, ge=1, le=50)
+    block_kind: MakeupBlockKind | None = None
+    block_id: uuid.UUID | None = None
+    obligation_id: uuid.UUID | None = None
+    used_grace: bool = False
+    spacing_overridden: bool = False
+
+    @model_validator(mode="after")
+    def _check(self) -> "MakeupOpenSlotCreate":
+        if self.ends_at <= self.starts_at:
+            raise ValueError("ends_at must be after starts_at.")
+        if self.cohort_id is None and self.original_session_id is None:
+            raise ValueError("Provide cohort_id or original_session_id.")
+        return self
 
 
 class MakeupBookingResponse(BaseModel):

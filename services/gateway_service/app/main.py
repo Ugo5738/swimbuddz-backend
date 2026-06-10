@@ -6,6 +6,8 @@ importing them directly.
 
 from __future__ import annotations
 
+import re
+
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,7 +45,7 @@ def create_app() -> FastAPI:
         # With allow_credentials=True, wildcard methods/headers materially broaden
         # the attack surface (any allowed origin can fire any custom-headered
         # request). Enumerate the verbs and headers we actually use.
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "Accept"],
     )
 
@@ -394,10 +396,17 @@ def create_app() -> FastAPI:
         return await proxy_request(clients.media_client, "/media/media", request)
 
     @app.api_route(
-        "/api/v1/media/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
+        "/api/v1/media/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],
     )
     async def proxy_media(path: str, request: Request):
         """Proxy all /api/v1/media/* requests to media service."""
+        if _MEDIA_PLAYBACK_PATH.fullmatch(path) and request.method in ("GET", "HEAD"):
+            return await proxy_media_playback(path, request)
+        if request.method == "HEAD":
+            # Only playback supports HEAD; everything else keeps the
+            # generic proxy's GET/POST/PUT/PATCH/DELETE surface.
+            raise HTTPException(status_code=405, detail="Method not allowed")
         return await proxy_request(clients.media_client, f"/media/{path}", request)
 
     # ==================================================================
@@ -661,6 +670,79 @@ def _filter_service_headers(headers: httpx.Headers) -> list[tuple[str, str]]:
         "content-type",
     }
     return [(k, v) for k, v in headers.items() if k.lower() not in hop_by_hop]
+
+
+# Matches the service-local playback path, e.g. "media/{uuid}/play".
+_MEDIA_PLAYBACK_PATH = re.compile(r"media/[0-9a-fA-F-]+/play")
+
+# Like _filter_service_headers but keeps Content-Length/Content-Type: the
+# relayed responses are bodyless (a 307 or a HEAD answer), so the browser
+# needs the media service's own values, not ones recomputed from the body.
+_PLAYBACK_HOP_BY_HOP = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+    "content-encoding",
+    "host",
+}
+
+
+async def proxy_media_playback(path: str, request: Request):
+    """Relay /media/{id}/play to the browser without consuming the redirect.
+
+    The media service answers playback GETs with a 307 to a freshly presigned
+    S3 URL so the *browser* streams video bytes straight from S3 (and gets a
+    fresh URL on every Range request). The generic proxy follows redirects,
+    which made the gateway download and buffer whole videos in memory instead
+    — large evidence videos stalled and failed on slow connections. Browser
+    HEAD probes must likewise reach the media service's HEAD handler rather
+    than 405 at the gateway.
+    """
+    headers = {
+        k: v
+        for k, v in request.headers.items()
+        if k.lower() not in ["content-length", "host"]
+    }
+    if not any(k.lower() == "x-request-id" for k in headers):
+        request_id = get_request_id()
+        if request_id:
+            headers["X-Request-ID"] = request_id
+    headers.setdefault("X-Caller-Service", "gateway")
+
+    target = f"/media/{path}"
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+
+    try:
+        if request.method == "HEAD":
+            service_response = await clients.media_client.head(target, headers=headers)
+        else:
+            service_response = await clients.media_client.get(
+                target, headers=headers, follow_redirects=False
+            )
+    except httpx.HTTPStatusError as e:
+        try:
+            error_content = e.response.json()
+        except Exception:
+            error_content = {"detail": e.response.text or str(e)}
+        return JSONResponse(status_code=e.response.status_code, content=error_content)
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Service unavailable: {str(e)}")
+
+    forward_headers = {
+        k: v
+        for k, v in service_response.headers.items()
+        if k.lower() not in _PLAYBACK_HOP_BY_HOP
+    }
+    return Response(
+        status_code=service_response.status_code,
+        headers=forward_headers,
+    )
 
 
 async def proxy_request(client: clients.ServiceClient, path: str, request: Request):

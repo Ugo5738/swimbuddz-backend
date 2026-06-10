@@ -78,8 +78,9 @@ class NextSessionResponse(BaseModel):
 
 @router.get("/scheduled", response_model=List[SessionBasic])
 async def get_scheduled_sessions(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    # datetime, not str: binds as timestamptz (str 500s the starts_at comparison)
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
     _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -400,8 +401,9 @@ async def get_session_ids_for_cohort(
 @router.get("/cohorts/{cohort_id}/completed-session-ids", response_model=List[str])
 async def get_completed_session_ids_for_cohort(
     cohort_id: uuid.UUID,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    # datetime, not str: binds as timestamptz (str 500s the starts_at comparison)
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
     _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):

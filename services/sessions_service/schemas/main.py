@@ -36,6 +36,12 @@ class SessionBase(BaseModel):
     pool_fee: float = 0.0  # naira input/output
     ride_share_fee: float = 0.0  # naira input/output
 
+    # Guest booking — whether this session accepts non-member guests + the
+    # per-booking cap. Defaults mirror the model (on; 4). Lets the booking UI
+    # show/hide the guest form and cap guest count per session.
+    allows_guests: bool = True
+    max_guests_per_booking: int = 4
+
     # Context links
     cohort_id: Optional[uuid.UUID] = None
     event_id: Optional[uuid.UUID] = None
@@ -139,6 +145,8 @@ class SessionResponse(SessionBase):
             "capacity": obj.capacity,
             "pool_fee": pool_fee_kobo / 100.0,
             "ride_share_fee": ride_share_fee_kobo / 100.0,
+            "allows_guests": getattr(obj, "allows_guests", True),
+            "max_guests_per_booking": getattr(obj, "max_guests_per_booking", 4),
             "cohort_id": obj.cohort_id,
             "event_id": obj.event_id,
             "pod_id": getattr(obj, "pod_id", None),
