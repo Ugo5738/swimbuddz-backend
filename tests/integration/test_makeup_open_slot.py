@@ -42,7 +42,9 @@ def _patch_member(monkeypatch, auth_id="auth-learner"):
     monkeypatch.setattr(makeups_mod, "get_member_by_id", _fake)
 
 
-def _payload(learner_id, coach_id, *, starts_at=_SLOT_START, ends_at=_SLOT_END, **extra):
+def _payload(
+    learner_id, coach_id, *, starts_at=_SLOT_START, ends_at=_SLOT_END, **extra
+):
     body = {
         "learner_member_id": str(learner_id),
         "coach_member_id": str(coach_id),
@@ -203,7 +205,9 @@ async def test_open_slot_coach_overlap_rejected(
     )
     db_session.add(existing)
     await db_session.flush()
-    db_session.add(SessionCoachFactory.create(session_id=existing.id, coach_id=coach_id))
+    db_session.add(
+        SessionCoachFactory.create(session_id=existing.id, coach_id=coach_id)
+    )
     await db_session.commit()
 
     r = await sessions_client.post(
@@ -213,9 +217,7 @@ async def test_open_slot_coach_overlap_rejected(
     assert r.status_code == 409
 
 
-async def test_open_slot_outstanding_rejected(
-    sessions_client, db_session, monkeypatch
-):
+async def test_open_slot_outstanding_rejected(sessions_client, db_session, monkeypatch):
     """An ineligible learner (outstanding make-up) is rejected *before* any session
     is built — fail-fast guard, so nothing is left behind."""
     _patch_member(monkeypatch)

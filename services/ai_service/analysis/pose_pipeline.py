@@ -381,9 +381,7 @@ def _compute_metrics(samples: list[_FrameSample], fps: float) -> dict:
     l_peaks = _local_peaks(l_track, min_distance)
     r_peaks = _local_peaks(r_track, min_distance)
     total_strokes = len(l_peaks) + len(r_peaks)
-    stroke_rate_spm = (
-        (total_strokes / duration_s) * 60.0 if duration_s > 0 else 0.0
-    )
+    stroke_rate_spm = (total_strokes / duration_s) * 60.0 if duration_s > 0 else 0.0
 
     # ── Body roll proxy: shoulder-line tilt, folded to [0, 90]
     roll_values: list[float] = []
@@ -697,9 +695,7 @@ def _compute_observations(
     return {"observations": observations, "tracking_gaps": tracking_gaps}
 
 
-def _first_breath_timestamp(
-    samples: list[_FrameSample], side: str
-) -> Optional[float]:
+def _first_breath_timestamp(samples: list[_FrameSample], side: str) -> Optional[float]:
     """Timestamp of the first frame the nose is clearly turned to ``side``."""
     for s in samples:
         if s.nose is None or s.l_shoulder is None or s.r_shoulder is None:
@@ -833,9 +829,7 @@ def analyse_video(
                     if crop.size > 0:
                         rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
                         rgb = np.ascontiguousarray(rgb)
-                        mp_image = mp.Image(
-                            image_format=mp.ImageFormat.SRGB, data=rgb
-                        )
+                        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
                         result = landmarker.detect_for_video(mp_image, ts_ms)
                         if result.pose_landmarks:
                             mapped = _map_landmarks(
@@ -898,7 +892,9 @@ def analyse_video(
             # Render annotated frame (always — keeps output duration intact)
             annotated = frame.copy()
             if box_orig is not None:
-                _draw_box(annotated, _expand_box(box_orig, width, height, box_pad_ratio))
+                _draw_box(
+                    annotated, _expand_box(box_orig, width, height, box_pad_ratio)
+                )
             if mapped is not None:
                 _draw_pose(annotated, mapped)
             writer.write(annotated)

@@ -11,7 +11,7 @@ splits, etc.) without bloating the member-facing module.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 
 from arq import create_pool
@@ -114,27 +114,27 @@ async def queue_snapshot(
     if recent_limit <= 0 or recent_limit > 100:
         recent_limit = 25
 
-    total = int(
-        (await db.execute(select(func.count(AnalysisJob.id)))).scalar_one()
-    )
+    total = int((await db.execute(select(func.count(AnalysisJob.id)))).scalar_one())
     all_counts = await _counts_in_window(db)
     cutoff = utc_now() - timedelta(hours=24)
     day_counts = await _counts_in_window(db, since=cutoff)
 
     finished_24h = day_counts.completed + day_counts.failed
     success_rate = (
-        round(day_counts.completed / finished_24h * 100, 1)
-        if finished_24h > 0
-        else 0.0
+        round(day_counts.completed / finished_24h * 100, 1) if finished_24h > 0 else 0.0
     )
 
     recent_rows = (
-        await db.execute(
-            select(AnalysisJob)
-            .order_by(AnalysisJob.created_at.desc())
-            .limit(recent_limit)
+        (
+            await db.execute(
+                select(AnalysisJob)
+                .order_by(AnalysisJob.created_at.desc())
+                .limit(recent_limit)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     recent = [
         QueueRecentJob(
             id=row.id,
@@ -213,9 +213,7 @@ async def reanalyze_job(
     except Exception as exc:
         # Row is back in PENDING; caller can hit this endpoint again
         # once Redis is reachable to trigger the worker.
-        logger.exception(
-            "Failed to enqueue reanalyze for %s: %s", job_id, exc
-        )
+        logger.exception("Failed to enqueue reanalyze for %s: %s", job_id, exc)
 
     return ReanalyzeResponse(
         job_id=job_id,

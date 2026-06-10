@@ -449,7 +449,9 @@ async def book_session(
             existing.status = SessionBookingStatus.PENDING
             existing.expires_at = now + timedelta(minutes=PENDING_TTL_MINUTES)
 
-        await _replace_guests(db, existing.id, booking_in.guests, booking_in.block_guests)
+        await _replace_guests(
+            db, existing.id, booking_in.guests, booking_in.block_guests
+        )
         await db.commit()
         await db.refresh(existing)
         return existing
@@ -482,7 +484,9 @@ async def book_session(
         )
         db.add(booking)
         await db.flush()
-        await _replace_guests(db, booking.id, booking_in.guests, booking_in.block_guests)
+        await _replace_guests(
+            db, booking.id, booking_in.guests, booking_in.block_guests
+        )
         await db.commit()
         await db.refresh(booking)
         return booking

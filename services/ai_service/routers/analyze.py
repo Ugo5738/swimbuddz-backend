@@ -129,18 +129,14 @@ async def _build_detail_response(
             if job.video_storage_path:
                 original_url = await signed_url_for_upload(job.video_storage_path)
         except Exception as exc:
-            logger.warning(
-                "Could not sign upload URL for job %s: %s", job.id, exc
-            )
+            logger.warning("Could not sign upload URL for job %s: %s", job.id, exc)
         try:
             if job.annotated_video_storage_path:
                 annotated_url = await signed_url_for_annotated(
                     job.annotated_video_storage_path
                 )
         except Exception as exc:
-            logger.warning(
-                "Could not sign annotated URL for job %s: %s", job.id, exc
-            )
+            logger.warning("Could not sign annotated URL for job %s: %s", job.id, exc)
 
     lifecycle = _job_to_lifecycle_response(job)
     return AnalysisJobDetailResponse(
@@ -212,9 +208,7 @@ async def create_analysis_job(
     try:
         member_auth_id = uuid.UUID(current_user.user_id)
     except (TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=401, detail="Invalid auth user id"
-        ) from exc
+        raise HTTPException(status_code=401, detail="Invalid auth user id") from exc
 
     job = AnalysisJob(
         member_auth_id=member_auth_id,
@@ -242,9 +236,7 @@ async def create_analysis_job(
         # Roll back the empty job row so PENDING doesn't accumulate.
         await db.rollback()
         logger.exception("Stroke Lab upload to storage failed: %s", exc)
-        raise HTTPException(
-            status_code=502, detail="Storage upload failed"
-        ) from exc
+        raise HTTPException(status_code=502, detail="Storage upload failed") from exc
 
     job.video_storage_path = storage_path
     await db.commit()
@@ -273,9 +265,7 @@ async def list_my_analyses(
     try:
         member_auth_id = uuid.UUID(current_user.user_id)
     except (TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=401, detail="Invalid auth user id"
-        ) from exc
+        raise HTTPException(status_code=401, detail="Invalid auth user id") from exc
 
     stmt = (
         select(AnalysisJob)
@@ -307,9 +297,7 @@ async def get_analysis_job(
     try:
         caller_id = uuid.UUID(current_user.user_id)
     except (TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=401, detail="Invalid auth user id"
-        ) from exc
+        raise HTTPException(status_code=401, detail="Invalid auth user id") from exc
 
     is_owner = job.member_auth_id == caller_id
     if not is_owner and not job.is_public:
@@ -349,9 +337,7 @@ async def delete_analysis_job(
     try:
         caller_id = uuid.UUID(current_user.user_id)
     except (TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=401, detail="Invalid auth user id"
-        ) from exc
+        raise HTTPException(status_code=401, detail="Invalid auth user id") from exc
 
     if job.member_auth_id != caller_id:
         raise HTTPException(status_code=404, detail="Job not found")

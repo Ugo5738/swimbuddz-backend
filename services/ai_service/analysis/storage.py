@@ -35,9 +35,7 @@ logger = get_logger(__name__)
 
 
 UPLOADS_BUCKET = os.environ.get("STROKELAB_UPLOADS_BUCKET", "strokelab-uploads")
-ANNOTATED_BUCKET = os.environ.get(
-    "STROKELAB_ANNOTATED_BUCKET", "strokelab-annotated"
-)
+ANNOTATED_BUCKET = os.environ.get("STROKELAB_ANNOTATED_BUCKET", "strokelab-annotated")
 
 # Default signed-URL lifetime for playback. One hour is plenty for a
 # polling client + a video player to fetch the asset; rotated naturally
@@ -112,9 +110,7 @@ async def upload_annotated_video(
     """Upload an annotated mp4 from the worker's local filesystem."""
     key = make_object_key(member_auth_id, job_id, suffix)
     data = local_path.read_bytes()
-    await asyncio.to_thread(
-        _upload_sync, ANNOTATED_BUCKET, key, data, content_type
-    )
+    await asyncio.to_thread(_upload_sync, ANNOTATED_BUCKET, key, data, content_type)
     return key
 
 
@@ -141,17 +137,23 @@ def temp_file_from_storage(bucket: str, key: str):
             pass
 
 
-async def signed_url_for_upload(key: str, expires_in: int = DEFAULT_SIGNED_URL_TTL_SECONDS) -> str:
+async def signed_url_for_upload(
+    key: str, expires_in: int = DEFAULT_SIGNED_URL_TTL_SECONDS
+) -> str:
     """Signed URL for the user's *original* uploaded clip."""
     return await asyncio.to_thread(_signed_url_sync, UPLOADS_BUCKET, key, expires_in)
 
 
-async def signed_url_for_annotated(key: str, expires_in: int = DEFAULT_SIGNED_URL_TTL_SECONDS) -> str:
+async def signed_url_for_annotated(
+    key: str, expires_in: int = DEFAULT_SIGNED_URL_TTL_SECONDS
+) -> str:
     """Signed URL for the annotated mp4."""
     return await asyncio.to_thread(_signed_url_sync, ANNOTATED_BUCKET, key, expires_in)
 
 
-async def delete_job_assets(uploaded_key: Optional[str], annotated_key: Optional[str]) -> None:
+async def delete_job_assets(
+    uploaded_key: Optional[str], annotated_key: Optional[str]
+) -> None:
     """Remove storage objects for a job. Best-effort — DELETE endpoint
     swallows storage failures so the DB row can still be removed."""
     if uploaded_key:
@@ -163,6 +165,4 @@ async def delete_job_assets(uploaded_key: Optional[str], annotated_key: Optional
         try:
             await asyncio.to_thread(_delete_sync, ANNOTATED_BUCKET, annotated_key)
         except Exception as exc:
-            logger.warning(
-                "Could not delete annotated %s: %s", annotated_key, exc
-            )
+            logger.warning("Could not delete annotated %s: %s", annotated_key, exc)

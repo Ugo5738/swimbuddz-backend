@@ -66,7 +66,9 @@ ANNOTATED_OPTIONS = {
 }
 
 
-def _ensure_bucket(client, bucket_id: str, options: dict, update_existing: bool) -> None:
+def _ensure_bucket(
+    client, bucket_id: str, options: dict, update_existing: bool
+) -> None:
     storage = client.storage
     try:
         existing = {b.id for b in storage.list_buckets()}
@@ -91,7 +93,9 @@ def _ensure_bucket(client, bucket_id: str, options: dict, update_existing: bool)
             print(f"❌ Failed to update '{bucket_id}': {exc}")
             raise SystemExit(1) from exc
     else:
-        print(f"ℹ️  Bucket '{bucket_id}' already exists; leaving as-is. Pass --update to push options.")
+        print(
+            f"ℹ️  Bucket '{bucket_id}' already exists; leaving as-is. Pass --update to push options."
+        )
 
 
 def main() -> int:

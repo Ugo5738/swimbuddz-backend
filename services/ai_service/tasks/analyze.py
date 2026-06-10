@@ -80,9 +80,7 @@ async def analyze_swim_video(job_id: str) -> dict:
             # Pull the upload to a tempfile. temp_file_from_storage is a
             # sync ctx manager; emulate with a manual download into our
             # workdir for cleanliness.
-            uploaded_local = await _download_upload(
-                video_storage_path, workdir_path
-            )
+            uploaded_local = await _download_upload(video_storage_path, workdir_path)
 
             report: AnalysisReport = await run_analysis(
                 uploaded_local,
@@ -135,9 +133,7 @@ def _pipeline_config_from_env() -> PipelineConfig:
         yolo_conf_threshold=float(
             os.environ.get("STROKELAB_YOLO_CONF", base.yolo_conf_threshold)
         ),
-        frame_stride=int(
-            os.environ.get("STROKELAB_FRAME_STRIDE", base.frame_stride)
-        ),
+        frame_stride=int(os.environ.get("STROKELAB_FRAME_STRIDE", base.frame_stride)),
         enable_summary=os.environ.get("STROKELAB_ENABLE_SUMMARY", "1") == "1",
     )
 

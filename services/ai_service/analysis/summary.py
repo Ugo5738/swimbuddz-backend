@@ -71,7 +71,5 @@ async def generate_summary(metrics: dict, stroke_type: str) -> Optional[str]:
             return None
         return text
     except Exception as exc:
-        logger.warning(
-            "Stroke Lab summary LLM call failed: %s — returning None", exc
-        )
+        logger.warning("Stroke Lab summary LLM call failed: %s — returning None", exc)
         return None

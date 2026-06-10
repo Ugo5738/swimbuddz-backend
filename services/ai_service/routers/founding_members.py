@@ -107,9 +107,7 @@ class FoundingConfirmResponse(BaseModel):
 
 async def _seats_taken(db: AsyncSession) -> int:
     return int(
-        (
-            await db.execute(select(func.count(StrokeLabFoundingMember.id)))
-        ).scalar_one()
+        (await db.execute(select(func.count(StrokeLabFoundingMember.id)))).scalar_one()
     )
 
 
@@ -178,9 +176,7 @@ async def _record_founding_member(
     return row, seat
 
 
-async def _seat_number_of(
-    db: AsyncSession, row: StrokeLabFoundingMember
-) -> int:
+async def _seat_number_of(db: AsyncSession, row: StrokeLabFoundingMember) -> int:
     """1-indexed position by created_at (informational for UX)."""
     count_before = int(
         (
@@ -249,9 +245,7 @@ async def initialize_founding_payment(
     member_auth_id = _caller_uuid(current_user)
 
     if await _existing_for_caller(db, member_auth_id) is not None:
-        raise HTTPException(
-            status_code=409, detail="You're already a founding member."
-        )
+        raise HTTPException(status_code=409, detail="You're already a founding member.")
 
     # Strict cap gate — block new checkouts once full.
     if await _seats_taken(db) >= FOUNDING_MEMBERS_CAP:
@@ -281,9 +275,7 @@ async def initialize_founding_payment(
         )
     except Exception as exc:
         logger.exception("Stroke Lab payment init call failed: %s", exc)
-        raise HTTPException(
-            status_code=502, detail="Could not start payment"
-        ) from exc
+        raise HTTPException(status_code=502, detail="Could not start payment") from exc
 
     if resp.status_code >= 400:
         logger.error(
@@ -294,7 +286,9 @@ async def initialize_founding_payment(
     data = resp.json()
     auth_url = data.get("authorization_url")
     if not auth_url:
-        raise HTTPException(status_code=502, detail="Payment provider gave no checkout URL")
+        raise HTTPException(
+            status_code=502, detail="Payment provider gave no checkout URL"
+        )
     return FoundingInitializeResponse(
         authorization_url=auth_url, reference=data.get("reference", reference)
     )
@@ -330,9 +324,7 @@ async def claim_founding_member(
         )
     except Exception as exc:
         logger.exception("Stroke Lab verify call failed: %s", exc)
-        raise HTTPException(
-            status_code=502, detail="Could not verify payment"
-        ) from exc
+        raise HTTPException(status_code=502, detail="Could not verify payment") from exc
 
     if resp.status_code >= 400:
         raise HTTPException(status_code=400, detail="Could not verify that payment")
@@ -387,9 +379,7 @@ async def confirm_founding_member(
     try:
         member_auth_id = uuid.UUID(body.member_auth_id)
     except (TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=400, detail="Invalid member_auth_id"
-        ) from exc
+        raise HTTPException(status_code=400, detail="Invalid member_auth_id") from exc
 
     already = await _existing_for_caller(db, member_auth_id)
     row, seat = await _record_founding_member(
