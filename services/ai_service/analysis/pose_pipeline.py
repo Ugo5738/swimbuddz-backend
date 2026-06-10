@@ -30,10 +30,7 @@ from pathlib import Path
 from typing import Optional
 
 import cv2
-import mediapipe as mp
 import numpy as np
-from mediapipe.tasks import python as mp_python
-from mediapipe.tasks.python import vision as mp_vision
 
 from libs.common.logging import get_logger
 
@@ -730,6 +727,13 @@ def analyse_video(
     and CPU-bound — caller is responsible for running it in a thread/executor
     if invoking from an async context.
     """
+    # mediapipe is imported lazily so the AI *API* service (and CI's openapi
+    # generation, which installs only .[dev]) can import this module without the
+    # heavy ML stack. Only the worker, which actually runs analysis, needs it.
+    import mediapipe as mp
+    from mediapipe.tasks import python as mp_python
+    from mediapipe.tasks.python import vision as mp_vision
+
     if not video_path.exists():
         raise FileNotFoundError(video_path)
     annotated_out_path.parent.mkdir(parents=True, exist_ok=True)
