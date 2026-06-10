@@ -62,9 +62,7 @@ async def get_snapshot_by_pool(
 
 async def list_snapshots(db: AsyncSession, limit: int = 200) -> list[WeatherSnapshot]:
     result = await db.execute(
-        select(WeatherSnapshot)
-        .order_by(WeatherSnapshot.fetched_at.desc())
-        .limit(limit)
+        select(WeatherSnapshot).order_by(WeatherSnapshot.fetched_at.desc()).limit(limit)
     )
     return list(result.scalars().all())
 

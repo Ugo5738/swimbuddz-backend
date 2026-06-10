@@ -99,7 +99,9 @@ class OpenMeteoProvider:
         return parse_open_meteo(data, fallback_timezone=timezone)
 
 
-def parse_open_meteo(data: dict, *, fallback_timezone: str = "Africa/Lagos") -> ForecastData:
+def parse_open_meteo(
+    data: dict, *, fallback_timezone: str = "Africa/Lagos"
+) -> ForecastData:
     """Normalize a raw Open-Meteo JSON response into ForecastData.
 
     Split from the HTTP call so it can be unit-tested without a network.
