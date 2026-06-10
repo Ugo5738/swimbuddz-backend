@@ -7692,6 +7692,53 @@
         }
       }
     },
+    "/api/v1/makeups/open-slot": {
+      "post": {
+        "tags": [
+          "makeups"
+        ],
+        "summary": "Create Open Slot Makeup",
+        "description": "Create a dedicated make-up session in a coach's open slot and confirm the\nlearner into it in one step (admin; design \u00a74 Phase 2).\n\nUse this for a brand-new dedicated slot; to drop a learner into a session the\ncoach already runs, use ``POST /makeups/bookings`` (policy \u00a71). The new\nsession is a COHORT_CLASS whose cohort is ``cohort_id`` or is derived from\n``original_session_id``. Eligibility (one-outstanding, window, grace) is\nenforced by the shared core *after* the session is built; if it fails the\nrequest rolls back and no orphan session is left behind.",
+        "operationId": "create_open_slot_makeup_makeups_open_slot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MakeupOpenSlotCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MakeupBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/makeups/bookings/{booking_id}/complete": {
       "post": {
         "tags": [
@@ -8552,7 +8599,8 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "string",
+                  "format": "date-time"
                 },
                 {
                   "type": "null"
@@ -8568,7 +8616,8 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "string",
+                  "format": "date-time"
                 },
                 {
                   "type": "null"
@@ -8952,7 +9001,8 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "string",
+                  "format": "date-time"
                 },
                 {
                   "type": "null"
@@ -8968,7 +9018,8 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "string",
+                  "format": "date-time"
                 },
                 {
                   "type": "null"
@@ -27027,6 +27078,454 @@
         ]
       }
     },
+    "/api/v1/ai/analyze": {
+      "post": {
+        "tags": [
+          "stroke-lab"
+        ],
+        "summary": "Upload a freestyle swim video and queue a Stroke Lab analysis",
+        "description": "Create a new analysis job from an uploaded video.\n\nv0 limits: freestyle only, \u226450 MB body. Response is 202 ACCEPTED \u2014\nthe client polls GET /ai/analyze/{id} for status.",
+        "operationId": "create_analysis_job_ai_analyze_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_analysis_job_ai_analyze_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/analyze/me": {
+      "get": {
+        "tags": [
+          "stroke-lab"
+        ],
+        "summary": "List the caller's most recent Stroke Lab jobs",
+        "description": "Most recent first. Capped at MAX_LIST_LIMIT.",
+        "operationId": "list_my_analyses_ai_analyze_me_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AnalysisJobResponse"
+                  },
+                  "title": "Response List My Analyses Ai Analyze Me Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/analyze/{job_id}": {
+      "get": {
+        "tags": [
+          "stroke-lab"
+        ],
+        "summary": "Fetch a Stroke Lab job's status + result + signed URLs",
+        "operationId": "get_analysis_job_ai_analyze__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisJobDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "stroke-lab"
+        ],
+        "summary": "Delete a Stroke Lab job and its storage assets",
+        "operationId": "delete_analysis_job_ai_analyze__job_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/admin/analyze/queue": {
+      "get": {
+        "tags": [
+          "stroke-lab-admin"
+        ],
+        "summary": "Stroke Lab queue health: counts by status, recent jobs, success rate",
+        "operationId": "queue_snapshot_ai_admin_analyze_queue_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "recent_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "title": "Recent Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueSnapshot"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/admin/analyze/reanalyze/{job_id}": {
+      "post": {
+        "tags": [
+          "stroke-lab-admin"
+        ],
+        "summary": "Reset a job to PENDING and re-enqueue the worker task",
+        "operationId": "reanalyze_job_ai_admin_analyze_reanalyze__job_id__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReanalyzeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/founding-members/stats": {
+      "get": {
+        "tags": [
+          "stroke-lab-founding"
+        ],
+        "summary": "Public counter",
+        "operationId": "founding_stats_ai_founding_members_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoundingStatsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/founding-members/me": {
+      "get": {
+        "tags": [
+          "stroke-lab-founding"
+        ],
+        "summary": "Has the authenticated caller already claimed?",
+        "operationId": "my_founding_status_ai_founding_members_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoundingMemberStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/founding-members/initialize": {
+      "post": {
+        "tags": [
+          "stroke-lab-founding"
+        ],
+        "summary": "Start a Paystack checkout for a founding-member spot",
+        "operationId": "initialize_founding_payment_ai_founding_members_initialize_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoundingInitializeResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/founding-members/claim": {
+      "post": {
+        "tags": [
+          "stroke-lab-founding"
+        ],
+        "summary": "Verify a reference via payments_service and record (client fallback)",
+        "operationId": "claim_founding_member_ai_founding_members_claim_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FoundingClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoundingClaimResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/ai/founding-members/confirm": {
+      "post": {
+        "tags": [
+          "stroke-lab-founding-internal"
+        ],
+        "summary": "Record a founding member after payment clears (webhook-driven)",
+        "operationId": "confirm_founding_member_internal_ai_founding_members_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FoundingConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoundingConfirmResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/volunteers/spotlight": {
       "get": {
         "tags": [
@@ -42904,53 +43403,6 @@
           }
         ]
       }
-    },
-    "/api/v1/makeups/open-slot": {
-      "post": {
-        "tags": [
-          "makeups"
-        ],
-        "summary": "Create Open Slot Makeup",
-        "description": "Create a dedicated make-up session in a coach's open slot and confirm the\nlearner into it in one step (admin; design \u00a74 Phase 2).\n\nUse this for a brand-new dedicated slot; to drop a learner into a session the\ncoach already runs, use ``POST /makeups/bookings`` (policy \u00a71). The new\nsession is a COHORT_CLASS whose cohort is ``cohort_id`` or is derived from\n``original_session_id``. Eligibility (one-outstanding, window, grace) is\nenforced by the shared core *after* the session is built; if it fails the\nrequest rolls back and no orphan session is left behind.",
-        "operationId": "create_open_slot_makeup_makeups_open_slot_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MakeupOpenSlotCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MakeupBookingResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
     }
   },
   "components": {
@@ -46971,55 +47423,7 @@
         "title": "CoachApplicationStatusResponse",
         "description": "Minimal status response for coaches checking their application."
       },
-      "CoachAvailabilityCalendar-Input": {
-        "properties": {
-          "version": {
-            "type": "integer",
-            "title": "Version",
-            "default": 1
-          },
-          "timezone": {
-            "type": "string",
-            "title": "Timezone",
-            "description": "IANA timezone name",
-            "default": "Africa/Lagos"
-          },
-          "recurring": {
-            "items": {
-              "$ref": "#/components/schemas/RecurringBlockInput"
-            },
-            "type": "array",
-            "title": "Recurring"
-          },
-          "blackouts": {
-            "items": {
-              "$ref": "#/components/schemas/BlackoutDateInput"
-            },
-            "type": "array",
-            "title": "Blackouts"
-          },
-          "slot_minutes": {
-            "type": "integer",
-            "maximum": 240.0,
-            "minimum": 15.0,
-            "title": "Slot Minutes",
-            "description": "Default lesson/make-up length in minutes",
-            "default": 60
-          },
-          "buffer_minutes": {
-            "type": "integer",
-            "maximum": 120.0,
-            "minimum": 0.0,
-            "title": "Buffer Minutes",
-            "description": "Gap between consecutive slots in minutes",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "title": "CoachAvailabilityCalendar",
-        "description": "Canonical shape of CoachProfile.availability_calendar (JSONB).\n\nRecurring weekly blocks + blackout dates in the coach's local timezone.\nsessions_service slices this into bookable make-up slots."
-      },
-      "CoachAvailabilityCalendar-Output": {
+      "CoachAvailabilityCalendar": {
         "properties": {
           "version": {
             "type": "integer",
@@ -47109,7 +47513,7 @@
           "availability": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CoachAvailabilityCalendar-Output"
+                "$ref": "#/components/schemas/CoachAvailabilityCalendar"
               },
               {
                 "type": "null"
@@ -47135,7 +47539,7 @@
       "CoachAvailabilityUpdate": {
         "properties": {
           "availability": {
-            "$ref": "#/components/schemas/CoachAvailabilityCalendar-Input"
+            "$ref": "#/components/schemas/CoachAvailabilityCalendar"
           },
           "min_hours_between_sessions": {
             "anyOf": [
@@ -53906,6 +54310,82 @@
         "title": "BookingConfirmRequest",
         "description": "Transition a PENDING booking to CONFIRMED after payment cleared."
       },
+      "BookingGuestCreate": {
+        "properties": {
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "intent": {
+            "$ref": "#/components/schemas/GuestIntent",
+            "default": "social"
+          },
+          "date_of_birth": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Of Birth"
+          },
+          "guardian_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guardian Name"
+          },
+          "guardian_phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guardian Phone"
+          },
+          "waiver_accepted": {
+            "type": "boolean",
+            "title": "Waiver Accepted",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "BookingGuestCreate",
+        "description": "A non-member swimmer to attach to a booking (bring-a-friend).\n\n``full_name`` is required in the Phase 1 named-guest flow. A minor\n(``date_of_birth`` implying age < 18 at the session) must carry\n``guardian_name`` + ``guardian_phone`` + ``waiver_accepted`` \u2014 enforced at\nbooking and again at check-in. See\ndocs/design/GUEST_AND_GROUP_BOOKING_DESIGN.md \u00a75b/\u00a79."
+      },
       "BulkBookingItem": {
         "properties": {
           "session_id": {
@@ -54083,6 +54563,15 @@
           "weeks"
         ],
         "title": "GenerateSessionsRequest"
+      },
+      "GuestIntent": {
+        "type": "string",
+        "enum": [
+          "social",
+          "trial"
+        ],
+        "title": "GuestIntent",
+        "description": "Why a non-member guest attends \u2014 drives approval + follow-up."
       },
       "MakeupBlockKind": {
         "type": "string",
@@ -54330,6 +54819,154 @@
         ],
         "title": "MakeupLearnerType",
         "description": "Which learner population the make-up belongs to."
+      },
+      "MakeupOpenSlotCreate": {
+        "properties": {
+          "learner_member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Learner Member Id"
+          },
+          "coach_member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Coach Member Id"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/MakeupOrigin"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "original_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Session Id"
+          },
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "capacity": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Capacity",
+            "default": 1
+          },
+          "block_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MakeupBlockKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id"
+          },
+          "obligation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Obligation Id"
+          },
+          "used_grace": {
+            "type": "boolean",
+            "title": "Used Grace",
+            "default": false
+          },
+          "spacing_overridden": {
+            "type": "boolean",
+            "title": "Spacing Overridden",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "learner_member_id",
+          "coach_member_id",
+          "starts_at",
+          "ends_at",
+          "origin"
+        ],
+        "title": "MakeupOpenSlotCreate",
+        "description": "Admin request to create a dedicated make-up session in a coach's *open*\navailability slot and confirm a learner into it in one step (design \u00a74\nPhase 2). The join-an-existing-session path is ``POST /makeups/bookings``;\nthis is for booking a brand-new dedicated slot.\n\nThe new session is a ``COHORT_CLASS`` whose cohort comes from ``cohort_id``\nif given, else derived from ``original_session_id``. ``reason`` is required\nwhen ``origin`` is ``learner_reschedule`` (policy \u00a74 / 1b)."
       },
       "MakeupOrigin": {
         "type": "string",
@@ -54600,6 +55237,14 @@
             "type": "boolean",
             "title": "Pay With Bubbles",
             "default": false
+          },
+          "guests": {
+            "items": {
+              "$ref": "#/components/schemas/BookingGuestCreate"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Guests"
           }
         },
         "type": "object",
@@ -54635,6 +55280,10 @@
           },
           "channel": {
             "$ref": "#/components/schemas/BookingChannel"
+          },
+          "party_size": {
+            "type": "integer",
+            "title": "Party Size"
           },
           "fee_amount_kobo": {
             "type": "integer",
@@ -54747,6 +55396,7 @@
           "member_auth_id",
           "status",
           "channel",
+          "party_size",
           "fee_amount_kobo",
           "booked_at",
           "created_at",
@@ -64099,7 +64749,8 @@
           "store_order",
           "wallet_topup",
           "ride_share",
-          "session_booking"
+          "session_booking",
+          "strokelab_founding"
         ],
         "title": "PaymentPurpose"
       },
@@ -74218,6 +74869,328 @@
         ],
         "title": "AIRequestResponse"
       },
+      "AnalysisJobDetailResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Auth Id"
+          },
+          "stroke_type": {
+            "type": "string",
+            "title": "Stroke Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "is_public": {
+            "type": "boolean",
+            "title": "Is Public"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisResultPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "original_video_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Video Url"
+          },
+          "annotated_video_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Annotated Video Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "member_auth_id",
+          "stroke_type",
+          "status",
+          "is_public",
+          "created_at"
+        ],
+        "title": "AnalysisJobDetailResponse",
+        "description": "Single-job detail. Includes the result payload + signed URLs for\nthe original + annotated mp4s when available."
+      },
+      "AnalysisJobResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Auth Id"
+          },
+          "stroke_type": {
+            "type": "string",
+            "title": "Stroke Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "is_public": {
+            "type": "boolean",
+            "title": "Is Public"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "member_auth_id",
+          "stroke_type",
+          "status",
+          "is_public",
+          "created_at"
+        ],
+        "title": "AnalysisJobResponse",
+        "description": "Job lifecycle row \u2014 what POST returns and what GET returns while\nthe worker is still processing."
+      },
+      "AnalysisResultPayload": {
+        "properties": {
+          "detected_stroke": {
+            "type": "string",
+            "title": "Detected Stroke"
+          },
+          "pose_detection_rate": {
+            "type": "number",
+            "title": "Pose Detection Rate"
+          },
+          "frames_total": {
+            "type": "integer",
+            "title": "Frames Total"
+          },
+          "frames_with_pose": {
+            "type": "integer",
+            "title": "Frames With Pose"
+          },
+          "stroke_rate_spm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stroke Rate Spm"
+          },
+          "body_roll_proxy_degrees": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Roll Proxy Degrees"
+          },
+          "breath_count_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breath Count Left"
+          },
+          "breath_count_right": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breath Count Right"
+          },
+          "breath_balance_left_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breath Balance Left Ratio"
+          },
+          "summary_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Text"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/Observation"
+            },
+            "type": "array",
+            "title": "Observations",
+            "default": []
+          },
+          "tracking_gaps": {
+            "items": {
+              "$ref": "#/components/schemas/TrackingGap"
+            },
+            "type": "array",
+            "title": "Tracking Gaps",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "detected_stroke",
+          "pose_detection_rate",
+          "frames_total",
+          "frames_with_pose"
+        ],
+        "title": "AnalysisResultPayload",
+        "description": "The metrics + summary slice exposed to the client. Stripped of\ndebug fields like raw_metrics + pipeline_config \u2014 those are kept\nserver-side."
+      },
+      "Body_create_analysis_job_ai_analyze_post": {
+        "properties": {
+          "video": {
+            "type": "string",
+            "format": "binary",
+            "title": "Video",
+            "description": "Swim video, \u226450 MB, \u226460s"
+          },
+          "stroke_type": {
+            "type": "string",
+            "title": "Stroke Type",
+            "default": "freestyle"
+          },
+          "is_public": {
+            "type": "boolean",
+            "title": "Is Public",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "video"
+        ],
+        "title": "Body_create_analysis_job_ai_analyze_post"
+      },
       "CoachGradeScoringRequest": {
         "properties": {
           "coach_id": {
@@ -74536,6 +75509,266 @@
         "title": "CohortComplexityScoringResponse",
         "description": "AI-suggested cohort complexity scores."
       },
+      "DrillSuggestion": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why"
+          },
+          "how": {
+            "type": "string",
+            "title": "How"
+          },
+          "academy_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Academy Ref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "why",
+          "how"
+        ],
+        "title": "DrillSuggestion",
+        "description": "A drill resolved from the drill bank for an observation."
+      },
+      "FoundingClaimRequest": {
+        "properties": {
+          "paystack_reference": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 4,
+            "title": "Paystack Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "paystack_reference"
+        ],
+        "title": "FoundingClaimRequest"
+      },
+      "FoundingClaimResponse": {
+        "properties": {
+          "seat_number": {
+            "type": "integer",
+            "title": "Seat Number"
+          },
+          "paystack_reference": {
+            "type": "string",
+            "title": "Paystack Reference"
+          },
+          "amount_paid_kobo": {
+            "type": "integer",
+            "title": "Amount Paid Kobo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "seat_number",
+          "paystack_reference",
+          "amount_paid_kobo"
+        ],
+        "title": "FoundingClaimResponse"
+      },
+      "FoundingConfirmRequest": {
+        "properties": {
+          "member_auth_id": {
+            "type": "string",
+            "title": "Member Auth Id"
+          },
+          "payment_reference": {
+            "type": "string",
+            "title": "Payment Reference"
+          },
+          "amount_kobo": {
+            "type": "integer",
+            "title": "Amount Kobo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_auth_id",
+          "payment_reference",
+          "amount_kobo"
+        ],
+        "title": "FoundingConfirmRequest"
+      },
+      "FoundingConfirmResponse": {
+        "properties": {
+          "recorded": {
+            "type": "boolean",
+            "title": "Recorded"
+          },
+          "seat_number": {
+            "type": "integer",
+            "title": "Seat Number"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recorded",
+          "seat_number"
+        ],
+        "title": "FoundingConfirmResponse"
+      },
+      "FoundingInitializeResponse": {
+        "properties": {
+          "authorization_url": {
+            "type": "string",
+            "title": "Authorization Url"
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "authorization_url",
+          "reference"
+        ],
+        "title": "FoundingInitializeResponse"
+      },
+      "FoundingMemberStatus": {
+        "properties": {
+          "is_founding_member": {
+            "type": "boolean",
+            "title": "Is Founding Member"
+          },
+          "claimed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claimed At"
+          },
+          "paystack_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paystack Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "is_founding_member"
+        ],
+        "title": "FoundingMemberStatus"
+      },
+      "FoundingStatsResponse": {
+        "properties": {
+          "seats_total": {
+            "type": "integer",
+            "title": "Seats Total",
+            "default": 100
+          },
+          "seats_taken": {
+            "type": "integer",
+            "title": "Seats Taken"
+          },
+          "seats_remaining": {
+            "type": "integer",
+            "title": "Seats Remaining"
+          },
+          "price_kobo": {
+            "type": "integer",
+            "title": "Price Kobo",
+            "default": 2000000
+          },
+          "price_ngn": {
+            "type": "integer",
+            "title": "Price Ngn",
+            "default": 20000
+          },
+          "is_sold_out": {
+            "type": "boolean",
+            "title": "Is Sold Out"
+          }
+        },
+        "type": "object",
+        "required": [
+          "seats_taken",
+          "seats_remaining",
+          "is_sold_out"
+        ],
+        "title": "FoundingStatsResponse"
+      },
+      "Observation": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "timestamp_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp S"
+          },
+          "drill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DrillSuggestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "severity",
+          "title",
+          "detail"
+        ],
+        "title": "Observation",
+        "description": "A single deterministic technique flag with a representative moment."
+      },
       "PaginatedResponse_AIRequestResponse_": {
         "properties": {
           "items": {
@@ -74566,6 +75799,180 @@
           "page_size"
         ],
         "title": "PaginatedResponse[AIRequestResponse]"
+      },
+      "QueueRecentJob": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Auth Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "stroke_type": {
+            "type": "string",
+            "title": "Stroke Type"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "member_auth_id",
+          "status",
+          "stroke_type",
+          "created_at"
+        ],
+        "title": "QueueRecentJob"
+      },
+      "QueueSnapshot": {
+        "properties": {
+          "total_jobs": {
+            "type": "integer",
+            "title": "Total Jobs"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/QueueStatusCounts"
+          },
+          "counts_last_24h": {
+            "$ref": "#/components/schemas/QueueStatusCounts"
+          },
+          "success_rate_pct": {
+            "type": "number",
+            "title": "Success Rate Pct",
+            "description": "Fraction of finished jobs (completed + failed) in the last 24h that completed successfully, \u00d7100. Returns 0 when no finished jobs exist."
+          },
+          "recent_jobs": {
+            "items": {
+              "$ref": "#/components/schemas/QueueRecentJob"
+            },
+            "type": "array",
+            "title": "Recent Jobs"
+          },
+          "queue_depth_approx": {
+            "type": "integer",
+            "title": "Queue Depth Approx",
+            "description": "Pending + processing \u2014 what the worker has to chew through."
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_jobs",
+          "counts",
+          "counts_last_24h",
+          "success_rate_pct",
+          "recent_jobs",
+          "queue_depth_approx"
+        ],
+        "title": "QueueSnapshot",
+        "description": "Snapshot the /admin/ai/queue page renders."
+      },
+      "QueueStatusCounts": {
+        "properties": {
+          "pending": {
+            "type": "integer",
+            "title": "Pending",
+            "default": 0
+          },
+          "processing": {
+            "type": "integer",
+            "title": "Processing",
+            "default": 0
+          },
+          "completed": {
+            "type": "integer",
+            "title": "Completed",
+            "default": 0
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "QueueStatusCounts"
+      },
+      "ReanalyzeResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "enqueued": {
+            "type": "boolean",
+            "title": "Enqueued"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "enqueued"
+        ],
+        "title": "ReanalyzeResponse"
+      },
+      "TrackingGap": {
+        "properties": {
+          "start_s": {
+            "type": "number",
+            "title": "Start S"
+          },
+          "end_s": {
+            "type": "number",
+            "title": "End S"
+          },
+          "duration_s": {
+            "type": "number",
+            "title": "Duration S"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start_s",
+          "end_s",
+          "duration_s"
+        ],
+        "title": "TrackingGap"
       },
       "BulkCompleteRequest": {
         "properties": {
@@ -94789,154 +96196,6 @@
           "credit_minor"
         ],
         "title": "TrialBalanceRow"
-      },
-      "MakeupOpenSlotCreate": {
-        "properties": {
-          "learner_member_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Learner Member Id"
-          },
-          "coach_member_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Coach Member Id"
-          },
-          "starts_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Starts At"
-          },
-          "ends_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ends At"
-          },
-          "origin": {
-            "$ref": "#/components/schemas/MakeupOrigin"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 500
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "original_session_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Original Session Id"
-          },
-          "cohort_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cohort Id"
-          },
-          "pool_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pool Id"
-          },
-          "title": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 200
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          },
-          "capacity": {
-            "type": "integer",
-            "maximum": 50.0,
-            "minimum": 1.0,
-            "title": "Capacity",
-            "default": 1
-          },
-          "block_kind": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MakeupBlockKind"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "block_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Block Id"
-          },
-          "obligation_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Obligation Id"
-          },
-          "used_grace": {
-            "type": "boolean",
-            "title": "Used Grace",
-            "default": false
-          },
-          "spacing_overridden": {
-            "type": "boolean",
-            "title": "Spacing Overridden",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "learner_member_id",
-          "coach_member_id",
-          "starts_at",
-          "ends_at",
-          "origin"
-        ],
-        "title": "MakeupOpenSlotCreate",
-        "description": "Admin request to create a dedicated make-up session in a coach's *open*\navailability slot and confirm a learner into it in one step (design \u00a74\nPhase 2). The join-an-existing-session path is ``POST /makeups/bookings``;\nthis is for booking a brand-new dedicated slot.\n\nThe new session is a ``COHORT_CLASS`` whose cohort comes from ``cohort_id``\nif given, else derived from ``original_session_id``. ``reason`` is required\nwhen ``origin`` is ``learner_reschedule`` (policy \u00a74 / 1b)."
       }
     }
   }
