@@ -6,6 +6,7 @@ when needed. See docs/club/POD_OPERATIONS.md.
 """
 
 from services.sessions_service.models.booking import SessionBooking
+from services.sessions_service.models.booking_guest import BookingGuest
 from services.sessions_service.models.core import (
     Session,
     SessionBundleCart,
@@ -27,6 +28,7 @@ from services.sessions_service.models.makeup import MakeupBooking
 
 __all__ = [
     "BookingChannel",
+    "BookingGuest",
     "MakeupBlockKind",
     "MakeupBooking",
     "MakeupLearnerType",
