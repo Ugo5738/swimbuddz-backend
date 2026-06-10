@@ -342,10 +342,14 @@ async def confirm_makeup_booking(
                 member_auth_id=learner["auth_id"],
                 status=SessionBookingStatus.CONFIRMED,
                 channel=BookingChannel.ADMIN,
+                booked_at=utc_now(),
+                confirmed_at=utc_now(),
             )
         )
     elif existing.status != SessionBookingStatus.CONFIRMED:
         existing.status = SessionBookingStatus.CONFIRMED
+        existing.confirmed_at = utc_now()
+        existing.expires_at = None
 
     learner_type = (
         MakeupLearnerType.ONE_ON_ONE
