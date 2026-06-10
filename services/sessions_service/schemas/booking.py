@@ -3,7 +3,9 @@
 See docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §C.
 """
 
+import enum
 import uuid
+from datetime import date as _Date
 from datetime import datetime
 from typing import List, Optional
 
@@ -13,6 +15,84 @@ from services.sessions_service.models.enums import (
     BookingChannel,
     SessionBookingStatus,
 )
+
+
+class GuestIntent(str, enum.Enum):
+    """Why a non-member guest attends — drives approval + follow-up."""
+
+    SOCIAL = "social"  # open-meet friend; self-serve
+    TRIAL = "trial"  # prospective student sampling a class (coach-approved, D10)
+
+
+class BookingGuestCreate(BaseModel):
+    """A non-member swimmer to attach to a booking (bring-a-friend).
+
+    ``full_name`` is required in the Phase 1 named-guest flow. A minor
+    (``date_of_birth`` implying age < 18 at the session) must carry
+    ``guardian_name`` + ``guardian_phone`` + ``waiver_accepted`` — enforced at
+    booking and again at check-in. See
+    docs/design/GUEST_AND_GROUP_BOOKING_DESIGN.md §5b/§9.
+    """
+
+    full_name: Optional[str] = Field(default=None, max_length=120)
+    phone: Optional[str] = Field(default=None, max_length=32)
+    intent: GuestIntent = GuestIntent.SOCIAL
+    date_of_birth: Optional[_Date] = None
+    guardian_name: Optional[str] = Field(default=None, max_length=120)
+    guardian_phone: Optional[str] = Field(default=None, max_length=32)
+    waiver_accepted: bool = False
+
+
+class BookingGuestResponse(BaseModel):
+    """A persisted guest row (for future guest-echo / check-in views)."""
+
+    id: uuid.UUID
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    intent: str
+    date_of_birth: Optional[_Date] = None
+    guardian_name: Optional[str] = None
+    guardian_phone: Optional[str] = None
+    waiver_accepted_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TrialGuestCreate(BaseModel):
+    """A prospective-student trial guest attached to a cohort booking (D10).
+
+    ``intent`` is forced to 'trial' server-side; this is coach-approved, never
+    self-serve. Minor fields gate the same way as a normal guest.
+    """
+
+    full_name: str = Field(min_length=1, max_length=120)
+    phone: Optional[str] = Field(default=None, max_length=32)
+    date_of_birth: Optional[_Date] = None
+    guardian_name: Optional[str] = Field(default=None, max_length=120)
+    guardian_phone: Optional[str] = Field(default=None, max_length=32)
+    waiver_accepted: bool = False
+
+
+class GuestConvertRequest(BaseModel):
+    """Link a guest's prior appearances (by phone) to a new member account."""
+
+    phone: str = Field(min_length=1, max_length=32)
+    member_id: uuid.UUID
+
+
+class GuestConvertResponse(BaseModel):
+    phone: str
+    member_id: uuid.UUID
+    converted: int  # number of guest rows linked to the member
+
+
+class GuestLeadResponse(BaseModel):
+    """An unconverted guest prospect, deduped by phone (Phase 3 funnel)."""
+
+    phone: str
+    full_name: Optional[str] = None
+    appearances: int
+    last_seen: datetime
 
 
 class SessionBookingCreate(BaseModel):
@@ -33,9 +113,18 @@ class SessionBookingCreate(BaseModel):
     """
 
     session_id: uuid.UUID
+    # Deprecated/ignored: the server now computes the fee as
+    # session.pool_fee × party_size (D8). Kept for backwards-compatible clients.
     fee_amount_kobo: int = Field(default=0, ge=0)
     notes: Optional[str] = Field(default=None, max_length=500)
     pay_with_bubbles: bool = False
+    # Named non-member guests the member is bringing (Phase 1). Head count =
+    # 1 (the member) + len(guests). Hard-capped here; the per-session limit
+    # (Session.max_guests_per_booking) is enforced server-side.
+    guests: List[BookingGuestCreate] = Field(default_factory=list, max_length=20)
+    # Anonymous extra slots for a block booking (Phase 2). Head count =
+    # 1 + len(guests) + block_guests; placeholders are named before check-in.
+    block_guests: int = Field(default=0, ge=0, le=50)
 
 
 class BookingConfirmRequest(BaseModel):
@@ -78,9 +167,14 @@ class AdminPoolFeeRefundRequest(BaseModel):
     The server routes this through the accounted ``session_booking`` refund
     path so the ledger reverses the pool-fee revenue — never the manual
     "Adjust Bubbles" tool. ``reason`` is recorded on the booking for audit.
+
+    ``refund_heads`` scales the refund for a multi-swimmer booking (member +
+    guests): None refunds the whole pool fee; N refunds N of party_size heads
+    (e.g. the guests who no-showed at a per-swimmer pool). See O3.
     """
 
     reason: str = Field(min_length=1, max_length=300)
+    refund_heads: Optional[int] = Field(default=None, ge=1)
 
 
 class BulkBookingItem(BaseModel):
@@ -106,6 +200,7 @@ class SessionBookingResponse(BaseModel):
     member_auth_id: str
     status: SessionBookingStatus
     channel: BookingChannel
+    party_size: int
     fee_amount_kobo: int
     payment_intent_id: Optional[uuid.UUID] = None
     wallet_transaction_id: Optional[uuid.UUID] = None

@@ -26,6 +26,7 @@ from services.pools_service.models import (  # noqa: F401
     PoolSubmission,
     PoolVisit,
 )
+from services.pools_service.weather.models import WeatherSnapshot  # noqa: F401
 
 settings = get_settings()
 config = context.config
@@ -44,6 +45,7 @@ SERVICE_TABLES = {
     "pool_status_changes",
     "pool_agreements",
     "pool_assets",
+    "weather_snapshots",
 }
 
 url = settings.DATABASE_URL.replace("%", "%%")

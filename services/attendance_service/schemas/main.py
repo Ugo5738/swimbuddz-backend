@@ -26,6 +26,18 @@ class PublicAttendanceCreate(AttendanceBase):
     member_id: uuid.UUID
 
 
+class GuestAttendanceCreate(BaseModel):
+    """Coach/admin records a non-member guest's attendance at the door.
+
+    Keyed on (session_id, booking_guest_id); role is forced to GUEST and
+    member_id stays NULL. See GUEST_AND_GROUP_BOOKING_DESIGN.md §5c/§9.
+    """
+
+    booking_guest_id: uuid.UUID
+    status: AttendanceStatus = AttendanceStatus.PRESENT
+    notes: Optional[str] = None
+
+
 class SessionSummary(BaseModel):
     """Lightweight session info embedded in attendance responses."""
 
@@ -39,7 +51,8 @@ class SessionSummary(BaseModel):
 class AttendanceResponse(AttendanceBase):
     id: uuid.UUID
     session_id: uuid.UUID
-    member_id: uuid.UUID
+    member_id: Optional[uuid.UUID] = None
+    booking_guest_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
     wallet_transaction_id: Optional[uuid.UUID] = None  # Set when paid with Bubbles

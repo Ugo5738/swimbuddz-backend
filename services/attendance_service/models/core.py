@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
@@ -10,7 +11,7 @@ from services.attendance_service.models.enums import (
 )
 from sqlalchemy import DateTime
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import String, UniqueConstraint
+from sqlalchemy import CheckConstraint, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,8 +40,11 @@ class AttendanceRecord(Base):
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
     )
-    member_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True
+    # Nullable so a non-member GUEST attendance row can be keyed on
+    # booking_guest_id instead (a CHECK enforces exactly one). Every existing
+    # row carries member_id, so the relaxation is backwards-compatible.
+    member_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
     )
 
     # Attendance status/details
@@ -84,6 +88,13 @@ class AttendanceRecord(Base):
         index=True,
     )
 
+    # Cross-service ref → sessions_service.booking_guests.id (plain UUID, no
+    # FK). Set when this row records a non-member GUEST's attendance; member_id
+    # is then NULL. See docs/design/GUEST_AND_GROUP_BOOKING_DESIGN.md §5c.
+    booking_guest_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
@@ -98,6 +109,19 @@ class AttendanceRecord(Base):
     __table_args__ = (
         UniqueConstraint(
             "session_id", "member_id", name="uq_session_member_attendance"
+        ),
+        # A guest can't be double-recorded for a session. Member rows keep the
+        # constraint above; Postgres treats NULLs as distinct, so member rows
+        # (booking_guest_id NULL) and guest rows (member_id NULL) never clash.
+        UniqueConstraint(
+            "session_id",
+            "booking_guest_id",
+            name="uq_session_booking_guest_attendance",
+        ),
+        # Exactly one subject per row — a member XOR a guest, never both/neither.
+        CheckConstraint(
+            "(member_id IS NOT NULL) <> (booking_guest_id IS NOT NULL)",
+            name="ck_attendance_member_xor_guest",
         ),
     )
 

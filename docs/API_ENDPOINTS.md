@@ -141,6 +141,14 @@ These are mounted on the members service directly (not exposed through the gatew
 - **Response 201:** `MakeupBookingResponse`
 - **Errors:** `404` session/learner not found; `409` outstanding make-up exists / session full; `422` reason missing / grace already used / past window / coach not assigned to session.
 
+#### `POST /api/v1/makeups/open-slot`
+
+- **Auth:** Admin
+- **Description:** Create a **dedicated** make-up session in a coach's *open* availability slot and confirm the learner into it in **one step** (the join-an-existing-session path is `POST /makeups/bookings`). Builds a `COHORT_CLASS` session at `[starts_at, ends_at]` (cohort from `cohort_id`, else derived from `original_session_id`), attaches the coach as lead, then runs the same eligibility + booking + obligation-flip tail as `/bookings`. Fails fast **before** any session is created on a future-slot / outstanding-make-up violation; refuses a slot that **overlaps** a session the coach already runs (use the join path instead).
+- **Body:** `MakeupOpenSlotCreate` — `{ learner_member_id, coach_member_id, starts_at, ends_at, origin, cohort_id?|original_session_id? (one required), reason?, pool_id?, title?, capacity?=1, block_kind?, block_id?, obligation_id?, used_grace?, spacing_overridden? }`
+- **Response 201:** `MakeupBookingResponse`
+- **Errors:** `409` outstanding make-up exists / coach has an overlapping session / new session full; `422` slot not in the future / `ends_at` ≤ `starts_at` / neither cohort nor original session given / cohort not derivable / reason missing / grace used / past window.
+
 #### `GET /api/v1/makeups/bookings`
 
 - **Auth:** Admin
@@ -154,6 +162,13 @@ These are mounted on the members service directly (not exposed through the gatew
 - **Description:** Mark a make-up **delivered** (`complete` → COMPLETED + `completed_at`) or **cancel** it (`cancel` → CANCELLED). Terminal states are rejected. The linked cohort payout obligation is **not** flipped here — that completes via payments' attendance-driven flow.
 - **Response 200:** `MakeupBookingResponse`
 - **Errors:** `404` not found; `422` invalid state transition.
+
+#### Learner self-serve (Phase 1.5)
+
+- **`GET /api/v1/makeups/me/options`** — *Auth: Member.* A learner's own bookable options for a coach (`coach_id`, `from`, `to`); same shape as the admin bookable-slots, scoped to the authenticated learner.
+- **`POST /api/v1/makeups/me/requests`** — *Auth: Member.* Learner requests a make-up against a chosen session → `REQUESTED` + a soft hold. Body `MakeupRequestCreate` — `{ coach_member_id, scheduled_session_id, origin, reason?, original_session_id? }`. Gates: reason for `learner_reschedule`, one outstanding at a time, session led by the coach + has room. Booking the learner in happens on admin confirm.
+- **`GET /api/v1/makeups/me/requests`** — *Auth: Member.* The learner's own make-up bookings.
+- **`POST /api/v1/makeups/bookings/{id}/confirm`** — *Auth: Admin.* One-tap confirm of a `REQUESTED`/`HELD` request → books the learner in (capacity-checked) + flips the obligation → `CONFIRMED`.
 
 ---
 
@@ -2000,3 +2015,27 @@ Companion endpoint added on wallet_service (called only by corporate_service):
 - `POST   /api/v1/admin/corporate/outreach/run-cycle` — manually tick the scheduler.
 
 Outreach scheduler runs daily at 07:00 UTC via the `corporate-worker` ARQ container (`arq services.corporate_service.worker.WorkerSettings`).
+
+---
+
+## Weather (pools_service module)
+
+Cached multi-day hourly forecasts for pool locations, to plan around Lagos rainy-season sessions. Served by `pools_service` (weather module) — no separate port. Provider is Open-Meteo by default (swappable behind an interface). A background ARQ worker (`pools-worker`) pre-fetches every active pool's 14-day forecast every 3 hours (the "snapshot"), reading the `Pool` table directly; read endpoints serve the stored copy and fall back to a live fetch (cache-aside) on a miss/stale. All read endpoints accept `?date=YYYY-MM-DD` to trim the payload to a single day.
+
+**Member (authenticated):**
+- `GET /api/v1/weather?lat={lat}&lon={lon}[&date=YYYY-MM-DD]` — cached forecast for arbitrary coordinates.
+- `GET /api/v1/weather/pools/{pool_id}[?date=YYYY-MM-DD]` — cached forecast for a specific pool (resolves coordinates directly from the `Pool` table on a cache miss).
+
+**Admin:**
+- `POST /api/v1/admin/weather/refresh` — synchronously pre-fetch every active pool's forecast (same work the worker cron does; useful for first-run seeding or after adding a pool).
+- `GET  /api/v1/admin/weather/snapshots` — list cached snapshots (debug/health view).
+
+Response shape: `hourly` (Open-Meteo parallel arrays — `time`, `precipitation_probability`, `precipitation`, `temperature_2m`, `weather_code`), optional `daily`, plus `fetched_at`, `expires_at`, and a computed `stale` flag.
+
+`pool_id` is stored as a plain UUID (no FK). Because the module lives in `pools_service`, the pre-fetch reads the `Pool` table in-process — no cross-service hop. Forecast horizon and cache TTL are configurable (`WEATHER_FORECAST_DAYS`, `WEATHER_CACHE_TTL_MINUTES`).
+
+Companion worker: `swimbuddz_pools_worker` (ARQ on Redis queue `arq:pools`) — pre-fetch cron every 3 hours (`arq services.pools_service.worker.WorkerSettings`).
+
+> **Provider licensing:** Open-Meteo's free tier is non-commercial. Set `WEATHER_PROVIDER`/`WEATHER_API_KEY` to a commercial provider (or self-host Open-Meteo) for production.
+
+> **Forecast horizon:** genuine forecasts only extend ~14 days. Longer-range ("rest of season") planning should use climatological averages, not this endpoint — see the [design doc](../../docs/design/WEATHER_SERVICE_DESIGN.md)'s three-layer model.

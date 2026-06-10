@@ -44,6 +44,7 @@ from ._session_booking import apply_session_booking
 from ._session_bundle import apply_session_bundle
 from ._session_fee import apply_session_fee
 from ._store_order import apply_store_order
+from ._strokelab_founding import apply_strokelab_founding
 from ._wallet_topup import apply_wallet_topup
 
 logger = get_logger(__name__)
@@ -66,6 +67,7 @@ _PURPOSE_HANDLERS = {
     PaymentPurpose.SESSION_BUNDLE: apply_session_bundle,
     PaymentPurpose.SESSION_BOOKING: apply_session_booking,
     PaymentPurpose.RIDE_SHARE: apply_ride_share,
+    PaymentPurpose.STROKELAB_FOUNDING: apply_strokelab_founding,
 }
 
 

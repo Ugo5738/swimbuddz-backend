@@ -226,6 +226,26 @@ services:
     volumes:
       - .:/app
 
+  pools-worker:
+    build:
+      context: .
+      dockerfile: services/pools_service/Dockerfile
+    container_name: swimbuddz_pools_worker
+    env_file:
+      - .env.dev
+    environment:
+      - PYTHONPATH=/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      pools-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.pools_service.worker.WorkerSettings
+    volumes:
+      - .:/app
+
   reporting-service:
     build:
       context: .
@@ -274,26 +294,6 @@ services:
     volumes:
       - .:/app
 
-  corporate-worker:
-    build:
-      context: .
-      dockerfile: services/corporate_service/Dockerfile
-    container_name: swimbuddz_corporate_worker
-    env_file:
-      - .env.dev
-    environment:
-      - PYTHONPATH=/app
-    depends_on:
-      redis:
-        condition: service_healthy
-      corporate-service:
-        condition: service_started
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    command: arq services.corporate_service.worker.WorkerSettings
-    volumes:
-      - .:/app
-
   ledger-service:
     build:
       context: .
@@ -307,26 +307,6 @@ services:
       - "8018:8018"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - .:/app
-
-  ledger-worker:
-    build:
-      context: .
-      dockerfile: services/ledger_service/Dockerfile
-    container_name: swimbuddz_ledger_worker
-    env_file:
-      - .env.dev
-    environment:
-      - PYTHONPATH=/app
-    depends_on:
-      redis:
-        condition: service_healthy
-      ledger-service:
-        condition: service_started
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    command: arq services.ledger_service.worker.WorkerSettings
     volumes:
       - .:/app
 
@@ -620,6 +600,73 @@ services:
     volumes:
       - .:/app
 
+  ai-worker:
+    # ARQ worker for Stroke Lab swim-video analysis.
+    # Shares the ai-service image (same Dockerfile installs the
+    # `strokelab` extra: ultralytics / mediapipe / opencv-python-headless
+    # / ffmpeg-python).
+    build:
+      context: .
+      dockerfile: services/ai_service/Dockerfile
+    container_name: swimbuddz_ai_worker
+    env_file:
+      - .env.dev
+    environment:
+      - PYTHONPATH=/app
+      # Persist downloaded MediaPipe + YOLO weights between restarts.
+      - STROKELAB_MODEL_DIR=/tmp/strokelab-models
+    depends_on:
+      redis:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.ai_service.tasks.worker.WorkerSettings
+    volumes:
+      - .:/app
+      - strokelab_models:/tmp/strokelab-models
+
+  corporate-worker:
+    build:
+      context: .
+      dockerfile: services/corporate_service/Dockerfile
+    container_name: swimbuddz_corporate_worker
+    env_file:
+      - .env.dev
+    environment:
+      - PYTHONPATH=/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      corporate-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.corporate_service.worker.WorkerSettings
+    volumes:
+      - .:/app
+
+  ledger-worker:
+    build:
+      context: .
+      dockerfile: services/ledger_service/Dockerfile
+    container_name: swimbuddz_ledger_worker
+    env_file:
+      - .env.dev
+    environment:
+      - PYTHONPATH=/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      ledger-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.ledger_service.worker.WorkerSettings
+    volumes:
+      - .:/app
+
   # ==================================================================
   # INFRASTRUCTURE
   # ==================================================================
@@ -640,3 +687,7 @@ services:
 volumes:
   swimbuddz_db_data:
   redis_data:
+  # Cached MediaPipe pose-landmarker + YOLOv8n weights for the ai-worker.
+  # Persisting these across restarts saves the ~10s download on every boot
+  # and avoids re-downloading on every CI run.
+  strokelab_models:
