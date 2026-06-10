@@ -616,6 +616,30 @@ def create_app() -> FastAPI:
         )
 
     # ==================================================================
+    # WEATHER SERVICE PROXY
+    # ==================================================================
+    # Member/authenticated read surface — cached forecast for coordinates or a
+    # specific pool. Served by pools_service (weather module).
+    @app.api_route(
+        "/api/v1/weather/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_weather(path: str, request: Request):
+        """Proxy all /api/v1/weather/* requests to pools service (weather module)."""
+        target = f"/weather/{path}" if path else "/weather"
+        return await proxy_request(clients.pools_client, target, request)
+
+    # Admin surface — manual pre-fetch refresh + snapshot inspection.
+    @app.api_route(
+        "/api/v1/admin/weather/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_admin_weather(path: str, request: Request):
+        """Proxy all /api/v1/admin/weather/* requests to pools service (weather module)."""
+        target = f"/admin/weather/{path}" if path else "/admin/weather"
+        return await proxy_request(clients.pools_client, target, request)
+
+    # ==================================================================
     # DASHBOARD (Gateway-specific aggregation)
     # ==================================================================
     from services.gateway_service.app.routers.cleanup import router as cleanup_router

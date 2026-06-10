@@ -32554,6 +32554,216 @@
         }
       }
     },
+    "/api/v1/weather": {
+      "get": {
+        "tags": [
+          "weather"
+        ],
+        "summary": "Get Weather",
+        "description": "Cached forecast for any coordinates (cache-aside).",
+        "operationId": "get_weather_weather_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lat",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90,
+              "minimum": -90,
+              "description": "Latitude",
+              "title": "Lat"
+            },
+            "description": "Latitude"
+          },
+          {
+            "name": "lon",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180,
+              "minimum": -180,
+              "description": "Longitude",
+              "title": "Lon"
+            },
+            "description": "Longitude"
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional YYYY-MM-DD to return only that day's hours",
+              "title": "Date"
+            },
+            "description": "Optional YYYY-MM-DD to return only that day's hours"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherSnapshotResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/weather/pools/{pool_id}": {
+      "get": {
+        "tags": [
+          "weather"
+        ],
+        "summary": "Get Weather For Pool",
+        "description": "Cached forecast for a specific pool.\n\nFast path: the pre-fetched snapshot. On a cache miss, resolve the pool's\ncoordinates directly from the Pool table (same service, no HTTP).",
+        "operationId": "get_weather_for_pool_weather_pools__pool_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pool_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pool Id"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional YYYY-MM-DD to return only that day's hours",
+              "title": "Date"
+            },
+            "description": "Optional YYYY-MM-DD to return only that day's hours"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherSnapshotResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/weather/refresh": {
+      "post": {
+        "tags": [
+          "admin-weather"
+        ],
+        "summary": "Trigger Refresh",
+        "description": "Force a synchronous pre-fetch of every active pool's forecast.",
+        "operationId": "trigger_refresh_admin_weather_refresh_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherRefreshResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/weather/snapshots": {
+      "get": {
+        "tags": [
+          "admin-weather"
+        ],
+        "summary": "List Weather Snapshots",
+        "description": "List cached snapshots (debug/health view of what's been pre-fetched).",
+        "operationId": "list_weather_snapshots_admin_weather_snapshots_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WeatherSnapshotResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Weather Snapshots Admin Weather Snapshots Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/store/categories": {
       "get": {
         "tags": [
@@ -83451,6 +83661,138 @@
           "in_person"
         ],
         "title": "PreferredContactChannel"
+      },
+      "WeatherRefreshResult": {
+        "properties": {
+          "refreshed": {
+            "type": "integer",
+            "title": "Refreshed",
+            "default": 0
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed",
+            "default": 0
+          },
+          "skipped_no_coords": {
+            "type": "integer",
+            "title": "Skipped No Coords",
+            "default": 0
+          },
+          "pool_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pool Ids"
+          }
+        },
+        "type": "object",
+        "title": "WeatherRefreshResult",
+        "description": "Summary of a pre-fetch refresh run (worker or admin-triggered)."
+      },
+      "WeatherSnapshotResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "location_key": {
+            "type": "string",
+            "title": "Location Key"
+          },
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "forecast_days": {
+            "type": "integer",
+            "title": "Forecast Days"
+          },
+          "hourly": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Hourly"
+          },
+          "daily": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily"
+          },
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Fetched At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "location_key",
+          "latitude",
+          "longitude",
+          "provider",
+          "timezone",
+          "forecast_days",
+          "hourly",
+          "fetched_at",
+          "expires_at"
+        ],
+        "title": "WeatherSnapshotResponse",
+        "description": "A cached forecast for one location.\n\n``hourly``/``daily`` are returned as-is from the provider (Open-Meteo's\nparallel-array shape). When the caller passes ``?date=YYYY-MM-DD`` the\narrays are trimmed server-side to just that day to save mobile bandwidth."
       },
       "ApplyDiscountRequest": {
         "properties": {
