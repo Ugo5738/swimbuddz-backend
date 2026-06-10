@@ -180,9 +180,7 @@ def _validate_guest_policy(
     for g in guests:
         name = (g.full_name or "").strip()
         if not name:
-            raise HTTPException(
-                status_code=422, detail="Each guest must have a name."
-            )
+            raise HTTPException(status_code=422, detail="Each guest must have a name.")
         if g.date_of_birth is not None and _is_minor(
             g.date_of_birth, session_starts_at
         ):
@@ -253,9 +251,7 @@ async def _replace_guests(
 ) -> None:
     """Replace a booking's guest rows with the incoming set (idempotent on
     re-book; a no-op delete when there are none)."""
-    await db.execute(
-        delete(BookingGuest).where(BookingGuest.booking_id == booking_id)
-    )
+    await db.execute(delete(BookingGuest).where(BookingGuest.booking_id == booking_id))
     for g in guests:
         db.add(
             BookingGuest(
@@ -950,10 +946,27 @@ async def admin_refund_pool_fee(
     if _has_pool_refund_marker(booking.notes):
         return booking
 
+    # Per-head (partial) refund: scale by heads when requested, else refund the
+    # whole booking fee. fee_amount_kobo is pool_fee × party_size, so one head =
+    # fee_amount_kobo // party_size. Refunds the no-show heads in a single call;
+    # the notes marker keeps it once-per-booking (D4 / O3).
+    refund_kobo = booking.fee_amount_kobo
+    if payload.refund_heads is not None:
+        if payload.refund_heads > booking.party_size:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Cannot refund {payload.refund_heads} head(s) — this booking "
+                    f"covers {booking.party_size}."
+                ),
+            )
+        per_head = booking.fee_amount_kobo // booking.party_size
+        refund_kobo = per_head * payload.refund_heads
+
     try:
         await credit_member_wallet(
             booking.member_auth_id,
-            amount=kobo_to_bubbles(booking.fee_amount_kobo),
+            amount=kobo_to_bubbles(refund_kobo),
             idempotency_key=f"booking-refund-{booking.id}",
             description=(
                 f"Pool-fee refund (admin) for booking {booking.id}: {payload.reason}"
@@ -977,7 +990,7 @@ async def admin_refund_pool_fee(
     logger.info(
         "Admin %s refunded pool fee (%s kobo) for booking %s, member %s: %s",
         admin.email or admin.user_id,
-        booking.fee_amount_kobo,
+        refund_kobo,
         booking.id,
         booking.member_id,
         payload.reason,

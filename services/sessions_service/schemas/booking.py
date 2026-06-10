@@ -127,9 +127,14 @@ class AdminPoolFeeRefundRequest(BaseModel):
     The server routes this through the accounted ``session_booking`` refund
     path so the ledger reverses the pool-fee revenue — never the manual
     "Adjust Bubbles" tool. ``reason`` is recorded on the booking for audit.
+
+    ``refund_heads`` scales the refund for a multi-swimmer booking (member +
+    guests): None refunds the whole pool fee; N refunds N of party_size heads
+    (e.g. the guests who no-showed at a per-swimmer pool). See O3.
     """
 
     reason: str = Field(min_length=1, max_length=300)
+    refund_heads: Optional[int] = Field(default=None, ge=1)
 
 
 class BulkBookingItem(BaseModel):
