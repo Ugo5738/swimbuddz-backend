@@ -52,7 +52,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          # -c constraints.txt pins runtime deps to the versions the containers
+          # run, so CI's resolver can't float FastAPI/Pydantic to a newer release
+          # that changes OpenAPI schema generation (breaks the openapi.json check).
+          pip install -e ".[dev]" -c constraints.txt
 
       - name: Lint with Ruff
         run: |

@@ -201,6 +201,8 @@ async def _book_learner_into_session(
     if existing is not None:
         if existing.status != SessionBookingStatus.CONFIRMED:
             existing.status = SessionBookingStatus.CONFIRMED
+            existing.confirmed_at = utc_now()
+            existing.expires_at = None
         return
     session = (
         await db.execute(select(Session).where(Session.id == session_id))
@@ -230,6 +232,7 @@ async def _book_learner_into_session(
             member_auth_id=learner_auth_id,
             status=SessionBookingStatus.CONFIRMED,
             channel=BookingChannel.ADMIN,
+            confirmed_at=utc_now(),
         )
     )
 
