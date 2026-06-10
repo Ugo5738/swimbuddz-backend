@@ -391,6 +391,21 @@ services:
     command: arq services.media_service.tasks.worker.WorkerSettings
     restart: unless-stopped
 
+  sessions-worker:
+    image: ${DOCKER_USERNAME}/swimbuddz-sessions-service:latest
+    container_name: swimbuddz_sessions_worker
+    env_file:
+      - .env.prod
+    depends_on:
+      redis:
+        condition: service_healthy
+      sessions-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.sessions_service.worker.WorkerSettings
+    restart: unless-stopped
+
   reporting-worker:
     image: ${DOCKER_USERNAME}/swimbuddz-reporting-service:latest
     container_name: swimbuddz_reporting_worker
