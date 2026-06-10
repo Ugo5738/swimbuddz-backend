@@ -23,7 +23,7 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import (
@@ -56,6 +56,9 @@ from services.sessions_service.schemas import (
     BookingConfirmRequest,
     BookingGuestCreate,
     BookingGuestResponse,
+    GuestConvertRequest,
+    GuestConvertResponse,
+    GuestLeadResponse,
     RunningLateRequest,
     SessionBookingCreate,
     SessionBookingResponse,
@@ -662,6 +665,75 @@ async def name_booking_guest(
     await db.commit()
     await db.refresh(guest)
     return guest
+
+
+# ---------------------------------------------------------------------------
+# Admin: guest → member conversion funnel (Phase 3)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/sessions/booking-guests/leads",
+    response_model=List[GuestLeadResponse],
+)
+async def list_guest_leads(
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+    limit: int = 50,
+):
+    """Unconverted guest prospects, deduped by phone (Phase 3 funnel) — people
+    who keep coming as guests but haven't signed up yet. Most-frequent first."""
+    rows = (
+        (
+            await db.execute(
+                select(
+                    BookingGuest.phone,
+                    func.max(BookingGuest.full_name).label("full_name"),
+                    func.count().label("appearances"),
+                    func.max(BookingGuest.created_at).label("last_seen"),
+                )
+                .where(
+                    BookingGuest.phone.is_not(None),
+                    BookingGuest.converted_member_id.is_(None),
+                )
+                .group_by(BookingGuest.phone)
+                .order_by(func.count().desc())
+                .limit(min(limit, 200))
+            )
+        )
+        .mappings()
+        .all()
+    )
+    return [GuestLeadResponse(**dict(r)) for r in rows]
+
+
+@router.post(
+    "/sessions/booking-guests/convert",
+    response_model=GuestConvertResponse,
+)
+async def convert_guest_to_member(
+    payload: GuestConvertRequest,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Close the funnel loop: link a guest's prior appearances to the member
+    account they just created. Sets converted_member_id on every unconverted
+    BookingGuest row sharing the phone. Returns how many were linked."""
+    phone = payload.phone.strip()
+    result = await db.execute(
+        update(BookingGuest)
+        .where(
+            BookingGuest.phone == phone,
+            BookingGuest.converted_member_id.is_(None),
+        )
+        .values(converted_member_id=payload.member_id)
+    )
+    await db.commit()
+    return GuestConvertResponse(
+        phone=phone,
+        member_id=payload.member_id,
+        converted=result.rowcount or 0,
+    )
 
 
 # ---------------------------------------------------------------------------

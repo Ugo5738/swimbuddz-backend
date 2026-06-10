@@ -73,6 +73,28 @@ class TrialGuestCreate(BaseModel):
     waiver_accepted: bool = False
 
 
+class GuestConvertRequest(BaseModel):
+    """Link a guest's prior appearances (by phone) to a new member account."""
+
+    phone: str = Field(min_length=1, max_length=32)
+    member_id: uuid.UUID
+
+
+class GuestConvertResponse(BaseModel):
+    phone: str
+    member_id: uuid.UUID
+    converted: int  # number of guest rows linked to the member
+
+
+class GuestLeadResponse(BaseModel):
+    """An unconverted guest prospect, deduped by phone (Phase 3 funnel)."""
+
+    phone: str
+    full_name: Optional[str] = None
+    appearances: int
+    last_seen: datetime
+
+
 class SessionBookingCreate(BaseModel):
     """Member self-book a session ahead of time.
 

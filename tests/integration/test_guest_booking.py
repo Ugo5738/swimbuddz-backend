@@ -230,3 +230,36 @@ async def test_block_booking_placeholders_then_named(sessions_client, db_session
     )
     assert resp2.status_code == 200, resp2.text
     assert resp2.json()["full_name"] == "Named Later"
+
+
+@pytest.mark.asyncio
+async def test_guest_conversion_funnel(sessions_client, db_session):
+    """Phase 3: leads list shows repeat guests by phone; convert links them."""
+    from services.sessions_service.models import BookingGuest
+
+    phone = f"funnel-{uuid.uuid4().hex[:8]}"
+    for _ in range(2):  # two appearances, unconverted
+        db_session.add(
+            BookingGuest(
+                booking_id=uuid.uuid4(),
+                full_name="Repeat Guest",
+                phone=phone,
+                intent="social",
+            )
+        )
+    await db_session.commit()
+
+    leads = (await sessions_client.get("/sessions/booking-guests/leads")).json()
+    match = next((row for row in leads if row["phone"] == phone), None)
+    assert match is not None
+    assert match["appearances"] == 2
+
+    conv = await sessions_client.post(
+        "/sessions/booking-guests/convert",
+        json={"phone": phone, "member_id": str(uuid.uuid4())},
+    )
+    assert conv.status_code == 200, conv.text
+    assert conv.json()["converted"] == 2
+
+    leads2 = (await sessions_client.get("/sessions/booking-guests/leads")).json()
+    assert all(row["phone"] != phone for row in leads2)  # converted → no longer a lead
