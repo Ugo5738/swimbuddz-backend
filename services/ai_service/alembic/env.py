@@ -21,6 +21,9 @@ from services.ai_service.models import (  # noqa: F401
     AIModelConfig,
     AIPromptTemplate,
     AIRequest,
+    AnalysisJob,
+    AnalysisResult,
+    StrokeLabFoundingMember,
 )
 
 settings = get_settings()
@@ -38,6 +41,9 @@ SERVICE_TABLES = {
     "ai_requests",
     "ai_prompt_templates",
     "ai_model_configs",
+    "swim_analysis_jobs",
+    "swim_analysis_results",
+    "strokelab_founding_members",
 }
 
 
