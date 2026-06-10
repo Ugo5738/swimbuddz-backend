@@ -26,7 +26,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.auth.dependencies import _service_role_jwt, get_current_user, require_admin
+from libs.auth.dependencies import (
+    _service_role_jwt,
+    get_current_user,
+    require_admin,
+    require_coach,
+)
 from libs.auth.models import AuthUser
 from libs.common.currency import kobo_to_bubbles
 from libs.common.datetime_utils import utc_now
@@ -52,6 +57,7 @@ from services.sessions_service.schemas import (
     RunningLateRequest,
     SessionBookingCreate,
     SessionBookingResponse,
+    TrialGuestCreate,
     UnpaidBookingResponse,
 )
 
@@ -486,6 +492,101 @@ async def book_session(
     await _replace_guests(db, booking.id, booking_in.guests)
     await db.commit()
     await db.refresh(booking)
+    return booking
+
+
+# ---------------------------------------------------------------------------
+# Coach: add a trial guest to a booking (Phase 1.5 — cohort tasters)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/sessions/bookings/{booking_id}/trial-guest",
+    response_model=SessionBookingResponse,
+)
+async def add_trial_guest(
+    booking_id: uuid.UUID,
+    payload: TrialGuestCreate,
+    _coach: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Coach attaches a TRIAL guest to a CONFIRMED booking — a friend sampling a
+    cohort class before enrolling (D10 / Phase 1.5).
+
+    Coach-approved (never self-serve via require_coach), one trial per prospect
+    (by phone), capacity-checked and minor-gated. The trial head is **comped**:
+    party_size is bumped but the booking fee is unchanged — the per-swimmer pool
+    cost is a customer-acquisition cost (paid-trial pricing is deferred, O4).
+    """
+    booking = (
+        await db.execute(select(SessionBooking).where(SessionBooking.id == booking_id))
+    ).scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.status != SessionBookingStatus.CONFIRMED:
+        raise HTTPException(
+            status_code=422,
+            detail="A trial guest can only be added to a CONFIRMED booking.",
+        )
+    session = (
+        await db.execute(select(Session).where(Session.id == booking.session_id))
+    ).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Underlying session not found")
+
+    # Eligibility + minor gate (reuse the shared policy on this single guest).
+    _validate_guest_policy(
+        allows_guests=session.allows_guests,
+        max_guests=session.max_guests_per_booking,
+        session_starts_at=session.starts_at,
+        guests=[payload],
+    )
+
+    # One trial per prospect — a phone can sample a class only once.
+    phone = (payload.phone or "").strip()
+    if phone:
+        prior = (
+            await db.execute(
+                select(func.count())
+                .select_from(BookingGuest)
+                .where(BookingGuest.phone == phone, BookingGuest.intent == "trial")
+            )
+        ).scalar_one()
+        if prior:
+            raise HTTPException(
+                status_code=409, detail="This guest has already used a trial."
+            )
+
+    # Capacity for the extra head — the booking's own row is excluded, so pass
+    # its new total as the would-be party size.
+    await _assert_capacity(
+        db,
+        session=session,
+        member_id=booking.member_id,
+        new_party_size=booking.party_size + 1,
+    )
+
+    db.add(
+        BookingGuest(
+            booking_id=booking.id,
+            full_name=payload.full_name.strip(),
+            phone=(phone or None),
+            intent="trial",
+            date_of_birth=payload.date_of_birth,
+            guardian_name=(payload.guardian_name or None),
+            guardian_phone=(payload.guardian_phone or None),
+            waiver_accepted_at=utc_now() if payload.waiver_accepted else None,
+        )
+    )
+    booking.party_size = booking.party_size + 1
+    await db.commit()
+    await db.refresh(booking)
+    logger.info(
+        "Coach %s added a trial guest to booking %s (party_size=%s)",
+        _coach.email or _coach.user_id,
+        booking.id,
+        booking.party_size,
+    )
     return booking
 
 

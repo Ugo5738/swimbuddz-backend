@@ -58,6 +58,21 @@ class BookingGuestResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TrialGuestCreate(BaseModel):
+    """A prospective-student trial guest attached to a cohort booking (D10).
+
+    ``intent`` is forced to 'trial' server-side; this is coach-approved, never
+    self-serve. Minor fields gate the same way as a normal guest.
+    """
+
+    full_name: str = Field(min_length=1, max_length=120)
+    phone: Optional[str] = Field(default=None, max_length=32)
+    date_of_birth: Optional[_Date] = None
+    guardian_name: Optional[str] = Field(default=None, max_length=120)
+    guardian_phone: Optional[str] = Field(default=None, max_length=32)
+    waiver_accepted: bool = False
+
+
 class SessionBookingCreate(BaseModel):
     """Member self-book a session ahead of time.
 

@@ -144,3 +144,48 @@ async def test_guest_attendance_check_in(attendance_client, db_session):
     assert body["role"] == "guest"
     assert body["member_id"] is None
     assert body["booking_guest_id"] == str(booking_guest_id)
+
+
+@pytest.mark.asyncio
+async def test_add_trial_guest_bumps_party_size_comped(sessions_client, db_session):
+    """Phase 1.5: a coach adds a trial guest — party_size +1, fee unchanged."""
+    from services.sessions_service.models import (
+        BookingGuest,
+        SessionBooking,
+        SessionBookingStatus,
+    )
+
+    session = await _make_community_session(db_session, pool_fee=3500, capacity=10)
+    booking = SessionBooking(
+        session_id=session.id,
+        member_id=uuid.uuid4(),
+        member_auth_id="auth-trial",
+        status=SessionBookingStatus.CONFIRMED,
+        party_size=1,
+        fee_amount_kobo=3500,
+    )
+    db_session.add(booking)
+    await db_session.commit()
+    await db_session.refresh(booking)
+
+    # sessions_client wires require_coach → admin, so the approval gate passes.
+    resp = await sessions_client.post(
+        f"/sessions/bookings/{booking.id}/trial-guest",
+        json={"full_name": "Trial Friend", "phone": "0900111222"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["party_size"] == 2  # member + trial
+    assert body["fee_amount_kobo"] == 3500  # comped — fee unchanged
+
+    n_trial = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(BookingGuest)
+            .where(
+                BookingGuest.booking_id == booking.id,
+                BookingGuest.intent == "trial",
+            )
+        )
+    ).scalar_one()
+    assert n_trial == 1
