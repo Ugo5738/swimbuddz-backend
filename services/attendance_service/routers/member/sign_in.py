@@ -7,18 +7,22 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from libs.auth.dependencies import require_coach
+from libs.auth.models import AuthUser
 from libs.common.currency import kobo_to_bubbles
 from libs.common.service_client import debit_member_wallet, get_session_by_id
 from libs.common.service_client.sessions import get_confirmed_booking_for_session_member
 from libs.db.session import get_async_db
 from services.attendance_service.models import (
     AttendanceRecord,
+    AttendanceRole,
     AttendanceStatus,
     MemberRef,
 )
 from services.attendance_service.schemas import (
     AttendanceCreate,
     AttendanceResponse,
+    GuestAttendanceCreate,
     PublicAttendanceCreate,
 )
 
@@ -213,6 +217,56 @@ async def public_sign_in_to_session(
             role=attendance_in.role,
             notes=attendance_in.notes,
             booking_id=linked_booking_id,
+        )
+        db.add(attendance)
+
+    await db.commit()
+    await db.refresh(attendance)
+    return attendance
+
+
+@router.post(
+    "/sessions/{session_id}/attendance/guest", response_model=AttendanceResponse
+)
+async def record_guest_attendance(
+    session_id: uuid.UUID,
+    attendance_in: GuestAttendanceCreate,
+    _coach: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Coach/admin records a non-member GUEST's attendance at the door.
+
+    Keyed on (session_id, booking_guest_id) — member_id stays NULL and role is
+    forced to GUEST. Idempotent upsert. The guest itself lives in
+    sessions_service (booking_guests); here it is a plain UUID ref.
+
+    Minors are gated at booking time (slice 1b). A check-in-time minor re-gate
+    — needed once Phase 2 lets block bookings be named at the door — is
+    deferred; it would fetch the guest's DOB/guardian from sessions_service.
+    """
+    session_data = await get_session_by_id(
+        str(session_id), calling_service="attendance"
+    )
+    if not session_data:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    query = select(AttendanceRecord).where(
+        AttendanceRecord.session_id == session_id,
+        AttendanceRecord.booking_guest_id == attendance_in.booking_guest_id,
+    )
+    attendance = (await db.execute(query)).scalar_one_or_none()
+
+    if attendance:
+        attendance.status = attendance_in.status
+        attendance.notes = attendance_in.notes
+    else:
+        attendance = AttendanceRecord(
+            session_id=session_id,
+            member_id=None,
+            booking_guest_id=attendance_in.booking_guest_id,
+            status=attendance_in.status,
+            role=AttendanceRole.GUEST,
+            notes=attendance_in.notes,
         )
         db.add(attendance)
 

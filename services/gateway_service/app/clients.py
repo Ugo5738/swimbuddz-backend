@@ -17,18 +17,28 @@ class ServiceClient:
         self.base_url = base_url
         self.timeout = timeout
 
-    async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        follow_redirects: bool = True,
+        **kwargs,
+    ) -> httpx.Response:
         """Send a request with small retries to smooth over transient DNS/connection hiccups."""
         last_exc: Exception | None = None
         for attempt in range(3):
             try:
                 async with httpx.AsyncClient(
-                    timeout=self.timeout, follow_redirects=True
+                    timeout=self.timeout, follow_redirects=follow_redirects
                 ) as client:
                     response = await client.request(
                         method, f"{self.base_url}{path}", **kwargs
                     )
-                    response.raise_for_status()
+                    # A redirect we deliberately did not follow is a valid
+                    # result for the caller to relay, not an error.
+                    if not (response.is_redirect and not follow_redirects):
+                        response.raise_for_status()
                     return response
             except (httpx.RequestError, httpx.HTTPStatusError) as exc:
                 # Only retry connection/read timeouts/errors; propagate HTTP errors immediately.
@@ -44,9 +54,20 @@ class ServiceClient:
             raise last_exc
         raise RuntimeError("Request failed without exception")
 
-    async def get(self, path: str, headers: Optional[Dict] = None) -> httpx.Response:
+    async def get(
+        self,
+        path: str,
+        headers: Optional[Dict] = None,
+        follow_redirects: bool = True,
+    ) -> httpx.Response:
         """Make GET request to service."""
-        return await self._request("GET", path, headers=headers or {})
+        return await self._request(
+            "GET", path, headers=headers or {}, follow_redirects=follow_redirects
+        )
+
+    async def head(self, path: str, headers: Optional[Dict] = None) -> httpx.Response:
+        """Make HEAD request to service."""
+        return await self._request("HEAD", path, headers=headers or {})
 
     async def post(
         self,

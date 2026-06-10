@@ -125,6 +125,21 @@ class Session(Base):
     pool_fee: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     ride_share_fee: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
+    # === Guest booking (docs/design/GUEST_AND_GROUP_BOOKING_DESIGN.md §5d) ===
+    # Whether this session can host non-member guests / trial attendees.
+    # Defaults ON for every session type — admins/coaches opt a specific
+    # session out (e.g. a coach closing a cohort class to visitors that day).
+    # The per-trial coach-approval gate (D10) is enforced at the booking layer
+    # via a non-MEMBER_SELF channel, separately from this eligibility flag.
+    allows_guests: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    # Cap on guests per booking (party_size - 1). 0 disables guests for this
+    # session even when allows_guests is true.
+    max_guests_per_booking: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=4, server_default="4"
+    )
+
     # === Context Links (nullable based on session_type) ===
     # For COHORT_CLASS sessions
     cohort_id: Mapped[Optional[uuid.UUID]] = mapped_column(

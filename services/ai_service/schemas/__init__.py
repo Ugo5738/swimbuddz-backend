@@ -1,5 +1,11 @@
 """AI Service schemas package."""
 
+from services.ai_service.schemas.analysis import (
+    AnalysisJobCreateRequest,
+    AnalysisJobDetailResponse,
+    AnalysisJobResponse,
+    AnalysisResultPayload,
+)
 from services.ai_service.schemas.main import (
     AIModelConfigCreate,
     AIModelConfigResponse,
@@ -22,6 +28,10 @@ __all__ = [
     "AIPromptTemplateCreate",
     "AIPromptTemplateResponse",
     "AIRequestResponse",
+    "AnalysisJobCreateRequest",
+    "AnalysisJobDetailResponse",
+    "AnalysisJobResponse",
+    "AnalysisResultPayload",
     "CoachGradeScoringRequest",
     "CoachGradeScoringResponse",
     "CoachRanking",

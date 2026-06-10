@@ -31,7 +31,7 @@ from services.sessions_service.models.enums import (
 )
 from sqlalchemy import DateTime
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import Integer, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, Integer, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -90,6 +90,16 @@ class SessionBooking(Base):
         server_default="member_self",
     )
 
+    # Number of swimmers this booking covers — the booking member plus any
+    # guests (bring-a-friend / block booking). 1 = solo (the historical
+    # default, applied to every pre-existing row). Guests themselves are rows
+    # in ``booking_guests``; this is the authoritative head count for capacity
+    # and fee math (fee = session.pool_fee × party_size). See
+    # docs/design/GUEST_AND_GROUP_BOOKING_DESIGN.md §5a.
+    party_size: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+
     # Pricing snapshot in kobo, captured at booking time so price changes
     # on the underlying Session don't retroactively alter what was owed.
     fee_amount_kobo: Mapped[int] = mapped_column(
@@ -142,6 +152,8 @@ class SessionBooking(Base):
         UniqueConstraint(
             "session_id", "member_id", name="uq_session_bookings_session_member"
         ),
+        # party_size is the head count (member + guests); never below 1.
+        CheckConstraint("party_size >= 1", name="ck_session_bookings_party_size"),
     )
 
     def __repr__(self) -> str:
