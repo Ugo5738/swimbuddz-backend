@@ -189,3 +189,44 @@ async def test_add_trial_guest_bumps_party_size_comped(sessions_client, db_sessi
         )
     ).scalar_one()
     assert n_trial == 1
+
+
+@pytest.mark.asyncio
+async def test_block_booking_placeholders_then_named(sessions_client, db_session):
+    """Phase 2: reserve anonymous slots, then name one before check-in."""
+    from services.sessions_service.models import BookingGuest
+
+    session = await _make_community_session(db_session, pool_fee=0, capacity=10)
+    p_member, p_wallet = _patch_member_wallet()
+    with p_member, p_wallet:
+        resp = await sessions_client.post(
+            f"/sessions/{session.id}/book",
+            json={
+                "session_id": str(session.id),
+                "pay_with_bubbles": True,
+                "block_guests": 2,
+            },
+        )
+    assert resp.status_code == 201, resp.text
+    booking_id = uuid.UUID(resp.json()["id"])
+    assert resp.json()["party_size"] == 3  # member + 2 anonymous slots
+
+    placeholders = (
+        (
+            await db_session.execute(
+                select(BookingGuest).where(BookingGuest.booking_id == booking_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(placeholders) == 2
+    assert all(g.full_name is None for g in placeholders)
+
+    # Name one placeholder (booking owner = same wired user).
+    resp2 = await sessions_client.patch(
+        f"/sessions/bookings/{booking_id}/guests/{placeholders[0].id}",
+        json={"full_name": "Named Later", "phone": "0901"},
+    )
+    assert resp2.status_code == 200, resp2.text
+    assert resp2.json()["full_name"] == "Named Later"

@@ -54,6 +54,8 @@ from services.sessions_service.schemas import (
     AdminPoolFeeRefundRequest,
     AdminWalkInRequest,
     BookingConfirmRequest,
+    BookingGuestCreate,
+    BookingGuestResponse,
     RunningLateRequest,
     SessionBookingCreate,
     SessionBookingResponse,
@@ -164,6 +166,7 @@ def _validate_guest_policy(
     max_guests: int,
     session_starts_at: datetime,
     guests: list,
+    block_count: int = 0,
 ) -> None:
     """Reject a guest list that breaks the session's guest policy or the
     safeguarding rules. Pure (primitives in) so it unit-tests without a DB.
@@ -172,13 +175,14 @@ def _validate_guest_policy(
     - every guest needs a name (Phase 1 named-guest flow)
     - a minor (DOB < 18 at the session) needs guardian name + phone + waiver
     """
-    if not guests:
+    total = len(guests) + block_count
+    if total == 0:
         return
     if not allows_guests or max_guests <= 0:
         raise HTTPException(
             status_code=422, detail="This session does not accept guests."
         )
-    if len(guests) > max_guests:
+    if total > max_guests:
         raise HTTPException(
             status_code=422,
             detail=f"This session allows at most {max_guests} guest(s) per booking.",
@@ -253,10 +257,12 @@ async def _assert_capacity(
 
 
 async def _replace_guests(
-    db: AsyncSession, booking_id: uuid.UUID, guests: list
+    db: AsyncSession, booking_id: uuid.UUID, guests: list, block_count: int = 0
 ) -> None:
     """Replace a booking's guest rows with the incoming set (idempotent on
-    re-book; a no-op delete when there are none)."""
+    re-book; a no-op delete when there are none). ``block_count`` adds that many
+    anonymous placeholder rows (full_name NULL) for a block booking — named via
+    the guest PATCH endpoint before check-in (Phase 2)."""
     await db.execute(delete(BookingGuest).where(BookingGuest.booking_id == booking_id))
     for g in guests:
         db.add(
@@ -271,6 +277,9 @@ async def _replace_guests(
                 waiver_accepted_at=utc_now() if g.waiver_accepted else None,
             )
         )
+    for _ in range(block_count):
+        # Anonymous block-booking placeholder — named before check-in (Phase 2).
+        db.add(BookingGuest(booking_id=booking_id, intent="social"))
 
 
 # ---------------------------------------------------------------------------
@@ -377,13 +386,14 @@ async def book_session(
     # named guests (D1/D3); fee is pool_fee × heads (D8) — the client-sent
     # fee_amount_kobo is ignored. Guest eligibility + capacity are checked
     # before any wallet debit so we never charge and then reject.
-    party_size = 1 + len(booking_in.guests)
+    party_size = 1 + len(booking_in.guests) + booking_in.block_guests
     fee_kobo = int(session.pool_fee or 0) * party_size
     _validate_guest_policy(
         allows_guests=session.allows_guests,
         max_guests=session.max_guests_per_booking,
         session_starts_at=session.starts_at,
         guests=booking_in.guests,
+        block_count=booking_in.block_guests,
     )
     await _assert_capacity(
         db, session=session, member_id=member_id, new_party_size=party_size
@@ -436,7 +446,7 @@ async def book_session(
             existing.status = SessionBookingStatus.PENDING
             existing.expires_at = now + timedelta(minutes=PENDING_TTL_MINUTES)
 
-        await _replace_guests(db, existing.id, booking_in.guests)
+        await _replace_guests(db, existing.id, booking_in.guests, booking_in.block_guests)
         await db.commit()
         await db.refresh(existing)
         return existing
@@ -469,7 +479,7 @@ async def book_session(
         )
         db.add(booking)
         await db.flush()
-        await _replace_guests(db, booking.id, booking_in.guests)
+        await _replace_guests(db, booking.id, booking_in.guests, booking_in.block_guests)
         await db.commit()
         await db.refresh(booking)
         return booking
@@ -588,6 +598,70 @@ async def add_trial_guest(
         booking.party_size,
     )
     return booking
+
+
+# ---------------------------------------------------------------------------
+# Member: name a guest (fills a block booking's anonymous slots — Phase 2)
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/sessions/bookings/{booking_id}/guests/{guest_id}",
+    response_model=BookingGuestResponse,
+)
+async def name_booking_guest(
+    booking_id: uuid.UUID,
+    guest_id: uuid.UUID,
+    payload: BookingGuestCreate,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Name / update a guest on a booking — fills in a block booking's anonymous
+    placeholder slots before check-in (Phase 2). Booking owner only; a minor
+    gates the same as at booking time. The guest's ``intent`` is preserved.
+    """
+    booking = (
+        await db.execute(select(SessionBooking).where(SessionBooking.id == booking_id))
+    ).scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.member_auth_id != current_user.user_id:
+        raise HTTPException(
+            status_code=403, detail="You can only edit your own booking's guests."
+        )
+    guest = (
+        await db.execute(
+            select(BookingGuest).where(
+                BookingGuest.id == guest_id,
+                BookingGuest.booking_id == booking_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if guest is None:
+        raise HTTPException(status_code=404, detail="Guest not found on this booking")
+
+    session = (
+        await db.execute(select(Session).where(Session.id == booking.session_id))
+    ).scalar_one_or_none()
+    starts_at = session.starts_at if session else utc_now()
+    # Validate the incoming details — name required + minor gate. The count /
+    # allows checks pass trivially for one already-reserved slot.
+    _validate_guest_policy(
+        allows_guests=True,
+        max_guests=1,
+        session_starts_at=starts_at,
+        guests=[payload],
+    )
+
+    guest.full_name = payload.full_name.strip() if payload.full_name else None
+    guest.phone = payload.phone or None
+    guest.date_of_birth = payload.date_of_birth
+    guest.guardian_name = payload.guardian_name or None
+    guest.guardian_phone = payload.guardian_phone or None
+    guest.waiver_accepted_at = utc_now() if payload.waiver_accepted else None
+    await db.commit()
+    await db.refresh(guest)
+    return guest
 
 
 # ---------------------------------------------------------------------------

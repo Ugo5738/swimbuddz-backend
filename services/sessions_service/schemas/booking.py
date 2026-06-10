@@ -100,6 +100,9 @@ class SessionBookingCreate(BaseModel):
     # 1 (the member) + len(guests). Hard-capped here; the per-session limit
     # (Session.max_guests_per_booking) is enforced server-side.
     guests: List[BookingGuestCreate] = Field(default_factory=list, max_length=20)
+    # Anonymous extra slots for a block booking (Phase 2). Head count =
+    # 1 + len(guests) + block_guests; placeholders are named before check-in.
+    block_guests: int = Field(default=0, ge=0, le=50)
 
 
 class BookingConfirmRequest(BaseModel):
