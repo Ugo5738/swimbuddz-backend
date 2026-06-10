@@ -6968,6 +6968,234 @@
         }
       }
     },
+    "/api/v1/sessions/bookings/{booking_id}/trial-guest": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Add Trial Guest",
+        "description": "Coach attaches a TRIAL guest to a CONFIRMED booking \u2014 a friend sampling a\ncohort class before enrolling (D10 / Phase 1.5).\n\nCoach-approved (never self-serve via require_coach), one trial per prospect\n(by phone), capacity-checked and minor-gated. The trial head is **comped**:\nparty_size is bumped but the booking fee is unchanged \u2014 the per-swimmer pool\ncost is a customer-acquisition cost (paid-trial pricing is deferred, O4).",
+        "operationId": "add_trial_guest_sessions_bookings__booking_id__trial_guest_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrialGuestCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/bookings/{booking_id}/guests/{guest_id}": {
+      "patch": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Name Booking Guest",
+        "description": "Name / update a guest on a booking \u2014 fills in a block booking's anonymous\nplaceholder slots before check-in (Phase 2). Booking owner only; a minor\ngates the same as at booking time. The guest's ``intent`` is preserved.",
+        "operationId": "name_booking_guest_sessions_bookings__booking_id__guests__guest_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          },
+          {
+            "name": "guest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guest Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingGuestCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingGuestResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/booking-guests/leads": {
+      "get": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "List Guest Leads",
+        "description": "Unconverted guest prospects, deduped by phone (Phase 3 funnel) \u2014 people\nwho keep coming as guests but haven't signed up yet. Most-frequent first.",
+        "operationId": "list_guest_leads_sessions_booking_guests_leads_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GuestLeadResponse"
+                  },
+                  "title": "Response List Guest Leads Sessions Booking Guests Leads Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/booking-guests/convert": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Convert Guest To Member",
+        "description": "Close the funnel loop: link a guest's prior appearances to the member\naccount they just created. Sets converted_member_id on every unconverted\nBookingGuest row sharing the phone. Returns how many were linked.",
+        "operationId": "convert_guest_to_member_sessions_booking_guests_convert_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuestConvertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestConvertResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/sessions/bookings/{booking_id}/confirm": {
       "post": {
         "tags": [
@@ -9482,6 +9710,65 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PublicAttendanceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/attendance/sessions/{session_id}/attendance/guest": {
+      "post": {
+        "tags": [
+          "attendance"
+        ],
+        "summary": "Record Guest Attendance",
+        "description": "Coach/admin records a non-member GUEST's attendance at the door.\n\nKeyed on (session_id, booking_guest_id) \u2014 member_id stays NULL and role is\nforced to GUEST. Idempotent upsert. The guest itself lives in\nsessions_service (booking_guests); here it is a plain UUID ref.\n\nMinors are gated at booking time (slice 1b). A check-in-time minor re-gate\n\u2014 needed once Phase 2 lets block bookings be named at the door \u2014 is\ndeferred; it would fetch the guest's DOB/guardian from sessions_service.",
+        "operationId": "record_guest_attendance_attendance_sessions__session_id__attendance_guest_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuestAttendanceCreate"
               }
             }
           }
@@ -47423,7 +47710,55 @@
         "title": "CoachApplicationStatusResponse",
         "description": "Minimal status response for coaches checking their application."
       },
-      "CoachAvailabilityCalendar": {
+      "CoachAvailabilityCalendar-Input": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "IANA timezone name",
+            "default": "Africa/Lagos"
+          },
+          "recurring": {
+            "items": {
+              "$ref": "#/components/schemas/RecurringBlockInput"
+            },
+            "type": "array",
+            "title": "Recurring"
+          },
+          "blackouts": {
+            "items": {
+              "$ref": "#/components/schemas/BlackoutDateInput"
+            },
+            "type": "array",
+            "title": "Blackouts"
+          },
+          "slot_minutes": {
+            "type": "integer",
+            "maximum": 240.0,
+            "minimum": 15.0,
+            "title": "Slot Minutes",
+            "description": "Default lesson/make-up length in minutes",
+            "default": 60
+          },
+          "buffer_minutes": {
+            "type": "integer",
+            "maximum": 120.0,
+            "minimum": 0.0,
+            "title": "Buffer Minutes",
+            "description": "Gap between consecutive slots in minutes",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "CoachAvailabilityCalendar",
+        "description": "Canonical shape of CoachProfile.availability_calendar (JSONB).\n\nRecurring weekly blocks + blackout dates in the coach's local timezone.\nsessions_service slices this into bookable make-up slots."
+      },
+      "CoachAvailabilityCalendar-Output": {
         "properties": {
           "version": {
             "type": "integer",
@@ -47513,7 +47848,7 @@
           "availability": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CoachAvailabilityCalendar"
+                "$ref": "#/components/schemas/CoachAvailabilityCalendar-Output"
               },
               {
                 "type": "null"
@@ -47539,7 +47874,7 @@
       "CoachAvailabilityUpdate": {
         "properties": {
           "availability": {
-            "$ref": "#/components/schemas/CoachAvailabilityCalendar"
+            "$ref": "#/components/schemas/CoachAvailabilityCalendar-Input"
           },
           "min_hours_between_sessions": {
             "anyOf": [
@@ -54117,6 +54452,18 @@
             "maxLength": 300,
             "minLength": 1,
             "title": "Reason"
+          },
+          "refund_heads": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refund Heads"
           }
         },
         "type": "object",
@@ -54124,7 +54471,7 @@
           "reason"
         ],
         "title": "AdminPoolFeeRefundRequest",
-        "description": "Admin refunds a booking's per-session pool fee to the member's Bubble\nwallet \u2014 the make-up case: a learner paid the ~\u20a63,500 pool fee, couldn't\nattend (rain-out / excused), and is owed it back to fund their make-up.\n\nThe server routes this through the accounted ``session_booking`` refund\npath so the ledger reverses the pool-fee revenue \u2014 never the manual\n\"Adjust Bubbles\" tool. ``reason`` is recorded on the booking for audit."
+        "description": "Admin refunds a booking's per-session pool fee to the member's Bubble\nwallet \u2014 the make-up case: a learner paid the ~\u20a63,500 pool fee, couldn't\nattend (rain-out / excused), and is owed it back to fund their make-up.\n\nThe server routes this through the accounted ``session_booking`` refund\npath so the ledger reverses the pool-fee revenue \u2014 never the manual\n\"Adjust Bubbles\" tool. ``reason`` is recorded on the booking for audit.\n\n``refund_heads`` scales the refund for a multi-swimmer booking (member +\nguests): None refunds the whole pool fee; N refunds N of party_size heads\n(e.g. the guests who no-showed at a per-swimmer pool). See O3."
       },
       "AdminWalkInRequest": {
         "properties": {
@@ -54386,6 +54733,94 @@
         "title": "BookingGuestCreate",
         "description": "A non-member swimmer to attach to a booking (bring-a-friend).\n\n``full_name`` is required in the Phase 1 named-guest flow. A minor\n(``date_of_birth`` implying age < 18 at the session) must carry\n``guardian_name`` + ``guardian_phone`` + ``waiver_accepted`` \u2014 enforced at\nbooking and again at check-in. See\ndocs/design/GUEST_AND_GROUP_BOOKING_DESIGN.md \u00a75b/\u00a79."
       },
+      "BookingGuestResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "intent": {
+            "type": "string",
+            "title": "Intent"
+          },
+          "date_of_birth": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Of Birth"
+          },
+          "guardian_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guardian Name"
+          },
+          "guardian_phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guardian Phone"
+          },
+          "waiver_accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waiver Accepted At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "intent"
+        ],
+        "title": "BookingGuestResponse",
+        "description": "A persisted guest row (for future guest-echo / check-in views)."
+      },
       "BulkBookingItem": {
         "properties": {
           "session_id": {
@@ -54564,6 +54999,52 @@
         ],
         "title": "GenerateSessionsRequest"
       },
+      "GuestConvertRequest": {
+        "properties": {
+          "phone": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Phone"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phone",
+          "member_id"
+        ],
+        "title": "GuestConvertRequest",
+        "description": "Link a guest's prior appearances (by phone) to a new member account."
+      },
+      "GuestConvertResponse": {
+        "properties": {
+          "phone": {
+            "type": "string",
+            "title": "Phone"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "converted": {
+            "type": "integer",
+            "title": "Converted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phone",
+          "member_id",
+          "converted"
+        ],
+        "title": "GuestConvertResponse"
+      },
       "GuestIntent": {
         "type": "string",
         "enum": [
@@ -54572,6 +55053,42 @@
         ],
         "title": "GuestIntent",
         "description": "Why a non-member guest attends \u2014 drives approval + follow-up."
+      },
+      "GuestLeadResponse": {
+        "properties": {
+          "phone": {
+            "type": "string",
+            "title": "Phone"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "appearances": {
+            "type": "integer",
+            "title": "Appearances"
+          },
+          "last_seen": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phone",
+          "appearances",
+          "last_seen"
+        ],
+        "title": "GuestLeadResponse",
+        "description": "An unconverted guest prospect, deduped by phone (Phase 3 funnel)."
       },
       "MakeupBlockKind": {
         "type": "string",
@@ -55245,6 +55762,13 @@
             "type": "array",
             "maxItems": 20,
             "title": "Guests"
+          },
+          "block_guests": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 0.0,
+            "title": "Block Guests",
+            "default": 0
           }
         },
         "type": "object",
@@ -55530,6 +56054,16 @@
             "type": "number",
             "title": "Ride Share Fee",
             "default": 0.0
+          },
+          "allows_guests": {
+            "type": "boolean",
+            "title": "Allows Guests",
+            "default": true
+          },
+          "max_guests_per_booking": {
+            "type": "integer",
+            "title": "Max Guests Per Booking",
+            "default": 4
           },
           "cohort_id": {
             "anyOf": [
@@ -55839,6 +56373,16 @@
             "type": "number",
             "title": "Ride Share Fee",
             "default": 0.0
+          },
+          "allows_guests": {
+            "type": "boolean",
+            "title": "Allows Guests",
+            "default": true
+          },
+          "max_guests_per_booking": {
+            "type": "integer",
+            "title": "Max Guests Per Booking",
+            "default": 4
           },
           "cohort_id": {
             "anyOf": [
@@ -56635,6 +57179,75 @@
         "type": "object",
         "title": "SessionUpdate"
       },
+      "TrialGuestCreate": {
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Full Name"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "date_of_birth": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Of Birth"
+          },
+          "guardian_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guardian Name"
+          },
+          "guardian_phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guardian Phone"
+          },
+          "waiver_accepted": {
+            "type": "boolean",
+            "title": "Waiver Accepted",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "full_name"
+        ],
+        "title": "TrialGuestCreate",
+        "description": "A prospective-student trial guest attached to a cohort booking (D10).\n\n``intent`` is forced to 'trial' server-side; this is coach-approved, never\nself-serve. Minor fields gate the same way as a normal guest."
+      },
       "UnpaidBookingResponse": {
         "properties": {
           "id": {
@@ -56839,9 +57452,28 @@
             "title": "Session Id"
           },
           "member_id": {
-            "type": "string",
-            "format": "uuid",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Member Id"
+          },
+          "booking_guest_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Guest Id"
           },
           "created_at": {
             "type": "string",
@@ -56902,7 +57534,6 @@
         "required": [
           "id",
           "session_id",
-          "member_id",
           "created_at",
           "updated_at"
         ],
@@ -57036,6 +57667,36 @@
         ],
         "title": "CohortAttendanceSummary",
         "description": "Summary of attendance for an entire cohort."
+      },
+      "GuestAttendanceCreate": {
+        "properties": {
+          "booking_guest_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Booking Guest Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AttendanceStatus",
+            "default": "present"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "booking_guest_id"
+        ],
+        "title": "GuestAttendanceCreate",
+        "description": "Coach/admin records a non-member guest's attendance at the door.\n\nKeyed on (session_id, booking_guest_id); role is forced to GUEST and\nmember_id stays NULL. See GUEST_AND_GROUP_BOOKING_DESIGN.md \u00a75c/\u00a79."
       },
       "MemberAttendanceStats": {
         "properties": {
