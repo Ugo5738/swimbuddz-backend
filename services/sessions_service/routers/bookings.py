@@ -23,7 +23,7 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import _service_role_jwt, get_current_user, require_admin
@@ -40,6 +40,7 @@ from libs.common.service_client import (
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     BookingChannel,
+    BookingGuest,
     Session,
     SessionBooking,
     SessionBookingStatus,
@@ -140,6 +141,137 @@ async def _debit_booking_fee(
 
 
 # ---------------------------------------------------------------------------
+# Guest booking helpers (slice 1b — see GUEST_AND_GROUP_BOOKING_DESIGN.md)
+# ---------------------------------------------------------------------------
+
+
+def _is_minor(dob, session_starts_at: datetime) -> bool:
+    """True if the guest is under 18 on the session date."""
+    on = session_starts_at.date()
+    age = on.year - dob.year - ((on.month, on.day) < (dob.month, dob.day))
+    return age < 18
+
+
+def _validate_guest_policy(
+    *,
+    allows_guests: bool,
+    max_guests: int,
+    session_starts_at: datetime,
+    guests: list,
+) -> None:
+    """Reject a guest list that breaks the session's guest policy or the
+    safeguarding rules. Pure (primitives in) so it unit-tests without a DB.
+
+    - the session must allow guests and the count must be within max_guests
+    - every guest needs a name (Phase 1 named-guest flow)
+    - a minor (DOB < 18 at the session) needs guardian name + phone + waiver
+    """
+    if not guests:
+        return
+    if not allows_guests or max_guests <= 0:
+        raise HTTPException(
+            status_code=422, detail="This session does not accept guests."
+        )
+    if len(guests) > max_guests:
+        raise HTTPException(
+            status_code=422,
+            detail=f"This session allows at most {max_guests} guest(s) per booking.",
+        )
+    for g in guests:
+        name = (g.full_name or "").strip()
+        if not name:
+            raise HTTPException(
+                status_code=422, detail="Each guest must have a name."
+            )
+        if g.date_of_birth is not None and _is_minor(
+            g.date_of_birth, session_starts_at
+        ):
+            if not (
+                (g.guardian_name or "").strip()
+                and (g.guardian_phone or "").strip()
+                and g.waiver_accepted
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Guest '{name}' is a minor — guardian name, guardian "
+                        f"phone, and an accepted waiver are required."
+                    ),
+                )
+
+
+async def _assert_capacity(
+    db: AsyncSession,
+    *,
+    session: Session,
+    member_id: uuid.UUID,
+    new_party_size: int,
+) -> None:
+    """Reject a booking that would exceed the session's head-count capacity.
+
+    Sums ``party_size`` over active bookings (CONFIRMED + unexpired PENDING),
+    excluding this member's own row so a re-book / party-size change doesn't
+    double-count their seat. A ``FOR UPDATE`` lock on the session row serialises
+    concurrent bookings so two members can't both grab the last seats. The lock
+    is held until the request commits — which, on the Bubbles path, spans the
+    wallet debit; per-session contention is low, so that's an acceptable trade.
+    """
+    await db.execute(
+        select(Session.id).where(Session.id == session.id).with_for_update()
+    )
+    now = utc_now()
+    used = (
+        await db.execute(
+            select(func.coalesce(func.sum(SessionBooking.party_size), 0)).where(
+                SessionBooking.session_id == session.id,
+                SessionBooking.member_id != member_id,
+                or_(
+                    SessionBooking.status == SessionBookingStatus.CONFIRMED,
+                    and_(
+                        SessionBooking.status == SessionBookingStatus.PENDING,
+                        or_(
+                            SessionBooking.expires_at.is_(None),
+                            SessionBooking.expires_at > now,
+                        ),
+                    ),
+                ),
+            )
+        )
+    ).scalar_one()
+    if int(used) + new_party_size > session.capacity:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"This session is full — {int(used)}/{session.capacity} seats "
+                f"taken and you need {new_party_size}."
+            ),
+        )
+
+
+async def _replace_guests(
+    db: AsyncSession, booking_id: uuid.UUID, guests: list
+) -> None:
+    """Replace a booking's guest rows with the incoming set (idempotent on
+    re-book; a no-op delete when there are none)."""
+    await db.execute(
+        delete(BookingGuest).where(BookingGuest.booking_id == booking_id)
+    )
+    for g in guests:
+        db.add(
+            BookingGuest(
+                booking_id=booking_id,
+                full_name=(g.full_name or None),
+                phone=(g.phone or None),
+                intent=getattr(g.intent, "value", str(g.intent)),
+                date_of_birth=g.date_of_birth,
+                guardian_name=(g.guardian_name or None),
+                guardian_phone=(g.guardian_phone or None),
+                waiver_accepted_at=utc_now() if g.waiver_accepted else None,
+            )
+        )
+
+
+# ---------------------------------------------------------------------------
 # Member: book a session
 # ---------------------------------------------------------------------------
 
@@ -234,12 +366,28 @@ async def book_session(
         )
     ).scalar_one_or_none()
 
-    if existing is not None:
-        # Already paid → idempotent return. A CONFIRMED booking is never
-        # re-charged (covers a duplicate submit or the member revisiting).
-        if existing.status == SessionBookingStatus.CONFIRMED:
-            return existing
+    # A CONFIRMED booking is returned unchanged (idempotent; never re-charged,
+    # guests untouched) before any validation or capacity lock runs.
+    if existing is not None and existing.status == SessionBookingStatus.CONFIRMED:
+        return existing
 
+    # Server-authoritative head count + fee: the member's own slot plus any
+    # named guests (D1/D3); fee is pool_fee × heads (D8) — the client-sent
+    # fee_amount_kobo is ignored. Guest eligibility + capacity are checked
+    # before any wallet debit so we never charge and then reject.
+    party_size = 1 + len(booking_in.guests)
+    fee_kobo = int(session.pool_fee or 0) * party_size
+    _validate_guest_policy(
+        allows_guests=session.allows_guests,
+        max_guests=session.max_guests_per_booking,
+        session_starts_at=session.starts_at,
+        guests=booking_in.guests,
+    )
+    await _assert_capacity(
+        db, session=session, member_id=member_id, new_party_size=party_size
+    )
+
+    if existing is not None:
         # PENDING (payment in flight / abandoned online attempt) or dead
         # (EXPIRED / CANCELLED). The unique constraint forbids a second row,
         # so drive *this* row forward instead of rejecting the re-book.
@@ -257,7 +405,8 @@ async def book_session(
             existing.channel = BookingChannel.MEMBER_SELF
             existing.booked_at = now
 
-        existing.fee_amount_kobo = booking_in.fee_amount_kobo
+        existing.party_size = party_size
+        existing.fee_amount_kobo = fee_kobo
         if booking_in.notes is not None:
             existing.notes = booking_in.notes
 
@@ -271,7 +420,7 @@ async def book_session(
                 session_id=session_id,
                 member_id=member_id,
                 booked_at=existing.booked_at,
-                fee_amount_kobo=booking_in.fee_amount_kobo,
+                fee_amount_kobo=fee_kobo,
                 session_title=session.title,
             )
             existing.status = SessionBookingStatus.CONFIRMED
@@ -285,6 +434,7 @@ async def book_session(
             existing.status = SessionBookingStatus.PENDING
             existing.expires_at = now + timedelta(minutes=PENDING_TTL_MINUTES)
 
+        await _replace_guests(db, existing.id, booking_in.guests)
         await db.commit()
         await db.refresh(existing)
         return existing
@@ -299,7 +449,7 @@ async def book_session(
             session_id=session_id,
             member_id=member_id,
             booked_at=now,
-            fee_amount_kobo=booking_in.fee_amount_kobo,
+            fee_amount_kobo=fee_kobo,
             session_title=session.title,
         )
         booking = SessionBooking(
@@ -308,13 +458,16 @@ async def book_session(
             member_auth_id=member_auth_id,
             status=SessionBookingStatus.CONFIRMED,
             channel=BookingChannel.MEMBER_SELF,
-            fee_amount_kobo=booking_in.fee_amount_kobo,
+            party_size=party_size,
+            fee_amount_kobo=fee_kobo,
             notes=booking_in.notes,
             wallet_transaction_id=wallet_txn_id,
             booked_at=now,
             confirmed_at=now,
         )
         db.add(booking)
+        await db.flush()
+        await _replace_guests(db, booking.id, booking_in.guests)
         await db.commit()
         await db.refresh(booking)
         return booking
@@ -326,12 +479,15 @@ async def book_session(
         member_auth_id=member_auth_id,
         status=SessionBookingStatus.PENDING,
         channel=BookingChannel.MEMBER_SELF,
-        fee_amount_kobo=booking_in.fee_amount_kobo,
+        party_size=party_size,
+        fee_amount_kobo=fee_kobo,
         notes=booking_in.notes,
         booked_at=now,
         expires_at=now + timedelta(minutes=PENDING_TTL_MINUTES),
     )
     db.add(booking)
+    await db.flush()
+    await _replace_guests(db, booking.id, booking_in.guests)
     await db.commit()
     await db.refresh(booking)
     return booking
