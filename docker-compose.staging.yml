@@ -286,6 +286,22 @@ services:
     volumes:
       - .:/app
 
+  attendance-worker-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-attendance-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_attendance_worker_staging
+    env_file:
+      - .env.staging
+    depends_on:
+      redis-staging:
+        condition: service_healthy
+      attendance-service-staging:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.attendance_service.worker.WorkerSettings
+    volumes:
+      - .:/app
+
   # ==================================================================
   # INFRASTRUCTURE (STAGING)
   # ==================================================================
