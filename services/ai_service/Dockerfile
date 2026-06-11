@@ -20,10 +20,15 @@ WORKDIR /app
 #   * ffmpeg — used by services.ai_service.analysis (Stroke Lab) and by
 #     opencv-python-headless to decode pool footage. Without it, MediaPipe
 #     pose detection runs but every video read fails on the worker.
-#   * libgl1 / libglib2.0-0 — opencv-python-headless still needs the GL +
-#     glib shared objects at import time on slim images.
+#   * libgl1 / libglib2.0-0 — opencv-python-headless needs the GL + glib
+#     shared objects at import time on slim images.
+#   * libgles2 / libegl1 — MediaPipe's pose landmarker initialises a GL/EGL
+#     context on x86_64 Linux and fails at runtime with
+#     "libGLESv2.so.2: cannot open shared object file" without these. (Not
+#     needed on the arm64 dev image, which is why this only bit in prod.)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg libgl1 libglib2.0-0 \
+    && apt-get install -y --no-install-recommends \
+        ffmpeg libgl1 libglib2.0-0 libgles2 libegl1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /install /usr/local

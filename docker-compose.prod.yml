@@ -486,11 +486,20 @@ services:
     # image (strokelab extra: ultralytics / mediapipe / opencv / ffmpeg).
     image: ${DOCKER_USERNAME}/swimbuddz-ai-service:latest
     container_name: swimbuddz_ai_worker
+    # Stopgap caps so a torch analysis can't melt this small shared box:
+    # ~1 core + 2G RAM (overflow to swap — the host needs a swapfile). An
+    # over-limit OOM is contained to the worker, never the website. Remove
+    # these when the worker moves to dedicated compute.
+    cpus: "1.0"
+    mem_limit: 2g
+    memswap_limit: 4g
     env_file:
       - .env.prod
     environment:
       # Persist downloaded MediaPipe + YOLO weights between restarts.
       - STROKELAB_MODEL_DIR=/tmp/strokelab-models
+      # Lighter analysis on a small shared box (process every 3rd frame).
+      - STROKELAB_FRAME_STRIDE=3
     depends_on:
       redis:
         condition: service_healthy
