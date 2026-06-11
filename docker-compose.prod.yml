@@ -451,6 +451,58 @@ services:
     command: arq services.ledger_service.worker.WorkerSettings
     restart: unless-stopped
 
+  attendance-worker:
+    image: ${DOCKER_USERNAME}/swimbuddz-attendance-service:latest
+    container_name: swimbuddz_attendance_worker
+    env_file:
+      - .env.prod
+    depends_on:
+      redis:
+        condition: service_healthy
+      attendance-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.attendance_service.worker.WorkerSettings
+    restart: unless-stopped
+
+  pools-worker:
+    image: ${DOCKER_USERNAME}/swimbuddz-pools-service:latest
+    container_name: swimbuddz_pools_worker
+    env_file:
+      - .env.prod
+    depends_on:
+      redis:
+        condition: service_healthy
+      pools-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.pools_service.worker.WorkerSettings
+    restart: unless-stopped
+
+  ai-worker:
+    # ARQ worker for Stroke Lab swim-video analysis. Shares the ai-service
+    # image (strokelab extra: ultralytics / mediapipe / opencv / ffmpeg).
+    image: ${DOCKER_USERNAME}/swimbuddz-ai-service:latest
+    container_name: swimbuddz_ai_worker
+    env_file:
+      - .env.prod
+    environment:
+      # Persist downloaded MediaPipe + YOLO weights between restarts.
+      - STROKELAB_MODEL_DIR=/tmp/strokelab-models
+    depends_on:
+      redis:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.ai_service.tasks.worker.WorkerSettings
+    volumes:
+      - strokelab_models:/tmp/strokelab-models
+    restart: unless-stopped
+
   # ==================================================================
   # INFRASTRUCTURE
   # ==================================================================
@@ -469,6 +521,7 @@ services:
 
 volumes:
   redis_data:
+  strokelab_models:
 
 networks:
   swimbuddz_proxy:
