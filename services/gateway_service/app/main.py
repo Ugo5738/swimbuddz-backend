@@ -211,6 +211,14 @@ def create_app() -> FastAPI:
         )
 
     @app.api_route(
+        "/api/v1/makeups/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_makeups(path: str, request: Request):
+        """Proxy all /api/v1/makeups/* requests to sessions service (make-up router)."""
+        return await proxy_request(clients.sessions_client, f"/makeups/{path}", request)
+
+    @app.api_route(
         "/api/v1/admin/sessions/{path:path}",
         methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
