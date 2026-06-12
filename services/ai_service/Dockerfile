@@ -7,9 +7,25 @@ COPY pyproject.toml README.md ./
 COPY libs/ libs/
 COPY services/ai_service/ services/ai_service/
 
-# Install with the strokelab extra — pulls torch / ultralytics / mediapipe /
-# opencv. Other services use `pip install .` and skip these heavy deps.
-RUN pip install --no-cache-dir --prefix=/install ".[strokelab]"
+# Install the strokelab extra — pulls torch / ultralytics / mediapipe / opencv.
+# Other services use `pip install .` and skip these heavy deps.
+#
+# On amd64, PyPI's default torch wheel bundles CUDA (libtorch_cuda.so, ~5-8GB)
+# even though prod has no GPU — pure dead weight that also runs the deploy box
+# out of disk. Inference already runs on CPU here (nano YOLO + lite MediaPipe,
+# no .cuda() calls). So we pin the CPU-only torch build from PyTorch's CPU index
+# (same versions, just +cpu); ultralytics then finds torch already satisfied and
+# skips the CUDA wheel, cutting the image from ~10GB to ~3GB. Gated on amd64 —
+# arm64 has no CUDA torch variant, so it installs normally there. Bump these two
+# pins together with any torch upgrade (keep them matched: torch<->torchvision).
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+        pip install --no-cache-dir --prefix=/install \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            "torch==2.12.0+cpu" "torchvision==0.27.0+cpu" ".[strokelab]"; \
+    else \
+        pip install --no-cache-dir --prefix=/install ".[strokelab]"; \
+    fi
 
 # ---- Stage 2: Runtime ----
 FROM python:3.11-slim
