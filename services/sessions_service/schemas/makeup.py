@@ -65,13 +65,36 @@ class MakeupBookingCreate(BaseModel):
 
 
 class MakeupRequestCreate(BaseModel):
-    """A learner's self-serve make-up request (admin confirms it later)."""
+    """A learner's self-serve make-up request (admin confirms it later).
+
+    Two modes, exactly one required:
+      * **join** an existing session the coach runs → ``scheduled_session_id``.
+      * **open slot** → ``starts_at`` + ``ends_at`` for a coach's open time; the
+        admin creates the dedicated session on confirm (the cohort is auto-derived
+        from the learner's session history with that coach).
+    """
 
     coach_member_id: uuid.UUID
-    scheduled_session_id: uuid.UUID
     origin: MakeupOrigin = MakeupOrigin.LEARNER_RESCHEDULE
     reason: str | None = Field(None, max_length=500)
     original_session_id: uuid.UUID | None = None
+    # Mode A — join an existing session:
+    scheduled_session_id: uuid.UUID | None = None
+    # Mode B — request a coach's open availability slot:
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _one_mode(self) -> "MakeupRequestCreate":
+        has_session = self.scheduled_session_id is not None
+        has_slot = self.starts_at is not None and self.ends_at is not None
+        if has_session == has_slot:
+            raise ValueError(
+                "Provide either scheduled_session_id or starts_at+ends_at."
+            )
+        if has_slot and self.ends_at <= self.starts_at:
+            raise ValueError("ends_at must be after starts_at.")
+        return self
 
 
 class MakeupOpenSlotCreate(BaseModel):
@@ -126,6 +149,8 @@ class MakeupBookingResponse(BaseModel):
     block_id: uuid.UUID | None = None
     original_session_id: uuid.UUID | None = None
     scheduled_session_id: uuid.UUID | None = None
+    requested_start_at: datetime | None = None
+    requested_end_at: datetime | None = None
     used_grace: bool
     notice_hours_at_request: int | None = None
     notes: str | None = None

@@ -62,6 +62,24 @@ async def get_session_ids_for_cohort(
     return resp.json()
 
 
+async def get_completed_session_ids_for_cohort(
+    cohort_id: str, *, calling_service: str
+) -> list[str]:
+    """Get session IDs for a cohort's COMPLETED sessions only.
+
+    Excludes scheduled/cancelled sessions, so it's the right denominator
+    for attendance calculations. Returns list of session ID strings.
+    """
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.SESSIONS_SERVICE_URL,
+        path=f"/internal/sessions/cohorts/{cohort_id}/completed-session-ids",
+        calling_service=calling_service,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 async def get_booking_by_id(booking_id: str, *, calling_service: str) -> Optional[dict]:
     """Fetch a SessionBooking by id.
 

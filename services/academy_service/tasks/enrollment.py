@@ -13,6 +13,8 @@ from libs.common.logging import get_logger
 from libs.common.service_client import (
     dispatch_notification,
     emit_rewards_event,
+    get_completed_session_ids_for_cohort,
+    get_member_attendance,
     get_members_bulk,
     internal_post,
 )
@@ -322,6 +324,29 @@ async def transition_cohort_statuses():
             break
 
 
+# Attendance statuses that count as "attended" for perfect attendance.
+# Matches how the rest of the platform treats LATE (sessions_service
+# `_makeup_outcome`, reporting's attendance rate): showed up = attended.
+_ATTENDED_STATUSES = {"present", "late"}
+
+
+def _attended_all_sessions(records: list[dict], session_ids: list[str]) -> bool:
+    """True when the attendance records cover every session in ``session_ids``.
+
+    A session counts as attended only with a stored record marked
+    'present' or 'late'. Unmarked sessions have NO stored record (the UI
+    merely displays them as "Absent") and count as missed, as do explicit
+    'absent'/'excused' records. An empty ``session_ids`` returns False —
+    no completed sessions means nothing to reward.
+    """
+    if not session_ids:
+        return False
+    attended = {
+        r.get("session_id") for r in records if r.get("status") in _ATTENDED_STATUSES
+    }
+    return all(sid in attended for sid in session_ids)
+
+
 async def _emit_graduation_rewards(db, cohort: Cohort) -> None:
     """Best-effort: emit graduation + perfect attendance rewards for enrolled students."""
     try:
@@ -342,6 +367,22 @@ async def _emit_graduation_rewards(db, cohort: Cohort) -> None:
         members_map = {m["id"]: m for m in members_data}
 
         program_name = cohort.program.name if cohort.program else "Swimming Course"
+
+        # Perfect attendance is judged against the cohort's COMPLETED
+        # sessions (cancelled/unheld sessions don't count against anyone).
+        # Sessions live in sessions_service — fetch once via internal HTTP.
+        try:
+            completed_session_ids = await get_completed_session_ids_for_cohort(
+                str(cohort.id), calling_service="academy"
+            )
+        except Exception:
+            completed_session_ids = []
+            logger.warning(
+                "Failed to fetch completed sessions for cohort %s — "
+                "skipping perfect-attendance rewards (best-effort)",
+                cohort.id,
+                exc_info=True,
+            )
 
         for enrollment in enrollments:
             member = members_map.get(str(enrollment.member_id), {})
@@ -392,6 +433,45 @@ async def _emit_graduation_rewards(db, cohort: Cohort) -> None:
                     enrollment.id,
                     exc_info=True,
                 )
+
+            # Emit academy.perfect_attendance when the student attended
+            # every completed session (attendance_records live in
+            # attendance_service — fetched via internal HTTP).
+            if completed_session_ids:
+                try:
+                    attendance_records = await get_member_attendance(
+                        str(enrollment.member_id),
+                        session_ids=completed_session_ids,
+                        calling_service="academy",
+                    )
+                    if _attended_all_sessions(
+                        attendance_records, completed_session_ids
+                    ):
+                        await emit_rewards_event(
+                            event_type="academy.perfect_attendance",
+                            member_auth_id=auth_id,
+                            member_id=str(enrollment.member_id),
+                            service_source="academy",
+                            event_data={
+                                "program_name": program_name,
+                                "cohort_name": cohort.name,
+                                "cohort_id": str(cohort.id),
+                                "sessions_attended": len(completed_session_ids),
+                            },
+                            idempotency_key=(
+                                f"academy-perfect-attendance-{enrollment.id}"
+                            ),
+                            calling_service="academy",
+                        )
+                except Exception:
+                    # Best-effort: graduation rewards for other students
+                    # should not be blocked by one attendance lookup.
+                    logger.warning(
+                        "Failed perfect-attendance check for enrollment %s "
+                        "(best-effort)",
+                        enrollment.id,
+                        exc_info=True,
+                    )
 
         logger.info(
             "Emitted graduation reward events for %d students in cohort %s",
