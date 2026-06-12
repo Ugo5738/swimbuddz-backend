@@ -55480,6 +55480,30 @@
             ],
             "title": "Scheduled Session Id"
           },
+          "requested_start_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Start At"
+          },
+          "requested_end_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested End At"
+          },
           "used_grace": {
             "type": "boolean",
             "title": "Used Grace"
@@ -55713,11 +55737,6 @@
             "format": "uuid",
             "title": "Coach Member Id"
           },
-          "scheduled_session_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Scheduled Session Id"
-          },
           "origin": {
             "$ref": "#/components/schemas/MakeupOrigin",
             "default": "learner_reschedule"
@@ -55745,15 +55764,50 @@
               }
             ],
             "title": "Original Session Id"
+          },
+          "scheduled_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Session Id"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
           }
         },
         "type": "object",
         "required": [
-          "coach_member_id",
-          "scheduled_session_id"
+          "coach_member_id"
         ],
         "title": "MakeupRequestCreate",
-        "description": "A learner's self-serve make-up request (admin confirms it later)."
+        "description": "A learner's self-serve make-up request (admin confirms it later).\n\nTwo modes, exactly one required:\n  * **join** an existing session the coach runs \u2192 ``scheduled_session_id``.\n  * **open slot** \u2192 ``starts_at`` + ``ends_at`` for a coach's open time; the\n    admin creates the dedicated session on confirm (the cohort is auto-derived\n    from the learner's session history with that coach)."
       },
       "MakeupStatus": {
         "type": "string",

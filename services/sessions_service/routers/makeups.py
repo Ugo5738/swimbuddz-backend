@@ -483,6 +483,95 @@ async def confirm_makeup_booking(
     return await _confirm_makeup_against_session(db, data=data, session=session)
 
 
+async def _create_makeup_session(
+    db: AsyncSession,
+    *,
+    coach_member_id: uuid.UUID,
+    cohort_id: uuid.UUID,
+    starts_at: datetime,
+    ends_at: datetime,
+    pool_id: uuid.UUID | None = None,
+    capacity: int = 1,
+    title: str | None = None,
+) -> Session:
+    """Build a dedicated COHORT_CLASS make-up session + attach the coach as lead.
+
+    Refuses a slot overlapping a session the coach already runs (409). Flushes so
+    the caller gets ``session.id``; the caller's commit makes it durable, and a
+    raise before commit rolls it back. Shared by the admin open-slot booking and
+    the confirm of a learner's open-slot request.
+    """
+    overlap = (
+        await db.execute(
+            select(SessionCoach.id)
+            .join(Session, Session.id == SessionCoach.session_id)
+            .where(SessionCoach.coach_id == coach_member_id)
+            .where(
+                Session.status.in_([SessionStatus.SCHEDULED, SessionStatus.IN_PROGRESS])
+            )
+            .where(Session.starts_at < ends_at)
+            .where(Session.ends_at > starts_at)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if overlap is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "The coach already has a session overlapping that time; "
+                "use the join-session option instead."
+            ),
+        )
+    session = Session(
+        session_type=SessionType.COHORT_CLASS,
+        cohort_id=cohort_id,
+        title=(title or "Make-up session"),
+        starts_at=starts_at,
+        ends_at=ends_at,
+        pool_id=pool_id,
+        capacity=capacity,
+        status=SessionStatus.SCHEDULED,
+        published_at=utc_now(),
+    )
+    db.add(session)
+    await db.flush()
+    db.add(SessionCoach(session_id=session.id, coach_id=coach_member_id, role="lead"))
+    await db.flush()
+    return session
+
+
+async def _derive_cohort_for_learner_coach(
+    db: AsyncSession,
+    *,
+    learner_member_id: uuid.UUID,
+    coach_member_id: uuid.UUID,
+) -> uuid.UUID | None:
+    """The cohort a learner shares with a coach, from the learner's own booking
+    history (sessions the coach leads that the learner has a booking in).
+
+    Returns the cohort_id only when it's unambiguous (exactly one); else None.
+    Used to auto-fill the cohort on an open-slot self-serve request so admin
+    confirm stays one-tap.
+    """
+    rows = (
+        (
+            await db.execute(
+                select(Session.cohort_id)
+                .join(SessionCoach, SessionCoach.session_id == Session.id)
+                .join(SessionBooking, SessionBooking.session_id == Session.id)
+                .where(SessionCoach.coach_id == coach_member_id)
+                .where(SessionBooking.member_id == learner_member_id)
+                .where(Session.cohort_id.isnot(None))
+                .distinct()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    cohorts = {c for c in rows if c is not None}
+    return next(iter(cohorts)) if len(cohorts) == 1 else None
+
+
 @router.post(
     "/open-slot",
     response_model=MakeupBookingResponse,
@@ -532,53 +621,18 @@ async def create_open_slot_makeup(
             detail="Could not determine the cohort for the make-up session.",
         )
 
-    # Refuse to create a slot overlapping a session the coach already runs — the
-    # join-session path (POST /makeups/bookings) is for that case.
-    overlap = (
-        await db.execute(
-            select(SessionCoach.id)
-            .join(Session, Session.id == SessionCoach.session_id)
-            .where(SessionCoach.coach_id == data.coach_member_id)
-            .where(
-                Session.status.in_([SessionStatus.SCHEDULED, SessionStatus.IN_PROGRESS])
-            )
-            .where(Session.starts_at < ends_at)
-            .where(Session.ends_at > starts_at)
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    if overlap is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "The coach already has a session overlapping that time; "
-                "use the join-session option instead."
-            ),
-        )
-
-    # Build the dedicated make-up session + attach the coach (flush for the id;
-    # the shared core commits everything atomically, or it all rolls back).
-    session = Session(
-        session_type=SessionType.COHORT_CLASS,
+    # Build the dedicated make-up session (overlap-checked); the shared core
+    # commits everything atomically, or a raise rolls it back.
+    session = await _create_makeup_session(
+        db,
+        coach_member_id=data.coach_member_id,
         cohort_id=cohort_id,
-        title=(data.title or "Make-up session"),
         starts_at=starts_at,
         ends_at=ends_at,
         pool_id=data.pool_id,
         capacity=data.capacity,
-        status=SessionStatus.SCHEDULED,
-        published_at=utc_now(),
+        title=data.title,
     )
-    db.add(session)
-    await db.flush()
-    db.add(
-        SessionCoach(
-            session_id=session.id,
-            coach_id=data.coach_member_id,
-            role="lead",
-        )
-    )
-    await db.flush()
 
     booking = MakeupBookingCreate(
         learner_member_id=data.learner_member_id,
@@ -772,52 +826,93 @@ async def request_makeup(
             detail="You already have an open make-up request.",
         )
 
-    session = (
-        await db.execute(select(Session).where(Session.id == data.scheduled_session_id))
-    ).scalar_one_or_none()
-    if session is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found."
-        )
-    coach_assigned = (
-        await db.execute(
-            select(SessionCoach.id).where(
-                SessionCoach.session_id == session.id,
-                SessionCoach.coach_id == data.coach_member_id,
+    if data.scheduled_session_id is not None:
+        # Mode A — join an existing session the coach runs.
+        session = (
+            await db.execute(
+                select(Session).where(Session.id == data.scheduled_session_id)
             )
-        )
-    ).scalar_one_or_none()
-    if coach_assigned is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="That session isn't led by this coach.",
-        )
-    confirmed_count = (
-        await db.execute(
-            select(func.count())
-            .select_from(SessionBooking)
-            .where(
-                SessionBooking.session_id == session.id,
-                SessionBooking.status == SessionBookingStatus.CONFIRMED,
+        ).scalar_one_or_none()
+        if session is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Session not found."
             )
+        coach_assigned = (
+            await db.execute(
+                select(SessionCoach.id).where(
+                    SessionCoach.session_id == session.id,
+                    SessionCoach.coach_id == data.coach_member_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if coach_assigned is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="That session isn't led by this coach.",
+            )
+        confirmed_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(SessionBooking)
+                .where(
+                    SessionBooking.session_id == session.id,
+                    SessionBooking.status == SessionBookingStatus.CONFIRMED,
+                )
+            )
+        ).scalar_one()
+        if confirmed_count >= session.capacity:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="That session is full."
+            )
+        makeup = MakeupBooking(
+            learner_member_id=learner_id,
+            coach_member_id=data.coach_member_id,
+            learner_type=MakeupLearnerType.COHORT,
+            origin=data.origin,
+            original_session_id=data.original_session_id,
+            scheduled_session_id=session.id,
+            status=MakeupStatus.REQUESTED,
+            hold_expires_at=utc_now() + timedelta(minutes=_HOLD_MINUTES),
+            notes=data.reason,
         )
-    ).scalar_one()
-    if confirmed_count >= session.capacity:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="That session is full."
+    else:
+        # Mode B — request a coach's open availability slot. No session exists
+        # yet; hold the desired time and auto-derive the cohort so admin confirm
+        # can create the dedicated session in one tap (design §4 Phase 2).
+        starts_at = _as_utc(data.starts_at)
+        ends_at = _as_utc(data.ends_at)
+        if starts_at <= utc_now():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="The make-up slot must be in the future.",
+            )
+        cohort_id = await _derive_cohort_for_learner_coach(
+            db,
+            learner_member_id=learner_id,
+            coach_member_id=data.coach_member_id,
         )
-
-    makeup = MakeupBooking(
-        learner_member_id=learner_id,
-        coach_member_id=data.coach_member_id,
-        learner_type=MakeupLearnerType.COHORT,
-        origin=data.origin,
-        original_session_id=data.original_session_id,
-        scheduled_session_id=session.id,
-        status=MakeupStatus.REQUESTED,
-        hold_expires_at=utc_now() + timedelta(minutes=_HOLD_MINUTES),
-        notes=data.reason,
-    )
+        if cohort_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "Couldn't match you to a cohort with this coach "
+                    "automatically — please ask an admin to set up the make-up."
+                ),
+            )
+        makeup = MakeupBooking(
+            learner_member_id=learner_id,
+            coach_member_id=data.coach_member_id,
+            learner_type=MakeupLearnerType.COHORT,
+            block_kind=MakeupBlockKind.COHORT_TERM,
+            block_id=cohort_id,
+            origin=data.origin,
+            original_session_id=data.original_session_id,
+            requested_start_at=starts_at,
+            requested_end_at=ends_at,
+            status=MakeupStatus.REQUESTED,
+            hold_expires_at=utc_now() + timedelta(minutes=_HOLD_MINUTES),
+            notes=data.reason,
+        )
     db.add(makeup)
     await db.commit()
     await db.refresh(makeup)
@@ -870,10 +965,29 @@ async def confirm_makeup_request(
             detail=f"Cannot confirm a make-up in status {makeup.status.value}.",
         )
     if makeup.scheduled_session_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Make-up has no scheduled session.",
+        if makeup.requested_start_at is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Make-up has no scheduled session.",
+            )
+        # Open-slot self-serve request: create the dedicated session now, using
+        # the cohort auto-derived when the learner requested it.
+        if makeup.block_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "Couldn't determine the cohort for this make-up — "
+                    "book it via the open-slot tool instead."
+                ),
+            )
+        new_session = await _create_makeup_session(
+            db,
+            coach_member_id=makeup.coach_member_id,
+            cohort_id=makeup.block_id,
+            starts_at=makeup.requested_start_at,
+            ends_at=makeup.requested_end_at,
         )
+        makeup.scheduled_session_id = new_session.id
 
     learner = await get_member_by_id(
         str(makeup.learner_member_id), calling_service="sessions"

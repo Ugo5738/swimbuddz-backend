@@ -166,9 +166,9 @@ These are mounted on the members service directly (not exposed through the gatew
 #### Learner self-serve (Phase 1.5)
 
 - **`GET /api/v1/makeups/me/options`** — *Auth: Member.* A learner's own bookable options for a coach (`coach_id`, `from`, `to`); same shape as the admin bookable-slots, scoped to the authenticated learner.
-- **`POST /api/v1/makeups/me/requests`** — *Auth: Member.* Learner requests a make-up against a chosen session → `REQUESTED` + a soft hold. Body `MakeupRequestCreate` — `{ coach_member_id, scheduled_session_id, origin, reason?, original_session_id? }`. Gates: reason for `learner_reschedule`, one outstanding at a time, session led by the coach + has room. Booking the learner in happens on admin confirm.
+- **`POST /api/v1/makeups/me/requests`** — *Auth: Member.* Learner requests a make-up → `REQUESTED` + a soft hold. Body `MakeupRequestCreate` — exactly one of: **join** an existing session (`scheduled_session_id`) or **open slot** (`starts_at` + `ends_at`, a coach's open availability time); plus `{ coach_member_id, origin, reason?, original_session_id? }`. For an open slot the cohort is **auto-derived** from the learner's own session history with that coach, and the dedicated session is created on admin confirm. Gates: reason for `learner_reschedule`, one outstanding at a time; join mode also requires the session be led by the coach + have room; open mode requires a future time + a derivable cohort.
 - **`GET /api/v1/makeups/me/requests`** — *Auth: Member.* The learner's own make-up bookings.
-- **`POST /api/v1/makeups/bookings/{id}/confirm`** — *Auth: Admin.* One-tap confirm of a `REQUESTED`/`HELD` request → books the learner in (capacity-checked) + flips the obligation → `CONFIRMED`.
+- **`POST /api/v1/makeups/bookings/{id}/confirm`** — *Auth: Admin.* One-tap confirm of a `REQUESTED`/`HELD` request → `CONFIRMED`. A **join** request books the learner into the existing session; an **open-slot** request first **creates the dedicated COHORT_CLASS session** (auto-derived cohort, overlap-checked) then books the learner in. Flips the linked obligation (best-effort).
 
 ---
 

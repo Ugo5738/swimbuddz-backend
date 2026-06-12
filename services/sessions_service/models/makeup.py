@@ -95,6 +95,16 @@ class MakeupBooking(Base):
         UUID(as_uuid=True), nullable=True, index=True
     )  # the make-up slot, once confirmed
 
+    # An open-slot self-serve request has no session yet — the learner's desired
+    # time is held here until an admin confirms and the dedicated session is
+    # created. NULL for join-an-existing-session requests and admin bookings.
+    requested_start_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    requested_end_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     status: Mapped[MakeupStatus] = mapped_column(
         SAEnum(
             MakeupStatus,
