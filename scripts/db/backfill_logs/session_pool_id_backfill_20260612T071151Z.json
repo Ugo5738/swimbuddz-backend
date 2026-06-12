@@ -1,0 +1,168 @@
+{
+  "tag": "session-pool-id-backfill 2026-06-11",
+  "ran_at_utc": "2026-06-12T07:11:51.674665+00:00",
+  "committed": true,
+  "rollback": "python3 scripts/db/backfill_session_pool_ids.py --rollback <this file>",
+  "updates": [
+    {
+      "session_id": "49cc6825-9845-4a27-8c07-dec8ac038591",
+      "title": "Week 6 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-06-07T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    },
+    {
+      "session_id": "9a6c6be6-c84c-48d1-b275-37ecce84a8b4",
+      "title": "Week 6 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-06-11T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    },
+    {
+      "session_id": "a81ddf92-b48e-4940-b2d2-77fc1e40f3f4",
+      "title": "Week 7 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-06-14T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    },
+    {
+      "session_id": "2df4b515-03c3-467b-bb6c-bfdf792f7357",
+      "title": "Week 7 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-06-18T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    },
+    {
+      "session_id": "e93a9a27-734e-49d8-a5c3-a82dcc0dbb91",
+      "title": "Week 8 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-06-21T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    },
+    {
+      "session_id": "c9669f5a-3e9f-4990-8fcf-890d77b24de3",
+      "title": "Week 8 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-06-25T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    },
+    {
+      "session_id": "69336bd6-78ef-4140-957d-1258a3bc2e23",
+      "title": "Week 9 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-06-28T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    },
+    {
+      "session_id": "49b3f9cf-7c28-409f-aa15-91ff384f4ceb",
+      "title": "Week 9 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-07-02T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    },
+    {
+      "session_id": "3f35c3a7-0811-47f7-9666-a3877968616c",
+      "title": "Week 10 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-07-05T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    },
+    {
+      "session_id": "3ee3fa70-ca9c-42cf-bb29-14578ac920a4",
+      "title": "Week 10 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-07-09T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    },
+    {
+      "session_id": "33221478-6934-4fbf-8ce2-290364ddc623",
+      "title": "Week 11 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-07-12T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    },
+    {
+      "session_id": "0c38d2d0-c5bb-4441-81c3-40ddb9bedde0",
+      "title": "Week 11 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-07-16T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    },
+    {
+      "session_id": "4b794681-7413-4f2f-a4e1-086b3b20fb05",
+      "title": "Week 12 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-07-19T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    },
+    {
+      "session_id": "4594bde5-d14a-4bcb-962d-3891f0ede975",
+      "title": "Week 12 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-07-23T14:00:00+00:00",
+      "location": "other",
+      "location_name": "Siloam Pool",
+      "old_pool_id": null,
+      "new_pool_id": "8328d77c-300d-4b5d-bca3-6e51a6c68282",
+      "pool_name": "Siloam Pool",
+      "reason": "location_name 'Siloam Pool' matches 'Siloam%'"
+    }
+  ],
+  "skipped": [
+    {
+      "session_id": "fcc14c96-f6cf-4bae-9963-4abfc5f2d07d",
+      "why": "sunfit_pool enum but no registry row"
+    }
+  ]
+}

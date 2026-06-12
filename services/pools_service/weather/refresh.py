@@ -13,16 +13,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.logging import get_logger
-from services.pools_service.models import PartnershipStatus, Pool
+from services.pools_service.models import Pool
 from services.pools_service.weather.snapshot_service import fetch_and_store
 
 logger = get_logger(__name__)
 
 
 def _active_pools_query():
+    # Any active pool that has been geocoded — partnership status is NOT a gate.
+    # Weather is operational: we run sessions at "prospect" pools (e.g. Rowe Park)
+    # too, so geocoding a pool (setting lat/long) is the opt-in, not the CRM stage.
     return select(Pool).where(
-        Pool.partnership_status == PartnershipStatus.ACTIVE_PARTNER,
         Pool.is_active.is_(True),
+        Pool.latitude.is_not(None),
+        Pool.longitude.is_not(None),
     )
 
 
@@ -71,11 +75,14 @@ async def refresh_all_pools(db: AsyncSession) -> dict:
 async def get_pool_coords(
     db: AsyncSession, pool_id: uuid.UUID
 ) -> Optional[tuple[float, float, Optional[str]]]:
-    """Return (lat, lon, label) for an active pool with coordinates, else None."""
+    """Return (lat, lon, label) for an active geocoded pool, else None.
+
+    Not gated on partnership status — any active pool with coordinates is
+    eligible for weather (see ``_active_pools_query``).
+    """
     result = await db.execute(
         select(Pool).where(
             Pool.id == pool_id,
-            Pool.partnership_status == PartnershipStatus.ACTIVE_PARTNER,
             Pool.is_active.is_(True),
         )
     )

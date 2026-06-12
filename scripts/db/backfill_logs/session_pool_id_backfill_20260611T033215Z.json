@@ -1,0 +1,323 @@
+{
+  "tag": "session-pool-id-backfill 2026-06-11",
+  "ran_at_utc": "2026-06-11T03:32:15.032326+00:00",
+  "committed": true,
+  "rollback": "python3 scripts/db/backfill_session_pool_ids.py --rollback <this file>",
+  "updates": [
+    {
+      "session_id": "c53f9c19-3715-4dcb-9d39-5ceeba33db5e",
+      "title": "Saturday Swim",
+      "starts_at": "2026-02-07T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": null,
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "53ac8ede-44b6-47f7-8f49-6aa0b21c402d",
+      "title": "Saturday Swim",
+      "starts_at": "2026-02-14T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": "rowe_park_pool",
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "48d074ea-5626-4833-8beb-c930e61c3e50",
+      "title": "Saturday Swim",
+      "starts_at": "2026-02-21T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": "Rowe Park, Yaba",
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "7c3f481d-69f3-41cb-8cfc-85137ef23edd",
+      "title": "Week 1 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-02-28T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": "Rowe Park Pool",
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "c825580c-7f9b-41eb-87d9-d2bf5624d9e6",
+      "title": "Saturday Swim",
+      "starts_at": "2026-02-28T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": "Rowe Park, Yaba",
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "89d86c60-3449-43ef-8b50-b48ad2b14bda",
+      "title": "Saturday Swim",
+      "starts_at": "2026-03-07T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": "Rowe Park, Yaba",
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "9ead215a-751e-4f2e-b288-5c1f75362297",
+      "title": "Week 2 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-03-07T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": "Rowe Park Pool",
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "17de77ee-2858-42f0-96b3-2073f09c44a8",
+      "title": "Saturday Swim",
+      "starts_at": "2026-03-14T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": null,
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "d80757fc-5e62-46a7-9b1d-1e6be0e6cd2e",
+      "title": "Week 3 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-03-14T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": "Rowe Park Pool",
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "2c5bf627-4513-4b72-b0fd-32be96254f61",
+      "title": "Week 4 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-03-21T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": "Rowe Park Pool",
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "ef1732d4-2a5e-475a-8cc8-185d4c442bbd",
+      "title": "Saturday Swim",
+      "starts_at": "2026-03-21T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": null,
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "2764824a-e0e8-40cd-a51a-29775eb6b63f",
+      "title": "Week 5 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-03-28T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": "Rowe Park Pool",
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "e5a1345a-0212-4aad-9698-42964c2ffe6d",
+      "title": "Saturday Swim",
+      "starts_at": "2026-03-28T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": null,
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "8def741a-ade2-4e90-b1a2-a94c0f74beee",
+      "title": "Makeup Swim",
+      "starts_at": "2026-04-04T08:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": null,
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "efdba82d-877a-4634-9a37-ca3286d86b70",
+      "title": "Saturday Morning Swim",
+      "starts_at": "2026-04-04T08:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": null,
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "c7d2627b-5498-4cf4-9397-73526ea2a6d0",
+      "title": "Saturday Club Swim",
+      "starts_at": "2026-04-04T08:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": null,
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "4b4301f6-bf23-44b1-9354-bc8c7b07badc",
+      "title": "Saturday Noon Swim",
+      "starts_at": "2026-04-04T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": null,
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "a7efb8f8-b171-4992-b1c1-3ec21f30e834",
+      "title": "Week 6 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-04-04T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": "Rowe Park Pool",
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "edde43b8-8ea6-411e-b481-fb74fab34741",
+      "title": "Week 7 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-04-11T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": "Rowe Park Pool",
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "20815e4f-4285-453b-8f27-0d7c5e12870d",
+      "title": "Saturday Swim",
+      "starts_at": "2026-04-11T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": null,
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "122ebba2-756a-4a53-8c72-7f72cce9e654",
+      "title": "Saturday Club Swim",
+      "starts_at": "2026-04-18T08:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": null,
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "02020949-2d59-40d4-9b61-0de5dde66d88",
+      "title": "Week 1 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-04-18T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": "Rowe Park Pool",
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    },
+    {
+      "session_id": "45f02f35-437f-450d-9b4f-c70a4394287f",
+      "title": "Week 8 - Beginner Freestyle: Zero to 50 Meters",
+      "starts_at": "2026-04-18T11:00:00+00:00",
+      "location": "rowe_park_pool",
+      "location_name": "Rowe Park Pool",
+      "old_pool_id": null,
+      "new_pool_id": "b9161ca5-09d2-49e2-9187-312349359c61",
+      "pool_name": "Rowe Park Pool",
+      "reason": "location enum = rowe_park_pool"
+    }
+  ],
+  "skipped": [
+    {
+      "session_id": "fcc14c96-f6cf-4bae-9963-4abfc5f2d07d",
+      "why": "sunfit_pool enum but no registry row"
+    },
+    {
+      "session_id": "49cc6825-9845-4a27-8c07-dec8ac038591",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    },
+    {
+      "session_id": "9a6c6be6-c84c-48d1-b275-37ecce84a8b4",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    },
+    {
+      "session_id": "a81ddf92-b48e-4940-b2d2-77fc1e40f3f4",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    },
+    {
+      "session_id": "2df4b515-03c3-467b-bb6c-bfdf792f7357",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    },
+    {
+      "session_id": "e93a9a27-734e-49d8-a5c3-a82dcc0dbb91",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    },
+    {
+      "session_id": "c9669f5a-3e9f-4990-8fcf-890d77b24de3",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    },
+    {
+      "session_id": "69336bd6-78ef-4140-957d-1258a3bc2e23",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    },
+    {
+      "session_id": "49b3f9cf-7c28-409f-aa15-91ff384f4ceb",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    },
+    {
+      "session_id": "3f35c3a7-0811-47f7-9666-a3877968616c",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    },
+    {
+      "session_id": "3ee3fa70-ca9c-42cf-bb29-14578ac920a4",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    },
+    {
+      "session_id": "33221478-6934-4fbf-8ce2-290364ddc623",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    },
+    {
+      "session_id": "0c38d2d0-c5bb-4441-81c3-40ddb9bedde0",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    },
+    {
+      "session_id": "4b794681-7413-4f2f-a4e1-086b3b20fb05",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    },
+    {
+      "session_id": "4594bde5-d14a-4bcb-962d-3891f0ede975",
+      "why": "no mapping (location=other, name='Siloam Pool')"
+    }
+  ]
+}
