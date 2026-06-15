@@ -89,6 +89,14 @@ async def _existing(
     ).scalar_one_or_none()
 
 
+async def find_sale_grant(
+    db: AsyncSession, *, sale_id: str
+) -> Optional[AnalyzerCreditLedger]:
+    """The existing GUMROAD_GRANT ledger row for a sale, if any — for the
+    redeem '409 already redeemed' check."""
+    return await _existing(db, f"gumroad-sale-{sale_id}")
+
+
 def _post(
     db: AsyncSession,
     account: AnalyzerCreditAccount,

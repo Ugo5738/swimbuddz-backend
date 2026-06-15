@@ -140,3 +140,25 @@ class PublicAnalysisJobDetailResponse(BaseModel):
     result: Optional[AnalysisResultPayload] = None
     original_video_url: Optional[str] = None
     annotated_video_url: Optional[str] = None
+
+
+class GumroadRedeemRequest(BaseModel):
+    """Body for POST /ai/public/credits/redeem — the different-email fallback."""
+
+    email: str
+    license_key: str
+    product_permalink: str
+
+
+class GumroadRedeemResponse(BaseModel):
+    granted: int
+    remaining_credits: int
+
+
+class PublicCreditsResponse(BaseModel):
+    """GET /ai/public/credits — coarse, non-enumerable balance. ``free_used`` is
+    intentionally NOT exposed (it is the 'has this email been used' leak)."""
+
+    email: str
+    can_submit_free: bool
+    remaining_credits: int

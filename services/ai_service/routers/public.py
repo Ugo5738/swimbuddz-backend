@@ -29,12 +29,14 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     status,
 )
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.ai_service.analysis.storage import (
@@ -57,12 +59,25 @@ from services.ai_service.routers.analyze import (
     _enqueue_analysis,
 )
 from services.ai_service.schemas.analysis import (
+    GumroadRedeemRequest,
+    GumroadRedeemResponse,
     PublicAnalysisJobDetailResponse,
     PublicAnalysisJobResponse,
+    PublicCreditsResponse,
 )
 from services.ai_service.services.credit_ops import (
+    PERMALINK_CREDITS,
     NoCreditsError,
     acquire_for_submit,
+    find_sale_grant,
+    get_balance,
+    grant_paid,
+    revoke_sale,
+)
+from services.ai_service.services.gumroad import (
+    GUMROAD_PING_TOKEN,
+    GUMROAD_SELLER_ID,
+    verify_license,
 )
 
 logger = get_logger(__name__)
@@ -253,3 +268,152 @@ async def get_public_analysis_job(
         original_video_url=original_url,
         annotated_video_url=annotated_url,
     )
+
+
+# ── GET /ai/public/credits ───────────────────────────────────────
+
+
+@router.get(
+    "/credits",
+    response_model=PublicCreditsResponse,
+    summary="Coarse analyzer credit balance for an email",
+)
+async def get_public_credits(
+    email: str,
+    db: AsyncSession = Depends(get_async_db),
+) -> PublicCreditsResponse:
+    """Coarse, non-enumerable balance for the paywall. ``free_used`` is not
+    exposed (it is the 'has this email been used' leak — design §4.3)."""
+    normalized = _normalize_email(email)
+    bal = await get_balance(db, raw_email=normalized)
+    return PublicCreditsResponse(
+        email=normalized,
+        can_submit_free=bal["can_submit_free"],
+        remaining_credits=bal["remaining_credits"],
+    )
+
+
+# ── POST /ai/public/credits/redeem ───────────────────────────────
+
+
+@router.post(
+    "/credits/redeem",
+    response_model=GumroadRedeemResponse,
+    summary="Redeem a Gumroad license key for analyzer credits",
+)
+async def redeem_license(
+    body: GumroadRedeemRequest,
+    db: AsyncSession = Depends(get_async_db),
+) -> GumroadRedeemResponse:
+    """Different-email fallback: a buyer whose Gumroad email differs from their
+    analyzer email pastes their license key. Verified against Gumroad; idempotent
+    on the sale so the webhook + redeem can't double-credit."""
+    email = _normalize_email(body.email)
+    permalink = (body.product_permalink or "").strip()
+    license_key = (body.license_key or "").strip()
+    if permalink not in PERMALINK_CREDITS:
+        raise HTTPException(status_code=400, detail={"reason": "unknown_product"})
+
+    purchase = await verify_license(permalink, license_key)
+    sale_id = (purchase or {}).get("sale_id")
+    if not purchase or not sale_id:
+        raise HTTPException(status_code=422, detail={"reason": "license_invalid"})
+
+    if (existing := await find_sale_grant(db, sale_id=sale_id)) is not None:
+        # Reveal only the email the sale already credited, to the key holder.
+        raise HTTPException(
+            status_code=409,
+            detail={"reason": "already_redeemed", "email": existing.email},
+        )
+
+    entry = await grant_paid(
+        db,
+        raw_email=email,
+        permalink=permalink,
+        sale_id=sale_id,
+        license_key=license_key,
+    )
+    if entry is None:
+        raise HTTPException(status_code=400, detail={"reason": "unknown_product"})
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail={"reason": "already_redeemed"})
+    return GumroadRedeemResponse(
+        granted=entry.amount, remaining_credits=entry.balance_after
+    )
+
+
+# ── POST /ai/public/gumroad/webhook ──────────────────────────────
+
+
+@router.post(
+    "/gumroad/webhook",
+    summary="Gumroad Ping — grant credits on sale, revoke on refund/dispute",
+)
+async def gumroad_webhook(
+    request: Request,
+    token: Annotated[Optional[str], Query()] = None,
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    """Gumroad has no signature, so we layer three checks (design §7.2): an
+    unguessable shared-secret path token, a seller_id match, and a MANDATORY
+    license re-verify before granting. Always returns 200 (except a bad path
+    token → 403) so Gumroad does not retry-storm."""
+    # 1. Shared-secret path token — reject before parsing the body.
+    if (
+        not GUMROAD_PING_TOKEN
+        or not token
+        or not secrets.compare_digest(token, GUMROAD_PING_TOKEN)
+    ):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    form = await request.form()
+    seller_id = str(form.get("seller_id") or "").strip()
+    sale_id = str(form.get("sale_id") or "").strip()
+    buyer_email = str(form.get("email") or "").strip()
+    permalink = str(
+        form.get("product_permalink") or form.get("permalink") or ""
+    ).strip()
+    license_key = str(form.get("license_key") or "").strip()
+    refunded = str(form.get("refunded") or "").lower() in ("true", "1")
+    disputed = str(form.get("disputed") or "").lower() in ("true", "1")
+
+    # 2. seller_id match (cheap sanity filter; not a secret). 200-and-drop on
+    # mismatch so we never reveal which checks ran.
+    if GUMROAD_SELLER_ID and seller_id and seller_id != GUMROAD_SELLER_ID:
+        logger.warning("Gumroad webhook seller_id mismatch (%s)", seller_id)
+        return {"received": True}
+    if not sale_id or not buyer_email or not permalink:
+        return {"received": True}
+
+    try:
+        if refunded or disputed:
+            await revoke_sale(
+                db, raw_email=buyer_email, permalink=permalink, sale_id=sale_id
+            )
+            await db.commit()
+        else:
+            # 3. MANDATORY license re-verify — a sale Ping with no verifiable key
+            # is NEVER granted (seller_id alone is public, never sufficient).
+            if not license_key:
+                return {"received": True}
+            purchase = await verify_license(permalink, license_key)
+            if not purchase or purchase.get("sale_id") != sale_id:
+                logger.info(
+                    "Gumroad webhook verify failed / sale mismatch: %s", sale_id
+                )
+                return {"received": True}
+            await grant_paid(
+                db,
+                raw_email=buyer_email,
+                permalink=permalink,
+                sale_id=sale_id,
+                license_key=license_key,
+            )
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001 — the webhook must always ack
+        await db.rollback()
+        logger.exception("Gumroad webhook error for sale %s: %s", sale_id, exc)
+    return {"received": True}

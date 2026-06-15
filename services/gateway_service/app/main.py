@@ -533,6 +533,22 @@ def create_app() -> FastAPI:
         """Proxy the guest analyzer submit to AI service (IP rate-limited)."""
         return await proxy_request(clients.ai_client, "/ai/public/analyze", request)
 
+    @app.api_route("/api/v1/ai/public/gumroad/webhook", methods=["POST"])
+    @limiter.limit("30/minute")
+    async def proxy_public_gumroad_webhook(request: Request):
+        """Proxy the Gumroad Ping webhook to AI service (IP rate-limited)."""
+        return await proxy_request(
+            clients.ai_client, "/ai/public/gumroad/webhook", request
+        )
+
+    @app.api_route("/api/v1/ai/public/credits/redeem", methods=["POST"])
+    @limiter.limit("5/minute")
+    async def proxy_public_redeem(request: Request):
+        """Proxy the license-redeem to AI service (brute-force rate-limited)."""
+        return await proxy_request(
+            clients.ai_client, "/ai/public/credits/redeem", request
+        )
+
     @app.api_route(
         "/api/v1/ai/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
     )

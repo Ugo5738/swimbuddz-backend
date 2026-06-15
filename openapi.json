@@ -27781,6 +27781,143 @@
         }
       }
     },
+    "/api/v1/ai/public/credits": {
+      "get": {
+        "tags": [
+          "stroke-lab-public"
+        ],
+        "summary": "Coarse analyzer credit balance for an email",
+        "description": "Coarse, non-enumerable balance for the paywall. ``free_used`` is not\nexposed (it is the 'has this email been used' leak \u2014 design \u00a74.3).",
+        "operationId": "get_public_credits_ai_public_credits_get",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Email"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicCreditsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/public/credits/redeem": {
+      "post": {
+        "tags": [
+          "stroke-lab-public"
+        ],
+        "summary": "Redeem a Gumroad license key for analyzer credits",
+        "description": "Different-email fallback: a buyer whose Gumroad email differs from their\nanalyzer email pastes their license key. Verified against Gumroad; idempotent\non the sale so the webhook + redeem can't double-credit.",
+        "operationId": "redeem_license_ai_public_credits_redeem_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GumroadRedeemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GumroadRedeemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/public/gumroad/webhook": {
+      "post": {
+        "tags": [
+          "stroke-lab-public"
+        ],
+        "summary": "Gumroad Ping \u2014 grant credits on sale, revoke on refund/dispute",
+        "description": "Gumroad has no signature, so we layer three checks (design \u00a77.2): an\nunguessable shared-secret path token, a seller_id match, and a MANDATORY\nlicense re-verify before granting. Always returns 200 (except a bad path\ntoken \u2192 403) so Gumroad does not retry-storm.",
+        "operationId": "gumroad_webhook_ai_public_gumroad_webhook_post",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Gumroad Webhook Ai Public Gumroad Webhook Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/founding-members/stats": {
       "get": {
         "tags": [
@@ -76802,6 +76939,48 @@
         ],
         "title": "FoundingStatsResponse"
       },
+      "GumroadRedeemRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "license_key": {
+            "type": "string",
+            "title": "License Key"
+          },
+          "product_permalink": {
+            "type": "string",
+            "title": "Product Permalink"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "license_key",
+          "product_permalink"
+        ],
+        "title": "GumroadRedeemRequest",
+        "description": "Body for POST /ai/public/credits/redeem \u2014 the different-email fallback."
+      },
+      "GumroadRedeemResponse": {
+        "properties": {
+          "granted": {
+            "type": "integer",
+            "title": "Granted"
+          },
+          "remaining_credits": {
+            "type": "integer",
+            "title": "Remaining Credits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "granted",
+          "remaining_credits"
+        ],
+        "title": "GumroadRedeemResponse"
+      },
       "Observation": {
         "properties": {
           "key": {
@@ -77050,6 +77229,30 @@
         ],
         "title": "PublicAnalysisJobResponse",
         "description": "What POST /ai/public/analyze returns. No ``member_auth_id`` (guests\nhave none); echoes the per-job ``guest_token`` so the FE can store it\nfor polling."
+      },
+      "PublicCreditsResponse": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "can_submit_free": {
+            "type": "boolean",
+            "title": "Can Submit Free"
+          },
+          "remaining_credits": {
+            "type": "integer",
+            "title": "Remaining Credits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "can_submit_free",
+          "remaining_credits"
+        ],
+        "title": "PublicCreditsResponse",
+        "description": "GET /ai/public/credits \u2014 coarse, non-enumerable balance. ``free_used`` is\nintentionally NOT exposed (it is the 'has this email been used' leak)."
       },
       "QueueRecentJob": {
         "properties": {
