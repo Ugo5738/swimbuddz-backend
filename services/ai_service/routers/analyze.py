@@ -106,13 +106,19 @@ async def _build_detail_response(
 
 
 async def _enqueue_analysis(
-    job_id: uuid.UUID, queue_name: str = MEMBER_QUEUE_NAME
+    job_id: uuid.UUID,
+    queue_name: str = MEMBER_QUEUE_NAME,
+    *,
+    raise_on_error: bool = False,
 ) -> None:
     """Push the analysis task onto an AI queue (member ``arq:ai`` by default,
     or the public ``arq:ai-public`` queue for guest jobs). Created on every
     call rather than holding a pool because the API container may not have
-    redis available in every environment — failure is logged but not
-    bubbled (the row sits in PENDING and is retryable)."""
+    redis available in every environment.
+
+    Member callers swallow failures (the row sits in PENDING, retryable). Public
+    callers pass ``raise_on_error=True``: a credit is already reserved, so the
+    caller must catch the failure and refund it (design §4.1)."""
     try:
         pool = await create_pool(get_redis_settings())
         await pool.enqueue_job(
@@ -125,6 +131,8 @@ async def _enqueue_analysis(
         logger.exception(
             "Failed to enqueue Stroke Lab job %s: %s — left in PENDING", job_id, exc
         )
+        if raise_on_error:
+            raise
 
 
 # ── POST /ai/analyze ─────────────────────────────────────────────

@@ -202,3 +202,50 @@ async def test_get_credits_coarse_no_free_used(ai_client):
     assert body["can_submit_free"] is True  # fresh email
     assert body["remaining_credits"] == 0
     assert "free_used" not in body  # the enumeration field is never exposed
+
+
+# ── verify_license rejects reversed sales (security-review regression) ──
+
+
+class _FakeResp:
+    status_code = 200
+
+    def __init__(self, payload):
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class _FakeClient:
+    def __init__(self, payload):
+        self._payload = payload
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def post(self, *a, **k):
+        return _FakeResp(self._payload)
+
+
+@pytest.mark.asyncio
+async def test_verify_license_rejects_reversed_sale():
+    from services.ai_service.services import gumroad
+
+    refunded = {"success": True, "purchase": {"sale_id": "s1", "refunded": True}}
+    with patch(
+        "services.ai_service.services.gumroad.httpx.AsyncClient",
+        lambda *a, **k: _FakeClient(refunded),
+    ):
+        assert await gumroad.verify_license("vrjec", "key") is None
+
+    ok = {"success": True, "purchase": {"sale_id": "s1"}}
+    with patch(
+        "services.ai_service.services.gumroad.httpx.AsyncClient",
+        lambda *a, **k: _FakeClient(ok),
+    ):
+        got = await gumroad.verify_license("vrjec", "key")
+        assert got and got["sale_id"] == "s1"

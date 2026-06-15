@@ -62,4 +62,15 @@ async def verify_license(permalink: str, license_key: str) -> Optional[dict]:
         return None
     if not body.get("success"):
         return None
-    return body.get("purchase") or {}
+    purchase = body.get("purchase") or {}
+    # A license stays verifiable AFTER a refund/dispute/chargeback — Gumroad just
+    # flags the purchase. Never grant credits for a reversed sale (this single
+    # gate covers both the webhook grant and the license-redeem path).
+    if (
+        purchase.get("refunded")
+        or purchase.get("disputed")
+        or purchase.get("chargebacked")
+    ):
+        logger.info("Gumroad verify: sale reversed (refunded/disputed/chargebacked)")
+        return None
+    return purchase

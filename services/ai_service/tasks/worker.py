@@ -34,6 +34,12 @@ class WorkerSettings:
     # by increasing max_jobs.
     max_jobs = 1
 
+    # One attempt only. task_analyze_swim_video catches its own exceptions and
+    # returns a status dict (never raises), so arq never retries — but pin it so
+    # a future change can't silently enable arq's default retries and re-run a
+    # public job whose credit was already consumed/refunded (design §6.5).
+    max_tries = 1
+
     # Generous timeout — design budget is <90s per minute of video, but
     # cold-starts have to download the pose + YOLO models (~10 MB) and a
     # 50 MB upload before any inference starts.

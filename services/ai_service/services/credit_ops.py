@@ -111,6 +111,7 @@ def _post(
     gumroad_sale_id: Optional[str] = None,
     gumroad_license_key: Optional[str] = None,
     gumroad_permalink: Optional[str] = None,
+    reversal_of_id: Optional[uuid.UUID] = None,
 ) -> AnalyzerCreditLedger:
     entry = AnalyzerCreditLedger(
         account_id=account.id,
@@ -126,6 +127,7 @@ def _post(
         gumroad_sale_id=gumroad_sale_id,
         gumroad_license_key=gumroad_license_key,
         gumroad_permalink=gumroad_permalink,
+        reversal_of_id=reversal_of_id,
     )
     db.add(entry)
     return entry
@@ -144,7 +146,10 @@ async def acquire_for_submit(
     email = canonicalize_email(raw_email)
     account = await _lock_account(db, email)
 
-    if not account.free_used:
+    # The free analysis is gated on free_used AND flagged_at: a refunded/
+    # disputed account (flagged) loses free-tier re-access (design §7.7), even
+    # if it never used the free one.
+    if not account.free_used and account.flagged_at is None:
         key = f"free-{email}"
         if await _existing(db, key) is None:
             before = account.remaining_credits
@@ -228,6 +233,7 @@ async def refund_reservation(
     if account.reserved_credits < 1:
         logger.warning("refund: no reservation for %s job=%s", email, job_id)
         return None
+    reserve_entry = await _existing(db, f"reserve-{job_id}")
     before = account.remaining_credits
     account.remaining_credits = before + 1
     account.reserved_credits -= 1
@@ -241,6 +247,7 @@ async def refund_reservation(
         idempotency_key=key,
         source="system",
         job_id=job_id,
+        reversal_of_id=reserve_entry.id if reserve_entry else None,
     )
 
 
@@ -287,39 +294,44 @@ async def grant_paid(
 
 
 async def revoke_sale(
-    db: AsyncSession, *, raw_email: str, permalink: str, sale_id: str
+    db: AsyncSession, *, sale_id: str
 ) -> Optional[AnalyzerCreditLedger]:
-    """Claw back credits on a Gumroad refund/dispute. Clamps to the current
-    balance (no negative debt — the report was already delivered, design
-    §7.5/§7.7) and flags the account out of the free tier. Idempotent on
-    ``gumroad-revoke-{sale_id}``. Does NOT commit."""
-    granted = PERMALINK_CREDITS.get(permalink, 0)
-    if not granted:
-        logger.warning("revoke: unknown permalink %s (sale %s)", permalink, sale_id)
-        return None
-    email = canonicalize_email(raw_email)
+    """Claw back credits on a Gumroad refund/dispute, against the account that
+    ACTUALLY received the grant — resolved by ``sale_id``, because a redeemed
+    sale may have credited a DIFFERENT email than the refund Ping carries
+    (design §4.4). Clamps to the current balance (no negative debt — the report
+    was already delivered, §7.5/§7.7) and flags THAT account out of the free
+    tier. Idempotent on ``gumroad-revoke-{sale_id}``. If no grant exists for the
+    sale, it is a NO-OP — we never flag an email that was never credited. Does
+    NOT commit."""
     key = f"gumroad-revoke-{sale_id}"
     if (existing := await _existing(db, key)) is not None:
         return existing
-    account = await _lock_account(db, email)
+    grant = await find_sale_grant(db, sale_id=sale_id)
+    if grant is None:
+        # Nothing was granted for this sale → nothing to claw back, and no
+        # innocent email to flag.
+        return None
+    account = await _lock_account(db, grant.email)
     before = account.remaining_credits
-    applied = min(granted, before)  # clamp at 0; no negative balance
+    applied = min(grant.amount, before)  # clamp at 0; no negative balance
     account.remaining_credits = before - applied
     account.flagged_at = utc_now()
     # amount records the SALE's credit count (>0); balance snapshots show the
-    # clamped actual change. Do NOT set gumroad_sale_id — the GRANT row already
-    # holds it under a unique constraint; the revoke dedups via idempotency_key
-    # (gumroad-revoke-{sale_id}).
+    # clamped actual change. Do NOT set gumroad_sale_id — the GRANT row holds it
+    # under a unique constraint; the revoke dedups via idempotency_key and links
+    # back to the grant via reversal_of_id.
     return _post(
         db,
         account,
         entry_type=AnalyzerCreditEntryType.REVOKE,
         direction=AnalyzerCreditDirection.DEBIT,
-        amount=granted,
+        amount=grant.amount,
         balance_before=before,
         idempotency_key=key,
         source="gumroad",
-        gumroad_permalink=permalink,
+        gumroad_permalink=grant.gumroad_permalink,
+        reversal_of_id=grant.id,
     )
 
 

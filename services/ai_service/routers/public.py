@@ -72,6 +72,7 @@ from services.ai_service.services.credit_ops import (
     find_sale_grant,
     get_balance,
     grant_paid,
+    refund_reservation,
     revoke_sale,
 )
 from services.ai_service.services.gumroad import (
@@ -187,8 +188,23 @@ async def create_public_analysis_job(
     await db.refresh(job)
 
     # Public jobs run on the ISOLATED arq:ai-public queue (capped worker) so a
-    # spike can't starve member analyses on arq:ai.
-    await _enqueue_analysis(job.id, queue_name=PUBLIC_QUEUE_NAME)
+    # spike can't starve member analyses on arq:ai. The reserve is already
+    # committed, so if enqueue fails we MUST refund it and fail the job (§4.1) —
+    # otherwise the credit is lost on a job that would sit forever in PENDING.
+    try:
+        await _enqueue_analysis(
+            job.id, queue_name=PUBLIC_QUEUE_NAME, raise_on_error=True
+        )
+    except Exception as exc:
+        logger.exception("Public enqueue failed for job %s: %s", job.id, exc)
+        await refund_reservation(db, raw_email=email, job_id=job.id)
+        job.status = AnalysisJobStatus.FAILED
+        job.error_message = "Could not queue analysis"
+        await db.commit()
+        raise HTTPException(
+            status_code=502,
+            detail="Could not queue your analysis; your credit was refunded. Please try again.",
+        ) from exc
 
     return PublicAnalysisJobResponse(
         job_id=job.id,
@@ -380,19 +396,21 @@ async def gumroad_webhook(
     refunded = str(form.get("refunded") or "").lower() in ("true", "1")
     disputed = str(form.get("disputed") or "").lower() in ("true", "1")
 
-    # 2. seller_id match (cheap sanity filter; not a secret). 200-and-drop on
-    # mismatch so we never reveal which checks ran.
-    if GUMROAD_SELLER_ID and seller_id and seller_id != GUMROAD_SELLER_ID:
-        logger.warning("Gumroad webhook seller_id mismatch (%s)", seller_id)
+    # 2. seller_id match (cheap sanity filter; not a secret). When configured, a
+    # missing/wrong seller_id is treated as a mismatch (200-and-drop) so it
+    # can't be bypassed by simply omitting the field.
+    if GUMROAD_SELLER_ID and seller_id != GUMROAD_SELLER_ID:
+        logger.warning("Gumroad webhook seller_id mismatch (%r)", seller_id)
         return {"received": True}
     if not sale_id or not buyer_email or not permalink:
         return {"received": True}
 
     try:
         if refunded or disputed:
-            await revoke_sale(
-                db, raw_email=buyer_email, permalink=permalink, sale_id=sale_id
-            )
+            # Revoke against the account the sale actually credited (resolved by
+            # sale_id), NOT the Ping's buyer email — a redeemed sale may have
+            # credited a different analyzer email.
+            await revoke_sale(db, sale_id=sale_id)
             await db.commit()
         else:
             # 3. MANDATORY license re-verify — a sale Ping with no verifiable key
