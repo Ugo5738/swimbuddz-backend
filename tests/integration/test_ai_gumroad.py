@@ -33,7 +33,9 @@ def _verify(**purchase):
     return patch(f"{_PUB}.verify_license", new=AsyncMock(return_value=purchase or None))
 
 
-def _sale_form(email, *, permalink="puxlbz", sale_id=None, license_key="LIC-1", **extra):
+def _sale_form(
+    email, *, permalink="puxlbz", sale_id=None, license_key="LIC-1", **extra
+):
     f = {
         "seller_id": "seller-123",
         "sale_id": sale_id or f"sale-{uuid.uuid4().hex}",
@@ -104,7 +106,9 @@ async def test_webhook_no_license_never_grants(ai_client, db_session, gumroad_en
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_webhook_verify_sale_mismatch_no_grant(ai_client, db_session, gumroad_env):
+async def test_webhook_verify_sale_mismatch_no_grant(
+    ai_client, db_session, gumroad_env
+):
     email = _email()
     sale = f"sale-{uuid.uuid4().hex}"
     form = _sale_form(email, sale_id=sale)

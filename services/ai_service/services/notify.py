@@ -43,7 +43,7 @@ async def send_ready_email(
     html_body = (
         "<p>Your freestyle stroke analysis is ready.</p>"
         f'<p><a href="{url}">View your analysis</a></p>'
-        "<p style=\"color:#94a3b8;font-size:12px\">SwimBuddz Stroke Lab — a "
+        '<p style="color:#94a3b8;font-size:12px">SwimBuddz Stroke Lab — a '
         "freestyle measurement tool, not a coach.</p>"
     )
     try:

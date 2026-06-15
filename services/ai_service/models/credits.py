@@ -183,9 +183,7 @@ class AnalyzerCreditLedger(Base):
     gumroad_license_key: Mapped[Optional[str]] = mapped_column(
         String(120), nullable=True
     )
-    gumroad_permalink: Mapped[Optional[str]] = mapped_column(
-        String(40), nullable=True
-    )
+    gumroad_permalink: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
 
     # The swim_analysis_jobs.id a reserve/consume/refund belongs to. Plain UUID,
     # NO FK — keep it loose so deleting a job doesn't cascade-wipe ledger history.
