@@ -36,12 +36,20 @@ from services.ai_service.analysis.storage import (
     UPLOADS_BUCKET,
     temp_file_from_storage,
     upload_annotated_video,
+    upload_guest_annotated_video,
 )
+from services.ai_service.constants import PUBLIC_MAX_DURATION_SECONDS
 from services.ai_service.models import (
     AnalysisJob,
+    AnalysisJobSource,
     AnalysisJobStatus,
     AnalysisResult,
 )
+from services.ai_service.services.credit_ops import (
+    consume_reservation,
+    refund_reservation,
+)
+from services.ai_service.services.notify import send_failed_email, send_ready_email
 
 logger = get_logger(__name__)
 
@@ -68,6 +76,8 @@ async def analyze_swim_video(job_id: str) -> dict:
         member_auth_id = job.member_auth_id
         stroke_type = job.stroke_type
         video_storage_path = job.video_storage_path
+        source = job.source
+        guest_token = job.guest_token
 
     # 2. Run pipeline against a tempfile download. Wrap the sync ctx manager
     # in to_thread so we don't block the loop on the network read.
@@ -82,6 +92,25 @@ async def analyze_swim_video(job_id: str) -> dict:
             # workdir for cleanliness.
             uploaded_local = await _download_upload(video_storage_path, workdir_path)
 
+            # Public DoS guard: reject over-long clips BEFORE the expensive
+            # pipeline (a too-long clip would otherwise burn the whole
+            # job_timeout). The client also fast-fails on duration, so this only
+            # catches uploads that bypassed it; _mark_failed refunds the credit
+            # (a rejected clip never costs the guest). Members are unaffected.
+            if source == AnalysisJobSource.PUBLIC:
+                duration = await asyncio.to_thread(
+                    _probe_duration_seconds, uploaded_local
+                )
+                if duration is not None and duration > PUBLIC_MAX_DURATION_SECONDS:
+                    logger.info(
+                        "Public job %s rejected: %.1fs exceeds %ss cap",
+                        job_id,
+                        duration,
+                        PUBLIC_MAX_DURATION_SECONDS,
+                    )
+                    await _mark_failed(job_uuid, "too_long")
+                    return {"status": "failed", "error": "too_long"}
+
             report: AnalysisReport = await run_analysis(
                 uploaded_local,
                 annotated_local,
@@ -89,10 +118,16 @@ async def analyze_swim_video(job_id: str) -> dict:
                 config=_pipeline_config_from_env(),
             )
 
-            # 3. Upload annotated mp4
-            annotated_key = await upload_annotated_video(
-                member_auth_id, job_uuid, annotated_local
-            )
+            # 3. Upload annotated mp4. Guest jobs have no member_auth_id, so
+            # they key under guest/{guest_token}/... like their original upload.
+            if source == AnalysisJobSource.PUBLIC:
+                annotated_key = await upload_guest_annotated_video(
+                    guest_token, job_uuid, annotated_local
+                )
+            else:
+                annotated_key = await upload_annotated_video(
+                    member_auth_id, job_uuid, annotated_local
+                )
 
         # 4. Persist result row + flip status
         await _write_completed(job_uuid, annotated_key, report)
@@ -150,11 +185,30 @@ async def _download_upload(storage_path: str, workdir: Path) -> Path:
     return await asyncio.to_thread(_do_download)
 
 
+def _probe_duration_seconds(path: Path) -> float | None:
+    """Cheap duration probe via cv2 metadata (no full decode). Returns None if
+    it can't be determined — then the pipeline proceeds and job_timeout is the
+    backstop. Worker-only (cv2 ships in the strokelab image, not the API/dev
+    env)."""
+    import cv2
+
+    cap = cv2.VideoCapture(str(path))
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+        frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
+    finally:
+        cap.release()
+    if fps <= 0 or frames <= 0:
+        return None
+    return frames / fps
+
+
 async def _write_completed(
     job_id: uuid.UUID,
     annotated_storage_path: str,
     report: AnalysisReport,
 ) -> None:
+    ready_email: tuple[str, str] | None = None
     async with AsyncSessionLocal() as session:
         job = await session.get(AnalysisJob, job_id)
         if job is None:
@@ -193,10 +247,23 @@ async def _write_completed(
             raw_metrics=report.raw_metrics,
         )
         session.add(result)
+        # Public jobs: spend the reserved credit in the SAME transaction as the
+        # completion (design §6.1). Member jobs have no reservation.
+        if job.source == AnalysisJobSource.PUBLIC and job.guest_email:
+            await consume_reservation(session, raw_email=job.guest_email, job_id=job_id)
+            # "Ready" email: set the single-send guard in THIS transaction; the
+            # actual send is best-effort, after commit (design §8.1).
+            if job.email_sent_at is None:
+                job.email_sent_at = utc_now()
+                ready_email = (job.guest_email, job.guest_token or "")
         await session.commit()
+
+    if ready_email is not None:
+        await send_ready_email(job_id, ready_email[0], ready_email[1])
 
 
 async def _mark_failed(job_id: uuid.UUID, error_message: str) -> None:
+    failed_email: str | None = None
     async with AsyncSessionLocal() as session:
         job = await session.get(AnalysisJob, job_id)
         if job is None:
@@ -206,4 +273,16 @@ async def _mark_failed(job_id: uuid.UUID, error_message: str) -> None:
         # Cap error_message at a sane length so a giant traceback can't
         # fill the column on a stuck job loop.
         job.error_message = (error_message or "")[:2000]
+        # Public jobs: refund the reserved credit in the SAME transaction as the
+        # failure (design §6.1) — a failed analysis never costs a credit.
+        if job.source == AnalysisJobSource.PUBLIC and job.guest_email:
+            await refund_reservation(session, raw_email=job.guest_email, job_id=job_id)
+            # "Couldn't analyze" email — single-send guard set here, sent
+            # best-effort after commit (design §8.6).
+            if job.email_sent_at is None:
+                job.email_sent_at = utc_now()
+                failed_email = job.guest_email
         await session.commit()
+
+    if failed_email is not None:
+        await send_failed_email(job_id, failed_email)

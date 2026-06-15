@@ -43,6 +43,18 @@ class AnalysisJobStatus(str, enum.Enum):
     FAILED = "failed"  # error_message is set
 
 
+class AnalysisJobSource(str, enum.Enum):
+    """Who submitted the job: a logged-in member vs an email-gated public guest.
+
+    Public analyzer jobs (analyzer.swimbuddz.com) have no Supabase user, so they
+    carry guest_email + guest_token instead of member_auth_id. See
+    docs/design/STROKELAB_PUBLIC_ANALYZER_DESIGN.md.
+    """
+
+    MEMBER = "member"  # logged-in member; member_auth_id set
+    PUBLIC = "public"  # email-gated guest; guest_email + guest_token set
+
+
 class AnalysisJob(Base):
     """One upload → one analysis job. The row drives state for the API
     polling endpoint and tracks worker timing for queue health."""
@@ -53,10 +65,34 @@ class AnalysisJob(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
 
-    # Owner: the auth_user_id (Supabase user UUID) of the uploader.
+    # Owner: the auth_user_id (Supabase user UUID) of the uploader. NULL for
+    # public/guest jobs (which are identified by guest_email + guest_token).
     # Indexed because the "list my analyses" endpoint scans by owner.
-    member_auth_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True
+    member_auth_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+
+    # Guest identity (public analyzer). NULL for member jobs. guest_email is the
+    # quota/credits key; guest_token is a per-job bearer capability for that one
+    # result (server-minted on every submit, never client-supplied).
+    guest_email: Mapped[Optional[str]] = mapped_column(
+        String(320), nullable=True, index=True
+    )
+    guest_token: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+
+    # Discriminator: member (has member_auth_id) vs public (has guest_email+token).
+    # Namespaced enum-type name per the "enum TYPE names are global" memory note.
+    source: Mapped[AnalysisJobSource] = mapped_column(
+        Enum(
+            AnalysisJobSource,
+            name="analysis_job_source_enum",
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+        default=AnalysisJobSource.MEMBER,
+        server_default=AnalysisJobSource.MEMBER.value,
     )
 
     # Stroke type the user claims they swam. v0 rejects anything other
@@ -99,6 +135,14 @@ class AnalysisJob(Base):
         DateTime(timezone=True), nullable=True
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Single-send guard for the public "your analysis is ready" / failure email.
+    # The worker sets this inside the SAME transaction as the COMPLETED/FAILED
+    # status flip and only sends if it was NULL, so a re-run never re-emails.
+    # NULL for member jobs (which don't send these emails).
+    email_sent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

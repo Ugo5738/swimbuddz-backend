@@ -23,6 +23,8 @@ from services.ai_service.models import (  # noqa: F401
     AIRequest,
     AnalysisJob,
     AnalysisResult,
+    AnalyzerCreditAccount,
+    AnalyzerCreditLedger,
     StrokeLabFoundingMember,
 )
 
@@ -44,6 +46,8 @@ SERVICE_TABLES = {
     "swim_analysis_jobs",
     "swim_analysis_results",
     "strokelab_founding_members",
+    "analyzer_credit_accounts",
+    "analyzer_credit_ledger",
 }
 
 
