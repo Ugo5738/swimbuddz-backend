@@ -44,6 +44,10 @@ from services.ai_service.models import (
     AnalysisJobStatus,
     AnalysisResult,
 )
+from services.ai_service.services.credit_ops import (
+    consume_reservation,
+    refund_reservation,
+)
 
 logger = get_logger(__name__)
 
@@ -203,6 +207,10 @@ async def _write_completed(
             raw_metrics=report.raw_metrics,
         )
         session.add(result)
+        # Public jobs: spend the reserved credit in the SAME transaction as the
+        # completion (design §6.1). Member jobs have no reservation.
+        if job.source == AnalysisJobSource.PUBLIC and job.guest_email:
+            await consume_reservation(session, raw_email=job.guest_email, job_id=job_id)
         await session.commit()
 
 
@@ -216,4 +224,8 @@ async def _mark_failed(job_id: uuid.UUID, error_message: str) -> None:
         # Cap error_message at a sane length so a giant traceback can't
         # fill the column on a stuck job loop.
         job.error_message = (error_message or "")[:2000]
+        # Public jobs: refund the reserved credit in the SAME transaction as the
+        # failure (design §6.1) — a failed analysis never costs a credit.
+        if job.source == AnalysisJobSource.PUBLIC and job.guest_email:
+            await refund_reservation(session, raw_email=job.guest_email, job_id=job_id)
         await session.commit()

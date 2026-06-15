@@ -38,11 +38,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.ai_service.analysis.storage import (
+    delete_job_assets,
     signed_url_for_annotated,
     signed_url_for_upload,
     upload_guest_video,
 )
-from services.ai_service.constants import PUBLIC_QUEUE_NAME
+from services.ai_service.constants import GUMROAD_CHECKOUT_BASE, PUBLIC_QUEUE_NAME
 from services.ai_service.models import (
     AnalysisJob,
     AnalysisJobSource,
@@ -58,6 +59,10 @@ from services.ai_service.routers.analyze import (
 from services.ai_service.schemas.analysis import (
     PublicAnalysisJobDetailResponse,
     PublicAnalysisJobResponse,
+)
+from services.ai_service.services.credit_ops import (
+    NoCreditsError,
+    acquire_for_submit,
 )
 
 logger = get_logger(__name__)
@@ -147,6 +152,22 @@ async def create_public_analysis_job(
         raise HTTPException(status_code=502, detail="Storage upload failed") from exc
 
     job.video_storage_path = storage_path
+
+    # Secure a credit (the free analysis or a purchased one) and RESERVE it under
+    # the account lock, in THIS transaction — so the job + reserve commit
+    # atomically. Reserve only AFTER the upload succeeded, so an upload failure
+    # never leaves a dangling reservation (design §4.1).
+    try:
+        reserve_entry = await acquire_for_submit(db, raw_email=email, job_id=job.id)
+    except NoCreditsError:
+        await db.rollback()  # the job row never persists — no orphan job
+        await delete_job_assets(storage_path, None)  # best-effort: drop the upload
+        raise HTTPException(
+            status_code=402,
+            detail={"reason": "no_credits", "buy_url_base": GUMROAD_CHECKOUT_BASE},
+        )
+    credits_remaining = reserve_entry.balance_after
+
     await db.commit()
     await db.refresh(job)
 
@@ -159,6 +180,7 @@ async def create_public_analysis_job(
         status=_status_str(job),
         stroke_type=job.stroke_type,
         guest_token=guest_token,
+        credits_remaining=credits_remaining,
         created_at=job.created_at,
         started_at=job.started_at,
         completed_at=job.completed_at,

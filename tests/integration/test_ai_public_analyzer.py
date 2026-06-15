@@ -1,13 +1,16 @@
-"""Integration tests for the PUBLIC (guest) Stroke Lab analyzer — Phase 0.
+"""Integration tests for the PUBLIC (guest) Stroke Lab analyzer.
 
 Covers: guest submit + poll, input validation, the per-job guest_token gate,
-the 404-not-403 non-leak (missing/wrong token, member jobs, unknown ids), and
-guest-job serialization with a NULL member_auth_id.
+the 404-not-403 non-leak (missing/wrong token, member jobs, unknown ids),
+guest-job serialization with a NULL member_auth_id, and the credit gate
+(first submit per email is free; the next is paywalled with 402).
 
 Storage + enqueue are mocked so submit runs offline: `mock_public_io` patches
-the *sync* Supabase upload (`_upload_sync`) — not `upload_guest_video` — so the
-real `make_guest_object_key` still builds the `guest/...` key, and patches the
-arq enqueue so no Redis is needed.
+the *sync* Supabase upload/delete (`_upload_sync` / `_delete_sync`) — not
+`upload_guest_video` — so the real `make_guest_object_key` still builds the
+`guest/...` key, and patches the arq enqueue so no Redis is needed. The credit
+ledger runs for real against the test db_session. Emails are unique per call so
+each test gets its own fresh free credit.
 """
 
 import uuid
@@ -32,14 +35,19 @@ def _files(content: bytes = b"\x00\x01\x02fake-mp4-bytes", name: str = "clip.mp4
     return {"video": (name, content, "video/mp4")}
 
 
+def _unique_email() -> str:
+    return f"guest-{uuid.uuid4().hex}@example.com"
+
+
 @pytest.fixture
 def mock_public_io():
-    """Patch Supabase upload (sync) + arq enqueue so submit runs offline.
+    """Patch Supabase upload/delete (sync) + arq enqueue so submit runs offline.
 
     Yields the enqueue mock so tests can assert it was awaited.
     """
     with (
         patch("services.ai_service.analysis.storage._upload_sync", new=MagicMock()),
+        patch("services.ai_service.analysis.storage._delete_sync", new=MagicMock()),
         patch(
             "services.ai_service.routers.public._enqueue_analysis", new=AsyncMock()
         ) as enq,
@@ -47,7 +55,8 @@ def mock_public_io():
         yield enq
 
 
-async def _submit(ai_client, email: str = "guest@example.com"):
+async def _submit(ai_client, email: str = ""):
+    email = email or _unique_email()
     resp = await ai_client.post(
         _SUBMIT,
         data={"guest_email": email, "stroke_type": "freestyle"},
@@ -63,9 +72,10 @@ async def _submit(ai_client, email: str = "guest@example.com"):
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_public_submit_creates_guest_job(ai_client, db_session, mock_public_io):
+    email = f"Reddit.User+swim-{uuid.uuid4().hex[:8]}@Gmail.com"
     resp = await ai_client.post(
         _SUBMIT,
-        data={"guest_email": "Reddit.User+swim@Gmail.com", "stroke_type": "freestyle"},
+        data={"guest_email": email, "stroke_type": "freestyle"},
         files=_files(),
     )
     assert resp.status_code == 202, resp.text
@@ -73,21 +83,39 @@ async def test_public_submit_creates_guest_job(ai_client, db_session, mock_publi
     assert body["status"] == "pending"
     assert body["stroke_type"] == "freestyle"
     assert body["guest_token"] and len(body["guest_token"]) >= 40
+    assert body["credits_remaining"] == 0  # the free credit was just reserved
     assert "member_auth_id" not in body  # guest response never leaks it
     job_id = body["job_id"]
 
-    # The persisted row is a public, member-less job keyed to the guest.
     job = await db_session.get(AnalysisJob, uuid.UUID(job_id))
     assert job is not None
     assert job.source == AnalysisJobSource.PUBLIC
     assert job.member_auth_id is None
     assert job.guest_token == body["guest_token"]
-    # Phase 0 only lowercases (full canonicalization is Phase 2).
-    assert job.guest_email == "reddit.user+swim@gmail.com"
+    # The job stores the typed (lowercased) email; the credit account is keyed to
+    # the canonical form (+tag / Gmail-dots stripped).
+    assert job.guest_email == email.lower()
     # The real guest-key builder ran (only the network upload was mocked).
     assert job.video_storage_path == f"guest/{job.guest_token}/{job_id}.mp4"
-    # Enqueued exactly once.
     mock_public_io.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_public_submit_second_submit_same_email_paywalled(
+    ai_client, mock_public_io
+):
+    email = f"once-{uuid.uuid4().hex}@example.com"
+    r1 = await ai_client.post(
+        _SUBMIT, data={"guest_email": email, "stroke_type": "freestyle"}, files=_files()
+    )
+    assert r1.status_code == 202, r1.text  # free analysis
+    assert r1.json()["credits_remaining"] == 0
+    r2 = await ai_client.post(
+        _SUBMIT, data={"guest_email": email, "stroke_type": "freestyle"}, files=_files()
+    )
+    assert r2.status_code == 402, r2.text  # free used, no purchased credits
+    assert r2.json()["detail"]["reason"] == "no_credits"
 
 
 @pytest.mark.asyncio

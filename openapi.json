@@ -77000,6 +77000,11 @@
             "type": "string",
             "title": "Guest Token"
           },
+          "credits_remaining": {
+            "type": "integer",
+            "title": "Credits Remaining",
+            "default": 0
+          },
           "estimated_ready_hint": {
             "type": "string",
             "title": "Estimated Ready Hint",

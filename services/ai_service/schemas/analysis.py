@@ -114,6 +114,7 @@ class PublicAnalysisJobResponse(BaseModel):
     status: str
     stroke_type: str
     guest_token: str
+    credits_remaining: int = 0
     estimated_ready_hint: str = (
         "We'll email you when it's ready — usually within a few hours."
     )
