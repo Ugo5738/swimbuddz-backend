@@ -49,6 +49,7 @@ from services.ai_service.services.credit_ops import (
     consume_reservation,
     refund_reservation,
 )
+from services.ai_service.services.notify import send_failed_email, send_ready_email
 
 logger = get_logger(__name__)
 
@@ -207,6 +208,7 @@ async def _write_completed(
     annotated_storage_path: str,
     report: AnalysisReport,
 ) -> None:
+    ready_email: tuple[str, str] | None = None
     async with AsyncSessionLocal() as session:
         job = await session.get(AnalysisJob, job_id)
         if job is None:
@@ -249,10 +251,19 @@ async def _write_completed(
         # completion (design §6.1). Member jobs have no reservation.
         if job.source == AnalysisJobSource.PUBLIC and job.guest_email:
             await consume_reservation(session, raw_email=job.guest_email, job_id=job_id)
+            # "Ready" email: set the single-send guard in THIS transaction; the
+            # actual send is best-effort, after commit (design §8.1).
+            if job.email_sent_at is None:
+                job.email_sent_at = utc_now()
+                ready_email = (job.guest_email, job.guest_token or "")
         await session.commit()
+
+    if ready_email is not None:
+        await send_ready_email(job_id, ready_email[0], ready_email[1])
 
 
 async def _mark_failed(job_id: uuid.UUID, error_message: str) -> None:
+    failed_email: str | None = None
     async with AsyncSessionLocal() as session:
         job = await session.get(AnalysisJob, job_id)
         if job is None:
@@ -266,4 +277,12 @@ async def _mark_failed(job_id: uuid.UUID, error_message: str) -> None:
         # failure (design §6.1) — a failed analysis never costs a credit.
         if job.source == AnalysisJobSource.PUBLIC and job.guest_email:
             await refund_reservation(session, raw_email=job.guest_email, job_id=job_id)
+            # "Couldn't analyze" email — single-send guard set here, sent
+            # best-effort after commit (design §8.6).
+            if job.email_sent_at is None:
+                job.email_sent_at = utc_now()
+                failed_email = job.guest_email
         await session.commit()
+
+    if failed_email is not None:
+        await send_failed_email(job_id, failed_email)
