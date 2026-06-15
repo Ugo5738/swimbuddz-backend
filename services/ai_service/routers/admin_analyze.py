@@ -26,7 +26,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.ai_service.models import AnalysisJob, AnalysisJobStatus
+from services.ai_service.constants import MEMBER_QUEUE_NAME, PUBLIC_QUEUE_NAME
+from services.ai_service.models import (
+    AnalysisJob,
+    AnalysisJobSource,
+    AnalysisJobStatus,
+)
 
 logger = get_logger(__name__)
 
@@ -45,7 +50,9 @@ class QueueStatusCounts(BaseModel):
 
 class QueueRecentJob(BaseModel):
     id: uuid.UUID
-    member_auth_id: uuid.UUID
+    source: str  # "member" | "public"
+    member_auth_id: Optional[uuid.UUID] = None  # NULL for public/guest jobs
+    guest_email: Optional[str] = None  # set for public/guest jobs
     status: str
     stroke_type: str
     created_at: datetime
@@ -76,11 +83,15 @@ class QueueSnapshot(BaseModel):
 
 
 async def _counts_in_window(
-    db: AsyncSession, since: Optional[datetime] = None
+    db: AsyncSession,
+    since: Optional[datetime] = None,
+    source: Optional[AnalysisJobSource] = None,
 ) -> QueueStatusCounts:
     stmt = select(AnalysisJob.status, func.count(AnalysisJob.id))
     if since is not None:
         stmt = stmt.where(AnalysisJob.created_at >= since)
+    if source is not None:
+        stmt = stmt.where(AnalysisJob.source == source)
     stmt = stmt.group_by(AnalysisJob.status)
     rows = (await db.execute(stmt)).all()
     by_status = {row[0]: int(row[1]) for row in rows}
@@ -108,37 +119,43 @@ async def _counts_in_window(
 )
 async def queue_snapshot(
     recent_limit: int = 25,
+    source: Optional[str] = None,
     _admin: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ) -> QueueSnapshot:
     if recent_limit <= 0 or recent_limit > 100:
         recent_limit = 25
 
-    total = int((await db.execute(select(func.count(AnalysisJob.id)))).scalar_one())
-    all_counts = await _counts_in_window(db)
+    # Optional member/public filter so the two streams don't blur.
+    source_filter: Optional[AnalysisJobSource] = None
+    if source in (AnalysisJobSource.MEMBER.value, AnalysisJobSource.PUBLIC.value):
+        source_filter = AnalysisJobSource(source)
+
+    total_stmt = select(func.count(AnalysisJob.id))
+    if source_filter is not None:
+        total_stmt = total_stmt.where(AnalysisJob.source == source_filter)
+    total = int((await db.execute(total_stmt)).scalar_one())
+    all_counts = await _counts_in_window(db, source=source_filter)
     cutoff = utc_now() - timedelta(hours=24)
-    day_counts = await _counts_in_window(db, since=cutoff)
+    day_counts = await _counts_in_window(db, since=cutoff, source=source_filter)
 
     finished_24h = day_counts.completed + day_counts.failed
     success_rate = (
         round(day_counts.completed / finished_24h * 100, 1) if finished_24h > 0 else 0.0
     )
 
-    recent_rows = (
-        (
-            await db.execute(
-                select(AnalysisJob)
-                .order_by(AnalysisJob.created_at.desc())
-                .limit(recent_limit)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    recent_stmt = select(AnalysisJob).order_by(AnalysisJob.created_at.desc())
+    if source_filter is not None:
+        recent_stmt = recent_stmt.where(AnalysisJob.source == source_filter)
+    recent_rows = (await db.execute(recent_stmt.limit(recent_limit))).scalars().all()
     recent = [
         QueueRecentJob(
             id=row.id,
+            source=row.source.value
+            if hasattr(row.source, "value")
+            else str(row.source),
             member_auth_id=row.member_auth_id,
+            guest_email=row.guest_email,
             status=row.status.value
             if hasattr(row.status, "value")
             else str(row.status),
@@ -206,7 +223,11 @@ async def reanalyze_job(
         await pool.enqueue_job(
             "task_analyze_swim_video",
             str(job_id),
-            _queue_name="arq:ai",
+            _queue_name=(
+                PUBLIC_QUEUE_NAME
+                if job.source == AnalysisJobSource.PUBLIC
+                else MEMBER_QUEUE_NAME
+            ),
         )
         await pool.close()
         enqueued = True

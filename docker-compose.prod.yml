@@ -512,6 +512,34 @@ services:
       - strokelab_models:/tmp/strokelab-models
     restart: unless-stopped
 
+  ai-worker-public:
+    # Isolated ARQ worker for the PUBLIC (guest) analyzer queue (arq:ai-public),
+    # marketed on Reddit. SEPARATE container + its OWN caps so a public spike
+    # can't starve member analyses on arq:ai, and an OOM is contained here, not
+    # on the website. Same caps as ai-worker for now — give it dedicated compute
+    # if/when public volume grows. Shares the read-only model cache volume.
+    image: ${DOCKER_USERNAME}/swimbuddz-ai-service:latest
+    container_name: swimbuddz_ai_worker_public
+    cpus: "1.0"
+    mem_limit: 2g
+    memswap_limit: 4g
+    env_file:
+      - .env.prod
+    environment:
+      - STROKELAB_MODEL_DIR=/tmp/strokelab-models
+      - STROKELAB_FRAME_STRIDE=3
+    depends_on:
+      redis:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: arq services.ai_service.tasks.worker.PublicWorkerSettings
+    volumes:
+      - strokelab_models:/tmp/strokelab-models
+    restart: unless-stopped
+
   # ==================================================================
   # INFRASTRUCTURE
   # ==================================================================
