@@ -98,3 +98,44 @@ class AnalysisJobDetailResponse(AnalysisJobResponse):
     result: Optional[AnalysisResultPayload] = None
     original_video_url: Optional[str] = None
     annotated_video_url: Optional[str] = None
+
+
+# ── PUBLIC (guest) analyzer responses ────────────────────────────
+
+
+class PublicAnalysisJobResponse(BaseModel):
+    """What POST /ai/public/analyze returns. No ``member_auth_id`` (guests
+    have none); echoes the per-job ``guest_token`` so the FE can store it
+    for polling."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    job_id: uuid.UUID
+    status: str
+    stroke_type: str
+    guest_token: str
+    estimated_ready_hint: str = (
+        "We'll email you when it's ready — usually within a few hours."
+    )
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+
+class PublicAnalysisJobDetailResponse(BaseModel):
+    """GET /ai/public/analyze/{job_id} — guest-facing detail. Mirrors the
+    member detail minus ``member_auth_id``/``is_public`` (irrelevant to a
+    token-scoped guest read)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    job_id: uuid.UUID
+    status: str
+    stroke_type: str
+    error_message: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    result: Optional[AnalysisResultPayload] = None
+    original_video_url: Optional[str] = None
+    annotated_video_url: Optional[str] = None

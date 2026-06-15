@@ -52,6 +52,16 @@ def make_object_key(member_auth_id: uuid.UUID, job_id: uuid.UUID, suffix: str) -
     return f"{member_auth_id}/{job_id}.{suffix}"
 
 
+def make_guest_object_key(guest_token: str, job_id: uuid.UUID, suffix: str) -> str:
+    """Storage key layout for PUBLIC/guest jobs: ``guest/{guest_token}/{job_id}.{suffix}``.
+
+    Guests have no member id, so namespace under the unguessable per-job token
+    (32 random bytes). The distinct ``guest/`` prefix keeps guest objects
+    isolated from member uploads (``{member_auth_id}/...``).
+    """
+    return f"guest/{guest_token}/{job_id}.{suffix}"
+
+
 # ── Sync helpers (thin wrappers over supabase-py's storage API) ────
 
 
@@ -100,6 +110,19 @@ async def upload_user_video(
     return key
 
 
+async def upload_guest_video(
+    guest_token: str,
+    job_id: uuid.UUID,
+    data: bytes,
+    content_type: str = "video/mp4",
+    suffix: str = "mp4",
+) -> str:
+    """Upload a PUBLIC/guest video. Returns the storage path."""
+    key = make_guest_object_key(guest_token, job_id, suffix)
+    await asyncio.to_thread(_upload_sync, UPLOADS_BUCKET, key, data, content_type)
+    return key
+
+
 async def upload_annotated_video(
     member_auth_id: uuid.UUID,
     job_id: uuid.UUID,
@@ -109,6 +132,24 @@ async def upload_annotated_video(
 ) -> str:
     """Upload an annotated mp4 from the worker's local filesystem."""
     key = make_object_key(member_auth_id, job_id, suffix)
+    data = local_path.read_bytes()
+    await asyncio.to_thread(_upload_sync, ANNOTATED_BUCKET, key, data, content_type)
+    return key
+
+
+async def upload_guest_annotated_video(
+    guest_token: str,
+    job_id: uuid.UUID,
+    local_path: Path,
+    content_type: str = "video/mp4",
+    suffix: str = "mp4",
+) -> str:
+    """Upload a PUBLIC/guest annotated mp4 from the worker's local filesystem.
+
+    Keys under ``guest/{guest_token}/...`` (guests have no member id), mirroring
+    the original upload's prefix in the annotated bucket.
+    """
+    key = make_guest_object_key(guest_token, job_id, suffix)
     data = local_path.read_bytes()
     await asyncio.to_thread(_upload_sync, ANNOTATED_BUCKET, key, data, content_type)
     return key

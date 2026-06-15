@@ -31,19 +31,16 @@ from services.ai_service.analysis.storage import (
     signed_url_for_upload,
     upload_user_video,
 )
+from services.ai_service.constants import MEMBER_QUEUE_NAME
 from services.ai_service.models import (
     AnalysisJob,
     AnalysisJobStatus,
     AnalysisResult,
 )
-from services.ai_service.analysis.drills import resolve_drill
+from services.ai_service.routers._common import build_result_payload
 from services.ai_service.schemas.analysis import (
     AnalysisJobDetailResponse,
     AnalysisJobResponse,
-    AnalysisResultPayload,
-    DrillSuggestion,
-    Observation,
-    TrackingGap,
 )
 
 logger = get_logger(__name__)
@@ -82,46 +79,7 @@ async def _build_detail_response(
     *,
     include_signed_urls: bool,
 ) -> AnalysisJobDetailResponse:
-    payload: Optional[AnalysisResultPayload] = None
-    if result is not None:
-        # Resolve each observation's drill_key into full drill copy from the
-        # bank (the DB only stores the key, so swapping the bank doesn't need
-        # a data migration).
-        observations: list[Observation] = []
-        for obs in result.observations or []:
-            drill = resolve_drill(obs.get("drill_key"))
-            observations.append(
-                Observation(
-                    key=obs.get("key", ""),
-                    severity=obs.get("severity", "suggestion"),
-                    title=obs.get("title", ""),
-                    detail=obs.get("detail", ""),
-                    timestamp_s=obs.get("timestamp_s"),
-                    drill=DrillSuggestion(**drill) if drill else None,
-                )
-            )
-        tracking_gaps = [
-            TrackingGap(
-                start_s=g.get("start_s", 0.0),
-                end_s=g.get("end_s", 0.0),
-                duration_s=g.get("duration_s", 0.0),
-            )
-            for g in (result.tracking_gaps or [])
-        ]
-        payload = AnalysisResultPayload(
-            detected_stroke=result.detected_stroke,
-            pose_detection_rate=result.pose_detection_rate,
-            frames_total=result.frames_total,
-            frames_with_pose=result.frames_with_pose,
-            stroke_rate_spm=result.stroke_rate_spm,
-            body_roll_proxy_degrees=result.body_roll_proxy_degrees,
-            breath_count_left=result.breath_count_left,
-            breath_count_right=result.breath_count_right,
-            breath_balance_left_ratio=result.breath_balance_left_ratio,
-            summary_text=result.summary_text,
-            observations=observations,
-            tracking_gaps=tracking_gaps,
-        )
+    payload = build_result_payload(result) if result is not None else None
     original_url = None
     annotated_url = None
     if include_signed_urls:
@@ -147,9 +105,12 @@ async def _build_detail_response(
     )
 
 
-async def _enqueue_analysis(job_id: uuid.UUID) -> None:
-    """Push the analysis task onto the AI queue. Created on every call
-    rather than holding a pool because the API container may not have
+async def _enqueue_analysis(
+    job_id: uuid.UUID, queue_name: str = MEMBER_QUEUE_NAME
+) -> None:
+    """Push the analysis task onto an AI queue (member ``arq:ai`` by default,
+    or the public ``arq:ai-public`` queue for guest jobs). Created on every
+    call rather than holding a pool because the API container may not have
     redis available in every environment — failure is logged but not
     bubbled (the row sits in PENDING and is retryable)."""
     try:
@@ -157,7 +118,7 @@ async def _enqueue_analysis(job_id: uuid.UUID) -> None:
         await pool.enqueue_job(
             "task_analyze_swim_video",
             str(job_id),
-            _queue_name="arq:ai",
+            _queue_name=queue_name,
         )
         await pool.close()
     except Exception as exc:

@@ -36,9 +36,11 @@ from services.ai_service.analysis.storage import (
     UPLOADS_BUCKET,
     temp_file_from_storage,
     upload_annotated_video,
+    upload_guest_annotated_video,
 )
 from services.ai_service.models import (
     AnalysisJob,
+    AnalysisJobSource,
     AnalysisJobStatus,
     AnalysisResult,
 )
@@ -68,6 +70,8 @@ async def analyze_swim_video(job_id: str) -> dict:
         member_auth_id = job.member_auth_id
         stroke_type = job.stroke_type
         video_storage_path = job.video_storage_path
+        source = job.source
+        guest_token = job.guest_token
 
     # 2. Run pipeline against a tempfile download. Wrap the sync ctx manager
     # in to_thread so we don't block the loop on the network read.
@@ -89,10 +93,16 @@ async def analyze_swim_video(job_id: str) -> dict:
                 config=_pipeline_config_from_env(),
             )
 
-            # 3. Upload annotated mp4
-            annotated_key = await upload_annotated_video(
-                member_auth_id, job_uuid, annotated_local
-            )
+            # 3. Upload annotated mp4. Guest jobs have no member_auth_id, so
+            # they key under guest/{guest_token}/... like their original upload.
+            if source == AnalysisJobSource.PUBLIC:
+                annotated_key = await upload_guest_annotated_video(
+                    guest_token, job_uuid, annotated_local
+                )
+            else:
+                annotated_key = await upload_annotated_video(
+                    member_auth_id, job_uuid, annotated_local
+                )
 
         # 4. Persist result row + flip status
         await _write_completed(job_uuid, annotated_key, report)

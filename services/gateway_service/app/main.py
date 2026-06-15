@@ -40,6 +40,7 @@ def create_app() -> FastAPI:
             "http://localhost:3000",
             "https://swimbuddz.com",
             "https://www.swimbuddz.com",
+            "https://analyzer.swimbuddz.com",  # standalone public Stroke Lab
         ],
         allow_credentials=True,
         # With allow_credentials=True, wildcard methods/headers materially broaden
@@ -523,6 +524,15 @@ def create_app() -> FastAPI:
     # ==================================================================
     # AI SERVICE
     # ==================================================================
+    # Public guest-analyzer submit — IP-rate-limited (no auth). Registered
+    # BEFORE the catch-all so this specific (method, path) wins. The webhook +
+    # license-redeem get their own limited routes in Phase 2.
+    @app.api_route("/api/v1/ai/public/analyze", methods=["POST"])
+    @limiter.limit("5/minute")
+    async def proxy_public_analyze(request: Request):
+        """Proxy the guest analyzer submit to AI service (IP rate-limited)."""
+        return await proxy_request(clients.ai_client, "/ai/public/analyze", request)
+
     @app.api_route(
         "/api/v1/ai/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
     )
