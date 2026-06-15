@@ -14,3 +14,8 @@ PUBLIC_QUEUE_NAME = "arq:ai-public"
 GUMROAD_CHECKOUT_BASE = os.environ.get(
     "GUMROAD_CHECKOUT_BASE", "https://swimbuddz.gumroad.com/l/"
 )
+
+# Worker-side hard cap (seconds) on PUBLIC clip duration — a DoS backstop ABOVE
+# the client/UX duration checks, so a crafted over-long upload can't burn the
+# whole worker job_timeout. Generous so legitimate clips are never rejected.
+PUBLIC_MAX_DURATION_SECONDS = int(os.environ.get("PUBLIC_MAX_DURATION_SECONDS", "120"))

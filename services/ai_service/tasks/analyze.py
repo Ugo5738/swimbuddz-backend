@@ -38,6 +38,7 @@ from services.ai_service.analysis.storage import (
     upload_annotated_video,
     upload_guest_annotated_video,
 )
+from services.ai_service.constants import PUBLIC_MAX_DURATION_SECONDS
 from services.ai_service.models import (
     AnalysisJob,
     AnalysisJobSource,
@@ -89,6 +90,25 @@ async def analyze_swim_video(job_id: str) -> dict:
             # sync ctx manager; emulate with a manual download into our
             # workdir for cleanliness.
             uploaded_local = await _download_upload(video_storage_path, workdir_path)
+
+            # Public DoS guard: reject over-long clips BEFORE the expensive
+            # pipeline (a too-long clip would otherwise burn the whole
+            # job_timeout). The client also fast-fails on duration, so this only
+            # catches uploads that bypassed it; _mark_failed refunds the credit
+            # (a rejected clip never costs the guest). Members are unaffected.
+            if source == AnalysisJobSource.PUBLIC:
+                duration = await asyncio.to_thread(
+                    _probe_duration_seconds, uploaded_local
+                )
+                if duration is not None and duration > PUBLIC_MAX_DURATION_SECONDS:
+                    logger.info(
+                        "Public job %s rejected: %.1fs exceeds %ss cap",
+                        job_id,
+                        duration,
+                        PUBLIC_MAX_DURATION_SECONDS,
+                    )
+                    await _mark_failed(job_uuid, "too_long")
+                    return {"status": "failed", "error": "too_long"}
 
             report: AnalysisReport = await run_analysis(
                 uploaded_local,
@@ -162,6 +182,24 @@ async def _download_upload(storage_path: str, workdir: Path) -> Path:
             return dest
 
     return await asyncio.to_thread(_do_download)
+
+
+def _probe_duration_seconds(path: Path) -> float | None:
+    """Cheap duration probe via cv2 metadata (no full decode). Returns None if
+    it can't be determined — then the pipeline proceeds and job_timeout is the
+    backstop. Worker-only (cv2 ships in the strokelab image, not the API/dev
+    env)."""
+    import cv2
+
+    cap = cv2.VideoCapture(str(path))
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+        frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
+    finally:
+        cap.release()
+    if fps <= 0 or frames <= 0:
+        return None
+    return frames / fps
 
 
 async def _write_completed(
