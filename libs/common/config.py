@@ -135,7 +135,11 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""  # Can also use BREVO_KEY
-    BREVO_KEY: str = ""  # Alternative to SMTP_PASSWORD
+    BREVO_KEY: str = ""  # SMTP key (xsmtpsib-), used as the SMTP password
+    # Brevo v3 HTTP API key (xkeysib-). Preferred transport: DigitalOcean (and
+    # most cloud hosts) block outbound SMTP ports, so smtplib delivery times out.
+    # When set, email is sent over HTTPS (api.brevo.com:443) instead of SMTP.
+    BREVO_API_KEY: str = ""
     DEFAULT_FROM_EMAIL: str = "no-reply@swimbuddz.com"
     DEFAULT_FROM_NAME: str = "SwimBuddz"
 

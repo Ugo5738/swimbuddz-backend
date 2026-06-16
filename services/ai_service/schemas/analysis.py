@@ -115,9 +115,7 @@ class PublicAnalysisJobResponse(BaseModel):
     stroke_type: str
     guest_token: str
     credits_remaining: int = 0
-    estimated_ready_hint: str = (
-        "We'll email you when it's ready — usually within a few hours."
-    )
+    estimated_ready_hint: str = "We'll email you a link as soon as it's ready."
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
