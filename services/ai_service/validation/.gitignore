@@ -1,0 +1,4 @@
+# Golden-set video clips are large — keep them out of git.
+# Labels (labels/*.json) ARE committed; they're the ground truth.
+clips/
+scorecard.md
