@@ -49,7 +49,7 @@ class WorkerSettings:
     cron_jobs = []
 
 
-class PublicWorkerSettings(WorkerSettings):
+class PublicWorkerSettings:
     """Isolated worker for PUBLIC (guest analyzer) jobs.
 
     Same pipeline + limits as the member worker, but bound to the public queue
@@ -58,6 +58,19 @@ class PublicWorkerSettings(WorkerSettings):
     analyses on ``arq:ai``. Run with:
 
         arq services.ai_service.tasks.worker.PublicWorkerSettings
+
+    NOTE: arq reads settings from the class's OWN ``__dict__``, not inherited
+    attributes — so this must NOT subclass WorkerSettings (a subclass would
+    expose only its overridden ``queue_name`` and arq would then see no
+    ``functions`` → "at least one function or cron_job must be registered" and
+    crash-loop). Every attribute is declared here, referencing WorkerSettings'
+    values to avoid drift.
     """
 
+    redis_settings = WorkerSettings.redis_settings
     queue_name = PUBLIC_QUEUE_NAME
+    max_jobs = WorkerSettings.max_jobs
+    max_tries = WorkerSettings.max_tries
+    job_timeout = WorkerSettings.job_timeout
+    functions = WorkerSettings.functions
+    cron_jobs = WorkerSettings.cron_jobs
