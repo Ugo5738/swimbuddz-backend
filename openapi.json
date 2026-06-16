@@ -77187,7 +77187,7 @@
           "estimated_ready_hint": {
             "type": "string",
             "title": "Estimated Ready Hint",
-            "default": "We'll email you when it's ready \u2014 usually within a few hours."
+            "default": "We'll email you a link as soon as it's ready."
           },
           "created_at": {
             "type": "string",

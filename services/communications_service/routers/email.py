@@ -193,6 +193,7 @@ async def send_templated_email(
     """
     from services.communications_service.templates import (
         academy,
+        analyzer,
         coaching,
         members,
         payments,
@@ -202,6 +203,17 @@ async def send_templated_email(
     )
 
     template_handlers = {
+        # --- Stroke Lab analyzer templates (public guest emails) ---
+        "analyzer_ready": lambda d: analyzer.send_analyzer_ready_email(
+            to_email=request.to_email,
+            result_url=d.get("result_url", ""),
+            member_name=d.get("member_name", ""),
+        ),
+        "analyzer_failed": lambda d: analyzer.send_analyzer_failed_email(
+            to_email=request.to_email,
+            retry_url=d.get("retry_url", "https://analyzer.swimbuddz.com"),
+            member_name=d.get("member_name", ""),
+        ),
         # --- Academy templates ---
         "enrollment_confirmation": lambda d: academy.send_enrollment_confirmation_email(
             to_email=request.to_email,
