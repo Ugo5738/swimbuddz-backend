@@ -484,9 +484,12 @@ async def create_payment_intent(
             }
 
     # Partial Bubbles: subtract the Bubbles value from amount AFTER discount.
-    # 1 Bubble = ₦100. Only applies to SESSION_FEE / SESSION_BUNDLE / RIDE_SHARE.
+    # 1 Bubble = ₦100. Only applies to SESSION_FEE / SESSION_BOOKING /
+    # SESSION_BUNDLE / RIDE_SHARE. The wallet is debited the Bubbles portion
+    # in each purpose's entitlement handler once Paystack clears the remainder.
     bubbles_purposes = {
         PaymentPurpose.SESSION_FEE,
+        PaymentPurpose.SESSION_BOOKING,
         PaymentPurpose.SESSION_BUNDLE,
         PaymentPurpose.RIDE_SHARE,
     }

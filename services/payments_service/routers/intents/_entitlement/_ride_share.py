@@ -19,6 +19,7 @@ from services.payments_service.models import (
 )
 
 from .._helpers import (
+    _debit_bubbles,
     _update_pending_payment_reference,
 )
 
@@ -52,6 +53,11 @@ async def apply_ride_share(payment: Payment) -> None:
             )
         member_data = member_resp.json()
         member_id = member_data.get("id")
+
+        # Partial Bubbles: the intent reduced the Paystack charge by the Bubbles
+        # value (see intent_creation `bubbles_purposes`); debit the wallet for
+        # the Bubbles portion now that Paystack cleared the remainder.
+        await _debit_bubbles(client, payment, reference_type="ride_share")
 
         # Create ride booking via transport service — MUST succeed (it's the whole point)
         transport_resp = await client.post(

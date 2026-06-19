@@ -723,6 +723,33 @@ async def test_session_fee_rejects_bubbles_exceeding_amount(
     assert "bubbles_to_apply exceeds amount" in response.json()["detail"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_session_booking_applies_bubbles(payments_client, monkeypatch):
+    """Regression: SESSION_BOOKING must deduct Bubbles from the Paystack
+    charge just like SESSION_FEE. Previously SESSION_BOOKING was missing from
+    `bubbles_purposes`, so the member was charged the full amount while the
+    UI showed the reduced one. 5 Bubbles = ₦500 off ₦2000 → ₦1500."""
+    from services.payments_service.app.main import app as payments_app
+
+    _override_current_user_email(payments_app)
+    _install_paystack_stubs(monkeypatch)
+
+    response = await payments_client.post(
+        "/payments/intents",
+        json={
+            "purpose": "session_booking",
+            "session_id": str(uuid.uuid4()),
+            "direct_amount": 2000.0,
+            "bubbles_to_apply": 5,
+            "payment_metadata": {"booking_id": str(uuid.uuid4())},
+        },
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["amount"] == 1500.0
+
+
 # ===========================================================================
 # SESSION_BUNDLE  — multiple sessions, optional per-session ride configs
 # ===========================================================================

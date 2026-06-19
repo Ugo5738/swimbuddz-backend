@@ -29,7 +29,7 @@ from libs.common.config import get_settings
 from libs.common.logging import get_logger
 from services.payments_service.models import Payment
 
-from .._helpers import _update_pending_payment_reference
+from .._helpers import _debit_bubbles, _update_pending_payment_reference
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -44,13 +44,16 @@ async def apply_session_booking(payment: Payment) -> None:
             detail="booking_id missing in payment metadata",
         )
 
-    # Partial-Bubbles support: if the intent applied some Bubbles, the
-    # generic session-fee-style debit already happened upstream; the
-    # wallet txn id (when present) is recorded on the booking for audit.
-    wallet_transaction_id = meta.get("wallet_transaction_id")
-
     headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
     async with httpx.AsyncClient(timeout=30) as client:
+        # Partial Bubbles: the intent reduced the Paystack charge by the Bubbles
+        # value (see intent_creation `bubbles_purposes`). Now that Paystack has
+        # cleared the remainder, debit the wallet for the Bubbles portion. The
+        # resulting wallet txn id is recorded on the booking for audit.
+        wallet_transaction_id = await _debit_bubbles(
+            client, payment, reference_type="session_booking"
+        )
+
         resp = await client.post(
             f"{settings.SESSIONS_SERVICE_URL}"
             f"/internal/sessions/bookings/{booking_id}/confirm",
