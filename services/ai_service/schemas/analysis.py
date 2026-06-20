@@ -89,6 +89,16 @@ class AnalysisResultPayload(BaseModel):
     summary_text: Optional[str] = None
     observations: list[Observation] = []
     tracking_gaps: list[TrackingGap] = []
+    # VLM-coach result (the PipelineResult slice: gate tier + per-aspect findings
+    # + hedged recovery count). None for legacy/metrics-only rows or coach failures.
+    # The internal VLM cache is NOT exposed here — only the derived result.
+    coach_result: Optional[dict] = None
+    # Signed evidence-frame URLs, keyed "<component>:<index>" (matches a finding's
+    # component + evidence_frames[].index). Signed at response time; None if absent.
+    coach_evidence_urls: Optional[dict[str, str]] = None
+    # Signed shareable-card URLs, same "<component>:<index>" keying (one per FIX
+    # finding). Signed at response time; None if absent.
+    coach_share_urls: Optional[dict[str, str]] = None
 
 
 class AnalysisJobDetailResponse(AnalysisJobResponse):

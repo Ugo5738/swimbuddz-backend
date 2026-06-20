@@ -52,7 +52,11 @@ from services.ai_service.models import (
     AnalysisJobStatus,
     AnalysisResult,
 )
-from services.ai_service.routers._common import build_result_payload
+from services.ai_service.routers._common import (
+    build_result_payload,
+    sign_coach_evidence,
+    sign_coach_share,
+)
 from services.ai_service.routers.analyze import (
     MAX_UPLOAD_BYTES,
     SUPPORTED_STROKES,
@@ -272,6 +276,9 @@ async def get_public_analysis_job(
             )
 
     payload = build_result_payload(result_row) if result_row is not None else None
+    if payload is not None and result_row is not None:
+        payload.coach_evidence_urls = await sign_coach_evidence(result_row)
+        payload.coach_share_urls = await sign_coach_share(result_row)
     return PublicAnalysisJobDetailResponse(
         job_id=job.id,
         status=_status_str(job),

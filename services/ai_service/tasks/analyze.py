@@ -24,7 +24,7 @@ from pathlib import Path
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.config import AsyncSessionLocal
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from services.ai_service.analysis import (
     DEFAULT_PIPELINE_CONFIG,
@@ -36,6 +36,7 @@ from services.ai_service.analysis.storage import (
     UPLOADS_BUCKET,
     temp_file_from_storage,
     upload_annotated_video,
+    upload_evidence_frames,
     upload_guest_annotated_video,
 )
 from services.ai_service.constants import PUBLIC_MAX_DURATION_SECONDS
@@ -44,6 +45,7 @@ from services.ai_service.models import (
     AnalysisJobSource,
     AnalysisJobStatus,
     AnalysisResult,
+    SwimFrameLabel,
 )
 from services.ai_service.services.credit_ops import (
     consume_reservation,
@@ -83,6 +85,8 @@ async def analyze_swim_video(job_id: str) -> dict:
     # in to_thread so we don't block the loop on the network read.
     try:
         annotated_local: Path | None = None
+        coach_payload: dict | None = None
+        frame_labels: list[dict] | None = None
         with tempfile.TemporaryDirectory(prefix="strokelab_") as workdir:
             workdir_path = Path(workdir)
             annotated_local = workdir_path / f"{job_uuid}.annotated.mp4"
@@ -129,8 +133,54 @@ async def analyze_swim_video(job_id: str) -> dict:
                     member_auth_id, job_uuid, annotated_local
                 )
 
-        # 4. Persist result row + flip status
-        await _write_completed(job_uuid, annotated_key, report)
+            # 3b. VLM-coach pipeline (gate → segment → per-instance + holistic).
+            # Best-effort: a coach failure must NOT fail the job — the metrics
+            # result still saves and coach_result simply stays null.
+            try:
+                coach_payload = await _run_coach_pipeline(uploaded_local)
+            except Exception:
+                logger.exception(
+                    "Coach pipeline failed for job %s — metrics only", job_id
+                )
+                coach_payload = None
+            if coach_payload is not None:
+                # Pop the transient image BYTES (never store them in the JSON column);
+                # upload best-effort → coaching survives an upload failure. The
+                # *_keys maps (label → storage key) are JSON-safe.
+                evidence = coach_payload.pop("evidence", None)
+                share_cards = coach_payload.pop("share_cards", None)
+                # Per-frame labels go to the normalized table, NOT the JSON column
+                # (cache["labels"] is the JSON copy kept for replay).
+                frame_labels = coach_payload.pop("frame_labels", None)
+                prefix = (
+                    f"guest/{guest_token}"
+                    if source == AnalysisJobSource.PUBLIC
+                    else str(member_auth_id)
+                )
+                if evidence:
+                    try:
+                        coach_payload["evidence_keys"] = await upload_evidence_frames(
+                            prefix, job_uuid, evidence
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Evidence upload failed for job %s — coaching kept", job_id
+                        )
+                if share_cards:
+                    try:
+                        coach_payload["share_keys"] = await upload_evidence_frames(
+                            prefix, job_uuid, share_cards, subdir="share"
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Share-card upload failed for job %s — coaching kept",
+                            job_id,
+                        )
+
+        # 4. Persist result row + flip status (coach_payload may be None)
+        await _write_completed(
+            job_uuid, annotated_key, report, coach_payload, frame_labels
+        )
         logger.info(
             "Stroke Lab job %s completed: pose=%.3f spm=%s",
             job_id,
@@ -203,10 +253,139 @@ def _probe_duration_seconds(path: Path) -> float | None:
     return frames / fps
 
 
+def _coach_enabled() -> bool:
+    from libs.common.config import get_settings
+
+    return bool(get_settings().STROKELAB_ENABLE_COACH)
+
+
+async def _run_coach_pipeline(video_path: Path) -> dict | None:
+    """Run the VLM-coach pipeline; return a JSON-serialisable stored run.
+
+    Shape: {"engine_version", "result": <PipelineResult>, "cache": <vlm cache>,
+    "evidence": {"<component>:<index>": <jpeg bytes>}}. The cache holds the PAID
+    VLM outputs (re-derive findings free). "evidence" is TRANSIENT frame bytes the
+    caller uploads and replaces with storage keys — never store it in the column.
+    Models come from config (overridable per-env). Returns None when disabled.
+    """
+    if not _coach_enabled():
+        return None
+    import cv2
+
+    from libs.common.config import get_settings
+
+    from services.ai_service.coach.frames import extract_key_frames
+    from services.ai_service.pipeline.defaults import build_default_registry
+    from services.ai_service.pipeline.runner import run_pipeline
+    from services.ai_service.pipeline.store import _enc
+    from services.ai_service.pipeline.types import (
+        InputProfile,
+        PipelineConfig,
+        RunContext,
+    )
+
+    try:
+        from services.ai_service.analysis.version import STROKELAB_ENGINE_VERSION as ver
+    except Exception:
+        ver = "unknown"
+
+    s = get_settings()
+    config = PipelineConfig(
+        gate_model=s.STROKELAB_COACH_GATE_MODEL,
+        coach_model=s.STROKELAB_COACH_MODEL,
+        segment_model=s.STROKELAB_COACH_SEGMENT_MODEL,
+    )
+
+    def _strip_n() -> int:
+        cap = cv2.VideoCapture(str(video_path))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        total = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+        cap.release()
+        dur = (total / fps) if fps else 0.0
+        return min(72, max(16, round(dur * 6)))  # hold ~6fps, capped for cost
+
+    # key frames for the gate + holistic coach; denser strip (~6fps) for segmentation
+    key_frames = await asyncio.to_thread(extract_key_frames, video_path, 8, 768)
+    strip = await asyncio.to_thread(extract_key_frames, video_path, _strip_n(), 640)
+    ctx = RunContext(
+        frames=key_frames,
+        strip=strip,
+        profile=InputProfile.UNKNOWN,
+        config=config,
+        cache={},  # collect the paid VLM outputs so we can re-derive for free
+    )
+    result = await run_pipeline(ctx, build_default_registry())
+
+    # Collect the frame bytes each finding cites, keyed "<component>:<index>".
+    # holistic_coach cites KEY-frame indices; recovery_coach cites STRIP indices.
+    evidence: dict[str, bytes] = {}
+    for cr in result.results:
+        src = key_frames if cr.component == "holistic_coach" else strip
+        for finding in cr.findings:
+            for ref in finding.evidence_frames:
+                if 0 <= ref.index < len(src):
+                    evidence[f"{cr.component}:{ref.index}"] = src[ref.index].jpeg
+
+    # Render a shareable branded card per FIX finding (best-effort, gated by config).
+    share_cards: dict[str, bytes] = {}
+    if s.STROKELAB_COACH_SHARE_CARDS:
+        from services.ai_service.coach.cards import render_share_card
+
+        for cr in result.results:
+            src = key_frames if cr.component == "holistic_coach" else strip
+            for finding in cr.findings:
+                if finding.severity != "fix" or not finding.evidence_frames:
+                    continue
+                ref = finding.evidence_frames[0]
+                if not (0 <= ref.index < len(src)):
+                    continue
+                try:
+                    share_cards[
+                        f"{cr.component}:{ref.index}"
+                    ] = await asyncio.to_thread(
+                        render_share_card,
+                        src[ref.index].jpeg,
+                        finding.observation,
+                        area=finding.area or "other",
+                        timestamp_s=ref.timestamp_s,
+                    )
+                except Exception:
+                    logger.warning("share-card render failed (%s)", finding.component)
+
+    # Per-frame labels for the normalized swim_frame_labels table (queryable
+    # corpus for analytics + fine-tuning). Joined to strip timestamps HERE so the
+    # classification dataclass stays frame-metadata-free; the same labels also
+    # live in cache["labels"] for $0 pipeline replay. Nothing is discarded.
+    ts_by_index = {f.index: f.timestamp_s for f in strip}
+    frame_labels = [
+        {
+            "frame_index": int(lab.get("index", -1)),
+            "timestamp_s": float(ts_by_index.get(lab.get("index"), 0.0)),
+            "phase": str(lab.get("phase", "indeterminate")),
+            "arm": str(lab.get("arm", "none")),
+            "subphase": str(lab.get("subphase", "") or ""),
+            "conf": float(lab.get("conf", 0.0) or 0.0),
+        }
+        for lab in (ctx.cache.get("labels") or [])
+        if int(lab.get("index", -1)) >= 0
+    ]
+
+    return {
+        "engine_version": ver,
+        "result": _enc(result),
+        "cache": ctx.cache,
+        "evidence": evidence,
+        "share_cards": share_cards,
+        "frame_labels": frame_labels,
+    }
+
+
 async def _write_completed(
     job_id: uuid.UUID,
     annotated_storage_path: str,
     report: AnalysisReport,
+    coach_payload: dict | None = None,
+    frame_labels: list[dict] | None = None,
 ) -> None:
     ready_email: tuple[str, str] | None = None
     async with AsyncSessionLocal() as session:
@@ -245,8 +424,32 @@ async def _write_completed(
             tracking_gaps=report.tracking_gaps,
             pipeline_config=report.config_snapshot,
             raw_metrics=report.raw_metrics,
+            coach_result=coach_payload,  # VLM-coach run (None if it failed/disabled)
         )
         session.add(result)
+
+        # Normalized per-frame labels (queryable corpus for analytics/fine-tuning).
+        # Replace any prior rows for idempotency on re-run, then bulk-insert.
+        if frame_labels:
+            await session.execute(
+                delete(SwimFrameLabel).where(SwimFrameLabel.job_id == job_id)
+            )
+            ver = (coach_payload or {}).get("engine_version")
+            session.add_all(
+                [
+                    SwimFrameLabel(
+                        job_id=job_id,
+                        frame_index=fl["frame_index"],
+                        timestamp_s=fl["timestamp_s"],
+                        phase=fl["phase"],
+                        arm=fl["arm"],
+                        subphase=fl["subphase"],
+                        conf=fl["conf"],
+                        engine_version=ver,
+                    )
+                    for fl in frame_labels
+                ]
+            )
         # Public jobs: spend the reserved credit in the SAME transaction as the
         # completion (design §6.1). Member jobs have no reservation.
         if job.source == AnalysisJobSource.PUBLIC and job.guest_email:

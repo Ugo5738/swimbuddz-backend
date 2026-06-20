@@ -6,8 +6,13 @@ member and public endpoints can't drift.
 
 from __future__ import annotations
 
+from libs.common.logging import get_logger
+
 from services.ai_service.analysis.drills import resolve_drill
+from services.ai_service.analysis.storage import signed_url_for_evidence
 from services.ai_service.models import AnalysisResult
+
+logger = get_logger(__name__)
 from services.ai_service.schemas.analysis import (
     AnalysisResultPayload,
     DrillSuggestion,
@@ -54,4 +59,30 @@ def build_result_payload(result: AnalysisResult) -> AnalysisResultPayload:
         summary_text=result.summary_text,
         observations=observations,
         tracking_gaps=tracking_gaps,
+        # Expose only the derived PipelineResult, never the internal VLM cache.
+        coach_result=(result.coach_result or {}).get("result"),
     )
+
+
+async def _sign_coach_image_field(
+    result: AnalysisResult, field: str
+) -> dict[str, str] | None:
+    """Sign a coach image-key map (``evidence_keys`` / ``share_keys``) →
+    {label: signed_url}. Best-effort: a signing failure drops that image (a
+    missing thumbnail beats a broken one)."""
+    keys = (result.coach_result or {}).get(field) or {}
+    urls: dict[str, str] = {}
+    for label, key in keys.items():
+        try:
+            urls[label] = await signed_url_for_evidence(key)
+        except Exception as exc:
+            logger.warning("Could not sign %s %s: %s", field, key, exc)
+    return urls or None
+
+
+async def sign_coach_evidence(result: AnalysisResult) -> dict[str, str] | None:
+    return await _sign_coach_image_field(result, "evidence_keys")
+
+
+async def sign_coach_share(result: AnalysisResult) -> dict[str, str] | None:
+    return await _sign_coach_image_field(result, "share_keys")

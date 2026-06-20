@@ -81,6 +81,22 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
 
+    # Stroke Lab VLM coach (the new pipeline; provider-agnostic via LiteLLM).
+    # Defaults are the eval-locked picks — override per-env without redeploying.
+    STROKELAB_ENABLE_COACH: bool = True
+    STROKELAB_COACH_GATE_MODEL: str = "o4-mini"  # view/usability gate (reasoning)
+    STROKELAB_COACH_MODEL: str = "gpt-4o"  # holistic + per-instance coaching
+    STROKELAB_COACH_SEGMENT_MODEL: str = "gpt-4o"  # per-frame phase classifier
+    # Per-component on/off (the flow lives in pipeline/defaults.py; flip here).
+    STROKELAB_COACH_SEGMENT: bool = True  # Stage-1 classify-every-frame + segment
+    STROKELAB_COACH_RECOVERY: bool = True  # per-instance recovery coach
+    STROKELAB_COACH_HOLISTIC: bool = True  # whole-clip coach
+    STROKELAB_COACH_COLLATE: bool = True  # Stage-3 counts/metrics from instances
+    STROKELAB_COACH_UNDERWATER: bool = (
+        False  # dormant catch/pull/kick (underwater-only)
+    )
+    STROKELAB_COACH_SHARE_CARDS: bool = True  # render shareable per-finding cards
+
     # Langfuse observability
     LANGFUSE_HOST: str = ""
     LANGFUSE_PUBLIC_KEY: str = ""

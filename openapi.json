@@ -76349,6 +76349,46 @@
             "type": "array",
             "title": "Tracking Gaps",
             "default": []
+          },
+          "coach_result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach Result"
+          },
+          "coach_evidence_urls": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach Evidence Urls"
+          },
+          "coach_share_urls": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach Share Urls"
           }
         },
         "type": "object",

@@ -26,6 +26,7 @@ from services.ai_service.models import (  # noqa: F401
     AnalyzerCreditAccount,
     AnalyzerCreditLedger,
     StrokeLabFoundingMember,
+    SwimFrameLabel,
 )
 
 settings = get_settings()
@@ -45,6 +46,7 @@ SERVICE_TABLES = {
     "ai_model_configs",
     "swim_analysis_jobs",
     "swim_analysis_results",
+    "swim_frame_labels",
     "strokelab_founding_members",
     "analyzer_credit_accounts",
     "analyzer_credit_ledger",

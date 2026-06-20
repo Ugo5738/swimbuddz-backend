@@ -37,7 +37,11 @@ from services.ai_service.models import (
     AnalysisJobStatus,
     AnalysisResult,
 )
-from services.ai_service.routers._common import build_result_payload
+from services.ai_service.routers._common import (
+    build_result_payload,
+    sign_coach_evidence,
+    sign_coach_share,
+)
 from services.ai_service.schemas.analysis import (
     AnalysisJobDetailResponse,
     AnalysisJobResponse,
@@ -80,6 +84,9 @@ async def _build_detail_response(
     include_signed_urls: bool,
 ) -> AnalysisJobDetailResponse:
     payload = build_result_payload(result) if result is not None else None
+    if payload is not None and result is not None:
+        payload.coach_evidence_urls = await sign_coach_evidence(result)
+        payload.coach_share_urls = await sign_coach_share(result)
     original_url = None
     annotated_url = None
     if include_signed_urls:

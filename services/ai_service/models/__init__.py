@@ -5,6 +5,7 @@ from services.ai_service.models.analysis import (
     AnalysisJobSource,
     AnalysisJobStatus,
     AnalysisResult,
+    SwimFrameLabel,
 )
 from services.ai_service.models.core import AIModelConfig, AIPromptTemplate, AIRequest
 from services.ai_service.models.credits import (
@@ -34,4 +35,5 @@ __all__ = [
     "FOUNDING_MEMBER_PRICE_KOBO",
     "FOUNDING_MEMBERS_CAP",
     "StrokeLabFoundingMember",
+    "SwimFrameLabel",
 ]
