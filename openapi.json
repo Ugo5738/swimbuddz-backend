@@ -77362,6 +77362,11 @@
             "type": "string",
             "title": "Stroke Type"
           },
+          "discipline": {
+            "type": "string",
+            "title": "Discipline",
+            "default": "general"
+          },
           "error_message": {
             "anyOf": [
               {

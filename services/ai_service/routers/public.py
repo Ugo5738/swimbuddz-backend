@@ -294,6 +294,7 @@ async def get_public_analysis_job(
         job_id=job.id,
         status=_status_str(job),
         stroke_type=job.stroke_type,
+        discipline=job.discipline,
         error_message=job.error_message,
         created_at=job.created_at,
         started_at=job.started_at,

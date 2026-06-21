@@ -149,6 +149,7 @@ class PublicAnalysisJobDetailResponse(BaseModel):
     job_id: uuid.UUID
     status: str
     stroke_type: str
+    discipline: str = "general"  # the goal the analysis was coached for (§12)
     error_message: Optional[str] = None
     created_at: datetime
     started_at: Optional[datetime] = None
