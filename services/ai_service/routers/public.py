@@ -72,6 +72,7 @@ from services.ai_service.schemas.analysis import (
     PublicCreditsResponse,
 )
 from services.ai_service.services.drilldown import (
+    drilldown_unlocked,
     ensure_drilldown_unlocked,
     run_inspect,
 )
@@ -295,6 +296,7 @@ async def get_public_analysis_job(
         status=_status_str(job),
         stroke_type=job.stroke_type,
         discipline=job.discipline,
+        drilldown_unlocked=drilldown_unlocked(),
         error_message=job.error_message,
         created_at=job.created_at,
         started_at=job.started_at,

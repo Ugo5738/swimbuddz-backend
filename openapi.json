@@ -76497,6 +76497,21 @@
             "title": "Tracking Gaps",
             "default": []
           },
+          "instances": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instances"
+          },
           "coach_result": {
             "anyOf": [
               {
@@ -77366,6 +77381,11 @@
             "type": "string",
             "title": "Discipline",
             "default": "general"
+          },
+          "drilldown_unlocked": {
+            "type": "boolean",
+            "title": "Drilldown Unlocked",
+            "default": false
           },
           "error_message": {
             "anyOf": [

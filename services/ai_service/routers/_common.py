@@ -75,17 +75,49 @@ def build_result_payload(result: AnalysisResult) -> AnalysisResultPayload:
         pose_detection_rate=result.pose_detection_rate,
         frames_total=result.frames_total,
         frames_with_pose=result.frames_with_pose,
-        stroke_rate_spm=result.stroke_rate_spm,
-        body_roll_proxy_degrees=result.body_roll_proxy_degrees,
-        breath_count_left=result.breath_count_left,
-        breath_count_right=result.breath_count_right,
-        breath_balance_left_ratio=result.breath_balance_left_ratio,
+        # The pivot bans these — NEVER populate them (durable: the UI can't leak a
+        # number we can't defend, even if a future dev re-adds a tile).
+        stroke_rate_spm=None,
+        body_roll_proxy_degrees=None,
+        breath_count_left=None,
+        breath_count_right=None,
+        breath_balance_left_ratio=None,
         summary_text=result.summary_text,
         observations=observations,
         tracking_gaps=tracking_gaps,
         # Expose only the derived PipelineResult, never the internal VLM cache.
         coach_result=(result.coach_result or {}).get("result"),
+        instances=_sanitized_instances(result),
     )
+
+
+_INSTANCE_FIELDS = (
+    "instance_id",
+    "phase",
+    "arm",
+    "start_s",
+    "end_s",
+    "peak_s",
+    "confidence",
+)
+
+
+def _sanitized_instances(result: AnalysisResult) -> Optional[list[dict]]:
+    """Whitelisted projection of the stored phase instances for the per-stroke
+    browser — NEVER a cache dump (the cache also holds paid VLM verdicts + the
+    run-store-reuse ledger). Exposed only when drilldown is unlocked, so locked
+    clients don't pay the bytes over 3G."""
+    from services.ai_service.services.drilldown import drilldown_unlocked
+
+    if not drilldown_unlocked():
+        return None
+    raw = ((result.coach_result or {}).get("cache") or {}).get("instances") or []
+    out = [
+        {k: inst.get(k) for k in _INSTANCE_FIELDS}
+        for inst in raw
+        if isinstance(inst, dict)
+    ]
+    return out or None
 
 
 async def _sign_coach_image_field(

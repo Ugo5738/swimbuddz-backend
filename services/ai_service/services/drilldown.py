@@ -25,9 +25,19 @@ from services.ai_service.models import AnalysisResult
 from services.ai_service.pipeline.types import ASPECTS
 
 
+def drilldown_unlocked() -> bool:
+    """Config-driven accuracy gate: unlocked when the last-measured segmentation
+    accuracy meets the bar (both knobs live in config — lower the bar to preview)."""
+    s = get_settings()
+    return (
+        s.STROKELAB_DRILLDOWN_MEASURED_ACCURACY_PCT
+        >= s.STROKELAB_DRILLDOWN_MIN_ACCURACY_PCT
+    )
+
+
 def ensure_drilldown_unlocked() -> None:
-    """409 while drilldown is gated off (the shipped state today)."""
-    if not get_settings().STROKELAB_COACH_DRILLDOWN:
+    """409 while drilldown is gated off (measured accuracy below the bar)."""
+    if not drilldown_unlocked():
         raise HTTPException(
             status_code=409,
             detail={

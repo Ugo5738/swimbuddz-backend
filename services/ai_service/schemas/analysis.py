@@ -89,6 +89,10 @@ class AnalysisResultPayload(BaseModel):
     pose_detection_rate: float
     frames_total: int
     frames_with_pose: int
+    # The pivot BANS these numbers (over-counted spm, unreliable roll degrees,
+    # false-firing breath counts). build_result_payload always leaves them None so
+    # the UI can never re-surface a number we can't defend. Kept nullable only for
+    # back-compat with older clients that read the keys.
     stroke_rate_spm: Optional[float] = None
     body_roll_proxy_degrees: Optional[float] = None
     breath_count_left: Optional[int] = None
@@ -97,6 +101,10 @@ class AnalysisResultPayload(BaseModel):
     summary_text: Optional[str] = None
     observations: list[Observation] = []
     tracking_gaps: list[TrackingGap] = []
+    # Sanitized per-phase instances (whitelisted projection of the stored segmenter
+    # output — NEVER the raw VLM cache). Populated only when the per-instance
+    # drilldown is unlocked (§12.5); None while locked. Powers the recovery browser.
+    instances: Optional[list[dict]] = None
     # VLM-coach result (the PipelineResult slice: gate tier + per-aspect findings
     # + hedged recovery count). None for legacy/metrics-only rows or coach failures.
     # The internal VLM cache is NOT exposed here — only the derived result.
@@ -150,6 +158,7 @@ class PublicAnalysisJobDetailResponse(BaseModel):
     status: str
     stroke_type: str
     discipline: str = "general"  # the goal the analysis was coached for (§12)
+    drilldown_unlocked: bool = False  # per-stroke inspect available (config gate, §12.5)
     error_message: Optional[str] = None
     created_at: datetime
     started_at: Optional[datetime] = None

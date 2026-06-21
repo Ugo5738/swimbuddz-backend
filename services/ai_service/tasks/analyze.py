@@ -305,6 +305,7 @@ async def _run_coach_pipeline(
         gate_model=s.STROKELAB_COACH_GATE_MODEL,
         coach_model=s.STROKELAB_COACH_MODEL,
         segment_model=s.STROKELAB_COACH_SEGMENT_MODEL,
+        max_coached_recoveries=s.STROKELAB_COACH_MAX_RECOVERIES,
     )
 
     def _strip_n() -> int:
