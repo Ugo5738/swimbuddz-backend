@@ -57,6 +57,21 @@ from services.ai_service.pipeline.components.underwater import (
 from services.ai_service.pipeline.registry import Registry
 
 
+# aspect id (AREA_LABELS / grade key) → the component class that coaches it. Used
+# by the on-demand inspect path to coach a single instance of a chosen aspect.
+_ASPECT_COMPONENTS = {
+    "recovery_elbow": RecoveryCoachComponent,
+    "body_line": BodyLineComponent,
+    "entry_reach": EntryReachComponent,
+    "head_breath": HeadBreathingComponent,
+}
+
+
+def aspect_component(aspect: str):
+    """The AspectCoachComponent class for an aspect id, or None if unknown."""
+    return _ASPECT_COMPONENTS.get(aspect)
+
+
 def build_default_registry() -> Registry:
     """Register the components in flow order, honouring the config toggles."""
     from libs.common.config import get_settings

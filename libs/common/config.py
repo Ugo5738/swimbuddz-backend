@@ -106,6 +106,9 @@ class Settings(BaseSettings):
     # per-stroke UI now. MEASURED is updated whenever validation/recovery_eval.py runs.
     STROKELAB_DRILLDOWN_MIN_ACCURACY_PCT: int = 80  # the bar to clear
     STROKELAB_DRILLDOWN_MEASURED_ACCURACY_PCT: int = 53  # last eval (within ±1)
+    # Per-stroke inspect billing. OFF = comped (no credit charged) — honest while the
+    # count isn't accuracy-validated. Flip ON for pay-per-inspect once accuracy clears.
+    STROKELAB_INSPECT_BILLING: bool = False
 
     # Langfuse observability
     LANGFUSE_HOST: str = ""

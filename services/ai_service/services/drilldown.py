@@ -6,17 +6,16 @@ GATED behind ``STROKELAB_COACH_DRILLDOWN`` until segmentation count accuracy cle
 While locked, the inspect endpoints return **409 ``drilldown_locked``** and the UX
 shows a visibly-LOCKED affordance ("unlocks at higher accuracy").
 
-The unlock path (a focused future change — NOT built; it would spend a VLM call):
-  1. rebuild a RunContext with ``cache`` seeded from ``coach_result['cache']`` so
-     the gate + segment stages REPLAY at $0 (run-store-reuse);
-  2. re-extract the strip frames for the requested instance from the stored clip;
-  3. run the ONE requested aspect component on that instance (the only paid call);
-  4. persist the new Finding into ``coach_result`` and return it (pay-per-inspect,
-     billed 1 credit / micro-charge — off the per-clip budget, free on re-view).
-Flip the config flag only once steps 1–4 land AND the accuracy gate passes.
+The unlock path is BUILT: the inspect endpoint validates, then either returns an
+already-coached instance (idempotent, $0) or enqueues ``task_inspect_instance``
+(the worker re-extracts frames, replays the cache so gate/segment cost $0, coaches
+the one aspect, persists the Finding). The frontend polls the job detail for it.
+Billing is comped while ``STROKELAB_INSPECT_BILLING`` is off (preview mode).
 """
 
 from __future__ import annotations
+
+from typing import Optional
 
 from fastapi import HTTPException
 
@@ -50,9 +49,21 @@ def ensure_drilldown_unlocked() -> None:
         )
 
 
-def run_inspect(result_row: AnalysisResult, aspect: str, instance_id: int) -> dict:
-    """Coach one stored instance (the unlocked path). Validates the request, then
-    raises 501 until the replay+coach path above is implemented."""
+def existing_inspect_finding(
+    result_row: AnalysisResult, aspect: str, instance_id: int
+) -> Optional[dict]:
+    """The already-coached finding for this aspect+instance, if any — so a re-view
+    returns instantly and never re-charges. Matches on (area, instance_id)."""
+    results = ((result_row.coach_result or {}).get("result") or {}).get("results") or []
+    for bucket in results:
+        for f in bucket.get("findings") or []:
+            if f.get("area") == aspect and f.get("instance_id") == instance_id:
+                return f
+    return None
+
+
+def validate_inspect(result_row: AnalysisResult, aspect: str, instance_id: int) -> None:
+    """400/404 if the aspect is unknown or the instance isn't in this run."""
     if aspect not in ASPECTS:
         raise HTTPException(status_code=400, detail=f"Unknown aspect: {aspect}")
     cache = (result_row.coach_result or {}).get("cache") or {}
@@ -61,8 +72,3 @@ def run_inspect(result_row: AnalysisResult, aspect: str, instance_id: int) -> di
         raise HTTPException(
             status_code=404, detail=f"No instance #{instance_id} to inspect"
         )
-    # Gate passed but the replay+coach path isn't built yet — fail loudly rather
-    # than silently, so flipping the flag early can't return a fake result.
-    raise HTTPException(
-        status_code=501, detail="Drilldown coaching is not yet implemented"
-    )

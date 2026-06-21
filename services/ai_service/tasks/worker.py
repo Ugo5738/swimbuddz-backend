@@ -23,6 +23,18 @@ async def task_analyze_swim_video(ctx: dict, job_id: str) -> dict:
     return await analyze_swim_video(job_id)
 
 
+async def task_inspect_instance(
+    ctx: dict, job_id: str, aspect: str, instance_id: int
+) -> dict:
+    """ARQ wrapper for the per-stroke drilldown (coach one stored instance)."""
+    from services.ai_service.tasks.inspect import inspect_instance
+
+    logger.info(
+        "Running: task_inspect_instance %s #%s for %s", aspect, instance_id, job_id
+    )
+    return await inspect_instance(job_id, aspect, instance_id)
+
+
 class WorkerSettings:
     """ARQ worker settings (member queue)."""
 
@@ -45,7 +57,7 @@ class WorkerSettings:
     # 50 MB upload before any inference starts.
     job_timeout = 600
 
-    functions = [task_analyze_swim_video]
+    functions = [task_analyze_swim_video, task_inspect_instance]
     cron_jobs = []
 
 

@@ -62,6 +62,7 @@ from services.ai_service.routers.analyze import (
     MAX_UPLOAD_BYTES,
     SUPPORTED_STROKES,
     _enqueue_analysis,
+    _enqueue_inspect,
 )
 from services.ai_service.schemas.analysis import (
     GumroadRedeemRequest,
@@ -74,7 +75,8 @@ from services.ai_service.schemas.analysis import (
 from services.ai_service.services.drilldown import (
     drilldown_unlocked,
     ensure_drilldown_unlocked,
-    run_inspect,
+    existing_inspect_finding,
+    validate_inspect,
 )
 from services.ai_service.services.credit_ops import (
     PERMALINK_CREDITS,
@@ -334,9 +336,17 @@ async def inspect_public_analysis(
     ensure_drilldown_unlocked()  # 409 while drilldown is gated off
     rs = await db.execute(select(AnalysisResult).where(AnalysisResult.job_id == job_id))
     result_row = rs.scalar_one_or_none()
-    if result_row is None:
+    if result_row is None or not result_row.coach_result:
         raise HTTPException(status_code=404, detail="No analysis result to inspect")
-    return run_inspect(result_row, req.aspect, req.instance_id)
+    existing = existing_inspect_finding(result_row, req.aspect, req.instance_id)
+    if existing is not None:
+        return {"status": "ready", "finding": existing}  # already coached → $0
+    validate_inspect(result_row, req.aspect, req.instance_id)
+    try:
+        await _enqueue_inspect(job_id, req.aspect, req.instance_id, PUBLIC_QUEUE_NAME)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Could not queue inspect") from exc
+    return {"status": "inspecting"}
 
 
 # ── GET /ai/public/credits ───────────────────────────────────────

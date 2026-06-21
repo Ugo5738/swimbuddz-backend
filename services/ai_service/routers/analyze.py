@@ -50,7 +50,8 @@ from services.ai_service.schemas.analysis import (
 )
 from services.ai_service.services.drilldown import (
     ensure_drilldown_unlocked,
-    run_inspect,
+    existing_inspect_finding,
+    validate_inspect,
 )
 
 logger = get_logger(__name__)
@@ -146,6 +147,28 @@ async def _enqueue_analysis(
         )
         if raise_on_error:
             raise
+
+
+async def _enqueue_inspect(
+    job_id: uuid.UUID,
+    aspect: str,
+    instance_id: int,
+    queue_name: str = MEMBER_QUEUE_NAME,
+) -> None:
+    """Push a per-stroke drilldown task onto an AI queue. Raises on failure so the
+    caller can surface a 502 (no credit is charged for inspect today, so there's
+    nothing to refund)."""
+    pool = await create_pool(get_redis_settings())
+    try:
+        await pool.enqueue_job(
+            "task_inspect_instance",
+            str(job_id),
+            aspect,
+            instance_id,
+            _queue_name=queue_name,
+        )
+    finally:
+        await pool.close()
 
 
 # ── POST /ai/analyze ─────────────────────────────────────────────
@@ -326,9 +349,17 @@ async def inspect_analysis(
     ensure_drilldown_unlocked()  # 409 while drilldown is gated off
     rs = await db.execute(select(AnalysisResult).where(AnalysisResult.job_id == job_id))
     result_row = rs.scalar_one_or_none()
-    if result_row is None:
+    if result_row is None or not result_row.coach_result:
         raise HTTPException(status_code=404, detail="No analysis result to inspect")
-    return run_inspect(result_row, req.aspect, req.instance_id)
+    existing = existing_inspect_finding(result_row, req.aspect, req.instance_id)
+    if existing is not None:
+        return {"status": "ready", "finding": existing}  # already coached → $0
+    validate_inspect(result_row, req.aspect, req.instance_id)
+    try:
+        await _enqueue_inspect(job_id, req.aspect, req.instance_id, MEMBER_QUEUE_NAME)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Could not queue inspect") from exc
+    return {"status": "inspecting"}
 
 
 # ── DELETE /ai/analyze/{job_id} ──────────────────────────────────

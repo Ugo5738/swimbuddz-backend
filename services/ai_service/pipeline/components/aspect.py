@@ -189,3 +189,46 @@ class AspectCoachComponent(Component):
             latency_ms=int((time.monotonic() - start) * 1000),
             meta={"coached": len(findings), "available_instances": len(insts)},
         )
+
+    async def coach_instance(
+        self, ctx: RunContext, instance_id: int
+    ) -> Optional[Finding]:
+        """Coach ONE specific instance by id — the on-demand drilldown path. Reuses
+        the same windowing/cache/grade machinery as run(); a re-inspect of an
+        already-coached instance replays from the cache at $0. Returns None if the
+        instance isn't present in this run."""
+        inst = next(
+            (
+                i
+                for i in ctx.instances
+                if i.phase == self.consumes
+                and i.instance_id == instance_id
+                and (not self.arm or i.arm == self.arm)
+            ),
+            None,
+        )
+        strip = ctx.strip or ctx.frames
+        if inst is None or not strip:
+            return None
+        window = self._window(inst, strip)
+        system_prompt = self.SYSTEM_PROMPT
+        goal = build_goal_block(ctx.coaching)
+        if goal:
+            system_prompt = f"{system_prompt}\n\n{goal}"
+        cache = ctx.cache
+        key = f"{self.name}:{inst.instance_id}"
+        if cache is not None and key in cache:
+            parsed = cache[key]  # replay — $0
+        else:
+            coach_fn = self._coach_fn or _vlm_coach
+            parsed, _ = await coach_fn(
+                window,
+                system_prompt=system_prompt,
+                model=ctx.config.coach_model,
+                image_detail=self.image_detail,
+                max_tokens=self.max_tokens,
+            )
+            if cache is not None:
+                cache[key] = parsed
+        findings = self._findings(parsed, inst, window, ctx)
+        return findings[0] if findings else None

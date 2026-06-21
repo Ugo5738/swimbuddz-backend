@@ -257,3 +257,39 @@ def test_consistency_silent_with_one_recovery():
     res = asyncio.run(RecoveryCoachComponent(coach_fn=fake).run(_recovery_ctx(1)))
     # only the single per-instance read — no aggregate (can't compare one stroke)
     assert not any(f.area == "consistency" for f in res.findings)
+
+
+# ── coach_instance: the on-demand drilldown core ──────────────────────────────
+def test_coach_instance_targets_the_requested_recovery():
+    async def fake(frames, **kw):
+        return {"assessment": "drops here", "elbow": "dropped", "confidence": 0.7}, 0.0
+
+    f = asyncio.run(
+        RecoveryCoachComponent(coach_fn=fake).coach_instance(_recovery_ctx(3), 1)
+    )
+    assert f is not None
+    assert f.instance_id == 1 and f.area == "recovery_elbow"
+    assert f.extra["elbow"] == "dropped"
+
+
+def test_coach_instance_returns_none_for_a_missing_instance():
+    async def fake(frames, **kw):
+        raise AssertionError("must not coach a non-existent instance")
+
+    f = asyncio.run(
+        RecoveryCoachComponent(coach_fn=fake).coach_instance(_recovery_ctx(2), 99)
+    )
+    assert f is None
+
+
+def test_coach_instance_replays_from_cache_at_zero_cost():
+    ctx = _recovery_ctx(3)
+    ctx.cache = {
+        "recovery_coach:1": {"assessment": "c", "elbow": "high", "confidence": 0.6}
+    }
+
+    async def boom(frames, **kw):
+        raise AssertionError("must not call the VLM on a cache replay")
+
+    f = asyncio.run(RecoveryCoachComponent(coach_fn=boom).coach_instance(ctx, 1))
+    assert f is not None and f.extra["elbow"] == "high"  # served from the cache
