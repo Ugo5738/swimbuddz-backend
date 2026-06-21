@@ -34,6 +34,13 @@ def drilldown_unlocked() -> bool:
     )
 
 
+def timeline_view_unlocked() -> bool:
+    """The video-led timeline view (v2) — config-gated, OFF until it's built and
+    per-moment placement is accurate enough. The result page shows a LOCKED tab
+    until this is true."""
+    return get_settings().STROKELAB_TIMELINE_VIEW
+
+
 def ensure_drilldown_unlocked() -> None:
     """409 while drilldown is gated off (measured accuracy below the bar)."""
     if not drilldown_unlocked():

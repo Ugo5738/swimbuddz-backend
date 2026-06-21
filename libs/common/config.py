@@ -109,6 +109,9 @@ class Settings(BaseSettings):
     # Per-stroke inspect billing. OFF = comped (no credit charged) — honest while the
     # count isn't accuracy-validated. Flip ON for pay-per-inspect once accuracy clears.
     STROKELAB_INSPECT_BILLING: bool = False
+    # The video-led timeline view (v2). OFF = the result page shows a LOCKED "Timeline"
+    # tab. Flip ON once it's built + per-moment placement is accurate enough.
+    STROKELAB_TIMELINE_VIEW: bool = False
 
     # Langfuse observability
     LANGFUSE_HOST: str = ""

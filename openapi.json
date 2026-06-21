@@ -77387,6 +77387,11 @@
             "title": "Drilldown Unlocked",
             "default": false
           },
+          "timeline_unlocked": {
+            "type": "boolean",
+            "title": "Timeline Unlocked",
+            "default": false
+          },
           "error_message": {
             "anyOf": [
               {
