@@ -6,13 +6,37 @@ member and public endpoints can't drift.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from libs.common.logging import get_logger
 
 from services.ai_service.analysis.drills import resolve_drill
 from services.ai_service.analysis.storage import signed_url_for_evidence
 from services.ai_service.models import AnalysisResult
+from services.ai_service.pipeline.types import ASPECTS, DISCIPLINES, LEVELS
 
 logger = get_logger(__name__)
+
+
+def parse_coach_context(
+    discipline: Optional[str],
+    level: Optional[str],
+    focus_area: Optional[str],
+    goal_text: Optional[str],
+) -> dict:
+    """Validate the goal-aware coaching fields from a create request into safe
+    ``AnalysisJob`` kwargs (closed-enum fallbacks + ``goal_text`` clamp ≤200).
+    Unknown values fall back to the conservative default rather than erroring, so
+    a stale client can never block an upload."""
+    gt = " ".join((goal_text or "").split())[:200] or None
+    return {
+        "discipline": discipline if discipline in DISCIPLINES else "general",
+        "level": level if level in LEVELS else None,
+        "focus_area": focus_area if focus_area in ASPECTS else None,
+        "goal_text": gt,
+    }
+
+
 from services.ai_service.schemas.analysis import (
     AnalysisResultPayload,
     DrillSuggestion,

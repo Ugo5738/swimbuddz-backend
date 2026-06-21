@@ -27552,6 +27552,66 @@
         }
       }
     },
+    "/api/v1/ai/analyze/{job_id}/inspect": {
+      "post": {
+        "tags": [
+          "stroke-lab"
+        ],
+        "summary": "Coach one stored instance on demand (gated; 409 until unlocked)",
+        "operationId": "inspect_analysis_ai_analyze__job_id__inspect_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Inspect Analysis Ai Analyze  Job Id  Inspect Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/admin/analyze/queue": {
       "get": {
         "tags": [
@@ -27764,6 +27824,93 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PublicAnalysisJobDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/public/analyze/{job_id}/inspect": {
+      "post": {
+        "tags": [
+          "stroke-lab-public"
+        ],
+        "summary": "Coach one stored instance on demand, guest (gated; 409 until unlocked)",
+        "operationId": "inspect_public_analysis_ai_public_analyze__job_id__inspect_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "guest_token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Guest Token"
+            }
+          },
+          {
+            "name": "X-Guest-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Guest-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Inspect Public Analysis Ai Public Analyze  Job Id  Inspect Post"
                 }
               }
             }
@@ -76418,6 +76565,44 @@
             "type": "boolean",
             "title": "Is Public",
             "default": false
+          },
+          "discipline": {
+            "type": "string",
+            "title": "Discipline",
+            "default": "general"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "focus_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus Area"
+          },
+          "goal_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal Text"
           }
         },
         "type": "object",
@@ -76442,6 +76627,44 @@
             "type": "string",
             "title": "Stroke Type",
             "default": "freestyle"
+          },
+          "discipline": {
+            "type": "string",
+            "title": "Discipline",
+            "default": "general"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "focus_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus Area"
+          },
+          "goal_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal Text"
           }
         },
         "type": "object",
@@ -77020,6 +77243,28 @@
           "remaining_credits"
         ],
         "title": "GumroadRedeemResponse"
+      },
+      "InspectRequest": {
+        "properties": {
+          "aspect": {
+            "type": "string",
+            "title": "Aspect",
+            "description": "aspect id: body_line | recovery_elbow | \u2026"
+          },
+          "instance_id": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Instance Id",
+            "description": "which instance of that aspect/phase"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aspect",
+          "instance_id"
+        ],
+        "title": "InspectRequest",
+        "description": "Per-instance drilldown request (\u00a712.5) \u2014 coach one stored instance of an\naspect on demand. Gated (409) until segmentation count accuracy clears the bar."
       },
       "Observation": {
         "properties": {

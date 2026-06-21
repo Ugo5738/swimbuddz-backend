@@ -54,6 +54,7 @@ from services.ai_service.models import (
 )
 from services.ai_service.routers._common import (
     build_result_payload,
+    parse_coach_context,
     sign_coach_evidence,
     sign_coach_share,
 )
@@ -65,9 +66,14 @@ from services.ai_service.routers.analyze import (
 from services.ai_service.schemas.analysis import (
     GumroadRedeemRequest,
     GumroadRedeemResponse,
+    InspectRequest,
     PublicAnalysisJobDetailResponse,
     PublicAnalysisJobResponse,
     PublicCreditsResponse,
+)
+from services.ai_service.services.drilldown import (
+    ensure_drilldown_unlocked,
+    run_inspect,
 )
 from services.ai_service.services.credit_ops import (
     PERMALINK_CREDITS,
@@ -119,6 +125,10 @@ async def create_public_analysis_job(
     video: Annotated[UploadFile, File(description="Freestyle swim video, ≤50 MB")],
     guest_email: Annotated[str, Form()],
     stroke_type: Annotated[str, Form()] = "freestyle",
+    discipline: Annotated[str, Form()] = "general",
+    level: Annotated[str | None, Form()] = None,
+    focus_area: Annotated[str | None, Form()] = None,
+    goal_text: Annotated[str | None, Form()] = None,
     db: AsyncSession = Depends(get_async_db),
 ) -> PublicAnalysisJobResponse:
     """Create a guest analysis job. Returns 202 — the client polls
@@ -150,6 +160,7 @@ async def create_public_analysis_job(
         stroke_type=stroke_type,
         video_storage_path="",  # filled after upload
         status=AnalysisJobStatus.PENDING,
+        **parse_coach_context(discipline, level, focus_area, goal_text),
     )
     db.add(job)
     await db.flush()  # populates job.id
@@ -291,6 +302,38 @@ async def get_public_analysis_job(
         original_video_url=original_url,
         annotated_video_url=annotated_url,
     )
+
+
+# ── POST /ai/public/analyze/{job_id}/inspect (drilldown, §12.5) ──────────────
+
+
+@router.post(
+    "/analyze/{job_id}/inspect",
+    summary="Coach one stored instance on demand, guest (gated; 409 until unlocked)",
+)
+async def inspect_public_analysis(
+    job_id: uuid.UUID,
+    req: InspectRequest,
+    x_guest_token: Annotated[Optional[str], Header(alias="X-Guest-Token")] = None,
+    guest_token: Annotated[Optional[str], Query()] = None,
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    token = x_guest_token or guest_token
+    job = await db.get(AnalysisJob, job_id)
+    if (
+        job is None
+        or job.source != AnalysisJobSource.PUBLIC
+        or not token
+        or not job.guest_token
+        or not secrets.compare_digest(token, job.guest_token)
+    ):
+        raise HTTPException(status_code=404, detail="Job not found")
+    ensure_drilldown_unlocked()  # 409 while drilldown is gated off
+    rs = await db.execute(select(AnalysisResult).where(AnalysisResult.job_id == job_id))
+    result_row = rs.scalar_one_or_none()
+    if result_row is None:
+        raise HTTPException(status_code=404, detail="No analysis result to inspect")
+    return run_inspect(result_row, req.aspect, req.instance_id)
 
 
 # ── GET /ai/public/credits ───────────────────────────────────────

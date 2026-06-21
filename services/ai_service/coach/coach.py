@@ -61,6 +61,7 @@ async def run_coach(
     max_tokens: int = 1500,
     temperature: float = 0.0,
     gate_context: Optional[dict] = None,
+    goal_block: str = "",
 ) -> CoachReport:
     """Run the vision coach over pre-selected frames.
 
@@ -74,7 +75,9 @@ async def run_coach(
 
     resp = await call_vlm(
         system_prompt=SYSTEM_PROMPT,
-        user_prompt=build_user_prompt(frames, stroke_hint) + _gate_note(gate_context),
+        user_prompt=build_user_prompt(frames, stroke_hint)
+        + _gate_note(gate_context)
+        + (f"\n\n{goal_block}" if goal_block else ""),
         images=[f.jpeg for f in frames],
         model=model,
         image_detail=image_detail,

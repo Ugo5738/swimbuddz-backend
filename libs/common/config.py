@@ -90,12 +90,18 @@ class Settings(BaseSettings):
     # Per-component on/off (the flow lives in pipeline/defaults.py; flip here).
     STROKELAB_COACH_SEGMENT: bool = True  # Stage-1 classify-every-frame + segment
     STROKELAB_COACH_RECOVERY: bool = True  # per-instance recovery coach
+    STROKELAB_COACH_BODY_LINE: bool = False  # Stage-2 body-line aspect (off until eval)
+    STROKELAB_COACH_ENTRY: bool = False  # Stage-2 entry/reach aspect (off until eval)
+    STROKELAB_COACH_HEAD: bool = False  # Stage-2 head/breathing aspect (off until eval)
     STROKELAB_COACH_HOLISTIC: bool = True  # whole-clip coach
     STROKELAB_COACH_COLLATE: bool = True  # Stage-3 counts/metrics from instances
     STROKELAB_COACH_UNDERWATER: bool = (
         False  # dormant catch/pull/kick (underwater-only)
     )
     STROKELAB_COACH_SHARE_CARDS: bool = True  # render shareable per-finding cards
+    STROKELAB_COACH_DRILLDOWN: bool = (
+        False  # per-instance inspect (§12.5); locked until count accuracy ≥~80%
+    )
 
     # Langfuse observability
     LANGFUSE_HOST: str = ""

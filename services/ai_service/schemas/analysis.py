@@ -22,6 +22,14 @@ class AnalysisJobCreateRequest(BaseModel):
     )
 
 
+class InspectRequest(BaseModel):
+    """Per-instance drilldown request (§12.5) — coach one stored instance of an
+    aspect on demand. Gated (409) until segmentation count accuracy clears the bar."""
+
+    aspect: str = Field(description="aspect id: body_line | recovery_elbow | …")
+    instance_id: int = Field(ge=0, description="which instance of that aspect/phase")
+
+
 # ── Lifecycle response (no result yet) ───────────────────────────
 
 

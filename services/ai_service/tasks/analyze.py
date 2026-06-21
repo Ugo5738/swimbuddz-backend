@@ -32,6 +32,7 @@ from services.ai_service.analysis import (
     PipelineConfig,
     run_analysis,
 )
+from services.ai_service.pipeline.types import CoachContext  # import-light (no cv2)
 from services.ai_service.analysis.storage import (
     UPLOADS_BUCKET,
     temp_file_from_storage,
@@ -80,6 +81,13 @@ async def analyze_swim_video(job_id: str) -> dict:
         video_storage_path = job.video_storage_path
         source = job.source
         guest_token = job.guest_token
+        # Goal-aware coaching context (§12) — captured while the session is open.
+        coach_context = CoachContext(
+            discipline=job.discipline,
+            level=job.level,
+            focus_area=job.focus_area,
+            goal_text=job.goal_text,
+        )
 
     # 2. Run pipeline against a tempfile download. Wrap the sync ctx manager
     # in to_thread so we don't block the loop on the network read.
@@ -137,7 +145,7 @@ async def analyze_swim_video(job_id: str) -> dict:
             # Best-effort: a coach failure must NOT fail the job — the metrics
             # result still saves and coach_result simply stays null.
             try:
-                coach_payload = await _run_coach_pipeline(uploaded_local)
+                coach_payload = await _run_coach_pipeline(uploaded_local, coach_context)
             except Exception:
                 logger.exception(
                     "Coach pipeline failed for job %s — metrics only", job_id
@@ -259,14 +267,17 @@ def _coach_enabled() -> bool:
     return bool(get_settings().STROKELAB_ENABLE_COACH)
 
 
-async def _run_coach_pipeline(video_path: Path) -> dict | None:
+async def _run_coach_pipeline(
+    video_path: Path, coach_context: CoachContext | None = None
+) -> dict | None:
     """Run the VLM-coach pipeline; return a JSON-serialisable stored run.
 
     Shape: {"engine_version", "result": <PipelineResult>, "cache": <vlm cache>,
     "evidence": {"<component>:<index>": <jpeg bytes>}}. The cache holds the PAID
     VLM outputs (re-derive findings free). "evidence" is TRANSIENT frame bytes the
     caller uploads and replaces with storage keys — never store it in the column.
-    Models come from config (overridable per-env). Returns None when disabled.
+    ``coach_context`` carries the swimmer's goal (§12); it steers grading + framing,
+    never perception. Models come from config (overridable per-env). None when off.
     """
     if not _coach_enabled():
         return None
@@ -312,6 +323,7 @@ async def _run_coach_pipeline(video_path: Path) -> dict | None:
         strip=strip,
         profile=InputProfile.UNKNOWN,
         config=config,
+        coaching=coach_context or CoachContext(),  # goal-aware grading/framing (§12)
         cache={},  # collect the paid VLM outputs so we can re-derive for free
     )
     result = await run_pipeline(ctx, build_default_registry())

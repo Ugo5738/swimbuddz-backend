@@ -11,6 +11,12 @@ This is the one file to read to understand the flow and flip pieces on/off.
                                No counting, no coaching here.
       recovery_coach  Stage 2  STROKELAB_COACH_RECOVERY  coach a representative near-arm
                                recovery (needs phase_segment to have run first).
+      body_line       Stage 2  STROKELAB_COACH_BODY_LINE  head/hip/leg sink from a glide
+                               frame (goal-aware aspect; OFF by default until its eval).
+      entry_reach     Stage 2  STROKELAB_COACH_ENTRY  hand entry/reach (crossover banned;
+                               sprint dead-spot hedged; OFF by default until its eval).
+      head_breathing  Stage 2  STROKELAB_COACH_HEAD  head carriage + breath side (never a
+                               rhythm number; OFF by default until its eval).
       holistic_coach  Stage 2  STROKELAB_COACH_HOLISTIC  whole-clip coaching (independent).
       collate         Stage 3  STROKELAB_COACH_COLLATE   derive counts/metrics from
                                ctx.instances → the hedged "~N recoveries" summary.
@@ -29,8 +35,13 @@ at call time with ``Registry.set_enabled(name, on)`` / ``run.py --disable <name>
 
 from __future__ import annotations
 
+from services.ai_service.pipeline.components.body_line import BodyLineComponent
 from services.ai_service.pipeline.components.collate import CollateComponent
+from services.ai_service.pipeline.components.entry_reach import EntryReachComponent
 from services.ai_service.pipeline.components.gate import GateComponent
+from services.ai_service.pipeline.components.head_breathing import (
+    HeadBreathingComponent,
+)
 from services.ai_service.pipeline.components.holistic_coach import (
     HolisticCoachComponent,
 )
@@ -57,6 +68,9 @@ def build_default_registry() -> Registry:
     )  # IS_GATE — always; runs first, sets the 3-tier branch
     reg.register(PhaseSegmentComponent(), enabled=s.STROKELAB_COACH_SEGMENT)
     reg.register(RecoveryCoachComponent(), enabled=s.STROKELAB_COACH_RECOVERY)
+    reg.register(BodyLineComponent(), enabled=s.STROKELAB_COACH_BODY_LINE)
+    reg.register(EntryReachComponent(), enabled=s.STROKELAB_COACH_ENTRY)
+    reg.register(HeadBreathingComponent(), enabled=s.STROKELAB_COACH_HEAD)
     reg.register(HolisticCoachComponent(), enabled=s.STROKELAB_COACH_HOLISTIC)
     reg.register(CollateComponent(), enabled=s.STROKELAB_COACH_COLLATE)
     # Dormant underwater components — registered + pluggable, off by default.

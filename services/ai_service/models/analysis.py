@@ -106,6 +106,17 @@ class AnalysisJob(Base):
     # so v1+ can keep history.
     stroke_type: Mapped[str] = mapped_column(String(20), nullable=False)
 
+    # Goal-aware coaching context (Stage-2 §12). Steers HOW findings are graded +
+    # framed, never what the VLM perceives. Typed columns (like stroke_type), not a
+    # DB enum, so the vocabulary can grow without a migration. discipline defaults
+    # to "general" so legacy/blank jobs coach exactly as before.
+    discipline: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="general", server_default="general"
+    )
+    level: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    focus_area: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    goal_text: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
     # Storage paths. Stored as opaque strings rather than full URLs so we
     # can swap the storage backend without a data migration.
     video_storage_path: Mapped[str] = mapped_column(Text, nullable=False)

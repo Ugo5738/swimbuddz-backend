@@ -14,6 +14,7 @@ import re
 import time
 
 from services.ai_service.coach.coach import run_coach
+from services.ai_service.coach.rubric import build_goal_block
 from services.ai_service.pipeline.component import Component
 from services.ai_service.pipeline.types import (
     SEVERITY_FIX,
@@ -65,6 +66,7 @@ class HolisticCoachComponent(Component):
                 image_detail=ctx.config.coach_detail,
                 stroke_hint=ctx.stroke_hint,
                 gate_context=gate_context,
+                goal_block=build_goal_block(ctx.coaching),  # discipline framing (§12)
             )
             raw, model, paid = report.raw, report.model, report.cost_usd
             if cache is not None:

@@ -149,6 +149,30 @@ class PipelineConfig:
     )
 
 
+# ── Goal-aware coaching (Stage-2 §12) ─────────────────────────────────────────
+# The closed vocabularies shared by the API validator, grade(), and build_goal_block.
+DISCIPLINES = ("sprint", "distance", "general")
+LEVELS = ("beginner", "intermediate", "advanced")
+# Aspect/focus ids == the existing coach/cards.py AREA_LABELS keys, so share-cards
+# and the result-page scaffold line up.
+ASPECTS = ("body_line", "recovery_elbow", "head_breath", "entry_reach")
+
+
+@dataclass(frozen=True)
+class CoachContext:
+    """The swimmer's goal/context from the frontend — steers HOW a finding is
+    graded and framed, NEVER what the VLM perceives (design §12.2). The default
+    (discipline='general', no extras) reproduces today's discipline-blind behaviour
+    exactly, so existing components are unaffected."""
+
+    discipline: str = "general"  # one of DISCIPLINES
+    level: Optional[str] = None  # one of LEVELS — tunes drill/tone only
+    focus_area: Optional[str] = None  # one of ASPECTS — forces that aspect to rank-1
+    goal_text: Optional[str] = (
+        None  # free text ≤200 chars; tone only, never an observation
+    )
+
+
 @dataclass
 class RunContext:
     """Everything a component needs for one clip. Mutated as stages complete."""
@@ -160,6 +184,7 @@ class RunContext:
     profile: InputProfile = InputProfile.UNKNOWN
     config: PipelineConfig = field(default_factory=PipelineConfig)
     stroke_hint: str = "freestyle"
+    coaching: CoachContext = field(default_factory=CoachContext)  # goal-aware §12
     # filled in by earlier stages:
     track: Optional[Track] = None  # Stage-0 swimmer track
     gate: Any = None  # coach.coach.GateVerdict, set after the gate component runs
