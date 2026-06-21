@@ -158,7 +158,9 @@ class PublicAnalysisJobDetailResponse(BaseModel):
     status: str
     stroke_type: str
     discipline: str = "general"  # the goal the analysis was coached for (§12)
-    drilldown_unlocked: bool = False  # per-stroke inspect available (config gate, §12.5)
+    drilldown_unlocked: bool = (
+        False  # per-stroke inspect available (config gate, §12.5)
+    )
     timeline_unlocked: bool = False  # the video-led timeline view (v2) is available
     error_message: Optional[str] = None
     created_at: datetime

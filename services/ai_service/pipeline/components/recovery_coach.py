@@ -86,7 +86,9 @@ class RecoveryCoachComponent(AspectCoachComponent):
             )
             sev, trend = SEVERITY_STRENGTH, "strong"
         elif late > early:
-            obs = "Your recovery tightened up as you went — better on the later strokes."
+            obs = (
+                "Your recovery tightened up as you went — better on the later strokes."
+            )
             sev, trend = SEVERITY_INFO, "improving"
         else:
             obs = "Your recovery looked fairly consistent across the clip."
