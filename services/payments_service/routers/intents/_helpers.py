@@ -77,6 +77,88 @@ async def _update_pending_payment_reference(
             )
 
 
+# Human-readable labels for partial-Bubbles wallet debits, keyed by the
+# reference_type passed to _debit_bubbles (also the idempotency-key prefix).
+_BUBBLES_DEBIT_LABELS = {
+    "session_fee": "Session fee (partial payment)",
+    "session_booking": "Session booking (partial payment)",
+    "session_bundle": "Session bundle (partial payment)",
+    "ride_share": "Ride share (partial payment)",
+}
+
+
+async def _debit_bubbles(
+    client: httpx.AsyncClient, payment: Payment, *, reference_type: str
+) -> str | None:
+    """Debit the wallet for the Bubbles portion of a partial-Bubbles payment.
+
+    The intent already reduced the Paystack charge by the Bubbles value (see
+    intent_creation ``bubbles_purposes``); now that Paystack has cleared the
+    remainder, debit the wallet for the Bubbles. Shared by every entitlement
+    handler whose purpose is in ``bubbles_purposes`` (session_fee,
+    session_booking, session_bundle, ride_share).
+
+    Idempotent on ``f"{reference_type}_{payment.reference}"`` so retries don't
+    double-debit. Non-fatal: a debit failure is logged and recorded in
+    ``payment.payment_metadata`` (``bubbles_debit_failed``) but does NOT raise —
+    the Paystack portion was already charged, so we must not block fulfillment.
+
+    Returns the wallet transaction id on success (also written to metadata as
+    ``wallet_transaction_id``), the existing id if already debited, else None.
+    """
+    meta = payment.payment_metadata or {}
+    existing_txn = meta.get("wallet_transaction_id")
+    if existing_txn:
+        return existing_txn
+    bubbles_to_apply = int(meta.get("bubbles_to_apply") or 0)
+    if bubbles_to_apply <= 0:
+        return None
+
+    headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+    label = _BUBBLES_DEBIT_LABELS.get(reference_type, "Partial Bubbles payment")
+    resp = await client.post(
+        f"{settings.WALLET_SERVICE_URL}/internal/wallet/debit",
+        json={
+            "idempotency_key": f"{reference_type}_{payment.reference}",
+            "member_auth_id": payment.member_auth_id,
+            "amount": bubbles_to_apply,
+            "transaction_type": "purchase",
+            "description": f"{label}: {payment.reference}",
+            "service_source": "payments_service",
+            "reference_type": reference_type,
+            "reference_id": str(payment.reference),
+        },
+        headers=headers,
+    )
+    if resp.status_code >= 400:
+        logger.warning(
+            "Wallet debit failed for %s %s: %s %s",
+            reference_type,
+            payment.reference,
+            resp.status_code,
+            resp.text,
+        )
+        payment.payment_metadata = {
+            **(payment.payment_metadata or {}),
+            "bubbles_debit_failed": True,
+            "bubbles_debit_error": f"{resp.status_code}: {resp.text[:200]}",
+        }
+        return None
+
+    txn_id = resp.json().get("transaction_id")
+    payment.payment_metadata = {
+        **(payment.payment_metadata or {}),
+        "wallet_transaction_id": txn_id,
+    }
+    logger.info(
+        "Wallet debit succeeded for %s %s: %s Bubbles",
+        reference_type,
+        payment.reference,
+        bubbles_to_apply,
+    )
+    return txn_id
+
+
 def _next_retry_time(attempts: int) -> datetime:
     # Exponential backoff capped at 60 minutes.
     delay = min(60, BASE_FULFILLMENT_RETRY_MINUTES * (2 ** max(attempts - 1, 0)))

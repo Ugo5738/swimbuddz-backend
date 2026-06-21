@@ -374,11 +374,15 @@ def _compute_metrics(samples: list[_FrameSample], fps: float) -> dict:
 
     l_track = _wrist_track("l")
     r_track = _wrist_track("r")
-    min_distance = max(1, int(fps * 0.33))  # cap at 180 SPM per arm
+    # Refractory gap (>=2 frames) so a single recovery can't register twice.
+    min_distance = max(2, round(fps * _MIN_STROKE_PERIOD_S))
     l_peaks = _local_peaks(l_track, min_distance)
     r_peaks = _local_peaks(r_track, min_distance)
-    total_strokes = len(l_peaks) + len(r_peaks)
-    stroke_rate_spm = (total_strokes / duration_s) * 60.0 if duration_s > 0 else 0.0
+    # Stroke RATE = cycles/min. One cycle ~= one left + one right recovery, so the
+    # cadence is the AVERAGE of the two arms' peak rates — NOT their sum (summing
+    # double-counts and reported ~2x the conventional cycles/min figure).
+    cycles = (len(l_peaks) + len(r_peaks)) / 2.0
+    stroke_rate_spm = (cycles / duration_s) * 60.0 if duration_s > 0 else 0.0
 
     # ── Body roll proxy: shoulder-line tilt, folded to [0, 90]
     roll_values: list[float] = []
@@ -470,13 +474,19 @@ _LOW_ROTATION_DEG = 22.0
 # Breath ratio outside [0.35, 0.65] counts as one-sided.
 _BREATH_SKEW_LOW = 0.35
 _BREATH_SKEW_HIGH = 0.65
-# A stroke rate above this is flagged as possibly "spinning" (hedged copy).
-_HIGH_SPM = 115.0
 # We only assess kick if knees+ankles were visible in at least this share
 # of pose-detected frames.
 _MIN_LEG_VISIBILITY = 0.25
 # Average knee-bend below this (i.e. more bent) reads as knee-driven.
 _KNEE_DRIVEN_ANGLE_DEG = 140.0
+# Below this share of frames with a usable pose we don't trust the read enough
+# to make ANY technique claim — emit a low-confidence note instead. (The engine
+# previously had no confidence gate: a low-detection clip emitted crisp verdicts.)
+_CONF_HARD = 0.5
+# Min per-arm recovery period: min peak gap = round(effective_fps * this). The
+# refractory that stops one recovery registering as two peaks. Provisional until
+# calibrated against the labeled scorecard (services/ai_service/validation/).
+_MIN_STROKE_PERIOD_S = 0.40
 
 
 def _frame_roll_deg(s: _FrameSample) -> Optional[float]:
@@ -541,6 +551,28 @@ def _compute_observations(
         else:
             i += 1
 
+    # ── Confidence gate: if we could barely track the swimmer, don't make ANY
+    # technique claim — a low-detection clip must not emit crisp verdicts.
+    detected = sum(1 for s in samples if s.l_shoulder is not None or s.nose is not None)
+    conf = detected / len(samples) if samples else 0.0
+    if conf < _CONF_HARD:
+        observations.append(
+            {
+                "key": "low_confidence",
+                "severity": "unavailable",
+                "title": "Couldn't reliably read this clip",
+                "detail": (
+                    f"We could only track you in about {round(conf * 100)}% of the "
+                    f"frames, so we're not showing technique feedback for this one. "
+                    f"Film side-on, with the swimmer fully in frame and well-lit, for "
+                    f"a reliable read."
+                ),
+                "timestamp_s": None,
+                "drill_key": None,
+            }
+        )
+        return {"observations": observations, "tracking_gaps": tracking_gaps}
+
     # ── Shoulder rotation (from per-frame roll)
     rolls = [(s.t, _frame_roll_deg(s)) for s in samples]
     rolls = [(t, r) for t, r in rolls if r is not None]
@@ -562,23 +594,12 @@ def _compute_observations(
                     "drill_key": "low_rotation",
                 }
             )
-        else:
-            observations.append(
-                {
-                    "key": "rotation_ok",
-                    "severity": "good",
-                    "title": "Good shoulder rotation",
-                    "detail": f"Nice — your shoulders rotated about {mean_roll:.0f}° on average.",
-                    "timestamp_s": None,
-                    "drill_key": None,
-                }
-            )
 
     # ── Breathing balance
     bl = metrics.get("breath_count_left") or 0
     br = metrics.get("breath_count_right") or 0
     ratio = metrics.get("breath_balance_left_ratio")
-    if (bl + br) >= 3 and ratio is not None:
+    if (bl + br) >= 5 and ratio is not None:
         if ratio < _BREATH_SKEW_LOW or ratio > _BREATH_SKEW_HIGH:
             dominant = "right" if ratio < 0.5 else "left"
             # Representative moment: first sustained breath toward the dominant side.
@@ -595,17 +616,6 @@ def _compute_observations(
                     ),
                     "timestamp_s": ts,
                     "drill_key": "one_sided_breathing",
-                }
-            )
-        else:
-            observations.append(
-                {
-                    "key": "breathing_ok",
-                    "severity": "good",
-                    "title": "Balanced breathing",
-                    "detail": f"Good balance — {bl} left / {br} right.",
-                    "timestamp_s": None,
-                    "drill_key": None,
                 }
             )
 
@@ -655,39 +665,11 @@ def _compute_observations(
                     "drill_key": "knee_driven_kick",
                 }
             )
-        else:
-            observations.append(
-                {
-                    "key": "kick_ok",
-                    "severity": "good",
-                    "title": "Kick looks hip-driven",
-                    "detail": (
-                        f"Legs stayed fairly long (avg knee {avg_knee:.0f}°) — that's "
-                        f"an efficient flutter kick."
-                    ),
-                    "timestamp_s": None,
-                    "drill_key": None,
-                }
-            )
 
-    # ── Stroke rate (proxy — hedge the copy)
-    spm = metrics.get("stroke_rate_spm")
-    if spm is not None and spm > _HIGH_SPM:
-        observations.append(
-            {
-                "key": "high_stroke_rate",
-                "severity": "suggestion",
-                "title": "High stroke rate",
-                "detail": (
-                    f"We counted roughly {spm:.0f} strokes/min — on the high side, "
-                    f"which can mean short, hurried pulls. (This metric is an "
-                    f"estimate.) Lengthening each stroke often adds speed with less "
-                    f"effort."
-                ),
-                "timestamp_s": None,
-                "drill_key": "high_stroke_rate",
-            }
-        )
+    # Stroke-rate "high/low" flags are retired pending recalibration: the metric
+    # was redefined to cycles/min and the old 115 threshold was for the doubled
+    # unit. The number still shows on the metric card; we don't claim it's
+    # high or low until validated against the labeled scorecard.
 
     return {"observations": observations, "tracking_gaps": tracking_gaps}
 

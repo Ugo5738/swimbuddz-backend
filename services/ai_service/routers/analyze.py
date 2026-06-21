@@ -37,10 +37,21 @@ from services.ai_service.models import (
     AnalysisJobStatus,
     AnalysisResult,
 )
-from services.ai_service.routers._common import build_result_payload
+from services.ai_service.routers._common import (
+    build_result_payload,
+    parse_coach_context,
+    sign_coach_evidence,
+    sign_coach_share,
+)
 from services.ai_service.schemas.analysis import (
     AnalysisJobDetailResponse,
     AnalysisJobResponse,
+    InspectRequest,
+)
+from services.ai_service.services.drilldown import (
+    ensure_drilldown_unlocked,
+    existing_inspect_finding,
+    validate_inspect,
 )
 
 logger = get_logger(__name__)
@@ -80,6 +91,9 @@ async def _build_detail_response(
     include_signed_urls: bool,
 ) -> AnalysisJobDetailResponse:
     payload = build_result_payload(result) if result is not None else None
+    if payload is not None and result is not None:
+        payload.coach_evidence_urls = await sign_coach_evidence(result)
+        payload.coach_share_urls = await sign_coach_share(result)
     original_url = None
     annotated_url = None
     if include_signed_urls:
@@ -135,6 +149,28 @@ async def _enqueue_analysis(
             raise
 
 
+async def _enqueue_inspect(
+    job_id: uuid.UUID,
+    aspect: str,
+    instance_id: int,
+    queue_name: str = MEMBER_QUEUE_NAME,
+) -> None:
+    """Push a per-stroke drilldown task onto an AI queue. Raises on failure so the
+    caller can surface a 502 (no credit is charged for inspect today, so there's
+    nothing to refund)."""
+    pool = await create_pool(get_redis_settings())
+    try:
+        await pool.enqueue_job(
+            "task_inspect_instance",
+            str(job_id),
+            aspect,
+            instance_id,
+            _queue_name=queue_name,
+        )
+    finally:
+        await pool.close()
+
+
 # ── POST /ai/analyze ─────────────────────────────────────────────
 
 
@@ -148,6 +184,10 @@ async def create_analysis_job(
     video: Annotated[UploadFile, File(description="Swim video, ≤50 MB, ≤60s")],
     stroke_type: Annotated[str, Form()] = "freestyle",
     is_public: Annotated[bool, Form()] = False,
+    discipline: Annotated[str, Form()] = "general",
+    level: Annotated[str | None, Form()] = None,
+    focus_area: Annotated[str | None, Form()] = None,
+    goal_text: Annotated[str | None, Form()] = None,
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> AnalysisJobResponse:
@@ -185,6 +225,7 @@ async def create_analysis_job(
         video_storage_path="",  # filled after upload
         status=AnalysisJobStatus.PENDING,
         is_public=is_public,
+        **parse_coach_context(discipline, level, focus_area, goal_text),
     )
     db.add(job)
     await db.flush()  # populates job.id
@@ -283,6 +324,42 @@ async def get_analysis_job(
     return await _build_detail_response(
         job, result_row, include_signed_urls=is_owner or job.is_public
     )
+
+
+# ── POST /ai/analyze/{job_id}/inspect (per-instance drilldown, §12.5) ────────
+
+
+@router.post(
+    "/{job_id}/inspect",
+    summary="Coach one stored instance on demand (gated; 409 until unlocked)",
+)
+async def inspect_analysis(
+    job_id: uuid.UUID,
+    req: InspectRequest,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    job = await db.get(AnalysisJob, job_id)
+    try:
+        caller_id = uuid.UUID(current_user.user_id)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=401, detail="Invalid auth user id") from exc
+    if job is None or job.member_auth_id != caller_id:
+        raise HTTPException(status_code=404, detail="Job not found")
+    ensure_drilldown_unlocked()  # 409 while drilldown is gated off
+    rs = await db.execute(select(AnalysisResult).where(AnalysisResult.job_id == job_id))
+    result_row = rs.scalar_one_or_none()
+    if result_row is None or not result_row.coach_result:
+        raise HTTPException(status_code=404, detail="No analysis result to inspect")
+    existing = existing_inspect_finding(result_row, req.aspect, req.instance_id)
+    if existing is not None:
+        return {"status": "ready", "finding": existing}  # already coached → $0
+    validate_inspect(result_row, req.aspect, req.instance_id)
+    try:
+        await _enqueue_inspect(job_id, req.aspect, req.instance_id, MEMBER_QUEUE_NAME)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Could not queue inspect") from exc
+    return {"status": "inspecting"}
 
 
 # ── DELETE /ai/analyze/{job_id} ──────────────────────────────────

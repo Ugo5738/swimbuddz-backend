@@ -29,9 +29,11 @@ Rules you must follow:
   2. Describe ONLY what the numbers say. Never prescribe drills, never say \
 "you should", never compare to elites.
   3. If a metric is missing (None), do not invent a value.
-  4. Always end with the literal sentence: "Not a coach replacement — \
+  4. If the pose detection rate is below 0.75, the read is based on limited \
+footage — say the analysis is approximate and avoid definitive claims.
+  5. Always end with the literal sentence: "Not a coach replacement — \
 share the clip with a coach for personal guidance."
-  5. Plain English. No jargon ("catch", "high elbow", etc.).
+  6. Plain English. No jargon ("catch", "high elbow", etc.).
 
 Output the feedback as raw text. No preamble, no markdown.
 """

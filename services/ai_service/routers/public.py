@@ -52,18 +52,32 @@ from services.ai_service.models import (
     AnalysisJobStatus,
     AnalysisResult,
 )
-from services.ai_service.routers._common import build_result_payload
+from services.ai_service.routers._common import (
+    build_result_payload,
+    parse_coach_context,
+    sign_coach_evidence,
+    sign_coach_share,
+)
 from services.ai_service.routers.analyze import (
     MAX_UPLOAD_BYTES,
     SUPPORTED_STROKES,
     _enqueue_analysis,
+    _enqueue_inspect,
 )
 from services.ai_service.schemas.analysis import (
     GumroadRedeemRequest,
     GumroadRedeemResponse,
+    InspectRequest,
     PublicAnalysisJobDetailResponse,
     PublicAnalysisJobResponse,
     PublicCreditsResponse,
+)
+from services.ai_service.services.drilldown import (
+    drilldown_unlocked,
+    ensure_drilldown_unlocked,
+    existing_inspect_finding,
+    timeline_view_unlocked,
+    validate_inspect,
 )
 from services.ai_service.services.credit_ops import (
     PERMALINK_CREDITS,
@@ -115,6 +129,10 @@ async def create_public_analysis_job(
     video: Annotated[UploadFile, File(description="Freestyle swim video, ≤50 MB")],
     guest_email: Annotated[str, Form()],
     stroke_type: Annotated[str, Form()] = "freestyle",
+    discipline: Annotated[str, Form()] = "general",
+    level: Annotated[str | None, Form()] = None,
+    focus_area: Annotated[str | None, Form()] = None,
+    goal_text: Annotated[str | None, Form()] = None,
     db: AsyncSession = Depends(get_async_db),
 ) -> PublicAnalysisJobResponse:
     """Create a guest analysis job. Returns 202 — the client polls
@@ -146,6 +164,7 @@ async def create_public_analysis_job(
         stroke_type=stroke_type,
         video_storage_path="",  # filled after upload
         status=AnalysisJobStatus.PENDING,
+        **parse_coach_context(discipline, level, focus_area, goal_text),
     )
     db.add(job)
     await db.flush()  # populates job.id
@@ -272,10 +291,16 @@ async def get_public_analysis_job(
             )
 
     payload = build_result_payload(result_row) if result_row is not None else None
+    if payload is not None and result_row is not None:
+        payload.coach_evidence_urls = await sign_coach_evidence(result_row)
+        payload.coach_share_urls = await sign_coach_share(result_row)
     return PublicAnalysisJobDetailResponse(
         job_id=job.id,
         status=_status_str(job),
         stroke_type=job.stroke_type,
+        discipline=job.discipline,
+        drilldown_unlocked=drilldown_unlocked(),
+        timeline_unlocked=timeline_view_unlocked(),
         error_message=job.error_message,
         created_at=job.created_at,
         started_at=job.started_at,
@@ -284,6 +309,46 @@ async def get_public_analysis_job(
         original_video_url=original_url,
         annotated_video_url=annotated_url,
     )
+
+
+# ── POST /ai/public/analyze/{job_id}/inspect (drilldown, §12.5) ──────────────
+
+
+@router.post(
+    "/analyze/{job_id}/inspect",
+    summary="Coach one stored instance on demand, guest (gated; 409 until unlocked)",
+)
+async def inspect_public_analysis(
+    job_id: uuid.UUID,
+    req: InspectRequest,
+    x_guest_token: Annotated[Optional[str], Header(alias="X-Guest-Token")] = None,
+    guest_token: Annotated[Optional[str], Query()] = None,
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    token = x_guest_token or guest_token
+    job = await db.get(AnalysisJob, job_id)
+    if (
+        job is None
+        or job.source != AnalysisJobSource.PUBLIC
+        or not token
+        or not job.guest_token
+        or not secrets.compare_digest(token, job.guest_token)
+    ):
+        raise HTTPException(status_code=404, detail="Job not found")
+    ensure_drilldown_unlocked()  # 409 while drilldown is gated off
+    rs = await db.execute(select(AnalysisResult).where(AnalysisResult.job_id == job_id))
+    result_row = rs.scalar_one_or_none()
+    if result_row is None or not result_row.coach_result:
+        raise HTTPException(status_code=404, detail="No analysis result to inspect")
+    existing = existing_inspect_finding(result_row, req.aspect, req.instance_id)
+    if existing is not None:
+        return {"status": "ready", "finding": existing}  # already coached → $0
+    validate_inspect(result_row, req.aspect, req.instance_id)
+    try:
+        await _enqueue_inspect(job_id, req.aspect, req.instance_id, PUBLIC_QUEUE_NAME)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Could not queue inspect") from exc
+    return {"status": "inspecting"}
 
 
 # ── GET /ai/public/credits ───────────────────────────────────────

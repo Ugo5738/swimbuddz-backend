@@ -145,3 +145,115 @@ async def call_llm(
             f"LLM call failed: {e}", extra={"model": model, "latency_ms": elapsed_ms}
         )
         raise
+
+
+def _provider_from_model(model: str) -> str:
+    """Best-effort provider label from a LiteLLM model string."""
+    if "gpt" in model or "o1" in model or "o3" in model:
+        return "openai"
+    if "claude" in model:
+        return "anthropic"
+    if "gemini" in model:
+        return "google"
+    if "/" in model:
+        return model.split("/", 1)[0]
+    return "unknown"
+
+
+async def call_vlm(
+    system_prompt: str,
+    user_prompt: str,
+    images: list,
+    model: Optional[str] = None,
+    temperature: float = 0.2,
+    max_tokens: int = 1500,
+    image_detail: str = "auto",
+    response_format: Optional[dict] = None,
+    num_retries: int = 4,
+    trace_name: Optional[str] = None,
+) -> AIProviderResponse:
+    """Vision (multimodal) sibling of :func:`call_llm`.
+
+    ``images`` are raw JPEG/PNG bytes. They are base64-encoded into OpenAI-style
+    ``image_url`` content blocks, which LiteLLM routes to whatever provider the
+    ``model`` string selects — OpenAI, Anthropic, Gemini, or a self-hosted
+    open-weights endpoint (``ollama/...``, ``openrouter/...``). The engine stays
+    provider-agnostic: only the model string changes when we move from a hosted
+    Tier-A model to an open-source Tier-B/C one. ``cost_usd`` is populated from
+    LiteLLM's own pricing tables so callers get a real per-call cost.
+    """
+    import base64
+
+    import litellm
+
+    # Drop provider-unsupported params instead of erroring — keeps the layer
+    # agnostic (e.g. OpenAI o-series reasoning models reject temperature != 1;
+    # LiteLLM will silently drop temperature for them rather than 400).
+    litellm.drop_params = True
+
+    settings = get_settings()
+    if not model:
+        model = getattr(settings, "AI_VISION_MODEL", "") or getattr(
+            settings, "AI_DEFAULT_MODEL", "gpt-4o-mini"
+        )
+    provider = _provider_from_model(model)
+
+    content: list[dict] = [{"type": "text", "text": user_prompt}]
+    for img in images:
+        b64 = base64.b64encode(img).decode("ascii")
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{b64}",
+                    "detail": image_detail,
+                },
+            }
+        )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": content},
+    ]
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        # LiteLLM retries RateLimitError/timeout with exponential backoff and
+        # honours Retry-After — essential on low TPM caps (OpenAI gpt-4o = 30k).
+        "num_retries": num_retries,
+    }
+    if response_format:
+        kwargs["response_format"] = response_format
+
+    start = time.monotonic()
+    try:
+        response = await litellm.acompletion(**kwargs)
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+
+        text = response.choices[0].message.content or ""
+        usage = response.usage
+        try:
+            cost = float(litellm.completion_cost(completion_response=response) or 0.0)
+        except Exception:
+            cost = 0.0
+
+        return AIProviderResponse(
+            content=text,
+            model=model,
+            provider=provider,
+            input_tokens=usage.prompt_tokens if usage else 0,
+            output_tokens=usage.completion_tokens if usage else 0,
+            latency_ms=elapsed_ms,
+            cost_usd=cost,
+            raw_response=(
+                response.model_dump() if hasattr(response, "model_dump") else None
+            ),
+        )
+    except Exception as e:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        logger.error(
+            f"VLM call failed: {e}", extra={"model": model, "latency_ms": elapsed_ms}
+        )
+        raise

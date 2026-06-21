@@ -23,6 +23,7 @@ from services.payments_service.schemas import (
 )
 
 from .._helpers import (
+    _debit_bubbles,
     _update_pending_payment_reference,
 )
 
@@ -52,6 +53,11 @@ async def apply_session_bundle(payment: Payment) -> None:
             )
         member_data = member_resp.json()
         member_id = member_data.get("id")
+
+        # Partial Bubbles: the intent reduced the Paystack charge by the Bubbles
+        # value (see intent_creation `bubbles_purposes`); debit the wallet for
+        # the Bubbles portion now that Paystack cleared the remainder.
+        await _debit_bubbles(client, payment, reference_type="session_bundle")
 
         # Create attendance record for each session in bundle
         created: list[str] = []

@@ -192,11 +192,47 @@ async def signed_url_for_annotated(
     return await asyncio.to_thread(_signed_url_sync, ANNOTATED_BUCKET, key, expires_in)
 
 
+# ── Coach evidence frames (reuse the annotated bucket; no new per-env bucket) ──
+
+
+def make_evidence_key(
+    prefix: str, job_id: uuid.UUID, label: str, subdir: str = "evidence"
+) -> str:
+    """Coach-image key ``{prefix}/{job_id}/{subdir}/{label}.jpg`` in the annotated
+    bucket. ``prefix`` is ``{member_auth_id}`` or ``guest/{guest_token}``; ``label``
+    (e.g. ``holistic_coach:3``) is sanitised; ``subdir`` is ``evidence`` or ``share``."""
+    safe = "".join(c if (c.isalnum() or c in "-_") else "_" for c in label)
+    return f"{prefix}/{job_id}/{subdir}/{safe}.jpg"
+
+
+async def upload_evidence_frames(
+    prefix: str, job_id: uuid.UUID, frames: dict[str, bytes], subdir: str = "evidence"
+) -> dict[str, str]:
+    """Upload coach images (label → jpeg bytes). Returns label → key. ``subdir``
+    separates evidence frames from share cards."""
+    keys: dict[str, str] = {}
+    for label, data in frames.items():
+        key = make_evidence_key(prefix, job_id, label, subdir)
+        await asyncio.to_thread(_upload_sync, ANNOTATED_BUCKET, key, data, "image/jpeg")
+        keys[label] = key
+    return keys
+
+
+async def signed_url_for_evidence(
+    key: str, expires_in: int = DEFAULT_SIGNED_URL_TTL_SECONDS
+) -> str:
+    """Signed URL for a coach evidence frame (lives in the annotated bucket)."""
+    return await asyncio.to_thread(_signed_url_sync, ANNOTATED_BUCKET, key, expires_in)
+
+
 async def delete_job_assets(
-    uploaded_key: Optional[str], annotated_key: Optional[str]
+    uploaded_key: Optional[str],
+    annotated_key: Optional[str],
+    evidence_keys: Optional[list[str]] = None,
 ) -> None:
     """Remove storage objects for a job. Best-effort — DELETE endpoint
-    swallows storage failures so the DB row can still be removed."""
+    swallows storage failures so the DB row can still be removed. Includes coach
+    evidence frames so erasure/retention sweeps don't leave orphaned images."""
     if uploaded_key:
         try:
             await asyncio.to_thread(_delete_sync, UPLOADS_BUCKET, uploaded_key)
@@ -207,3 +243,8 @@ async def delete_job_assets(
             await asyncio.to_thread(_delete_sync, ANNOTATED_BUCKET, annotated_key)
         except Exception as exc:
             logger.warning("Could not delete annotated %s: %s", annotated_key, exc)
+    for key in evidence_keys or []:
+        try:
+            await asyncio.to_thread(_delete_sync, ANNOTATED_BUCKET, key)
+        except Exception as exc:
+            logger.warning("Could not delete evidence %s: %s", key, exc)

@@ -23,6 +23,7 @@ from services.payments_service.schemas import (
 )
 
 from .._helpers import (
+    _debit_bubbles,
     _require_attendance_status,
     _update_pending_payment_reference,
 )
@@ -64,42 +65,7 @@ async def apply_session_fee(payment: Payment) -> None:
         member_id = member_data.get("id")
 
         # Partial Bubbles: debit wallet for bubbles_to_apply before attendance.
-        bubbles_to_apply = int(
-            (payment.payment_metadata or {}).get("bubbles_to_apply") or 0
-        )
-        if bubbles_to_apply > 0:
-            debit_resp = await client.post(
-                f"{settings.WALLET_SERVICE_URL}/internal/wallet/debit",
-                json={
-                    "idempotency_key": f"session_fee_{payment.reference}",
-                    "member_auth_id": payment.member_auth_id,
-                    "amount": bubbles_to_apply,
-                    "transaction_type": "purchase",
-                    "description": f"Session booking (partial payment): {payment.reference}",
-                    "service_source": "payments_service",
-                    "reference_type": "session_fee",
-                    "reference_id": str(payment.reference),
-                },
-                headers=headers,
-            )
-            if debit_resp.status_code >= 400:
-                # Log but don't fail — the Paystack portion was already charged.
-                # Record the failure in metadata so it's visible without log access.
-                # (Caller commits the payment after _apply_entitlement returns.)
-                logger.warning(
-                    f"Wallet debit failed for session_fee {payment.reference}: "
-                    f"{debit_resp.status_code} {debit_resp.text}"
-                )
-                payment.payment_metadata = {
-                    **(payment.payment_metadata or {}),
-                    "bubbles_debit_failed": True,
-                    "bubbles_debit_error": f"{debit_resp.status_code}: {debit_resp.text[:200]}",
-                }
-            else:
-                logger.info(
-                    f"Wallet debit succeeded for session_fee {payment.reference}: "
-                    f"{bubbles_to_apply} Bubbles"
-                )
+        await _debit_bubbles(client, payment, reference_type="session_fee")
 
         # Create attendance record via attendance service
         attendance_resp = await client.post(

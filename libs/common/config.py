@@ -81,6 +81,38 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
 
+    # Stroke Lab VLM coach (the new pipeline; provider-agnostic via LiteLLM).
+    # Defaults are the eval-locked picks — override per-env without redeploying.
+    STROKELAB_ENABLE_COACH: bool = True
+    STROKELAB_COACH_GATE_MODEL: str = "o4-mini"  # view/usability gate (reasoning)
+    STROKELAB_COACH_MODEL: str = "gpt-4o"  # holistic + per-instance coaching
+    STROKELAB_COACH_SEGMENT_MODEL: str = "gpt-4o"  # per-frame phase classifier
+    # Per-component on/off (the flow lives in pipeline/defaults.py; flip here).
+    STROKELAB_COACH_SEGMENT: bool = True  # Stage-1 classify-every-frame + segment
+    STROKELAB_COACH_RECOVERY: bool = True  # per-instance recovery coach
+    STROKELAB_COACH_BODY_LINE: bool = False  # Stage-2 body-line aspect (off until eval)
+    STROKELAB_COACH_ENTRY: bool = False  # Stage-2 entry/reach aspect (off until eval)
+    STROKELAB_COACH_HEAD: bool = False  # Stage-2 head/breathing aspect (off until eval)
+    STROKELAB_COACH_HOLISTIC: bool = True  # whole-clip coach
+    STROKELAB_COACH_COLLATE: bool = True  # Stage-3 counts/metrics from instances
+    STROKELAB_COACH_UNDERWATER: bool = (
+        False  # dormant catch/pull/kick (underwater-only)
+    )
+    STROKELAB_COACH_SHARE_CARDS: bool = True  # render shareable per-finding cards
+    STROKELAB_COACH_MAX_RECOVERIES: int = 1  # how many recoveries to coach up-front
+    # Per-instance drilldown unlock (§12.5) is a CONFIG-DRIVEN accuracy gate, not a
+    # hard flag: it unlocks when the last-measured segmentation accuracy meets the
+    # bar. Raise the bar to ~80 when you trust it; lower it (e.g. 50) to preview the
+    # per-stroke UI now. MEASURED is updated whenever validation/recovery_eval.py runs.
+    STROKELAB_DRILLDOWN_MIN_ACCURACY_PCT: int = 80  # the bar to clear
+    STROKELAB_DRILLDOWN_MEASURED_ACCURACY_PCT: int = 53  # last eval (within ±1)
+    # Per-stroke inspect billing. OFF = comped (no credit charged) — honest while the
+    # count isn't accuracy-validated. Flip ON for pay-per-inspect once accuracy clears.
+    STROKELAB_INSPECT_BILLING: bool = False
+    # The video-led timeline view (v2). OFF = the result page shows a LOCKED "Timeline"
+    # tab. Flip ON once it's built + per-moment placement is accurate enough.
+    STROKELAB_TIMELINE_VIEW: bool = False
+
     # Langfuse observability
     LANGFUSE_HOST: str = ""
     LANGFUSE_PUBLIC_KEY: str = ""
