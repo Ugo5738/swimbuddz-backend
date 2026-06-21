@@ -4,7 +4,7 @@ A freestyle over-water arm recovery shows up as a peak in the upper-box motion
 signal. Peak-detect (min-distance + a noise floor) → one recovery Instance per
 peak, each spanning trough-to-trough (the arc the per-instance coach will read).
 
-Pure numpy + the proven ``_local_peaks`` from pose_pipeline. No API, no model —
+Pure numpy + the proven ``_local_peaks`` from coach/detect. No API, no model —
 this is deterministic CV. Its accuracy is gated by ``validation/recovery_eval.py``
 against the golden ``recovery_times`` / ``stroke_cycles`` labels BEFORE the
 instance UX is trusted (see design doc §6.3).
@@ -29,7 +29,7 @@ def segment_recoveries(
 ) -> list[Instance]:
     import numpy as np
 
-    from services.ai_service.analysis.pose_pipeline import _local_peaks
+    from services.ai_service.coach.detect import _local_peaks
 
     pts = track.points
     if len(pts) < 3:
