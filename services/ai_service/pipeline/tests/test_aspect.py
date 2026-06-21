@@ -27,6 +27,7 @@ from services.ai_service.pipeline.types import (
     CoachContext,
     Instance,
     Phase,
+    PipelineConfig,
     RunContext,
 )
 
@@ -222,3 +223,37 @@ def test_head_breathing_glide_fallback_reports_head_only_no_breath_side():
     findings = asyncio.run(HeadBreathingComponent(coach_fn=fake).run(ctx)).findings
     assert [f.extra["kind"] for f in findings] == ["head"]  # head only
     assert findings[0].severity == SEVERITY_STRENGTH  # neutral head is good
+
+
+# ── recovery consistency / fatigue (aggregate across instances) ───────────────
+def _recovery_ctx(n):
+    strip = _strip(2 * n + 2)
+    ctx = RunContext(
+        frames=strip, strip=strip, config=PipelineConfig(max_coached_recoveries=n)
+    )
+    ctx.instances = [
+        Instance(Phase.RECOVERY, i, i * 0.6, i * 0.6 + 0.3, i * 0.6 + 0.15, arm="near")
+        for i in range(n)
+    ]
+    return ctx
+
+
+def test_consistency_flags_fatigue_when_late_recoveries_drop():
+    elbows = iter(["high", "high", "dropped"])  # clean early, drops late
+
+    async def fake(frames, **kw):
+        return {"assessment": "r", "elbow": next(elbows), "confidence": 0.8}, 0.0
+
+    res = asyncio.run(RecoveryCoachComponent(coach_fn=fake).run(_recovery_ctx(3)))
+    agg = [f for f in res.findings if f.area == "consistency"]
+    assert len(agg) == 1
+    assert agg[0].severity == SEVERITY_FIX and agg[0].extra["trend"] == "declining"
+
+
+def test_consistency_silent_with_one_recovery():
+    async def fake(frames, **kw):
+        return {"assessment": "r", "elbow": "high", "confidence": 0.8}, 0.0
+
+    res = asyncio.run(RecoveryCoachComponent(coach_fn=fake).run(_recovery_ctx(1)))
+    # only the single per-instance read — no aggregate (can't compare one stroke)
+    assert not any(f.area == "consistency" for f in res.findings)
