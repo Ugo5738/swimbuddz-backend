@@ -35,11 +35,20 @@ def _load_key(path: Path) -> dict[str, int]:
     return out
 
 
-def _print_rows(rows: list[tuple[str, int | None, int]], args, extra: str = "") -> None:
-    """rows = (clip_name, expected_cycles | None, detected). Prints table + summary."""
+def _print_rows(
+    rows: list[tuple[str, int | None, int | None]], args, extra: str = ""
+) -> None:
+    """rows = (clip_name, expected_cycles | None, detected | None). detected is
+    None when the detection gate refuses a precise count. Prints table + summary
+    (refused clips are excluded from the accuracy stats and reported separately)."""
     print(f"{'clip':46} {'cyc':>3} {'exp':>4} {'det':>4} {'err':>5}")
-    abs_errs, errs, within1, n = [], [], 0, 0
+    abs_errs, errs, within1, n, refused = [], [], 0, 0, 0
     for name, cyc, det in rows:
+        if det is None:  # detection gate refused a precise count
+            refused += 1
+            exp = str(cyc) if cyc is not None else "?"
+            print(f"{name[:46]:46} {exp:>3} {exp:>4} {'REF':>4}  (refused)")
+            continue
         if cyc is None:
             print(f"{name[:46]:46} {'?':>3} {'?':>4} {det:>4}  (no label)")
             continue
@@ -52,11 +61,42 @@ def _print_rows(rows: list[tuple[str, int | None, int]], args, extra: str = "") 
     if n:
         print(
             f"\nn={n}  MAE={sum(abs_errs)/n:.2f}  bias={sum(errs)/n:+.2f}  "
-            f"within±1={within1}/{n} ({100*within1/n:.0f}%)"
+            f"within±1={within1}/{n} ({100*within1/n:.0f}%)  refused={refused}"
         )
         print(
             f"(expected = stroke_cycles, near-arm 1:1; method={args.method}; {extra})"
         )
+    elif refused:
+        print(f"\nall {refused} clip(s) refused by the detection gate; {extra}")
+
+
+def _decode_frames(clip, stride=2, max_frames=300, long_edge=720):
+    """Strided BGR frame decode + timestamps (cv2) for the pose counter."""
+    import math
+
+    import cv2
+
+    cap = cv2.VideoCapture(str(clip))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    if total > 0:
+        stride = max(stride, math.ceil(total / max_frames))
+    frames, times, idx = [], [], 0
+    while True:
+        if not cap.grab():
+            break
+        if idx % stride == 0:
+            ok, img = cap.retrieve()
+            if ok and img is not None:
+                h, w = img.shape[:2]
+                s = long_edge / max(h, w)
+                if s < 1:
+                    img = cv2.resize(img, (int(w * s), int(h * s)))
+                frames.append(img)
+                times.append(idx / fps)
+        idx += 1
+    cap.release()
+    return frames, times
 
 
 async def _run(args) -> int:
@@ -94,6 +134,17 @@ async def _run(args) -> int:
         _print_rows(
             rows, args, extra=f"model={args.segment_model} cost=${total_cost:.4f}"
         )
+    elif args.method == "pose":
+        from services.ai_service.coach.pose import count_recoveries
+
+        root = Path(args.golden_root).expanduser() / args.category
+        for clip in sorted(root.glob("*.mp4")):
+            frames, times = _decode_frames(clip)
+            res = count_recoveries(frames, times) if frames else None
+            # detected is None when the detection gate refuses a precise count
+            det = res.count if (res is not None and not res.refused) else None
+            rows.append((clip.name, key.get(clip.name), det))
+        _print_rows(rows, args, extra="method=pose (yolov8-pose near-wrist, gated MAD)")
     else:  # motion baseline
         from services.ai_service.pipeline.segment import segment_recoveries
         from services.ai_service.pipeline.track import build_track
@@ -110,7 +161,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--golden-root", default="~/Downloads/strokelab2/golden")
     ap.add_argument("--category", default="normal")
-    ap.add_argument("--method", default="motion", choices=["motion", "vlm"])
+    ap.add_argument("--method", default="motion", choices=["motion", "vlm", "pose"])
     ap.add_argument("--detector", default="motion", choices=["auto", "yolo", "motion"])
     ap.add_argument(
         "--strips-root", default=None, help="vlm: dir of <clip-stem>/frame_*.jpg"

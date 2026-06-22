@@ -195,13 +195,16 @@ class AnalysisResult(Base):
         index=True,
     )
 
-    # Stroke classification — v0 always echoes "freestyle"; v1 will detect.
-    detected_stroke: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Stroke classification — echoes the requested stroke_type today.
+    # Nullable since the coach-primary worker derives it rather than the old
+    # pose engine guaranteeing it.
+    detected_stroke: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
-    # Quality / observability
-    pose_detection_rate: Mapped[float] = mapped_column(Float, nullable=False)
-    frames_total: Mapped[int] = mapped_column(Integer, nullable=False)
-    frames_with_pose: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Quality / observability — produced by the retired pose pass, so these are
+    # NULL on coach-primary runs (no fabricated pose numbers).
+    pose_detection_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    frames_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    frames_with_pose: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # The three v0 metrics
     stroke_rate_spm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

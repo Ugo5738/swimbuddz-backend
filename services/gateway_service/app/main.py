@@ -58,6 +58,11 @@ def create_app() -> FastAPI:
 
     register_health_check(app, "gateway")
 
+    @app.on_event("shutdown")
+    async def _close_shared_http_client() -> None:
+        """Release the pooled downstream HTTP client on shutdown."""
+        await clients.aclose_shared_client()
+
     # ==================================================================
     # MEMBERS SERVICE PROXY
     # ==================================================================

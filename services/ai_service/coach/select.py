@@ -19,7 +19,7 @@ false-refused them as "head-on"). Instead:
 
 Box-only by design: we never trust in-water MediaPipe skeletons (land-trained,
 unreliable in water). Reuses the proven ``detect_swimmer_box`` / ``_expand_box``
-from ``analysis/pose_pipeline.py``. cv2/numpy are imported lazily so ``Frame`` /
+from ``coach/detect.py``. cv2/numpy are imported lazily so ``Frame`` /
 ``SelectionResult`` import fine in a cv2-less env.
 
 CLI (extract swimmer-cropped frames + contact sheet)::
@@ -60,7 +60,7 @@ class SelectionResult:
 
 def _detect_boxes_yolo(frames: list) -> list[Optional[Box]]:
     """Proven path: YOLOv8n person detection + the swimmer-box heuristic."""
-    from services.ai_service.analysis.pose_pipeline import (
+    from services.ai_service.coach.detect import (
         detect_swimmer_box,
         load_yolo_model,
     )
@@ -133,7 +133,7 @@ def select_frames(
     import cv2
     import numpy as np
 
-    from services.ai_service.analysis.pose_pipeline import _expand_box
+    from services.ai_service.coach.detect import _expand_box
 
     notes: list[str] = []
 

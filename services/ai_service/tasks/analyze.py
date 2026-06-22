@@ -1,17 +1,21 @@
 """ARQ task: run Stroke Lab analysis on one queued job.
 
+The VLM coach is the PRIMARY engine (the legacy pose/metrics engine is retired).
+
 Lifecycle:
   1. Worker picks up the job, loads the AnalysisJob row.
   2. Status flips to PROCESSING + started_at set.
   3. Upload pulled from Supabase to a tempfile.
-  4. Pipeline runs (CPU-bound, offloaded to a thread inside run_analysis).
-  5. Annotated mp4 uploaded to the annotated bucket.
-  6. AnalysisResult row written.
-  7. Job status flips to COMPLETED + completed_at set.
-  8. Tempfiles cleaned up.
+  4. Coach pipeline runs (gate → classify → per-instance + holistic).
+  5. Evidence/share frames uploaded; AnalysisResult row written.
+  6. Job status flips to COMPLETED + completed_at set.
+  7. Tempfiles cleaned up.
 
-Any exception flips the job to FAILED with the error message captured;
-the caller will see it on the next GET /ai/analyze/{job_id}.
+Failure semantics: a coach exception → FAILED + (public) credit refunded. A
+gate REFUSAL (a clip we can't read) → FAILED("could_not_track") + refunded —
+the swimmer is never charged for a clip we couldn't coach, and the result page
+shows the "film a side-on clip" guidance. The pose-derived observability
+columns (pose_detection_rate, frames_*) are honestly NULL on coach runs.
 """
 
 from __future__ import annotations
@@ -26,19 +30,11 @@ from libs.common.logging import get_logger
 from libs.db.config import AsyncSessionLocal
 from sqlalchemy import delete, select
 
-from services.ai_service.analysis import (
-    DEFAULT_PIPELINE_CONFIG,
-    AnalysisReport,
-    PipelineConfig,
-    run_analysis,
-)
 from services.ai_service.pipeline.types import CoachContext  # import-light (no cv2)
 from services.ai_service.analysis.storage import (
     UPLOADS_BUCKET,
     temp_file_from_storage,
-    upload_annotated_video,
     upload_evidence_frames,
-    upload_guest_annotated_video,
 )
 from services.ai_service.constants import PUBLIC_MAX_DURATION_SECONDS
 from services.ai_service.models import (
@@ -89,26 +85,23 @@ async def analyze_swim_video(job_id: str) -> dict:
             goal_text=job.goal_text,
         )
 
-    # 2. Run pipeline against a tempfile download. Wrap the sync ctx manager
-    # in to_thread so we don't block the loop on the network read.
+    # 2. The VLM coach is the analysis now — PRIMARY + REQUIRED. A coach
+    # exception propagates to the failure path (FAILED + refund); a gate refusal
+    # is handled explicitly below.
     try:
-        annotated_local: Path | None = None
         coach_payload: dict | None = None
         frame_labels: list[dict] | None = None
         with tempfile.TemporaryDirectory(prefix="strokelab_") as workdir:
             workdir_path = Path(workdir)
-            annotated_local = workdir_path / f"{job_uuid}.annotated.mp4"
 
-            # Pull the upload to a tempfile. temp_file_from_storage is a
-            # sync ctx manager; emulate with a manual download into our
-            # workdir for cleanliness.
+            # Pull the upload to a tempfile (temp_file_from_storage is sync; we
+            # download into our workdir for cleanliness).
             uploaded_local = await _download_upload(video_storage_path, workdir_path)
 
             # Public DoS guard: reject over-long clips BEFORE the expensive
-            # pipeline (a too-long clip would otherwise burn the whole
-            # job_timeout). The client also fast-fails on duration, so this only
-            # catches uploads that bypassed it; _mark_failed refunds the credit
-            # (a rejected clip never costs the guest). Members are unaffected.
+            # pipeline. The client also fast-fails on duration; this catches
+            # uploads that bypassed it. _mark_failed refunds the credit (a
+            # rejected clip never costs the guest). Members are unaffected.
             if source == AnalysisJobSource.PUBLIC:
                 duration = await asyncio.to_thread(
                     _probe_duration_seconds, uploaded_local
@@ -123,83 +116,68 @@ async def analyze_swim_video(job_id: str) -> dict:
                     await _mark_failed(job_uuid, "too_long")
                     return {"status": "failed", "error": "too_long"}
 
-            report: AnalysisReport = await run_analysis(
-                uploaded_local,
-                annotated_local,
-                stroke_type=stroke_type,
-                config=_pipeline_config_from_env(),
+            # Run the coach (gate → classify → per-instance + holistic). A raise
+            # here propagates to the failure path below.
+            coach_payload = await _run_coach_pipeline(uploaded_local, coach_context)
+            if coach_payload is None:
+                # Coach disabled (STROKELAB_ENABLE_COACH off) — there is no
+                # fallback engine now, so the job can't produce a result.
+                logger.error("Coach disabled but job %s reached the worker", job_id)
+                await _mark_failed(job_uuid, "coach_unavailable")
+                return {"status": "failed", "error": "coach_unavailable"}
+
+            # Gate refusal: an above-water/side-on clip we can't read. Refund and
+            # surface the "film a side-on clip" guidance — we won't guess.
+            if _coach_refused(coach_payload):
+                logger.info("Stroke Lab job %s refused by the gate", job_id)
+                await _mark_failed(job_uuid, "could_not_track")
+                return {"status": "refused"}
+
+            # Non-refused but empty: a coach component errored and was swallowed,
+            # leaving no real findings. Don't charge for a blank read — refund and
+            # give the same "film a clearer clip" guidance.
+            if not _coach_has_content(coach_payload):
+                logger.warning("Stroke Lab job %s produced no coaching content", job_id)
+                await _mark_failed(job_uuid, "could_not_track")
+                return {"status": "failed", "error": "no_coaching"}
+
+            # Pop the transient image BYTES (never store them in the JSON column)
+            # and upload best-effort → coaching survives an upload failure. The
+            # *_keys maps (label → storage key) are JSON-safe. Per-frame labels go
+            # to the normalized table (cache["labels"] keeps the JSON replay copy).
+            evidence = coach_payload.pop("evidence", None)
+            share_cards = coach_payload.pop("share_cards", None)
+            frame_labels = coach_payload.pop("frame_labels", None)
+            prefix = (
+                f"guest/{guest_token}"
+                if source == AnalysisJobSource.PUBLIC
+                else str(member_auth_id)
             )
+            if evidence:
+                try:
+                    coach_payload["evidence_keys"] = await upload_evidence_frames(
+                        prefix, job_uuid, evidence
+                    )
+                except Exception:
+                    logger.exception(
+                        "Evidence upload failed for job %s — coaching kept", job_id
+                    )
+            if share_cards:
+                try:
+                    coach_payload["share_keys"] = await upload_evidence_frames(
+                        prefix, job_uuid, share_cards, subdir="share"
+                    )
+                except Exception:
+                    logger.exception(
+                        "Share-card upload failed for job %s — coaching kept",
+                        job_id,
+                    )
 
-            # 3. Upload annotated mp4. Guest jobs have no member_auth_id, so
-            # they key under guest/{guest_token}/... like their original upload.
-            if source == AnalysisJobSource.PUBLIC:
-                annotated_key = await upload_guest_annotated_video(
-                    guest_token, job_uuid, annotated_local
-                )
-            else:
-                annotated_key = await upload_annotated_video(
-                    member_auth_id, job_uuid, annotated_local
-                )
-
-            # 3b. VLM-coach pipeline (gate → segment → per-instance + holistic).
-            # Best-effort: a coach failure must NOT fail the job — the metrics
-            # result still saves and coach_result simply stays null.
-            try:
-                coach_payload = await _run_coach_pipeline(uploaded_local, coach_context)
-            except Exception:
-                logger.exception(
-                    "Coach pipeline failed for job %s — metrics only", job_id
-                )
-                coach_payload = None
-            if coach_payload is not None:
-                # Pop the transient image BYTES (never store them in the JSON column);
-                # upload best-effort → coaching survives an upload failure. The
-                # *_keys maps (label → storage key) are JSON-safe.
-                evidence = coach_payload.pop("evidence", None)
-                share_cards = coach_payload.pop("share_cards", None)
-                # Per-frame labels go to the normalized table, NOT the JSON column
-                # (cache["labels"] is the JSON copy kept for replay).
-                frame_labels = coach_payload.pop("frame_labels", None)
-                prefix = (
-                    f"guest/{guest_token}"
-                    if source == AnalysisJobSource.PUBLIC
-                    else str(member_auth_id)
-                )
-                if evidence:
-                    try:
-                        coach_payload["evidence_keys"] = await upload_evidence_frames(
-                            prefix, job_uuid, evidence
-                        )
-                    except Exception:
-                        logger.exception(
-                            "Evidence upload failed for job %s — coaching kept", job_id
-                        )
-                if share_cards:
-                    try:
-                        coach_payload["share_keys"] = await upload_evidence_frames(
-                            prefix, job_uuid, share_cards, subdir="share"
-                        )
-                    except Exception:
-                        logger.exception(
-                            "Share-card upload failed for job %s — coaching kept",
-                            job_id,
-                        )
-
-        # 4. Persist result row + flip status (coach_payload may be None)
-        await _write_completed(
-            job_uuid, annotated_key, report, coach_payload, frame_labels
-        )
-        logger.info(
-            "Stroke Lab job %s completed: pose=%.3f spm=%s",
-            job_id,
-            report.pose_detection_rate,
-            report.stroke_rate_spm,
-        )
-        return {
-            "status": "completed",
-            "pose_detection_rate": report.pose_detection_rate,
-            "stroke_rate_spm": report.stroke_rate_spm,
-        }
+        # 3. Persist result row + flip status. detected_stroke echoes the
+        # requested stroke; the pose-derived observability columns are NULL.
+        await _write_completed(job_uuid, stroke_type, coach_payload, frame_labels)
+        logger.info("Stroke Lab job %s completed (coach-primary)", job_id)
+        return {"status": "completed"}
     except Exception as exc:  # pragma: no cover — failure path
         logger.exception("Stroke Lab job %s failed", job_id)
         await _mark_failed(job_uuid, str(exc))
@@ -209,26 +187,28 @@ async def analyze_swim_video(job_id: str) -> dict:
 # ── Internal helpers ──────────────────────────────────────────────
 
 
-def _pipeline_config_from_env() -> PipelineConfig:
-    """Production config: defaults to the kill-gate winner. Override
-    individual knobs via env vars without redeploying."""
-    import os
+def _coach_refused(coach_payload: dict) -> bool:
+    """True when the gate refused the clip — the encoded PipelineResult flags it.
+    A refusal is a valid 'we can't read this' outcome (handled as a refund), not a
+    crash."""
+    return bool((coach_payload.get("result") or {}).get("refused"))
 
-    base = DEFAULT_PIPELINE_CONFIG
-    return PipelineConfig(
-        pose_model_variant=os.environ.get(
-            "STROKELAB_POSE_MODEL", base.pose_model_variant
-        ),
-        max_inference_side=int(
-            os.environ.get("STROKELAB_MAX_SIDE", base.max_inference_side)
-        ),
-        use_yolo=os.environ.get("STROKELAB_USE_YOLO", "1") == "1",
-        yolo_conf_threshold=float(
-            os.environ.get("STROKELAB_YOLO_CONF", base.yolo_conf_threshold)
-        ),
-        frame_stride=int(os.environ.get("STROKELAB_FRAME_STRIDE", base.frame_stride)),
-        enable_summary=os.environ.get("STROKELAB_ENABLE_SUMMARY", "1") == "1",
-    )
+
+def _coach_has_content(coach_payload: dict) -> bool:
+    """True when the coach produced at least one real (available) finding. A
+    non-refused run with NO content means a coach component errored and was
+    swallowed by the pipeline's _safe_run — we won't charge for a blank read.
+    'unavailable' placeholders (the underwater can't-see cards) don't count."""
+    results = (coach_payload.get("result") or {}).get("results") or []
+    for cr in results:
+        for f in cr.get("findings") or []:
+            if f.get("available", True) and f.get("severity") in (
+                "fix",
+                "strength",
+                "info",
+            ):
+                return True
+    return False
 
 
 async def _download_upload(storage_path: str, workdir: Path) -> Path:
@@ -326,6 +306,7 @@ async def _run_coach_pipeline(
         config=config,
         coaching=coach_context or CoachContext(),  # goal-aware grading/framing (§12)
         cache={},  # collect the paid VLM outputs so we can re-derive for free
+        video_path=str(video_path),  # lets pose_recovery decode its own dense frames
     )
     result = await run_pipeline(ctx, build_default_registry())
 
@@ -395,8 +376,7 @@ async def _run_coach_pipeline(
 
 async def _write_completed(
     job_id: uuid.UUID,
-    annotated_storage_path: str,
-    report: AnalysisReport,
+    detected_stroke: str,
     coach_payload: dict | None = None,
     frame_labels: list[dict] | None = None,
 ) -> None:
@@ -410,7 +390,9 @@ async def _write_completed(
             return
         job.status = AnalysisJobStatus.COMPLETED
         job.completed_at = utc_now()
-        job.annotated_video_storage_path = annotated_storage_path
+        # The annotated pose-overlay video is retired with the pose engine; the
+        # result page falls back to the original clip.
+        job.annotated_video_storage_path = None
 
         # Replace any prior result row (idempotency for re-runs).
         existing = await session.execute(
@@ -421,23 +403,25 @@ async def _write_completed(
             await session.delete(prior)
             await session.flush()
 
+        # Coach-primary write: detected_stroke echoes the requested stroke; every
+        # pose/metrics column is honestly NULL (the pose pass is gone).
         result = AnalysisResult(
             job_id=job_id,
-            detected_stroke=report.detected_stroke,
-            pose_detection_rate=report.pose_detection_rate,
-            frames_total=report.frames_total,
-            frames_with_pose=report.frames_with_pose,
-            stroke_rate_spm=report.stroke_rate_spm,
-            body_roll_proxy_degrees=report.body_roll_proxy_degrees,
-            breath_count_left=report.breath_count_left,
-            breath_count_right=report.breath_count_right,
-            breath_balance_left_ratio=report.breath_balance_left_ratio,
-            summary_text=report.summary_text,
-            observations=report.observations,
-            tracking_gaps=report.tracking_gaps,
-            pipeline_config=report.config_snapshot,
-            raw_metrics=report.raw_metrics,
-            coach_result=coach_payload,  # VLM-coach run (None if it failed/disabled)
+            detected_stroke=detected_stroke,
+            pose_detection_rate=None,
+            frames_total=None,
+            frames_with_pose=None,
+            stroke_rate_spm=None,
+            body_roll_proxy_degrees=None,
+            breath_count_left=None,
+            breath_count_right=None,
+            breath_balance_left_ratio=None,
+            summary_text=None,
+            observations=None,
+            tracking_gaps=None,
+            pipeline_config=None,
+            raw_metrics=None,
+            coach_result=coach_payload,  # the stored coach run (gate/findings/cache)
         )
         session.add(result)
 

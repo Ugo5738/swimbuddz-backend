@@ -9,8 +9,15 @@ This is the one file to read to understand the flow and flip pieces on/off.
                                call: phase + arm + recovery sub-phase, all stored) and
                                group into ctx.instances (every visible phase, both arms).
                                No counting, no coaching here.
+      pose_recovery   Stage 1  STROKELAB_COACH_POSE_RECOVERY  DETERMINISTIC near-arm
+                               recovery SEGMENTER (yolov8-pose wrist trajectory). REPLACES
+                               the near-arm recovery instances phase_segment produced with
+                               pose-derived ones (one per peak); DROPS them on a low-
+                               detection REFUSE so the count + drilldown vanish together.
+                               Keeps the VLM far-arm + other phases. Counting stays in
+                               collate — this only SEGMENTS. Worker CPU.
       recovery_coach  Stage 2  STROKELAB_COACH_RECOVERY  coach a representative near-arm
-                               recovery (needs phase_segment to have run first).
+                               recovery (coaches the pose instances when pose_recovery is on).
       body_line       Stage 2  STROKELAB_COACH_BODY_LINE  head/hip/leg sink from a glide
                                frame (goal-aware aspect; OFF by default until its eval).
       entry_reach     Stage 2  STROKELAB_COACH_ENTRY  hand entry/reach (crossover banned;
@@ -18,8 +25,9 @@ This is the one file to read to understand the flow and flip pieces on/off.
       head_breathing  Stage 2  STROKELAB_COACH_HEAD  head carriage + breath side (never a
                                rhythm number; OFF by default until its eval).
       holistic_coach  Stage 2  STROKELAB_COACH_HOLISTIC  whole-clip coaching (independent).
-      collate         Stage 3  STROKELAB_COACH_COLLATE   derive counts/metrics from
-                               ctx.instances → the hedged "~N recoveries" summary.
+      collate         Stage 3  STROKELAB_COACH_COLLATE   derive counts/metrics from the
+                               (pose-segmented when on) ctx.instances → the hedged
+                               "~N recoveries" summary; suppressed on a pose REFUSE.
       catch / pull /  dormant  STROKELAB_COACH_UNDERWATER  underwater-only; on above-water
       flutter_kick             footage each emits an honest "can't see this" card. Off by
                                default until an underwater profile + analyzer exist.
@@ -45,6 +53,7 @@ from services.ai_service.pipeline.components.head_breathing import (
 from services.ai_service.pipeline.components.holistic_coach import (
     HolisticCoachComponent,
 )
+from services.ai_service.pipeline.components.pose_recovery import PoseRecoveryComponent
 from services.ai_service.pipeline.components.recovery_coach import (
     RecoveryCoachComponent,
 )
@@ -82,6 +91,9 @@ def build_default_registry() -> Registry:
         GateComponent()
     )  # IS_GATE — always; runs first, sets the 3-tier branch
     reg.register(PhaseSegmentComponent(), enabled=s.STROKELAB_COACH_SEGMENT)
+    # pose_recovery runs AFTER phase_segment (it splices the VLM instances) and BEFORE
+    # the per-instance coaches (so they coach the pose-derived recovery instances).
+    reg.register(PoseRecoveryComponent(), enabled=s.STROKELAB_COACH_POSE_RECOVERY)
     reg.register(RecoveryCoachComponent(), enabled=s.STROKELAB_COACH_RECOVERY)
     reg.register(BodyLineComponent(), enabled=s.STROKELAB_COACH_BODY_LINE)
     reg.register(EntryReachComponent(), enabled=s.STROKELAB_COACH_ENTRY)

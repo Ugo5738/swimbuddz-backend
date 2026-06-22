@@ -67,7 +67,15 @@ async def run_pipeline(ctx: RunContext, registry: Registry) -> PipelineResult:
 
     gate_result = await _safe_run(gate, ctx)
     results.append(gate_result)
-    tier: GateTier = gate_result.meta.get("tier", GateTier.BORDERLINE)
+    # A gate that couldn't run (raised → no tier in meta) is exactly the
+    # "clip we can't read" case → REFUSE, never BORDERLINE. The coach is now the
+    # only gatekeeper and a completion consumes the guest's credit, so a missing
+    # verdict must NOT fall through to coaching.
+    tier: GateTier = (
+        GateTier.REFUSE
+        if gate_result.error or "tier" not in gate_result.meta
+        else gate_result.meta["tier"]
+    )
     ctx.gate = gate_result.meta.get("verdict")  # let downstream trust the gate
 
     total = gate_result.cost_usd

@@ -1,10 +1,10 @@
 """Stage 1 — Segment recovery instances from the Stage-0 track.
 
 A freestyle over-water arm recovery shows up as a peak in the upper-box motion
-signal. Peak-detect (min-distance + a noise floor) → one recovery Instance per
-peak, each spanning trough-to-trough (the arc the per-instance coach will read).
+signal. Peak-detect (prominence + min-distance) → one recovery Instance per peak,
+each spanning trough-to-trough (the arc the per-instance coach will read).
 
-Pure numpy + the proven ``_local_peaks`` from pose_pipeline. No API, no model —
+Pure numpy. No API, no model —
 this is deterministic CV. Its accuracy is gated by ``validation/recovery_eval.py``
 against the golden ``recovery_times`` / ``stroke_cycles`` labels BEFORE the
 instance UX is trusted (see design doc §6.3).
@@ -17,19 +17,48 @@ from dataclasses import dataclass
 
 from services.ai_service.pipeline.types import Instance, Phase, Track
 
-_MIN_PERIOD_S = 0.6  # a single arm rarely recovers faster than this
-_NOISE_FLOOR = 0.25  # ignore peaks below this fraction of the strongest peak
+# Tuned against the golden set (validation/recovery_eval.py). The old detector
+# (local-max + a flat noise floor) counted splash / head-bob / far-arm flickers as
+# strokes — a massive over-count (bias +5.5). Requiring PROMINENCE (a peak must
+# rise above its surrounding valleys) plus min-distance spacing fixes it: on the
+# motion-fallback signal, within-±1 went 13% → 61% with bias 0. The YOLO-box prod
+# signal is cleaner, so re-confirm/retune with recovery_eval before trusting the
+# per-stroke drilldown (the 80% gate).
+_MIN_PERIOD_S = 0.9  # a single arm rarely recovers faster than this
+_SMOOTH = 7  # moving-average de-noise window
+_PROM_FRAC = 0.5  # a peak must rise this fraction of the signal range above its valleys
+
+
+def _prominent_peaks(sig, min_dist: int, min_prom: float) -> list[int]:
+    """Local maxima, greedily spaced ``min_dist`` apart (tallest first), kept only
+    if their PROMINENCE — the rise above the valleys to the neighbouring kept
+    peaks — clears ``min_prom``. The prominence test is what rejects noise peaks
+    that the old flat noise floor let through."""
+    n = len(sig)
+    cand = [i for i in range(1, n - 1) if sig[i] >= sig[i - 1] and sig[i] >= sig[i + 1]]
+    cand.sort(key=lambda i: -sig[i])
+    chosen: list[int] = []
+    for i in cand:
+        if all(abs(i - j) >= min_dist for j in chosen):
+            chosen.append(i)
+    chosen.sort()
+    out: list[int] = []
+    for k, i in enumerate(chosen):
+        lo = chosen[k - 1] if k > 0 else 0
+        hi = chosen[k + 1] if k < len(chosen) - 1 else n - 1
+        valley = min(float(sig[lo : i + 1].min()), float(sig[i : hi + 1].min()))
+        if sig[i] - valley >= min_prom:
+            out.append(i)
+    return sorted(out)
 
 
 def segment_recoveries(
     track: Track,
     *,
     min_period_s: float = _MIN_PERIOD_S,
-    smooth: int = 3,
+    smooth: int = _SMOOTH,
 ) -> list[Instance]:
     import numpy as np
-
-    from services.ai_service.analysis.pose_pipeline import _local_peaks
 
     pts = track.points
     if len(pts) < 3:
@@ -41,10 +70,8 @@ def segment_recoveries(
     dt = float(np.median(np.diff(times))) if len(times) > 1 else 0.1
     min_dist = max(2, round(min_period_s / dt))
 
-    peaks = _local_peaks(sig, min_dist)
-    if peaks:
-        thr = _NOISE_FLOOR * float(np.max([sig[p] for p in peaks]))
-        peaks = [p for p in peaks if sig[p] >= thr]
+    rng = float(sig.max() - sig.min()) or 1.0
+    peaks = _prominent_peaks(sig, min_dist, _PROM_FRAC * rng)
 
     smax = float(np.max(sig)) or 1.0
     instances: list[Instance] = []

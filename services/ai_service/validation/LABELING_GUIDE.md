@@ -55,14 +55,17 @@ you film on purpose. Don't use random internet clips (licensing + relevance).
 if stroke-cycle counts disagree by more than ~1, tighten the definition before
 labeling the rest.
 
-## Run the scorecard
+## Run the eval
 
-Needs cv2/mediapipe, so run **inside the ai-worker container**:
+Validate Stage-1 recovery segmentation against the labels (pure CV, no API).
+Needs cv2, so run **inside the ai-worker container**:
 
 ```bash
-docker compose exec ai-worker-public python -m services.ai_service.validation.scorecard
+docker compose exec ai-worker-public \
+  python -m services.ai_service.validation.recovery_eval --golden-root ~/Downloads/strokelab2/golden
 ```
 
-It writes `scorecard.json` (commit as the baseline) + `scorecard.md` (readable).
-Re-run after every engine change and diff the delta — that's how we prove a
-change helped instead of guessing.
+It reports detected-vs-expected recoveries per clip + MAE + within-±1 rate. Re-run
+after any segmentation change and diff the delta — that's how we prove a change
+helped instead of guessing. (The legacy metrics `scorecard` was retired with the
+pose engine.)

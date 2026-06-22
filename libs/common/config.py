@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     STROKELAB_COACH_ENTRY: bool = False  # Stage-2 entry/reach aspect (off until eval)
     STROKELAB_COACH_HEAD: bool = False  # Stage-2 head/breathing aspect (off until eval)
     STROKELAB_COACH_HOLISTIC: bool = True  # whole-clip coach
+    STROKELAB_COACH_POSE_RECOVERY: bool = False  # Stage-1 deterministic pose recovery
+    # count (yolov8-pose). OFF by default: runs the pose model on ~300 dense frames
+    # per job (worker CPU) — enable per-env once the box is sized. Gates the
+    # count/drilldown on detection confidence when on.
     STROKELAB_COACH_COLLATE: bool = True  # Stage-3 counts/metrics from instances
     STROKELAB_COACH_UNDERWATER: bool = (
         False  # dormant catch/pull/kick (underwater-only)

@@ -10,6 +10,36 @@ from libs.common.config import get_settings
 settings = get_settings()
 
 
+# A single pooled client shared across all ServiceClient instances. Reusing one
+# client keeps TCP connections (keep-alive) warm between proxied calls instead of
+# paying a fresh connect + pool setup on every request. Created lazily so it
+# binds to the running event loop, and recreated if it was closed (e.g. between
+# test event loops). `follow_redirects` and `timeout` are overridden per request
+# so the media presign relay can still opt out of redirect-following.
+_shared_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_shared_client() -> httpx.AsyncClient:
+    global _shared_client
+    if _shared_client is None or _shared_client.is_closed:
+        _shared_client = httpx.AsyncClient(
+            follow_redirects=True,
+            limits=httpx.Limits(
+                max_connections=100,
+                max_keepalive_connections=20,
+            ),
+        )
+    return _shared_client
+
+
+async def aclose_shared_client() -> None:
+    """Close the shared client. Call on gateway shutdown (best-effort)."""
+    global _shared_client
+    if _shared_client is not None and not _shared_client.is_closed:
+        await _shared_client.aclose()
+    _shared_client = None
+
+
 class ServiceClient:
     """Base client for making HTTP requests to microservices."""
 
@@ -29,17 +59,19 @@ class ServiceClient:
         last_exc: Exception | None = None
         for attempt in range(3):
             try:
-                async with httpx.AsyncClient(
-                    timeout=self.timeout, follow_redirects=follow_redirects
-                ) as client:
-                    response = await client.request(
-                        method, f"{self.base_url}{path}", **kwargs
-                    )
-                    # A redirect we deliberately did not follow is a valid
-                    # result for the caller to relay, not an error.
-                    if not (response.is_redirect and not follow_redirects):
-                        response.raise_for_status()
-                    return response
+                client = _get_shared_client()
+                response = await client.request(
+                    method,
+                    f"{self.base_url}{path}",
+                    timeout=self.timeout,
+                    follow_redirects=follow_redirects,
+                    **kwargs,
+                )
+                # A redirect we deliberately did not follow is a valid
+                # result for the caller to relay, not an error.
+                if not (response.is_redirect and not follow_redirects):
+                    response.raise_for_status()
+                return response
             except (httpx.RequestError, httpx.HTTPStatusError) as exc:
                 # Only retry connection/read timeouts/errors; propagate HTTP errors immediately.
                 if isinstance(exc, httpx.HTTPStatusError):
