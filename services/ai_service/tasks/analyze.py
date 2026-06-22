@@ -306,7 +306,7 @@ async def _run_coach_pipeline(
         config=config,
         coaching=coach_context or CoachContext(),  # goal-aware grading/framing (§12)
         cache={},  # collect the paid VLM outputs so we can re-derive for free
-        video_path=str(video_path),  # lets pose_count decode its own dense frames
+        video_path=str(video_path),  # lets pose_recovery decode its own dense frames
     )
     result = await run_pipeline(ctx, build_default_registry())
 

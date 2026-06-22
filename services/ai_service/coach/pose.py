@@ -58,7 +58,7 @@ class RecoveryResult:
     detection_rate: float
     near_wrist_conf: float
     peaks_s: tuple[float, ...] = ()  # absolute time of each recovery peak — the
-    # segmentation the pose_count component turns into near-arm recovery instances
+    # segmentation the pose_recovery component turns into near-arm recovery instances
 
     @property
     def refused(self) -> bool:

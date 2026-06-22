@@ -17,7 +17,7 @@ the near-arm recoveries, so the count (collate) AND the per-stroke drilldown
 
 Runs after phase_segment (so it has the VLM instances to splice into) and before
 the per-instance coaches (so they coach the pose recoveries). After the gate, so
-a REFUSE short-circuits before any CPU here; only when ``STROKELAB_COACH_POSE_COUNT``
+a REFUSE short-circuits before any CPU here; only when ``STROKELAB_COACH_POSE_RECOVERY``
 is on. Heavy deps (cv2/torch/ultralytics) stay LAZY — this module imports without
 them, and the work runs in a thread. ``count_fn`` is injectable for no-API tests.
 """
@@ -154,8 +154,8 @@ def _apply(ctx: RunContext, payload: dict) -> None:
         ctx.cache["instances"] = [_instance_dict(i) for i in (ctx.instances or [])]
 
 
-class PoseCountComponent(Component):
-    name = "pose_count"
+class PoseRecoveryComponent(Component):
+    name = "pose_recovery"
     consumes = Phase.CLIP
     granularity = Granularity.CHUNK
     profiles = (InputProfile.SIDE_ON_ABOVE, InputProfile.UNKNOWN)

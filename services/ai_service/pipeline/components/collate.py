@@ -6,9 +6,9 @@ per-arm ``Instance`` chunks Stage-1 produced on ``ctx.instances`` and derives:
   - per-phase chunk counts (recovery/entry/glide/breath) for analytics.
 
 The recovery count is just ``len(near-arm recovery instances)`` — and those
-instances are pose-segmented when pose_count ran (±1–2 on good-detection laps vs
+instances are pose-segmented when pose_recovery ran (±1–2 on good-detection laps vs
 the VLM's ~53% within-±1), so the count matches the per-stroke drilldown (both
-read the one instances layer). When the pose detection gate REFUSED, pose_count
+read the one instances layer). When the pose detection gate REFUSED, pose_recovery
 already dropped the near-arm recovery rows AND we null the count here, so the
 count card + drilldown both hide (the frontend keys on a numeric count) — we don't
 show a number we can't trust. With no pose result the VLM instances stand (legacy
@@ -50,7 +50,7 @@ class CollateComponent(Component):
         near = sum(1 for i in recs if i.arm == "near")
         far = sum(1 for i in recs if i.arm == "far")
 
-        # Count the instances — which are pose-segmented when pose_count ran (the
+        # Count the instances — which are pose-segmented when pose_recovery ran (the
         # same rows the drilldown drills, so count and drilldown agree). On a pose
         # REFUSE the recovery rows were dropped AND we null the count so the count
         # card + the per-stroke drilldown both hide. No pose ⇒ legacy VLM count.

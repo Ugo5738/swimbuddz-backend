@@ -12,7 +12,7 @@ import asyncio
 from services.ai_service.coach.frames import Frame
 from services.ai_service.coach.pose import RecoveryResult
 from services.ai_service.pipeline.components.collate import CollateComponent
-from services.ai_service.pipeline.components.pose_count import PoseCountComponent
+from services.ai_service.pipeline.components.pose_recovery import PoseRecoveryComponent
 from services.ai_service.pipeline.components.recovery_coach import (
     RecoveryCoachComponent,
 )
@@ -141,7 +141,7 @@ def test_recovery_coach_honest_zero_when_no_recoveries():
     assert res.findings == []
 
 
-def test_pose_count_replaces_near_recovery_instances():
+def test_pose_recovery_replaces_near_recovery_instances():
     # VLM left 1 near recovery + 1 far recovery + a glide; pose found 3 recoveries.
     async def fake_count(ctx):
         return RecoveryResult(
@@ -159,8 +159,8 @@ def test_pose_count_replaces_near_recovery_instances():
         Instance(Phase.RECOVERY, 0, 0.9, 1.1, 1.0, arm="far"),  # far → kept
         Instance(Phase.GLIDE, 0, 0.0, 0.2, 0.1),  # other phase → kept
     ]
-    res = asyncio.run(PoseCountComponent(count_fn=fake_count).run(ctx))
-    assert res.findings == []  # pose_count emits no user-facing finding
+    res = asyncio.run(PoseRecoveryComponent(count_fn=fake_count).run(ctx))
+    assert res.findings == []  # pose_recovery emits no user-facing finding
     near = [i for i in ctx.instances if i.phase == Phase.RECOVERY and i.arm == "near"]
     assert [round(i.peak_s, 1) for i in near] == [0.8, 2.1, 3.4]  # pose, not the VLM 1
     assert any(
@@ -182,13 +182,13 @@ def test_pose_count_replaces_near_recovery_instances():
 
     ctx2 = RunContext(frames=_strip(3), strip=_strip(3), cache=cache)
     ctx2.instances = [Instance(Phase.RECOVERY, 9, 0.2, 0.5, 0.35, arm="near")]
-    res2 = asyncio.run(PoseCountComponent(count_fn=boom).run(ctx2))
+    res2 = asyncio.run(PoseRecoveryComponent(count_fn=boom).run(ctx2))
     assert res2.meta.get("replayed") is True
     near2 = [i for i in ctx2.instances if i.phase == Phase.RECOVERY and i.arm == "near"]
     assert [round(i.peak_s, 1) for i in near2] == [0.8, 2.1, 3.4]
 
 
-def test_pose_count_refuse_drops_near_recoveries():
+def test_pose_recovery_refuse_drops_near_recoveries():
     async def fake_count(ctx):
         return RecoveryResult(
             count=None,
@@ -202,27 +202,27 @@ def test_pose_count_refuse_drops_near_recoveries():
         Instance(Phase.RECOVERY, 0, 0.2, 0.5, 0.35, arm="near"),
         Instance(Phase.GLIDE, 0, 0.0, 0.2, 0.1),
     ]
-    asyncio.run(PoseCountComponent(count_fn=fake_count).run(ctx))
+    asyncio.run(PoseRecoveryComponent(count_fn=fake_count).run(ctx))
     # refuse drops near-arm recoveries (drilldown + count vanish); other phases kept
     assert not any(i.phase == Phase.RECOVERY and i.arm == "near" for i in ctx.instances)
     assert any(i.phase == Phase.GLIDE for i in ctx.instances)
     assert ctx.pose_recovery["refused"] is True
 
 
-def test_pose_count_no_clip_leaves_instances_untouched():
+def test_pose_recovery_no_clip_leaves_instances_untouched():
     async def fake_count(ctx):
         return None  # no video_path / no frames
 
     ctx = RunContext(frames=_strip(2), strip=_strip(2), cache={})
     ctx.instances = [Instance(Phase.RECOVERY, 0, 0.2, 0.5, 0.35, arm="near")]
-    res = asyncio.run(PoseCountComponent(count_fn=fake_count).run(ctx))
+    res = asyncio.run(PoseRecoveryComponent(count_fn=fake_count).run(ctx))
     assert ctx.pose_recovery is None
     assert res.meta.get("available") is False
     assert len(ctx.instances) == 1  # VLM instances left as-is
 
 
 def test_collate_counts_pose_segmented_instances():
-    # pose_count already spliced 3 near recoveries onto ctx.instances.
+    # pose_recovery already spliced 3 near recoveries onto ctx.instances.
     ctx = RunContext(frames=_strip(2), strip=_strip(2))
     ctx.instances = [
         Instance(Phase.RECOVERY, i, t - 0.4, t + 0.4, t, arm="near")
@@ -239,7 +239,7 @@ def test_collate_counts_pose_segmented_instances():
 
 def test_collate_suppresses_count_when_pose_refused():
     ctx = RunContext(frames=_strip(2), strip=_strip(2))
-    ctx.instances = []  # pose_count dropped the near recoveries on refuse
+    ctx.instances = []  # pose_recovery dropped the near recoveries on refuse
     ctx.pose_recovery = {
         "count": None,
         "confidence": "low_detection",
