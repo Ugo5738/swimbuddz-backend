@@ -189,6 +189,11 @@ class RunContext:
     track: Optional[Track] = None  # Stage-0 swimmer track
     gate: Any = None  # coach.coach.GateVerdict, set after the gate component runs
     instances: list[Instance] = field(default_factory=list)  # Stage-1 phase instances
+    video_path: Optional[str] = None  # source clip — lets the pose_count component
+    # decode its own dense frames (the deterministic recovery counter)
+    pose_recovery: Optional[dict] = None  # Stage-1 deterministic pose count:
+    # {count: int|None, confidence, detection_rate, near_wrist_conf, refused} —
+    # set by pose_count, consumed by collate. count=None ⇒ detection gate refused.
     # When set (a dict), components replay their PAID VLM outputs from it instead of
     # calling the API — so reusing a saved run costs $0. None = always call the VLM.
     cache: Optional[dict] = None

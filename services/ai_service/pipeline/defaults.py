@@ -18,8 +18,12 @@ This is the one file to read to understand the flow and flip pieces on/off.
       head_breathing  Stage 2  STROKELAB_COACH_HEAD  head carriage + breath side (never a
                                rhythm number; OFF by default until its eval).
       holistic_coach  Stage 2  STROKELAB_COACH_HOLISTIC  whole-clip coaching (independent).
-      collate         Stage 3  STROKELAB_COACH_COLLATE   derive counts/metrics from
-                               ctx.instances → the hedged "~N recoveries" summary.
+      pose_count      Stage 1  STROKELAB_COACH_POSE_COUNT  DETERMINISTIC near-arm recovery
+                               count from yolov8-pose (gates the count/drilldown on
+                               detection confidence; refuses rather than guess). Worker CPU.
+      collate         Stage 3  STROKELAB_COACH_COLLATE   derive counts/metrics — prefers
+                               the pose_count when present, else the VLM ctx.instances →
+                               the hedged "~N recoveries" summary.
       catch / pull /  dormant  STROKELAB_COACH_UNDERWATER  underwater-only; on above-water
       flutter_kick             footage each emits an honest "can't see this" card. Off by
                                default until an underwater profile + analyzer exist.
@@ -45,6 +49,7 @@ from services.ai_service.pipeline.components.head_breathing import (
 from services.ai_service.pipeline.components.holistic_coach import (
     HolisticCoachComponent,
 )
+from services.ai_service.pipeline.components.pose_count import PoseCountComponent
 from services.ai_service.pipeline.components.recovery_coach import (
     RecoveryCoachComponent,
 )
@@ -87,6 +92,8 @@ def build_default_registry() -> Registry:
     reg.register(EntryReachComponent(), enabled=s.STROKELAB_COACH_ENTRY)
     reg.register(HeadBreathingComponent(), enabled=s.STROKELAB_COACH_HEAD)
     reg.register(HolisticCoachComponent(), enabled=s.STROKELAB_COACH_HOLISTIC)
+    # pose_count runs BEFORE collate so collate can prefer the deterministic count.
+    reg.register(PoseCountComponent(), enabled=s.STROKELAB_COACH_POSE_COUNT)
     reg.register(CollateComponent(), enabled=s.STROKELAB_COACH_COLLATE)
     # Dormant underwater components — registered + pluggable, off by default.
     reg.register(CatchComponent(), enabled=s.STROKELAB_COACH_UNDERWATER)

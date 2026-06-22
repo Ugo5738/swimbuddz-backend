@@ -10,7 +10,9 @@ from __future__ import annotations
 import asyncio
 
 from services.ai_service.coach.frames import Frame
+from services.ai_service.coach.pose import RecoveryResult
 from services.ai_service.pipeline.components.collate import CollateComponent
+from services.ai_service.pipeline.components.pose_count import PoseCountComponent
 from services.ai_service.pipeline.components.recovery_coach import (
     RecoveryCoachComponent,
 )
@@ -137,3 +139,71 @@ def test_recovery_coach_honest_zero_when_no_recoveries():
 
     res = asyncio.run(RecoveryCoachComponent(coach_fn=fake_coach).run(ctx))
     assert res.findings == []
+
+
+def test_pose_count_sets_ctx_and_replays_from_cache():
+    async def fake_count(ctx):
+        return RecoveryResult(
+            count=12, confidence="ok", detection_rate=0.96, near_wrist_conf=0.5
+        )
+
+    cache: dict = {}
+    ctx = RunContext(frames=_strip(3), strip=_strip(3), cache=cache)
+    res = asyncio.run(PoseCountComponent(count_fn=fake_count).run(ctx))
+    assert res.findings == []  # pose_count emits no user-facing finding
+    assert ctx.pose_recovery["count"] == 12
+    assert ctx.pose_recovery["refused"] is False
+    assert cache["pose_recovery"]["count"] == 12  # cached for $0 replay
+
+    async def boom(ctx):
+        raise AssertionError("pose count must NOT run on a cache replay")
+
+    ctx2 = RunContext(frames=_strip(3), strip=_strip(3), cache=cache)
+    res2 = asyncio.run(PoseCountComponent(count_fn=boom).run(ctx2))
+    assert res2.meta.get("replayed") is True
+    assert ctx2.pose_recovery["count"] == 12
+
+
+def test_pose_count_no_clip_marks_unavailable():
+    async def fake_count(ctx):
+        return None  # no video_path / no frames
+
+    ctx = RunContext(frames=_strip(2), strip=_strip(2), cache={})
+    res = asyncio.run(PoseCountComponent(count_fn=fake_count).run(ctx))
+    assert ctx.pose_recovery is None
+    assert res.meta.get("available") is False
+
+
+def test_collate_prefers_pose_count_over_vlm():
+    ctx = RunContext(frames=_strip(2), strip=_strip(2))
+    ctx.instances = [Instance(Phase.RECOVERY, 0, 0.3, 0.6, 0.45, arm="near")]  # VLM=1
+    ctx.pose_recovery = {
+        "count": 12,
+        "confidence": "ok",
+        "detection_rate": 0.96,
+        "near_wrist_conf": 0.5,
+        "refused": False,
+    }
+    res = asyncio.run(CollateComponent().run(ctx))
+    f = res.findings[0]
+    assert f.extra["recovery_count_hedged"] == 12  # the pose count, not the VLM's 1
+    assert f.extra["count_source"] == "pose"
+    assert f.confidence == 0.8
+    assert "~12" in f.observation
+
+
+def test_collate_suppresses_count_when_pose_refused():
+    ctx = RunContext(frames=_strip(2), strip=_strip(2))
+    ctx.instances = [Instance(Phase.RECOVERY, 0, 0.3, 0.6, 0.45, arm="near")]
+    ctx.pose_recovery = {
+        "count": None,
+        "confidence": "low_detection",
+        "detection_rate": 0.25,
+        "near_wrist_conf": 0.27,
+        "refused": True,
+    }
+    res = asyncio.run(CollateComponent().run(ctx))
+    f = res.findings[0]
+    # None ⇒ frontend keys on a numeric count, so the count card + drilldown hide
+    assert f.extra["recovery_count_hedged"] is None
+    assert f.extra["count_source"] == "pose_low_detection"
