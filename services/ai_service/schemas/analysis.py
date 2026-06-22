@@ -85,10 +85,12 @@ class AnalysisResultPayload(BaseModel):
     debug fields like raw_metrics + pipeline_config — those are kept
     server-side."""
 
-    detected_stroke: str
-    pose_detection_rate: float
-    frames_total: int
-    frames_with_pose: int
+    # detected_stroke echoes the requested stroke; the pose-derived observability
+    # fields are NULL on coach-primary runs (the pose pass is retired).
+    detected_stroke: Optional[str] = None
+    pose_detection_rate: Optional[float] = None
+    frames_total: Optional[int] = None
+    frames_with_pose: Optional[int] = None
     # The pivot BANS these numbers (over-counted spm, unreliable roll degrees,
     # false-firing breath counts). build_result_payload always leaves them None so
     # the UI can never re-surface a number we can't defend. Kept nullable only for

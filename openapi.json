@@ -76400,19 +76400,47 @@
       "AnalysisResultPayload": {
         "properties": {
           "detected_stroke": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Detected Stroke"
           },
           "pose_detection_rate": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Pose Detection Rate"
           },
           "frames_total": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Frames Total"
           },
           "frames_with_pose": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Frames With Pose"
           },
           "stroke_rate_spm": {
@@ -76554,12 +76582,6 @@
           }
         },
         "type": "object",
-        "required": [
-          "detected_stroke",
-          "pose_detection_rate",
-          "frames_total",
-          "frames_with_pose"
-        ],
         "title": "AnalysisResultPayload",
         "description": "The metrics + summary slice exposed to the client. Stripped of\ndebug fields like raw_metrics + pipeline_config \u2014 those are kept\nserver-side."
       },
