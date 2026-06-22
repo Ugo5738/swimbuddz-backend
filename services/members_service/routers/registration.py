@@ -4,7 +4,7 @@ import asyncio
 import json
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
@@ -105,6 +105,103 @@ async def _ensure_wallet_exists(
             "Wallet auto-create request failed for member_auth_id=%s: %s",
             member_auth_id,
             exc,
+        )
+
+
+async def _run_post_registration_side_effects(
+    *,
+    member_id: str,
+    member_auth_id: str,
+    member_email: str,
+    member_first_name: str | None,
+    member_roles: list[str] | None,
+    registration_city: str | None,
+) -> None:
+    """Best-effort side-effects run AFTER a new registration is committed.
+
+    Dispatched via FastAPI ``BackgroundTasks`` so a slow chat hop, the Supabase
+    role-sync round-trip, or a hanging welcome email (DigitalOcean blocks SMTP in
+    prod, up to a 30s timeout) never blocks the signup response. Each step is
+    guarded independently; one failure never aborts the others.
+
+    Deliberately EXCLUDES wallet/volunteer provisioning: those stay inline in the
+    handler so the "wallet exists once /complete returns" invariant holds (GET
+    /wallet/me 404s on a missing wallet). Nothing reads the chat channel, synced
+    roles, or the welcome email synchronously after completion, so only those are
+    deferred.
+
+    MUST NOT touch the request DB session — it is already closed by the time
+    background tasks run. Every argument is a plain value captured before the
+    response was returned (no detached-ORM access here).
+    """
+    # Add the member to their city's location chat channel. Best-effort — chat
+    # downtime never blocks registration; PATCH /me and the periodic
+    # reconciliation worker are the safety nets.
+    if registration_city and registration_city.strip():
+        try:
+            from services.members_service.services.chat_sync import (
+                ensure_location_channel,
+                reconcile_location_membership,
+            )
+
+            await ensure_location_channel(city=registration_city)
+            await reconcile_location_membership(
+                city=registration_city,
+                member_id=member_id,
+                action="add",
+            )
+        except Exception as exc:
+            logger.warning(
+                "location chat sync failed on registration for member=%s: %s",
+                member_id,
+                exc,
+            )
+
+    # Sync member roles to Supabase app_metadata so the JWT reflects them
+    # (e.g. "coach" set during registration). Only non-default roles need it.
+    if member_roles and set(member_roles) != {"member"}:
+        try:
+            admin_supabase = get_supabase_admin_client()
+            final_roles = list(dict.fromkeys(["member"] + (member_roles or [])))
+            await asyncio.to_thread(
+                admin_supabase.auth.admin.update_user_by_id,
+                member_auth_id,
+                {"app_metadata": {"roles": final_roles}},
+            )
+            logger.info(
+                "Synced member roles to Supabase on registration completion",
+                extra={
+                    "extra_fields": {
+                        "user_id": member_auth_id,
+                        "roles": final_roles,
+                    }
+                },
+            )
+        except Exception as sync_err:
+            logger.warning(
+                "Could not sync member roles to Supabase",
+                extra={"extra_fields": {"error": str(sync_err)}},
+            )
+
+    # Welcome email (best-effort).
+    try:
+        email_client = get_email_client()
+        await email_client.send_template(
+            template_type="welcome",
+            to_email=member_email,
+            template_data={
+                "member_name": member_first_name or "there",
+                "dashboard_url": f"{settings.FRONTEND_URL.rstrip('/')}/account",
+            },
+        )
+        logger.info(
+            "Welcome email sent",
+            extra={"extra_fields": {"email": member_email}},
+        )
+    except Exception as welcome_err:
+        logger.warning(
+            "Failed to send welcome email (non-fatal)",
+            extra={"extra_fields": {"error": str(welcome_err)}},
         )
 
 
@@ -306,6 +403,7 @@ async def delete_pending_registration_by_email(
 
 @router.post("/complete", response_model=MemberResponse, status_code=status.HTTP_200_OK)
 async def complete_pending_registration(
+    background_tasks: BackgroundTasks,
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -322,12 +420,12 @@ async def complete_pending_registration(
     result = await db.execute(query)
     existing_member = result.scalar_one_or_none()
     if existing_member:
-        await _ensure_wallet_exists(str(existing_member.id), existing_member.auth_id)
         changed = await sync_member_roles(existing_member, current_user, db)
         if changed:
             normalize_member_tiers(existing_member)
             await db.commit()
             await db.refresh(existing_member)
+        await _ensure_wallet_exists(str(existing_member.id), existing_member.auth_id)
         return existing_member
 
     # Find pending registration by email from token
@@ -347,14 +445,14 @@ async def complete_pending_registration(
         result = await db.execute(query)
         existing_member = result.scalar_one_or_none()
         if existing_member:
-            await _ensure_wallet_exists(
-                str(existing_member.id), existing_member.auth_id
-            )
             changed = await sync_member_roles(existing_member, current_user, db)
             if changed:
                 normalize_member_tiers(existing_member)
                 await db.commit()
                 await db.refresh(existing_member)
+            await _ensure_wallet_exists(
+                str(existing_member.id), existing_member.auth_id
+            )
             return existing_member
 
         def _fallback_profile_from_auth(user: AuthUser) -> dict:
@@ -619,88 +717,35 @@ async def complete_pending_registration(
             )
         raise e
 
+    # Wallet + volunteer provisioning stay inline (one fast internal hop each)
+    # so the "wallet exists once /complete returns" invariant holds — GET
+    # /wallet/me 404s on a missing wallet. Both already swallow their own errors,
+    # so a downstream hiccup logs a warning without failing signup.
     await _ensure_wallet_exists(
         str(member.id),
         member.auth_id,
         referral_code=profile_data.get("referral_code"),
     )
-
     await _ensure_volunteer_profile(
         str(member.id),
         volunteer_interests=profile_data.get("volunteer_interest"),
     )
 
-    # Add new member to their city's location chat channel. Best-effort —
-    # chat downtime never blocks registration. If a city is set later via
-    # PATCH /me, the same hook lives there; the periodic reconciliation
-    # worker is the safety net.
-    registration_city = profile_data.get("city")
-    if registration_city and registration_city.strip():
-        try:
-            from services.members_service.services.chat_sync import (
-                ensure_location_channel,
-                reconcile_location_membership,
-            )
-
-            await ensure_location_channel(city=registration_city)
-            await reconcile_location_membership(
-                city=registration_city,
-                member_id=member.id,
-                action="add",
-            )
-        except Exception as exc:
-            logger.warning(
-                "location chat sync failed on registration for member=%s: %s",
-                member.id,
-                exc,
-            )
-
-    # Sync member roles to Supabase app_metadata so JWT reflects them
-    # This ensures roles like "coach" set during registration are in the token
-    if member.roles and set(member.roles) != {"member"}:
-        try:
-            admin_supabase = get_supabase_admin_client()
-            final_roles = list(dict.fromkeys(["member"] + (member.roles or [])))
-            await asyncio.to_thread(
-                admin_supabase.auth.admin.update_user_by_id,
-                current_user.user_id,
-                {"app_metadata": {"roles": final_roles}},
-            )
-            logger.info(
-                "Synced member roles to Supabase on registration completion",
-                extra={
-                    "extra_fields": {
-                        "user_id": current_user.user_id,
-                        "roles": final_roles,
-                    }
-                },
-            )
-        except Exception as sync_err:
-            logger.warning(
-                "Could not sync member roles to Supabase",
-                extra={"extra_fields": {"error": str(sync_err)}},
-            )
-
-    # Send welcome email (best-effort, non-blocking)
-    try:
-        email_client = get_email_client()
-        await email_client.send_template(
-            template_type="welcome",
-            to_email=member.email,
-            template_data={
-                "member_name": member.first_name or "there",
-                "dashboard_url": f"{settings.FRONTEND_URL.rstrip('/')}/account",
-            },
-        )
-        logger.info(
-            "Welcome email sent",
-            extra={"extra_fields": {"email": member.email}},
-        )
-    except Exception as welcome_err:
-        logger.warning(
-            "Failed to send welcome email (non-fatal)",
-            extra={"extra_fields": {"error": str(welcome_err)}},
-        )
+    # The remaining side-effects (chat channel, Supabase role sync, welcome
+    # email) are slow and nothing reads them synchronously after completion, so
+    # dispatch them off the response path — the welcome email alone could
+    # otherwise hang the response for up to its 30s timeout (DO blocks SMTP).
+    # Values are captured here while the session is open and passed as plain
+    # args; the background task must not touch the request DB session.
+    background_tasks.add_task(
+        _run_post_registration_side_effects,
+        member_id=str(member.id),
+        member_auth_id=member.auth_id,
+        member_email=member.email,
+        member_first_name=member.first_name,
+        member_roles=list(member.roles or []),
+        registration_city=profile_data.get("city"),
+    )
 
     # Reload with all relationships for response
     query = (
