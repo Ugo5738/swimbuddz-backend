@@ -59,6 +59,35 @@ def _print_rows(rows: list[tuple[str, int | None, int]], args, extra: str = "") 
         )
 
 
+def _decode_frames(clip, stride=2, max_frames=300, long_edge=720):
+    """Strided BGR frame decode + timestamps (cv2) for the pose counter."""
+    import math
+
+    import cv2
+
+    cap = cv2.VideoCapture(str(clip))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    if total > 0:
+        stride = max(stride, math.ceil(total / max_frames))
+    frames, times, idx = [], [], 0
+    while True:
+        if not cap.grab():
+            break
+        if idx % stride == 0:
+            ok, img = cap.retrieve()
+            if ok and img is not None:
+                h, w = img.shape[:2]
+                s = long_edge / max(h, w)
+                if s < 1:
+                    img = cv2.resize(img, (int(w * s), int(h * s)))
+                frames.append(img)
+                times.append(idx / fps)
+        idx += 1
+    cap.release()
+    return frames, times
+
+
 async def _run(args) -> int:
     key = _load_key(
         Path(args.golden_root).expanduser()
@@ -94,6 +123,15 @@ async def _run(args) -> int:
         _print_rows(
             rows, args, extra=f"model={args.segment_model} cost=${total_cost:.4f}"
         )
+    elif args.method == "pose":
+        from services.ai_service.coach.pose import count_recoveries
+
+        root = Path(args.golden_root).expanduser() / args.category
+        for clip in sorted(root.glob("*.mp4")):
+            frames, times = _decode_frames(clip)
+            n = count_recoveries(frames, times) if frames else 0
+            rows.append((clip.name, key.get(clip.name), n))
+        _print_rows(rows, args, extra="method=pose (yolov8-pose near-wrist)")
     else:  # motion baseline
         from services.ai_service.pipeline.segment import segment_recoveries
         from services.ai_service.pipeline.track import build_track
@@ -110,7 +148,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--golden-root", default="~/Downloads/strokelab2/golden")
     ap.add_argument("--category", default="normal")
-    ap.add_argument("--method", default="motion", choices=["motion", "vlm"])
+    ap.add_argument("--method", default="motion", choices=["motion", "vlm", "pose"])
     ap.add_argument("--detector", default="motion", choices=["auto", "yolo", "motion"])
     ap.add_argument(
         "--strips-root", default=None, help="vlm: dir of <clip-stem>/frame_*.jpg"
