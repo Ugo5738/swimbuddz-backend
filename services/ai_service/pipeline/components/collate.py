@@ -5,13 +5,15 @@ per-arm ``Instance`` chunks Stage-1 produced on ``ctx.instances`` and derives:
   - the hedged "~N recoveries" summary (near-arm count == stroke_cycles, 1:1);
   - per-phase chunk counts (recovery/entry/glide/breath) for analytics.
 
-The recovery COUNT prefers the deterministic pose counter (``ctx.pose_recovery``,
-set by the pose_count component) over the VLM instance count when present: pose is
-±1–2 on good-detection laps vs the VLM's ~53% within-±1. When the pose detection
-gate REFUSED (``refused``), the count is set to ``None`` so the count card + the
-per-stroke drilldown are suppressed (the frontend keys on a numeric count) — we
-don't show a number we can't trust. With no pose result we fall back to the VLM
-instance count (legacy behaviour, unchanged). Deterministic; no VLM call here.
+The recovery count is just ``len(near-arm recovery instances)`` — and those
+instances are pose-segmented when pose_count ran (±1–2 on good-detection laps vs
+the VLM's ~53% within-±1), so the count matches the per-stroke drilldown (both
+read the one instances layer). When the pose detection gate REFUSED, pose_count
+already dropped the near-arm recovery rows AND we null the count here, so the
+count card + drilldown both hide (the frontend keys on a numeric count) — we don't
+show a number we can't trust. With no pose result the VLM instances stand (legacy
+behaviour). Deterministic; no VLM call here. Derived reads (fatigue/consistency
+trends) belong in this layer too — see recovery_coach._consistency for the first.
 """
 
 from __future__ import annotations
@@ -47,11 +49,11 @@ class CollateComponent(Component):
         recs = [i for i in instances if i.phase == Phase.RECOVERY]
         near = sum(1 for i in recs if i.arm == "near")
         far = sum(1 for i in recs if i.arm == "far")
-        vlm_n = (
-            near or far
-        )  # near-arm is the 1:1 convention; fall back to far if no near
 
-        # Prefer the deterministic pose count; refuse → no number; else VLM fallback.
+        # Count the instances — which are pose-segmented when pose_count ran (the
+        # same rows the drilldown drills, so count and drilldown agree). On a pose
+        # REFUSE the recovery rows were dropped AND we null the count so the count
+        # card + the per-stroke drilldown both hide. No pose ⇒ legacy VLM count.
         pose = ctx.pose_recovery
         if pose is not None and pose.get("refused"):
             n = None  # detection gate refused — suppress the count + drilldown
@@ -61,19 +63,10 @@ class CollateComponent(Component):
                 "Couldn't reliably count recoveries from this footage — the swimmer "
                 "wasn't clearly visible enough to trust a stroke count."
             )
-        elif pose is not None and pose.get("count") is not None:
-            n = pose["count"]
-            confidence = 0.8  # deterministic pose count, ±1–2 on good-detection laps
-            source = "pose"
-            obs = (
-                f"Detected ~{n} {'recovery' if n == 1 else 'recoveries'} (approximate)."
-                if n
-                else "No clear recoveries detected in this clip."
-            )
         else:
-            n = vlm_n  # no pose result → legacy VLM instance count
-            confidence = 0.5  # ~53% within ±1 on the golden set
-            source = "vlm_instances"
+            n = near or far  # near-arm is the 1:1 convention; fall back to far
+            confidence = 0.8 if pose is not None else 0.5  # pose ±1–2 vs VLM ~53%
+            source = "pose" if pose is not None else "vlm_instances"
             obs = (
                 f"Detected ~{n} {'recovery' if n == 1 else 'recoveries'} (approximate)."
                 if n

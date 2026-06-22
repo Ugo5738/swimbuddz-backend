@@ -57,6 +57,8 @@ class RecoveryResult:
     confidence: str  # "ok" | "low_detection" | "unreadable"
     detection_rate: float
     near_wrist_conf: float
+    peaks_s: tuple[float, ...] = ()  # absolute time of each recovery peak — the
+    # segmentation the pose_count component turns into near-arm recovery instances
 
     @property
     def refused(self) -> bool:
@@ -151,7 +153,8 @@ def count_recoveries(frames, timestamps) -> RecoveryResult:
     Applies the detection gate: returns ``RecoveryResult(count=None, ...)`` when
     pose detection is too sparse / too weak to count reliably (the drilldown is
     then suppressed). Otherwise counts via a robust ``k·MAD`` prominence so a few
-    near-camera high-amplitude recoveries can't suppress the rest."""
+    near-camera high-amplitude recoveries can't suppress the rest, and returns the
+    per-recovery PEAK TIMES (``peaks_s``) — the segmentation, not just the tally."""
     import numpy as np
 
     from services.ai_service.pipeline.segment import _prominent_peaks
@@ -173,5 +176,8 @@ def count_recoveries(frames, timestamps) -> RecoveryResult:
     dt = float(np.median(np.diff(timestamps))) if len(timestamps) > 1 else 0.1
     min_dist = max(2, round(_MIN_PERIOD_S / dt))
     mad = float(np.median(np.abs(sig - np.median(sig)))) or 1.0
-    count = len(_prominent_peaks(sig, min_dist, _PROM_K_MAD * mad))
-    return RecoveryResult(count, "ok", det_rate, near_conf)
+    peak_idxs = _prominent_peaks(sig, min_dist, _PROM_K_MAD * mad)
+    peaks_s = tuple(
+        round(float(timestamps[i]), 3) for i in peak_idxs if 0 <= i < len(timestamps)
+    )
+    return RecoveryResult(len(peaks_s), "ok", det_rate, near_conf, peaks_s)
