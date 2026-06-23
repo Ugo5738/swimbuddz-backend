@@ -15,6 +15,7 @@ One component failing never kills the run — it becomes a ComponentResult.error
 from __future__ import annotations
 
 import time
+from typing import Awaitable, Callable, Optional
 
 from services.ai_service.pipeline.component import Component
 from services.ai_service.pipeline.registry import Registry
@@ -26,6 +27,10 @@ from services.ai_service.pipeline.types import (
     PipelineResult,
     RunContext,
 )
+
+# Called after each component completes with the partial PipelineResult so the
+# caller can persist progress (progressive rendering). Best-effort — see _emit.
+ProgressFn = Callable[[PipelineResult], Awaitable[None]]
 
 
 async def _safe_run(component: Component, ctx: RunContext) -> ComponentResult:
@@ -57,9 +62,35 @@ def _unavailable_result(component: Component) -> ComponentResult:
     )
 
 
-async def run_pipeline(ctx: RunContext, registry: Registry) -> PipelineResult:
-    """Run the gate + enabled analysis components over one clip's context."""
+async def run_pipeline(
+    ctx: RunContext,
+    registry: Registry,
+    on_progress: Optional[ProgressFn] = None,
+) -> PipelineResult:
+    """Run the gate + enabled analysis components over one clip's context.
+
+    ``on_progress`` (optional) is invoked after each component completes with the
+    partial PipelineResult so far, so the caller can persist progress and the
+    result page can render section-by-section. It is best-effort: a failure in the
+    progress callback never breaks the run (see ``_emit``)."""
     results: list[ComponentResult] = []
+    total = 0.0
+
+    async def _emit(tier: GateTier) -> None:
+        if on_progress is None:
+            return
+        try:
+            await on_progress(
+                PipelineResult(
+                    input_profile=ctx.profile,
+                    gate_tier=tier,
+                    results=list(results),
+                    total_cost_usd=total,
+                    meta={"borderline": tier == GateTier.BORDERLINE, "partial": True},
+                )
+            )
+        except Exception:  # progress persistence must never break the analysis
+            pass
 
     gate = registry.gate()
     if gate is None:
@@ -95,6 +126,7 @@ async def run_pipeline(ctx: RunContext, registry: Registry) -> PipelineResult:
         res = await _safe_run(comp, ctx)
         total += res.cost_usd
         results.append(res)
+        await _emit(tier)  # persist the partial so the page can render this section
 
     return PipelineResult(
         input_profile=ctx.profile,

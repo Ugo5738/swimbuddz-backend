@@ -116,9 +116,16 @@ async def analyze_swim_video(job_id: str) -> dict:
                     await _mark_failed(job_uuid, "too_long")
                     return {"status": "failed", "error": "too_long"}
 
+            # Persist each stage as it finishes so the result page renders
+            # section-by-section (progressive rendering). Best-effort.
+            async def _persist_progress(partial) -> None:
+                await _write_partial(job_uuid, partial)
+
             # Run the coach (gate → classify → per-instance + holistic). A raise
             # here propagates to the failure path below.
-            coach_payload = await _run_coach_pipeline(uploaded_local, coach_context)
+            coach_payload = await _run_coach_pipeline(
+                uploaded_local, coach_context, on_progress=_persist_progress
+            )
             if coach_payload is None:
                 # Coach disabled (STROKELAB_ENABLE_COACH off) — there is no
                 # fallback engine now, so the job can't produce a result.
@@ -248,7 +255,9 @@ def _coach_enabled() -> bool:
 
 
 async def _run_coach_pipeline(
-    video_path: Path, coach_context: CoachContext | None = None
+    video_path: Path,
+    coach_context: CoachContext | None = None,
+    on_progress=None,
 ) -> dict | None:
     """Run the VLM-coach pipeline; return a JSON-serialisable stored run.
 
@@ -308,7 +317,7 @@ async def _run_coach_pipeline(
         cache={},  # collect the paid VLM outputs so we can re-derive for free
         video_path=str(video_path),  # lets pose_recovery decode its own dense frames
     )
-    result = await run_pipeline(ctx, build_default_registry())
+    result = await run_pipeline(ctx, build_default_registry(), on_progress=on_progress)
 
     # Collect the frame bytes each finding cites, keyed "<component>:<index>".
     # holistic_coach cites KEY-frame indices; recovery_coach cites STRIP indices.
@@ -372,6 +381,33 @@ async def _run_coach_pipeline(
         "share_cards": share_cards,
         "frame_labels": frame_labels,
     }
+
+
+async def _write_partial(job_id: uuid.UUID, partial) -> None:
+    """Persist a partial pipeline result mid-run so the result page can render
+    section-by-section (progressive rendering). Best-effort — never raises into the
+    pipeline. Writes ONLY while the job is still PROCESSING; the authoritative final
+    write is _write_completed (which replaces this row). No evidence URLs yet, so
+    findings render text-first and thumbnails fill in on completion."""
+    from services.ai_service.pipeline.store import _enc
+
+    try:
+        async with AsyncSessionLocal() as session:
+            job = await session.get(AnalysisJob, job_id)
+            if job is None or job.status != AnalysisJobStatus.PROCESSING:
+                return  # completed/failed/vanished — don't clobber the final row
+            payload = {"result": _enc(partial), "partial": True}
+            existing = await session.execute(
+                select(AnalysisResult).where(AnalysisResult.job_id == job_id)
+            )
+            row = existing.scalar_one_or_none()
+            if row is None:
+                session.add(AnalysisResult(job_id=job_id, coach_result=payload))
+            else:
+                row.coach_result = payload
+            await session.commit()
+    except Exception:
+        logger.debug("partial-progress write skipped for job %s", job_id, exc_info=True)
 
 
 async def _write_completed(

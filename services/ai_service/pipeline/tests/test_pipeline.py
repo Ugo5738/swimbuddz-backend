@@ -123,3 +123,41 @@ def test_failing_component_is_isolated():
     assert any(
         r.component == "coach" and not r.error for r in res.results
     )  # others still ran
+
+
+def test_on_progress_fires_after_each_component_with_growing_partials():
+    reg = Registry()
+    reg.register(FakeGate(GateTier.CLEAN)).register(Boom()).register(FakeCoach())
+    seen: list[list[str]] = []
+
+    async def on_progress(partial):
+        assert partial.meta.get("partial") is True  # flagged as a partial result
+        seen.append([r.component for r in partial.results])
+
+    asyncio.run(run_pipeline(_ctx(), reg, on_progress=on_progress))
+    # one emit per analysis component (not the gate), each carrying all results so far
+    assert seen == [["gate", "boom"], ["gate", "boom", "coach"]]
+
+
+def test_on_progress_failure_never_breaks_the_run():
+    reg = Registry()
+    reg.register(FakeGate(GateTier.CLEAN)).register(FakeCoach())
+
+    async def boom_progress(partial):
+        raise RuntimeError("progress sink down")
+
+    res = asyncio.run(run_pipeline(_ctx(), reg, on_progress=boom_progress))
+    # the analysis still completes despite the progress callback raising
+    assert {r.component for r in res.results} == {"gate", "coach"}
+
+
+def test_refuse_emits_no_partial():
+    reg = Registry()
+    reg.register(FakeGate(GateTier.REFUSE)).register(FakeCoach())
+    calls = []
+
+    async def on_progress(partial):
+        calls.append(partial)
+
+    asyncio.run(run_pipeline(_ctx(), reg, on_progress=on_progress))
+    assert calls == []  # REFUSE short-circuits before any analysis stage
