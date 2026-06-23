@@ -95,9 +95,27 @@ class Settings(BaseSettings):
     STROKELAB_COACH_HEAD: bool = False  # Stage-2 head/breathing aspect (off until eval)
     STROKELAB_COACH_HOLISTIC: bool = True  # whole-clip coach
     STROKELAB_COACH_POSE_RECOVERY: bool = False  # Stage-1 deterministic pose recovery
-    # count (yolov8-pose). OFF by default: runs the pose model on ~300 dense frames
-    # per job (worker CPU) — enable per-env once the box is sized. Gates the
-    # count/drilldown on detection confidence when on.
+    # count (yolov8-pose). OFF by default: runs the pose model on dense frames per job
+    # (worker CPU) — enable per-env once the box is sized. Gates the count/drilldown
+    # on detection confidence when on.
+    STROKELAB_POSE_MAX_FRAMES: int = 200  # cap on frames the pose segmenter decodes +
+    # runs yolov8-pose over per job. Bounds worker memory + CPU time on small boxes;
+    # lower it if the worker strains (stride adapts so coverage spans the whole clip).
+    # Pose runs in an ISOLATED subprocess (an OOM/timeout kills only the child, never
+    # the worker) — these bound it. Tune up on a bigger box for full-accuracy pose.
+    STROKELAB_POSE_MEM_LIMIT_MB: int = 1400  # watchdog: SIGKILL the pose subprocess if
+    # its RSS exceeds this (keep it under the worker's cgroup cap so the worker survives
+    # — on the 2GB worker, 1400 + ~250MB parent stays under 2GB). 0 = no memory watch.
+    STROKELAB_POSE_TIMEOUT_S: int = (
+        150  # SIGKILL the pose subprocess after this. 0 = none.
+    )
+    # Where pose runs: "local" (isolated subprocess on the worker) or "modal"
+    # (serverless GPU — keeps the heavy CV off the app box; see services/ai_service/
+    # modal/pose_modal.py). Modal needs the URL + proxy-auth key/secret from deploy.
+    STROKELAB_POSE_BACKEND: str = "local"
+    STROKELAB_POSE_MODAL_URL: str = ""
+    STROKELAB_POSE_MODAL_KEY: str = ""
+    STROKELAB_POSE_MODAL_SECRET: str = ""
     STROKELAB_COACH_COLLATE: bool = True  # Stage-3 counts/metrics from instances
     STROKELAB_COACH_UNDERWATER: bool = (
         False  # dormant catch/pull/kick (underwater-only)

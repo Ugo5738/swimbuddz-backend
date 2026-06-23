@@ -67,13 +67,20 @@ class RecoveryResult:
 
 def _pose_keypoints(frames) -> list:
     """Run yolov8-pose over the frames → per-frame (17,3) keypoint array (x,y,conf)
-    for the highest-confidence person, or None when no swimmer is found."""
+    for the highest-confidence person, or None when no swimmer is found.
+
+    ``stream=True`` is REQUIRED: without it ultralytics builds the full list of
+    Results up front, each retaining its ``orig_img`` — for ~300 frames that's
+    hundreds of MB of held images plus a one-shot activation spike, which OOM-kills
+    the memory-capped prod worker. Streaming yields one Result at a time and frees
+    it, so peak memory stays flat regardless of frame count. We keep only the small
+    keypoint arrays."""
     import numpy as np
     from ultralytics import YOLO
 
     model = YOLO("yolov8n-pose.pt")
     out = []
-    for r in model(frames, verbose=False, imgsz=640):
+    for r in model(frames, stream=True, verbose=False, imgsz=640):
         kp = r.keypoints
         if kp is None or kp.data.shape[0] == 0:
             out.append(None)
