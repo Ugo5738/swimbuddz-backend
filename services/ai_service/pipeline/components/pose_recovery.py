@@ -93,22 +93,68 @@ def _rss_kb(pid: int) -> int:
 
 
 async def _default_count(ctx: RunContext):
-    """Run the pose counter in an ISOLATED subprocess so an OOM/timeout kills only
-    the child, never the worker. Watches the child's RSS and SIGKILLs it past the
-    memory budget or the timeout. Returns a RecoveryResult, or None when pose
-    couldn't run (no clip / killed / crashed) — the caller falls back to the VLM
-    count, so the analysis always completes."""
-    import sys
-
+    """Dispatch pose to the configured backend — 'modal' (serverless GPU, keeps the
+    heavy CV off the app box) or 'local' (an isolated subprocess on the worker).
+    Either way a failure returns None → the caller falls back to the VLM count, so
+    the analysis always completes."""
     path = ctx.video_path
     if not path:
         return None
 
     from libs.common.config import get_settings
 
+    s = get_settings()
+    if s.STROKELAB_POSE_BACKEND == "modal" and s.STROKELAB_POSE_MODAL_URL:
+        return await _modal_count(path, s)
+    return await _subprocess_count(path, s)
+
+
+async def _modal_count(path: str, s):
+    """POST the clip to the Modal pose endpoint (serverless GPU). Returns a
+    RecoveryResult, or None on any failure (→ the VLM count stands)."""
+    import httpx
+
     from services.ai_service.coach.pose import RecoveryResult
 
-    s = get_settings()
+    headers = {}
+    if s.STROKELAB_POSE_MODAL_KEY:
+        headers["Modal-Key"] = s.STROKELAB_POSE_MODAL_KEY
+        headers["Modal-Secret"] = s.STROKELAB_POSE_MODAL_SECRET
+    try:
+        with open(path, "rb") as fh:
+            body = fh.read()
+        async with httpx.AsyncClient(
+            timeout=s.STROKELAB_POSE_TIMEOUT_S or 300
+        ) as client:
+            resp = await client.post(
+                s.STROKELAB_POSE_MODAL_URL,
+                params={"max_frames": s.STROKELAB_POSE_MAX_FRAMES},
+                content=body,
+                headers=headers,
+            )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return None  # network/Modal error → pose unavailable; VLM count stands
+    if not data.get("ok"):
+        return None
+    return RecoveryResult(
+        count=data["count"],
+        confidence=data["confidence"],
+        detection_rate=data["detection_rate"],
+        near_wrist_conf=data["near_wrist_conf"],
+        peaks_s=tuple(data.get("peaks_s") or []),
+    )
+
+
+async def _subprocess_count(path: str, s):
+    """Run the pose counter in an ISOLATED subprocess so an OOM/timeout kills only
+    the child, never the worker. Watches the child's RSS and SIGKILLs it past the
+    memory budget or the timeout. Returns a RecoveryResult or None."""
+    import sys
+
+    from services.ai_service.coach.pose import RecoveryResult
+
     mem_limit_kb = s.STROKELAB_POSE_MEM_LIMIT_MB * 1024
     timeout_s = s.STROKELAB_POSE_TIMEOUT_S
 

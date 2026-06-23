@@ -109,6 +109,13 @@ class Settings(BaseSettings):
     STROKELAB_POSE_TIMEOUT_S: int = (
         150  # SIGKILL the pose subprocess after this. 0 = none.
     )
+    # Where pose runs: "local" (isolated subprocess on the worker) or "modal"
+    # (serverless GPU — keeps the heavy CV off the app box; see services/ai_service/
+    # modal/pose_modal.py). Modal needs the URL + proxy-auth key/secret from deploy.
+    STROKELAB_POSE_BACKEND: str = "local"
+    STROKELAB_POSE_MODAL_URL: str = ""
+    STROKELAB_POSE_MODAL_KEY: str = ""
+    STROKELAB_POSE_MODAL_SECRET: str = ""
     STROKELAB_COACH_COLLATE: bool = True  # Stage-3 counts/metrics from instances
     STROKELAB_COACH_UNDERWATER: bool = (
         False  # dormant catch/pull/kick (underwater-only)
