@@ -21,6 +21,9 @@ Call:  POST <url>?max_frames=300  body=<raw video bytes>  headers: Modal-Key/Sec
 """
 
 import modal
+from fastapi import (
+    Request,
+)  # for the typed endpoint param (pip install fastapi to deploy)
 
 # --- image: CPU/GPU torch + ultralytics + opencv; bake the tiny pose weights in ---
 image = (
@@ -186,9 +189,9 @@ def _count(frames, times):
     }
 
 
-@app.function(gpu="t4", timeout=300, max_containers=4)
+@app.function(gpu="T4", timeout=300)
 @modal.fastapi_endpoint(method="POST", requires_proxy_auth=True)
-async def count(request):
+async def count(request: Request):
     """POST the raw video bytes; ?max_frames=N. Returns the recovery count JSON."""
     import tempfile
 
