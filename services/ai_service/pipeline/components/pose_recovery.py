@@ -19,12 +19,14 @@ Runs after phase_segment (so it has the VLM instances to splice into) and before
 the per-instance coaches (so they coach the pose recoveries). After the gate, so
 a REFUSE short-circuits before any CPU here; only when ``STROKELAB_COACH_POSE_RECOVERY``
 is on. Heavy deps (cv2/torch/ultralytics) stay LAZY — this module imports without
-them, and the work runs in a thread. ``count_fn`` is injectable for no-API tests.
+them, and the work runs in an ISOLATED subprocess (an OOM/timeout kills only that
+child, not the worker). ``count_fn`` is injectable for no-API tests.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from typing import Awaitable, Callable, Optional
 
@@ -77,25 +79,86 @@ def _decode_dense(
     return frames, times
 
 
+def _rss_kb(pid: int) -> int:
+    """Resident memory (KB) of a process from /proc — Linux only; 0 elsewhere (dev/
+    macOS), where the watchdog falls back to the timeout."""
+    try:
+        with open(f"/proc/{pid}/statm") as fh:
+            resident_pages = int(fh.read().split()[1])
+        import os
+
+        return resident_pages * (os.sysconf("SC_PAGE_SIZE") // 1024)
+    except (OSError, ValueError, IndexError):
+        return 0
+
+
 async def _default_count(ctx: RunContext):
-    """Decode the clip's own dense frames and run the pose counter (in a thread)."""
+    """Run the pose counter in an ISOLATED subprocess so an OOM/timeout kills only
+    the child, never the worker. Watches the child's RSS and SIGKILLs it past the
+    memory budget or the timeout. Returns a RecoveryResult, or None when pose
+    couldn't run (no clip / killed / crashed) — the caller falls back to the VLM
+    count, so the analysis always completes."""
+    import sys
+
     path = ctx.video_path
     if not path:
         return None
 
     from libs.common.config import get_settings
 
-    max_frames = get_settings().STROKELAB_POSE_MAX_FRAMES
+    from services.ai_service.coach.pose import RecoveryResult
 
-    def _work():
-        from services.ai_service.coach.pose import count_recoveries  # lazy: torch
+    s = get_settings()
+    mem_limit_kb = s.STROKELAB_POSE_MEM_LIMIT_MB * 1024
+    timeout_s = s.STROKELAB_POSE_TIMEOUT_S
 
-        frames, times = _decode_dense(path, max_frames=max_frames)
-        if not frames:
-            return None
-        return count_recoveries(frames, times)
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-m",
+        "services.ai_service.coach.pose_runner",
+        str(path),
+        str(s.STROKELAB_POSE_MAX_FRAMES),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
 
-    return await asyncio.to_thread(_work)
+    # communicate() reads stdout + awaits exit; watch RSS/time concurrently and
+    # SIGKILL the child the moment it crosses a budget (keeps the worker alive).
+    waiter = asyncio.ensure_future(proc.communicate())
+    start = time.monotonic()
+    killed = False
+    while not waiter.done():
+        over_mem = mem_limit_kb > 0 and _rss_kb(proc.pid) > mem_limit_kb
+        over_time = timeout_s > 0 and (time.monotonic() - start) > timeout_s
+        if over_mem or over_time:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            killed = True
+            break
+        await asyncio.sleep(0.3)
+
+    try:
+        out, _ = await asyncio.wait_for(waiter, timeout=10)
+    except (asyncio.TimeoutError, Exception):
+        out = b""
+
+    if killed or proc.returncode != 0 or not out:
+        return None  # OOM / timeout / crash → pose unavailable; VLM count stands
+    try:
+        data = json.loads(out.splitlines()[-1])
+    except (ValueError, IndexError):
+        return None
+    if not data.get("ok"):
+        return None
+    return RecoveryResult(
+        count=data["count"],
+        confidence=data["confidence"],
+        detection_rate=data["detection_rate"],
+        near_wrist_conf=data["near_wrist_conf"],
+        peaks_s=tuple(data.get("peaks_s") or []),
+    )
 
 
 def _payload(result) -> dict:
