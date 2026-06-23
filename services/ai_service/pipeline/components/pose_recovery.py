@@ -83,10 +83,14 @@ async def _default_count(ctx: RunContext):
     if not path:
         return None
 
+    from libs.common.config import get_settings
+
+    max_frames = get_settings().STROKELAB_POSE_MAX_FRAMES
+
     def _work():
         from services.ai_service.coach.pose import count_recoveries  # lazy: torch
 
-        frames, times = _decode_dense(path)
+        frames, times = _decode_dense(path, max_frames=max_frames)
         if not frames:
             return None
         return count_recoveries(frames, times)
