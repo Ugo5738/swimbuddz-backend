@@ -325,7 +325,7 @@ async def _delivered_before(
                       CAST(:dropped_at AS timestamptz) IS NULL
                       OR s.starts_at < CAST(:dropped_at AS timestamptz)
                   )
-                  AND lower(ar.status) IN ('present', 'late')
+                  AND lower(ar.status::text) IN ('present', 'late')
                 """
             ),
             {
