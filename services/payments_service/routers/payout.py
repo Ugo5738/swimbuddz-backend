@@ -25,6 +25,9 @@ from services.payments_service.services.paystack_client import (
     PaystackClient,
     PaystackError,
 )
+from services.payments_service.services.payout_calculator import (
+    recompute_payout_amount,
+)
 from sqlalchemy import func, select
 
 logger = get_logger(__name__)
@@ -234,6 +237,19 @@ async def approve_payout(
                 detail=f"Cannot approve payout with status: {payout.status.value}",
             )
 
+        # Recompute from final attendance before locking the amount, so any
+        # attendance marked after the payout was auto-generated is captured
+        # (the freeze fix). Best-effort: never block approval on a recompute.
+        try:
+            await recompute_payout_amount(session, payout)
+        except Exception:
+            logger.warning(
+                "Recompute before approve failed for payout %s (best-effort); "
+                "approving the stored amount",
+                payout_id,
+                exc_info=True,
+            )
+
         payout.status = PayoutStatus.APPROVED
         payout.approved_by = admin.email or admin.user_id
         payout.approved_at = utc_now()
@@ -354,6 +370,20 @@ async def complete_manual_payout(
                 status_code=400,
                 detail=f"Cannot complete payout with status: {payout.status.value}",
             )
+
+        # If paying straight from PENDING (no prior approve step), recompute from
+        # final attendance first. An already-APPROVED payout keeps its approved
+        # amount. Best-effort.
+        if payout.status == PayoutStatus.PENDING:
+            try:
+                await recompute_payout_amount(session, payout)
+            except Exception:
+                logger.warning(
+                    "Recompute before manual completion failed for payout %s "
+                    "(best-effort); paying the stored amount",
+                    payout_id,
+                    exc_info=True,
+                )
 
         payout.status = PayoutStatus.PAID
         payout.payout_method = data.payout_method

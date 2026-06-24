@@ -6,7 +6,7 @@ from typing import Optional
 
 from libs.common.config import get_settings
 
-from .core import internal_get
+from .core import internal_get, internal_post
 
 
 async def get_session_by_id(session_id: str, *, calling_service: str) -> Optional[dict]:
@@ -136,6 +136,31 @@ async def list_confirmed_bookings_since(
         service_url=settings.SESSIONS_SERVICE_URL,
         path=f"/internal/sessions/bookings/confirmed?since={since_iso}",
         calling_service=calling_service,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def generate_cohort_sessions(
+    cohort_id: str,
+    *,
+    from_date: str,
+    to_date: str,
+    calling_service: str,
+) -> dict:
+    """Generate weekly cohort_class sessions for the window (from_date, to_date].
+
+    Used by academy-service after a cohort extension is approved so the added
+    weeks get sessions automatically. Idempotent on the sessions side (dates
+    that already have a session are skipped). ``from_date``/``to_date`` are
+    ISO-8601 strings. Returns {"created", "skipped", "week_numbers", "reason"?}.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.SESSIONS_SERVICE_URL,
+        path=f"/internal/sessions/cohorts/{cohort_id}/generate",
+        calling_service=calling_service,
+        json={"from_date": from_date, "to_date": to_date},
     )
     resp.raise_for_status()
     return resp.json()

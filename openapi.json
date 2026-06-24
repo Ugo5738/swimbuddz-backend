@@ -9285,6 +9285,65 @@
         }
       }
     },
+    "/api/v1/internal/sessions/cohorts/{cohort_id}/generate": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Generate Cohort Sessions",
+        "description": "Generate the weekly cohort_class sessions for a date window.\n\nCalled by academy-service when a cohort extension is approved so the added\nweeks get sessions automatically (mirroring the create-cohort wizard).\nIdempotent: dates that already have a session are skipped.",
+        "operationId": "generate_cohort_sessions_internal_sessions_cohorts__cohort_id__generate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateCohortSessionsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateCohortSessionsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/sessions/{session_id}/coaches": {
       "get": {
         "tags": [
@@ -55604,6 +55663,63 @@
         ],
         "title": "CreateBundleCartRequest"
       },
+      "GenerateCohortSessionsRequest": {
+        "properties": {
+          "from_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "From Date"
+          },
+          "to_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "To Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_date",
+          "to_date"
+        ],
+        "title": "GenerateCohortSessionsRequest"
+      },
+      "GenerateCohortSessionsResponse": {
+        "properties": {
+          "created": {
+            "type": "integer",
+            "title": "Created"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          },
+          "week_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Week Numbers"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created",
+          "skipped",
+          "week_numbers"
+        ],
+        "title": "GenerateCohortSessionsResponse"
+      },
       "GenerateSessionsRequest": {
         "properties": {
           "weeks": {
@@ -66859,6 +66975,16 @@
             "title": "Band Percentage",
             "description": "Coach's revenue-share percentage. Must sit within the cohort's complexity-derived pay band (e.g. 35-42 for Grade 1 Learn-to-Swim)."
           },
+          "role": {
+            "type": "string",
+            "enum": [
+              "lead",
+              "assistant"
+            ],
+            "title": "Role",
+            "description": "Coach's role on the cohort. With 2 active coaches the pay splits 70/30 (lead/assistant), applied at payout time.",
+            "default": "lead"
+          },
           "notes": {
             "anyOf": [
               {
@@ -66949,6 +67075,33 @@
           "currency": {
             "type": "string",
             "title": "Currency"
+          },
+          "total_classes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Classes"
+          },
+          "per_class_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Class Amount Kobo"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "default": "lead"
           },
           "block_index": {
             "type": "integer",

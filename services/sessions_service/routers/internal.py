@@ -67,6 +67,20 @@ class NextSessionResponse(BaseModel):
     location_name: Optional[str] = None
 
 
+class GenerateCohortSessionsRequest(BaseModel):
+    # Half-open window (from_date, to_date]. Typically from_date = the cohort's
+    # pre-extension end_date and to_date = the new (post-extension) end_date.
+    from_date: datetime
+    to_date: datetime
+
+
+class GenerateCohortSessionsResponse(BaseModel):
+    created: int
+    skipped: int
+    week_numbers: List[int]
+    reason: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -419,6 +433,33 @@ async def get_completed_session_ids_for_cohort(
     query = query.order_by(Session.starts_at.asc())
     result = await db.execute(query)
     return [str(row[0]) for row in result.all()]
+
+
+@router.post(
+    "/cohorts/{cohort_id}/generate",
+    response_model=GenerateCohortSessionsResponse,
+)
+async def generate_cohort_sessions(
+    cohort_id: uuid.UUID,
+    body: GenerateCohortSessionsRequest,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Generate the weekly cohort_class sessions for a date window.
+
+    Called by academy-service when a cohort extension is approved so the added
+    weeks get sessions automatically (mirroring the create-cohort wizard).
+    Idempotent: dates that already have a session are skipped.
+    """
+    from services.sessions_service.services.cohort_sessions import (
+        generate_sessions_for_cohort,
+    )
+
+    result = await generate_sessions_for_cohort(
+        db, cohort_id, body.from_date, body.to_date
+    )
+    await db.commit()
+    return GenerateCohortSessionsResponse(**result)
 
 
 @router.get("/{session_id}/coaches", response_model=List[str])

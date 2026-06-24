@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from services.academy_service.tasks.enrollment import (
     _attended_all_sessions,
-    _emit_graduation_rewards,
+    grant_graduation_rewards,
 )
 
 SESSION_1 = str(uuid.uuid4())
@@ -64,8 +64,14 @@ class TestAttendedAllSessions:
 
 
 # ---------------------------------------------------------------------------
-# _emit_graduation_rewards orchestration
+# grant_graduation_rewards orchestration (per graduate)
 # ---------------------------------------------------------------------------
+#
+# Rewards are now granted per-graduate by the daily certificate job once a
+# member has finished ALL milestones (that job enforces the gate and fetches
+# completed_session_ids once per cohort, passing them in). grant_graduation_rewards
+# itself just emits the academy.graduated bubbles, grants the club bridge, and —
+# when they attended every completed session — the perfect-attendance reward.
 
 MEMBER_ID = uuid.uuid4()
 ENROLLMENT_ID = uuid.uuid4()
@@ -82,38 +88,18 @@ def _make_cohort() -> SimpleNamespace:
     )
 
 
-def _make_db_with_enrollments(enrollments: list) -> Mock:
-    result = Mock()
-    result.scalars.return_value.all.return_value = enrollments
-    db = Mock()
-    db.execute = AsyncMock(return_value=result)
-    return db
-
-
-def _patches(*, completed_session_ids, attendance):
-    """Patch every cross-service call where enrollment.py looks it up."""
+def _patches(*, attendance):
+    """Patch every cross-service call grant_graduation_rewards makes."""
     base = "services.academy_service.tasks.enrollment"
     settings = Mock(
         MEMBERS_SERVICE_URL="http://members", POST_ACADEMY_FREE_CLUB_MONTHS=1
     )
     return {
-        "get_members_bulk": patch(
-            f"{base}.get_members_bulk",
-            new=AsyncMock(return_value=[{"id": str(MEMBER_ID), "auth_id": AUTH_ID}]),
-        ),
         "emit_rewards_event": patch(
             f"{base}.emit_rewards_event", new=AsyncMock(return_value={"accepted": True})
         ),
         "internal_post": patch(f"{base}.internal_post", new=AsyncMock()),
         "get_settings": patch(f"{base}.get_settings", new=Mock(return_value=settings)),
-        "get_completed_session_ids_for_cohort": patch(
-            f"{base}.get_completed_session_ids_for_cohort",
-            new=(
-                completed_session_ids
-                if isinstance(completed_session_ids, AsyncMock)
-                else AsyncMock(return_value=completed_session_ids)
-            ),
-        ),
         "get_member_attendance": patch(
             f"{base}.get_member_attendance",
             new=(
@@ -126,17 +112,20 @@ def _patches(*, completed_session_ids, attendance):
 
 
 async def _run(*, completed_session_ids, attendance):
-    """Run _emit_graduation_rewards with mocks; return the started mocks."""
+    """Run grant_graduation_rewards for one graduate with mocks; return them."""
     enrollment = SimpleNamespace(id=ENROLLMENT_ID, member_id=MEMBER_ID)
-    db = _make_db_with_enrollments([enrollment])
-    patches = _patches(
-        completed_session_ids=completed_session_ids, attendance=attendance
-    )
+    member = {"id": str(MEMBER_ID), "auth_id": AUTH_ID}
+    patches = _patches(attendance=attendance)
     started = {}
     try:
         for name, p in patches.items():
             started[name] = p.start()
-        await _emit_graduation_rewards(db, _make_cohort())
+        await grant_graduation_rewards(
+            cohort=_make_cohort(),
+            enrollment=enrollment,
+            member=member,
+            completed_session_ids=completed_session_ids,
+        )
     finally:
         patch.stopall()
     return started
@@ -151,7 +140,7 @@ def _events_of_type(emit_mock: AsyncMock, event_type: str) -> list:
 
 
 @pytest.mark.unit
-class TestEmitGraduationRewards:
+class TestGrantGraduationRewards:
     async def test_perfect_attendance_emitted_when_present_at_all_sessions(self):
         mocks = await _run(
             completed_session_ids=[SESSION_1, SESSION_2],
@@ -218,15 +207,3 @@ class TestEmitGraduationRewards:
         )
         # Club bridge still granted despite the attendance failure
         mocks["internal_post"].assert_awaited_once()
-
-    async def test_sessions_fetch_failure_does_not_block_graduation(self):
-        mocks = await _run(
-            completed_session_ids=AsyncMock(side_effect=RuntimeError("sessions down")),
-            attendance=[],
-        )
-
-        assert _events_of_type(mocks["emit_rewards_event"], "academy.graduated")
-        assert not _events_of_type(
-            mocks["emit_rewards_event"], "academy.perfect_attendance"
-        )
-        mocks["get_member_attendance"].assert_not_awaited()

@@ -12,7 +12,11 @@ from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.config import get_settings
-from libs.common.service_client import get_member_by_auth_id, internal_post
+from libs.common.service_client import (
+    generate_cohort_sessions,
+    get_member_by_auth_id,
+    internal_post,
+)
 from libs.db.session import get_async_db
 from services.academy_service.models import (
     Cohort,
@@ -260,6 +264,33 @@ async def approve_extension_request(
         logger.warning(
             "Failed to propagate cohort extension to members (best-effort): "
             "cohort=%s",
+            ext_request.cohort_id,
+            exc_info=True,
+        )
+
+    # Generate the weekly sessions for the newly added weeks. The create-cohort
+    # wizard lays sessions down per week at creation, but extension approval
+    # historically only moved end_date — admins then had to hand-create each
+    # added week. sessions-service infers the cadence from the cohort's existing
+    # weekly sessions and is idempotent (dates that already have a session are
+    # skipped). Best-effort: a failure here must not block the approval.
+    try:
+        gen = await generate_cohort_sessions(
+            str(ext_request.cohort_id),
+            from_date=ext_request.current_end_date.isoformat(),
+            to_date=ext_request.proposed_end_date.isoformat(),
+            calling_service="academy",
+        )
+        logger.info(
+            "Auto-generated %s extension session(s) (skipped %s) for cohort %s",
+            gen.get("created"),
+            gen.get("skipped"),
+            ext_request.cohort_id,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to auto-generate extension sessions for cohort %s "
+            "(best-effort): admin can create them manually",
             ext_request.cohort_id,
             exc_info=True,
         )

@@ -273,6 +273,74 @@ async def _completed_makeups_in_block(
     return counts
 
 
+async def _active_paid_coach_count(db: AsyncSession, cohort_id: uuid.UUID) -> int:
+    """Count ACTIVE paid coach assignments (lead + assistant) on the cohort.
+
+    Drives the main/assistant split at payout time: 1 active coach → full pay;
+    2 → 70/30 (lead/assistant). Shadow/observer roles are unpaid and excluded.
+    Reads the academy-owned coach_assignments table directly (same DB), as the
+    other helpers here do.
+    """
+    n = (
+        await db.execute(
+            text(
+                """
+                SELECT count(*) FROM public.coach_assignments
+                WHERE cohort_id = :cohort_id AND status = 'active'
+                  AND is_session_override = false
+                  AND role IN ('lead', 'assistant')
+                """
+            ),
+            {"cohort_id": cohort_id},
+        )
+    ).scalar()
+    return int(n or 0)
+
+
+async def _delivered_before(
+    db: AsyncSession,
+    student_id: uuid.UUID,
+    cohort_id: uuid.UUID,
+    block_start: datetime,
+    enrolled_at: datetime,
+    dropped_at: Optional[datetime],
+) -> int:
+    """Count a student's PRESENT/LATE classes in eligible cohort sessions that
+    ran BEFORE this block — the basis for the cumulative per-student class cap
+    (a coach is never paid for more than ``total_classes`` per student)."""
+    n = (
+        await db.execute(
+            text(
+                """
+                SELECT count(*)
+                FROM public.attendance_records ar
+                JOIN public.sessions s ON s.id = ar.session_id
+                WHERE ar.member_id = :student
+                  AND s.cohort_id = :cohort
+                  AND s.session_type = 'cohort_class'
+                  AND s.status IS DISTINCT FROM CAST(:cancelled AS session_status_enum)
+                  AND s.starts_at < :block_start
+                  AND s.starts_at > :enrolled_at
+                  AND (
+                      CAST(:dropped_at AS timestamptz) IS NULL
+                      OR s.starts_at < CAST(:dropped_at AS timestamptz)
+                  )
+                  AND lower(ar.status) IN ('present', 'late')
+                """
+            ),
+            {
+                "student": student_id,
+                "cohort": cohort_id,
+                "cancelled": CANCELLED_STATUS,
+                "block_start": block_start,
+                "enrolled_at": enrolled_at,
+                "dropped_at": dropped_at,
+            },
+        )
+    ).scalar()
+    return int(n or 0)
+
+
 def _per_session_amount_kobo(
     config: RecurringPayoutConfig, sessions_in_block: int
 ) -> int:
@@ -292,6 +360,29 @@ def _per_session_amount_kobo(
     )
     per_session = block_share / Decimal(sessions_in_block)
     return int(per_session.quantize(Decimal("1")))  # floor to whole kobo
+
+
+def _role_share(active_paid_coach_count: int, role: str) -> Decimal:
+    """Fraction of the cohort coach pool THIS coach earns.
+
+    1 active paid coach → 1.0 (full pay). 2 → 70/30 (lead/assistant). Computed
+    from the CURRENT roster at payout time, so adding/removing an assistant
+    adjusts pay without re-freezing the per-class rate.
+    """
+    if active_paid_coach_count >= 2:
+        return Decimal("0.70") if role == "lead" else Decimal("0.30")
+    return Decimal("1")
+
+
+def _paid_classes(delivered_count: int, prior_delivered: int, class_cap: int) -> int:
+    """Classes payable in this block under the cumulative per-student cap.
+
+    A coach is never paid for more than ``class_cap`` (= total_classes) classes
+    per student across the whole cohort; ``prior_delivered`` is what earlier
+    blocks already covered. Make-ups recover missed classes within this cap.
+    """
+    remaining = max(0, class_cap - prior_delivered)
+    return min(delivered_count, remaining)
 
 
 async def compute_block_payout(
@@ -316,7 +407,23 @@ async def compute_block_payout(
         db, config, block_start, block_end
     )
 
-    per_session_kobo = _per_session_amount_kobo(config, sessions_in_block)
+    # Pay rate. Redesign (2026-06-23): use the FROZEN full per-class amount and
+    # apply the main/assistant split from the CURRENT active roster (1 coach →
+    # full; 2 → 70/30). Configs created before the redesign (no per_class_amount
+    # / total_classes) fall back to the legacy per-block formula until backfilled.
+    use_fixed = (
+        config.per_class_amount_kobo is not None and (config.total_classes or 0) > 0
+    )
+    if use_fixed:
+        n_coaches = await _active_paid_coach_count(db, config.cohort_id)
+        role_share = _role_share(n_coaches, config.role or "lead")
+        per_session_kobo = int(
+            (Decimal(config.per_class_amount_kobo) * role_share).quantize(Decimal("1"))
+        )
+        class_cap: Optional[int] = int(config.total_classes)
+    else:
+        per_session_kobo = _per_session_amount_kobo(config, sessions_in_block)
+        class_cap = None
 
     lines: List[StudentBlockLine] = []
     new_makeup_obligations: List[dict] = []
@@ -394,8 +501,23 @@ async def compute_block_payout(
                 # for sessions where no lesson was held with the student.
                 pass
 
-        makeups_completed = makeup_counts.get(student_id, 0)
-        student_total = (delivered_count + makeups_completed) * per_session_kobo
+        if use_fixed:
+            # A make-up the student attended already shows up as a PRESENT/LATE
+            # row in delivered_count, so we do NOT add a separate make-up term
+            # (no double-count). Cap cumulative paid classes per student at
+            # total_classes across all blocks: pay only up to the classes still
+            # remaining after what prior blocks already covered.
+            prior_delivered = await _delivered_before(
+                db, student_id, config.cohort_id, block_start, enrolled_at, dropped_at
+            )
+            paid_classes = _paid_classes(
+                delivered_count, prior_delivered, class_cap or 0
+            )
+            makeups_completed = 0
+        else:
+            makeups_completed = makeup_counts.get(student_id, 0)
+            paid_classes = delivered_count + makeups_completed
+        student_total = paid_classes * per_session_kobo
 
         student_name = None
         if enr.get("first_name") or enr.get("last_name"):
@@ -411,7 +533,7 @@ async def compute_block_payout(
                 enrolled_at=enrolled_at,
                 sessions_in_block=sessions_in_block,
                 sessions_eligible=len(eligible_sessions),
-                sessions_delivered=delivered_count,
+                sessions_delivered=paid_classes,
                 sessions_excused=excused_count,
                 makeups_completed=makeups_completed,
                 per_session_amount_kobo=per_session_kobo,
@@ -446,6 +568,29 @@ async def compute_block_payout(
         sessions_in_block=sessions_in_block,
         new_makeup_obligations=new_makeup_obligations,
     )
+
+
+async def recompute_payout_amount(db: AsyncSession, payout) -> bool:
+    """Recompute a recurring payout's amount from CURRENT attendance (the freeze
+    fix). Re-runs compute_block_payout for the payout's config + block and
+    updates academy_earnings/total_amount in place, so a PENDING payout reflects
+    attendance marked after it was first generated. No-op (returns False) for
+    payouts with no config link (manual/legacy). Does NOT create or re-link
+    make-up obligations — those are handled once at generation. Caller commits.
+    """
+    if getattr(payout, "config_id", None) is None or payout.block_index is None:
+        return False
+    config = await db.get(RecurringPayoutConfig, payout.config_id)
+    if config is None:
+        return False
+    computation = await compute_block_payout(db, config, payout.block_index)
+    payout.academy_earnings = computation.total_kobo
+    payout.total_amount = (
+        computation.total_kobo
+        + (payout.session_earnings or 0)
+        + (payout.other_earnings or 0)
+    )
+    return True
 
 
 def block_window(

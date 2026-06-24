@@ -137,7 +137,10 @@ async def get_coach_dashboard(
             pending_query = select(func.count(StudentProgress.id)).where(
                 StudentProgress.enrollment_id.in_(enrollment_ids),
                 StudentProgress.status == ProgressStatus.PENDING,
-                StudentProgress.evidence_media_id.isnot(None),  # Has submitted evidence
+                # Claimed and awaiting review. reviewed_at is NULL on a fresh
+                # claim/resubmission and set once a coach acts, so this counts
+                # claims (with or without evidence) but excludes rejected items.
+                StudentProgress.reviewed_at.is_(None),
             )
             pending_result = await db.execute(pending_query)
             pending_reviews = pending_result.scalar() or 0
@@ -527,13 +530,16 @@ async def list_pending_milestone_reviews(
     if not enrollments:
         return []
 
-    # 4. Get pending progress records with evidence
+    # 4. Get progress records claimed and awaiting review.
+    # reviewed_at is NULL on a fresh claim/resubmission and is set once a coach
+    # acts, so this surfaces claims (with or without evidence) while excluding
+    # already-rejected items (which keep their reviewed_at until resubmitted).
     query = (
         select(StudentProgress)
         .where(
             StudentProgress.enrollment_id.in_(enrollments.keys()),
             StudentProgress.status == ProgressStatus.PENDING,
-            StudentProgress.evidence_media_id.isnot(None),
+            StudentProgress.reviewed_at.is_(None),
         )
         .options(joinedload(StudentProgress.milestone))
         .order_by(StudentProgress.created_at.asc())

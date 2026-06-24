@@ -212,6 +212,8 @@ async def process_recurring_payouts() -> None:
                 # Insert the PENDING payout row.
                 payout = CoachPayout(
                     coach_member_id=config.coach_member_id,
+                    config_id=config.id,
+                    block_index=config.block_index,
                     period_start=computation.block_start,
                     period_end=computation.block_end,
                     period_label=_period_label(
@@ -228,12 +230,10 @@ async def process_recurring_payouts() -> None:
                     admin_notes=(
                         f"Auto-generated from recurring config {config.id}. "
                         f"Block {config.block_index + 1}/{config.total_blocks}. "
-                        f"Band {config.band_percentage}% × cohort price "
-                        f"{config.cohort_price_amount} kobo ÷ "
-                        f"{config.total_blocks} blocks ÷ "
-                        f"{computation.sessions_in_block} sessions = "
-                        f"{computation.per_session_amount_kobo} kobo per "
-                        f"student-session. {len(computation.lines)} students."
+                        f"{computation.per_session_amount_kobo} kobo per class "
+                        f"× classes delivered, {len(computation.lines)} students "
+                        f"= {computation.total_kobo} kobo. Recomputed from final "
+                        f"attendance at approval."
                     ),
                 )
                 db.add(payout)

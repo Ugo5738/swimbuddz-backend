@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 from services.payments_service.models import (
@@ -30,6 +30,11 @@ class RecurringPayoutConfigCreate(BaseModel):
         description="Coach's revenue-share percentage. Must sit within the "
         "cohort's complexity-derived pay band (e.g. 35-42 for "
         "Grade 1 Learn-to-Swim).",
+    )
+    role: Literal["lead", "assistant"] = Field(
+        default="lead",
+        description="Coach's role on the cohort. With 2 active coaches the pay "
+        "splits 70/30 (lead/assistant), applied at payout time.",
     )
     notes: Optional[str] = Field(
         default=None,
@@ -62,6 +67,12 @@ class RecurringPayoutConfigResponse(BaseModel):
     cohort_end_date: datetime
     cohort_price_amount: int
     currency: str
+
+    # Fixed per-class pay (redesign 2026-06-23). per_class_amount_kobo is the
+    # FULL pool rate; the 70/30 split is applied at payout time by role.
+    total_classes: Optional[int] = None
+    per_class_amount_kobo: Optional[int] = None
+    role: str = "lead"
 
     block_index: int
     next_run_date: datetime

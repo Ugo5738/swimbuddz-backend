@@ -306,9 +306,12 @@ async def claim_milestone(
 
     if progress:
         # Update existing record (handles both first claim and resubmission after rejection)
+        # A claim moves the milestone into PENDING (awaiting coach review); it is
+        # only ACHIEVED once a coach/admin approves it. achieved_at is set at
+        # approval time, not at claim time.
         previous_status = progress.status
-        progress.status = ProgressStatus.ACHIEVED
-        progress.achieved_at = utc_now()
+        progress.status = ProgressStatus.PENDING
+        progress.achieved_at = None
         if claim_in.evidence_media_id:
             progress.evidence_media_id = claim_in.evidence_media_id
         if claim_in.student_notes is not None:
@@ -322,13 +325,13 @@ async def claim_milestone(
         progress.score = None
         progress.coach_notes = None
     else:
-        # Create new record
+        # Create new record. A fresh claim is PENDING (awaiting coach review),
+        # not ACHIEVED — achieved_at stays NULL until a coach/admin approves.
         previous_status = None
         progress = StudentProgress(
             enrollment_id=enrollment_id,
             milestone_id=milestone_id,
-            status=ProgressStatus.ACHIEVED,
-            achieved_at=utc_now(),
+            status=ProgressStatus.PENDING,
             evidence_media_id=claim_in.evidence_media_id,
             student_notes=claim_in.student_notes,
         )
@@ -346,7 +349,7 @@ async def claim_milestone(
             actor_id=current_user.user_id,
             actor_role="student",
             previous_status=previous_status,
-            new_status=ProgressStatus.ACHIEVED,
+            new_status=ProgressStatus.PENDING,
             student_notes_snapshot=claim_in.student_notes,
             evidence_media_id_snapshot=claim_in.evidence_media_id,
         )
