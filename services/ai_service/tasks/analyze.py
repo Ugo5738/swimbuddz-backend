@@ -254,6 +254,44 @@ def _coach_enabled() -> bool:
     return bool(get_settings().STROKELAB_ENABLE_COACH)
 
 
+# Phrases that mean "the camera couldn't see this" — a caveat, never a strength.
+_CANT_SEE_PHRASES = (
+    "not visible",
+    "not clearly visible",
+    "isn't visible",
+    "can't see",
+    "cannot see",
+    "not clear",
+    "below the surface",
+    "hard to make out",
+)
+
+
+def _apply_borderline_honesty(result) -> None:
+    """A BORDERLINE clip is a marginal camera angle the coach can't actually verify
+    specifics on — so quiet the read rather than let it assert things it can't stand
+    behind (a swimmer saw a confident "high elbow recovery" cited on a frame where he
+    hadn't started stroking). On borderline: drop the per-frame "watch this moment"
+    citations (we can't trust the frame), demote "can't see X" out of strengths
+    (absence isn't a win), and cap confidence. No-op on CLEAN clips."""
+    from services.ai_service.pipeline.types import (
+        SEVERITY_INFO,
+        SEVERITY_STRENGTH,
+        GateTier,
+    )
+
+    if result.gate_tier != GateTier.BORDERLINE:
+        return
+    for cr in result.results:
+        for f in cr.findings:
+            f.evidence_frames = []  # marginal angle → no frame we can stand behind
+            f.confidence = min(f.confidence, 0.4)
+            if f.severity == SEVERITY_STRENGTH and any(
+                p in f.observation.lower() for p in _CANT_SEE_PHRASES
+            ):
+                f.severity = SEVERITY_INFO  # "can't see X" is a caveat, not a win
+
+
 async def _run_coach_pipeline(
     video_path: Path,
     coach_context: CoachContext | None = None,
@@ -318,6 +356,7 @@ async def _run_coach_pipeline(
         video_path=str(video_path),  # lets pose_recovery decode its own dense frames
     )
     result = await run_pipeline(ctx, build_default_registry(), on_progress=on_progress)
+    _apply_borderline_honesty(result)  # quiet the coach on a clip it can't read cleanly
 
     # Collect the frame bytes each finding cites, keyed "<component>:<index>".
     # holistic_coach cites KEY-frame indices; recovery_coach cites STRIP indices.
