@@ -1,21 +1,19 @@
 """Stroke Lab storage adapter.
 
-Two Supabase storage buckets back the v0 pipeline:
+Backend is configurable via ``STORAGE_BACKEND`` (``s3`` | ``supabase``) so Stroke Lab
+sits on the SAME storage as the rest of the app (prod is S3) instead of its own
+Supabase buckets. Two logical buckets:
 
-  * ``strokelab-uploads``   — raw user uploads. Private. Written by the API
+  * ``strokelab-uploads``   — raw user/guest uploads. Private. Written by the API
                               POST endpoint, read by the ARQ worker.
-  * ``strokelab-annotated`` — pose-overlay videos produced by the worker.
-                              Private. Read by the API GET endpoint, which
-                              hands clients a short-lived signed URL.
+  * ``strokelab-annotated`` — annotated mp4s + coach evidence frames (jpeg). Private.
+                              Read by the API GET endpoint via a short-lived URL.
 
-Both buckets are private by design — sharing requires the user to opt in
-on the job row (``AnalysisJob.is_public``), and even "public" sharing
-goes through signed URLs rather than truly public access so we can
-revoke a clip later.
-
-Bucket creation is operator-side; the helpers assume both buckets already
-exist. See docs (TODO once bucket-setup runbook lands) for the supabase
-CLI commands to create them.
+On ``s3`` these two become key prefixes inside one private S3 bucket
+(``STROKELAB_S3_BUCKET`` or ``AWS_S3_BUCKET_PRIVATE``); on ``supabase`` they're
+Supabase Storage buckets. Either way access is via short-lived signed/presigned
+URLs (never truly public) so a clip can be revoked later. Bucket creation is
+operator-side; the helpers assume the target bucket exists.
 """
 
 from __future__ import annotations
@@ -28,6 +26,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
+from libs.common.config import get_settings
 from libs.common.logging import get_logger
 from libs.common.supabase import get_supabase_admin_client
 
@@ -36,6 +35,37 @@ logger = get_logger(__name__)
 
 UPLOADS_BUCKET = os.environ.get("STROKELAB_UPLOADS_BUCKET", "strokelab-uploads")
 ANNOTATED_BUCKET = os.environ.get("STROKELAB_ANNOTATED_BUCKET", "strokelab-annotated")
+
+
+# ── Storage backend — mirrors the rest of the app (STORAGE_BACKEND = s3 | supabase).
+# On s3, Stroke Lab joins the app on AWS S3 instead of its own Supabase buckets; the
+# logical bucket name (strokelab-uploads / strokelab-annotated) becomes the S3 key
+# prefix inside one private bucket. (S3 has no per-bucket MIME allow-list, so the jpeg
+# evidence frames that Supabase's video-only bucket rejected just work.)
+def _use_s3() -> bool:
+    return get_settings().STORAGE_BACKEND == "s3"
+
+
+def _s3_client():
+    import boto3  # lazy: only the s3 path needs it
+
+    s = get_settings()
+    return boto3.client(
+        "s3",
+        aws_access_key_id=s.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=s.AWS_SECRET_ACCESS_KEY,
+        region_name=s.AWS_REGION,
+    )
+
+
+def _s3_bucket() -> str:
+    s = get_settings()
+    return s.STROKELAB_S3_BUCKET or s.AWS_S3_BUCKET_PRIVATE
+
+
+def _s3_key(bucket: str, key: str) -> str:
+    return f"{bucket}/{key}"  # logical bucket → key prefix in the single private bucket
+
 
 # Default signed-URL lifetime for playback. One hour is plenty for a
 # polling client + a video player to fetch the asset; rotated naturally
@@ -66,6 +96,14 @@ def make_guest_object_key(guest_token: str, job_id: uuid.UUID, suffix: str) -> s
 
 
 def _upload_sync(bucket: str, key: str, data: bytes, content_type: str) -> None:
+    if _use_s3():
+        _s3_client().put_object(
+            Bucket=_s3_bucket(),
+            Key=_s3_key(bucket, key),
+            Body=data,
+            ContentType=content_type,
+        )
+        return
     client = get_supabase_admin_client()
     client.storage.from_(bucket).upload(
         key,
@@ -75,11 +113,20 @@ def _upload_sync(bucket: str, key: str, data: bytes, content_type: str) -> None:
 
 
 def _download_sync(bucket: str, key: str) -> bytes:
+    if _use_s3():
+        resp = _s3_client().get_object(Bucket=_s3_bucket(), Key=_s3_key(bucket, key))
+        return resp["Body"].read()
     client = get_supabase_admin_client()
     return client.storage.from_(bucket).download(key)
 
 
 def _signed_url_sync(bucket: str, key: str, expires_in: int) -> str:
+    if _use_s3():
+        return _s3_client().generate_presigned_url(
+            "get_object",
+            Params={"Bucket": _s3_bucket(), "Key": _s3_key(bucket, key)},
+            ExpiresIn=expires_in,
+        )
     client = get_supabase_admin_client()
     res = client.storage.from_(bucket).create_signed_url(key, expires_in)
     # supabase-py returns {"signedURL": "..."} on success.
@@ -90,6 +137,9 @@ def _signed_url_sync(bucket: str, key: str, expires_in: int) -> str:
 
 
 def _delete_sync(bucket: str, key: str) -> None:
+    if _use_s3():
+        _s3_client().delete_object(Bucket=_s3_bucket(), Key=_s3_key(bucket, key))
+        return
     client = get_supabase_admin_client()
     client.storage.from_(bucket).remove([key])
 
