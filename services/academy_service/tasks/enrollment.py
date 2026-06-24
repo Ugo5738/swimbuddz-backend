@@ -13,7 +13,6 @@ from libs.common.logging import get_logger
 from libs.common.service_client import (
     dispatch_notification,
     emit_rewards_event,
-    get_completed_session_ids_for_cohort,
     get_member_attendance,
     get_members_bulk,
     internal_post,
@@ -304,9 +303,13 @@ async def transition_cohort_statuses():
                 logger.info(
                     f"Transitioned cohort {cohort.id} ({cohort.name}) from ACTIVE to COMPLETED"
                 )
-
-                # Emit graduation reward events for enrolled students
-                await _emit_graduation_rewards(db, cohort)
+                # Graduation rewards (bubbles, club bridge, perfect attendance)
+                # are intentionally NOT granted here. They are milestone-gated
+                # and granted per-graduate by the daily certificate job
+                # (tasks/reporting.py) when a member finishes all milestones, so
+                # only members who completed the programme earn them and a
+                # transient failure self-heals on the next daily run instead of
+                # silently skipping the whole cohort.
 
             await db.commit()
 
@@ -347,140 +350,108 @@ def _attended_all_sessions(records: list[dict], session_ids: list[str]) -> bool:
     return all(sid in attended for sid in session_ids)
 
 
-async def _emit_graduation_rewards(db, cohort: Cohort) -> None:
-    """Best-effort: emit graduation + perfect attendance rewards for enrolled students."""
+async def grant_graduation_rewards(
+    *,
+    cohort: Cohort,
+    enrollment: Enrollment,
+    member: dict,
+    completed_session_ids: list,
+) -> None:
+    """Best-effort: grant one graduate's rewards.
+
+    Called by the daily certificate job for a member who has finished ALL of
+    the programme's milestones (that job enforces the gate, so rewards only go
+    to members who actually completed the programme). Grants:
+
+    * ``academy.graduated`` bubbles,
+    * the free post-academy club bridge (anchored to the cohort end date so
+      the free month starts when the cohort finishes — with or without an
+      extension), and
+    * ``academy.perfect_attendance`` when they attended every completed session.
+
+    Every grant is independently guarded and idempotent (reward events carry an
+    idempotency key; ``/club/extend`` never shrinks), so re-running is safe and
+    one failed grant never blocks the others — or other graduates.
+    ``completed_session_ids`` is fetched once per cohort by the caller.
+    """
+    auth_id = member.get("auth_id")
+    if not auth_id:
+        return
+
+    program_name = cohort.program.name if cohort.program else "Swimming Course"
+
+    # academy.graduated bubbles.
     try:
-        # Get enrolled students for this cohort
-        enrollment_query = select(Enrollment).where(
-            Enrollment.cohort_id == cohort.id,
-            Enrollment.status == EnrollmentStatus.ENROLLED,
-        )
-        result = await db.execute(enrollment_query)
-        enrollments = result.scalars().all()
-
-        if not enrollments:
-            return
-
-        # Bulk-lookup member details to get auth_ids
-        member_ids = list({str(e.member_id) for e in enrollments})
-        members_data = await get_members_bulk(member_ids, calling_service="academy")
-        members_map = {m["id"]: m for m in members_data}
-
-        program_name = cohort.program.name if cohort.program else "Swimming Course"
-
-        # Perfect attendance is judged against the cohort's COMPLETED
-        # sessions (cancelled/unheld sessions don't count against anyone).
-        # Sessions live in sessions_service — fetch once via internal HTTP.
-        try:
-            completed_session_ids = await get_completed_session_ids_for_cohort(
-                str(cohort.id), calling_service="academy"
-            )
-        except Exception:
-            completed_session_ids = []
-            logger.warning(
-                "Failed to fetch completed sessions for cohort %s — "
-                "skipping perfect-attendance rewards (best-effort)",
-                cohort.id,
-                exc_info=True,
-            )
-
-        for enrollment in enrollments:
-            member = members_map.get(str(enrollment.member_id), {})
-            auth_id = member.get("auth_id")
-            if not auth_id:
-                continue
-
-            # Emit academy.graduated event
-            await emit_rewards_event(
-                event_type="academy.graduated",
-                member_auth_id=auth_id,
-                member_id=str(enrollment.member_id),
-                service_source="academy",
-                event_data={
-                    "program_name": program_name,
-                    "cohort_name": cohort.name,
-                    "cohort_id": str(cohort.id),
-                },
-                idempotency_key=f"academy-graduated-{enrollment.id}",
-                calling_service="academy",
-            )
-
-            # Grant the free post-academy club bridge per PRICING_STRATEGY.md.
-            # The /club/extend endpoint is idempotent (don't shrink), so it's
-            # safe to re-run if the cron fires twice for the same cohort.
-            try:
-                _settings = get_settings()
-                await internal_post(
-                    service_url=_settings.MEMBERS_SERVICE_URL,
-                    path=f"/admin/members/by-auth/{auth_id}/club/extend",
-                    calling_service="academy",
-                    json={
-                        "months": _settings.POST_ACADEMY_FREE_CLUB_MONTHS,
-                        "from_date": (
-                            cohort.end_date.isoformat() if cohort.end_date else None
-                        ),
-                        "reason": (
-                            f"Free post-academy club bridge " f"(cohort {cohort.id})"
-                        ),
-                    },
-                )
-            except Exception:
-                # Best-effort: graduation should still complete if extend fails.
-                # The admin can run it manually via the same endpoint later.
-                logger.warning(
-                    "Failed to grant post-academy club bridge for "
-                    "enrollment %s (best-effort)",
-                    enrollment.id,
-                    exc_info=True,
-                )
-
-            # Emit academy.perfect_attendance when the student attended
-            # every completed session (attendance_records live in
-            # attendance_service — fetched via internal HTTP).
-            if completed_session_ids:
-                try:
-                    attendance_records = await get_member_attendance(
-                        str(enrollment.member_id),
-                        session_ids=completed_session_ids,
-                        calling_service="academy",
-                    )
-                    if _attended_all_sessions(
-                        attendance_records, completed_session_ids
-                    ):
-                        await emit_rewards_event(
-                            event_type="academy.perfect_attendance",
-                            member_auth_id=auth_id,
-                            member_id=str(enrollment.member_id),
-                            service_source="academy",
-                            event_data={
-                                "program_name": program_name,
-                                "cohort_name": cohort.name,
-                                "cohort_id": str(cohort.id),
-                                "sessions_attended": len(completed_session_ids),
-                            },
-                            idempotency_key=(
-                                f"academy-perfect-attendance-{enrollment.id}"
-                            ),
-                            calling_service="academy",
-                        )
-                except Exception:
-                    # Best-effort: graduation rewards for other students
-                    # should not be blocked by one attendance lookup.
-                    logger.warning(
-                        "Failed perfect-attendance check for enrollment %s "
-                        "(best-effort)",
-                        enrollment.id,
-                        exc_info=True,
-                    )
-
-        logger.info(
-            "Emitted graduation reward events for %d students in cohort %s",
-            len(enrollments),
-            cohort.id,
+        await emit_rewards_event(
+            event_type="academy.graduated",
+            member_auth_id=auth_id,
+            member_id=str(enrollment.member_id),
+            service_source="academy",
+            event_data={
+                "program_name": program_name,
+                "cohort_name": cohort.name,
+                "cohort_id": str(cohort.id),
+            },
+            idempotency_key=f"academy-graduated-{enrollment.id}",
+            calling_service="academy",
         )
     except Exception:
         logger.warning(
-            "Failed to emit graduation rewards for cohort %s (best-effort)",
-            cohort.id,
+            "Failed to emit academy.graduated for enrollment %s (best-effort)",
+            enrollment.id,
             exc_info=True,
         )
+
+    # Free post-academy club bridge per PRICING_STRATEGY.md, anchored to the
+    # cohort end date. /club/extend is idempotent (don't shrink), so re-running
+    # on later daily passes is safe.
+    try:
+        _settings = get_settings()
+        await internal_post(
+            service_url=_settings.MEMBERS_SERVICE_URL,
+            path=f"/admin/members/by-auth/{auth_id}/club/extend",
+            calling_service="academy",
+            json={
+                "months": _settings.POST_ACADEMY_FREE_CLUB_MONTHS,
+                "from_date": (cohort.end_date.isoformat() if cohort.end_date else None),
+                "reason": f"Free post-academy club bridge (cohort {cohort.id})",
+            },
+        )
+    except Exception:
+        logger.warning(
+            "Failed to grant post-academy club bridge for enrollment %s "
+            "(best-effort)",
+            enrollment.id,
+            exc_info=True,
+        )
+
+    # academy.perfect_attendance when they attended every completed session
+    # (attendance_records live in attendance_service — fetched via internal HTTP).
+    if completed_session_ids:
+        try:
+            attendance_records = await get_member_attendance(
+                str(enrollment.member_id),
+                session_ids=completed_session_ids,
+                calling_service="academy",
+            )
+            if _attended_all_sessions(attendance_records, completed_session_ids):
+                await emit_rewards_event(
+                    event_type="academy.perfect_attendance",
+                    member_auth_id=auth_id,
+                    member_id=str(enrollment.member_id),
+                    service_source="academy",
+                    event_data={
+                        "program_name": program_name,
+                        "cohort_name": cohort.name,
+                        "cohort_id": str(cohort.id),
+                        "sessions_attended": len(completed_session_ids),
+                    },
+                    idempotency_key=f"academy-perfect-attendance-{enrollment.id}",
+                    calling_service="academy",
+                )
+        except Exception:
+            logger.warning(
+                "Failed perfect-attendance check for enrollment %s (best-effort)",
+                enrollment.id,
+                exc_info=True,
+            )

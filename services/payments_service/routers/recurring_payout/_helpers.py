@@ -29,7 +29,17 @@ async def _fetch_cohort_snapshot(db, cohort_id: uuid.UUID) -> dict:
                     COALESCE(c.price_override, p.price_amount) AS price_amount,
                     p.currency,
                     p.duration_weeks,
-                    s.pay_band_min, s.pay_band_max
+                    s.pay_band_min, s.pay_band_max,
+                    -- Planned class count = week-numbered cohort_class sessions
+                    -- (ad-hoc make-ups are created without a week_number). This
+                    -- is the per-class-rate denominator, robust to cadence
+                    -- (1x vs 2x/week). See COACH_PAYOUT_REDESIGN.md §2.2.
+                    (
+                        SELECT count(*) FROM public.sessions ss
+                        WHERE ss.cohort_id = c.id
+                          AND ss.session_type = 'cohort_class'
+                          AND ss.week_number IS NOT NULL
+                    ) AS planned_class_count
                 FROM public.cohorts c
                 JOIN public.programs p ON p.id = c.program_id
                 LEFT JOIN public.cohort_complexity_scores s
@@ -46,6 +56,31 @@ async def _fetch_cohort_snapshot(db, cohort_id: uuid.UUID) -> dict:
     if not row:
         return {}
     return dict(row)
+
+
+async def _active_paid_coach_count(db, cohort_id: uuid.UUID) -> int:
+    """Count ACTIVE paid coach assignments (lead + assistant) on a cohort.
+
+    Drives the main/assistant pay split: 1 → that coach gets the full band,
+    2 → 70/30 lead/assistant. Shadow/observer roles are unpaid and excluded.
+    Cancelled/completed assignments don't count. Reads the academy-owned
+    coach_assignments table directly (same DB), matching _fetch_cohort_snapshot.
+    """
+    row = (
+        await db.execute(
+            text(
+                """
+                SELECT count(*) AS n FROM public.coach_assignments
+                WHERE cohort_id = :cohort_id
+                  AND status = 'active'
+                  AND is_session_override = false
+                  AND role IN ('lead', 'assistant')
+                """
+            ),
+            {"cohort_id": cohort_id},
+        )
+    ).scalar_one()
+    return int(row or 0)
 
 
 async def _resolve_coach_member_id(current_user: AuthUser) -> uuid.UUID:

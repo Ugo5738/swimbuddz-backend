@@ -225,6 +225,14 @@ class CoachPayout(Base):
         UUID(as_uuid=True), index=True, nullable=False
     )
 
+    # Link back to the recurring config + block that produced this payout, so a
+    # PENDING payout can be recomputed against final attendance before it's paid
+    # (redesign 2026-06-23). NULL for manual/legacy payouts (never recomputed).
+    config_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    block_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Period this payout covers
     period_start: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
@@ -376,6 +384,25 @@ class RecurringPayoutConfig(Base):
     # payouts compute correctly even if cohort.price_amount changes later.
     cohort_price_amount: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(8), default="NGN", nullable=False)
+
+    # ── Fixed per-class pay (redesign 2026-06-23; see
+    # docs/design/COACH_PAYOUT_REDESIGN.md) ────────────────────────────────
+    # total_classes = the cohort's PLANNED class count (count of week-numbered
+    # cohort_class sessions), frozen at creation so make-ups/extensions can't
+    # dilute the rate. Nullable for pre-redesign rows (calculator falls back to
+    # the legacy per-block formula until they're backfilled).
+    total_classes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Frozen FULL pay per (student, class) for the cohort POOL:
+    # cohort_price × band% ÷ total_classes. The main/assistant split is NOT
+    # baked in here — it is applied at payout time from the CURRENT active
+    # coach roster (1 active coach → ×1.0; 2 → lead ×0.70 / assistant ×0.30),
+    # so adding/removing an assistant adjusts pay without re-freezing the rate.
+    per_class_amount_kobo: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Coach role on the cohort: "lead" or "assistant". Used with the active
+    # coach count at payout time to apply the 70/30 split.
+    role: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="lead", server_default="lead"
+    )
 
     # Schedule tracking
     block_index: Mapped[int] = mapped_column(

@@ -51,6 +51,7 @@ from .payments import (
     verify_store_payment,
 )
 from .sessions import (
+    generate_cohort_sessions,
     get_booking_by_id,
     get_completed_session_ids_for_cohort,
     get_next_session_for_cohort,
@@ -101,6 +102,7 @@ __all__ = [
     "get_member_attendance",
     # Sessions
     "get_booking_by_id",
+    "generate_cohort_sessions",
     "get_completed_session_ids_for_cohort",
     "get_session_by_id",
     "get_next_session_for_cohort",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -102,6 +103,27 @@ async def create_recurring_payout_config(
         block_length_days = 28
         total_blocks = max(1, duration_weeks // 4)
 
+        # Fixed per-class rate (redesign 2026-06-23). total_classes = the
+        # cohort's planned class count (week-numbered sessions), which respects
+        # cadence (1x vs 2x/week); fall back to duration_weeks if sessions
+        # aren't generated yet. per_class is the FULL pool rate — the
+        # main/assistant split is applied at payout time from the active roster.
+        total_classes = int(cohort.get("planned_class_count") or 0) or duration_weeks
+        price_kobo = int(cohort.get("price_amount") or 0)
+        per_class_amount_kobo = (
+            int(
+                (
+                    Decimal(price_kobo)
+                    * Decimal(str(payload.band_percentage))
+                    / Decimal(100)
+                    / Decimal(total_classes)
+                ).quantize(Decimal("1"))
+            )
+            if total_classes > 0
+            else None
+        )
+        role = (getattr(payload, "role", None) or "lead").lower()
+
         # First run = end of block 1 (cohort_start + 4 weeks).
         first_run = cohort["start_date"] + timedelta(days=block_length_days)
 
@@ -119,8 +141,11 @@ async def create_recurring_payout_config(
             block_length_days=block_length_days,
             cohort_start_date=cohort["start_date"],
             cohort_end_date=cohort["end_date"],
-            cohort_price_amount=int(cohort["price_amount"] or 0),
+            cohort_price_amount=price_kobo,
             currency=cohort.get("currency") or "NGN",
+            total_classes=total_classes,
+            per_class_amount_kobo=per_class_amount_kobo,
+            role=role,
             block_index=0,
             next_run_date=first_run,
             status=RecurringPayoutStatus.ACTIVE,

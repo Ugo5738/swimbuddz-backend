@@ -7,7 +7,12 @@ from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
-from libs.common.service_client import get_member_by_id, get_members_bulk, internal_get
+from libs.common.service_client import (
+    get_completed_session_ids_for_cohort,
+    get_member_by_id,
+    get_members_bulk,
+    internal_get,
+)
 from libs.db.session import get_async_db
 from services.academy_service.models import (
     Cohort,
@@ -17,10 +22,17 @@ from services.academy_service.models import (
     Milestone,
     StudentProgress,
 )
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 logger = get_logger(__name__)
+
+# Graduation rewards (bubbles, club bridge, perfect attendance) are granted
+# the day a member finishes all milestones (i.e. earns their certificate). We
+# also re-attempt for graduates certified within this many days so a transient
+# failure on the issuing run self-heals on a later daily pass. The grants are
+# idempotent, so re-attempting is harmless.
+REWARD_RETRY_DAYS = 3
 
 
 async def send_weekly_progress_reports():
@@ -179,7 +191,16 @@ async def check_and_issue_certificates():
     """
     async for db in get_async_db():
         try:
-            # Find active cohorts with their programs
+            # Reward-granting lives in academy's enrollment tasks; import here to
+            # avoid any import-time coupling between the two task modules.
+            from services.academy_service.tasks.enrollment import (
+                grant_graduation_rewards,
+            )
+
+            now = utc_now()
+            reward_cutoff = now - timedelta(days=REWARD_RETRY_DAYS)
+
+            # Find active/completed cohorts with their programs
             query = (
                 select(Cohort)
                 .options(selectinload(Cohort.program))
@@ -193,60 +214,82 @@ async def check_and_issue_certificates():
                 if not program:
                     continue
 
-                # Get all milestones for this program
-                milestone_query = select(Milestone).where(
-                    Milestone.program_id == program.id
-                )
-                milestone_result = await db.execute(milestone_query)
-                all_milestones = milestone_result.scalars().all()
-                total_milestones = len(all_milestones)
-
+                # Total milestones defined for this program
+                total_milestones = (
+                    await db.execute(
+                        select(func.count(Milestone.id)).where(
+                            Milestone.program_id == program.id
+                        )
+                    )
+                ).scalar() or 0
                 if total_milestones == 0:
                     continue  # No milestones defined
 
-                # Get enrollments without certificates
+                # Enrollments that may need a certificate OR a (re)grant of
+                # graduation rewards: not yet certified, or certified within the
+                # retry window (so a failed reward grant self-heals next run).
                 enrollment_query = select(Enrollment).where(
                     Enrollment.cohort_id == cohort.id,
                     Enrollment.status == EnrollmentStatus.ENROLLED,
-                    Enrollment.certificate_issued_at.is_(None),
+                    or_(
+                        Enrollment.certificate_issued_at.is_(None),
+                        Enrollment.certificate_issued_at >= reward_cutoff,
+                    ),
                 )
-                enrollment_result = await db.execute(enrollment_query)
-                cert_enrollments = enrollment_result.scalars().all()
+                enrollments = (await db.execute(enrollment_query)).scalars().all()
+                if not enrollments:
+                    continue
 
                 # Bulk-lookup member details
-                cert_member_ids = list({str(e.member_id) for e in cert_enrollments})
-                cert_members = await get_members_bulk(
-                    cert_member_ids, calling_service="academy"
-                )
-                cert_members_map = {m["id"]: m for m in cert_members}
+                member_ids = list({str(e.member_id) for e in enrollments})
+                members = await get_members_bulk(member_ids, calling_service="academy")
+                members_map = {m["id"]: m for m in members}
 
-                for enrollment in cert_enrollments:
-                    member = cert_members_map.get(str(enrollment.member_id), {})
+                # Completed sessions for the cohort (perfect-attendance basis) —
+                # fetched once. Best-effort: a failure just skips the
+                # perfect-attendance reward for this run.
+                try:
+                    completed_session_ids = await get_completed_session_ids_for_cohort(
+                        str(cohort.id), calling_service="academy"
+                    )
+                except Exception:
+                    completed_session_ids = []
+                    logger.warning(
+                        "Failed to fetch completed sessions for cohort %s — "
+                        "skipping perfect-attendance reward this run (best-effort)",
+                        cohort.id,
+                        exc_info=True,
+                    )
+
+                for enrollment in enrollments:
+                    member = members_map.get(str(enrollment.member_id), {})
                     if not member:
                         continue
-                    # Count achieved milestones for this enrollment
-                    progress_query = select(func.count(StudentProgress.id)).where(
-                        StudentProgress.enrollment_id == enrollment.id,
-                        StudentProgress.status == "achieved",
-                    )
-                    progress_result = await db.execute(progress_query)
-                    achieved_count = progress_result.scalar() or 0
 
-                    if achieved_count >= total_milestones:
-                        # All milestones achieved! Issue certificate
-                        now = utc_now()
+                    # Count coach-approved (ACHIEVED) milestones.
+                    achieved_count = (
+                        await db.execute(
+                            select(func.count(StudentProgress.id)).where(
+                                StudentProgress.enrollment_id == enrollment.id,
+                                StudentProgress.status == "achieved",
+                            )
+                        )
+                    ).scalar() or 0
+
+                    if achieved_count < total_milestones:
+                        continue  # Hasn't finished all milestones yet.
+
+                    # Issue the certificate the first time they qualify.
+                    if enrollment.certificate_issued_at is None:
                         verification_code = (
                             f"SB-{now.year}-{secrets.token_hex(4).upper()}"
                         )
-
                         enrollment.certificate_issued_at = now
                         enrollment.certificate_code = verification_code
 
                         logger.info(
                             f"Issuing certificate to {member['email']} for {program.name}"
                         )
-
-                        # Send email via centralized email service
                         try:
                             email_client = get_email_client()
                             await email_client.send_template(
@@ -262,8 +305,19 @@ async def check_and_issue_certificates():
                             logger.info(f"Certificate email sent to {member['email']}")
                         except Exception as email_err:
                             logger.error(
-                                f"Failed to send certificate email to {member['email']}: {email_err}"
+                                f"Failed to send certificate email to "
+                                f"{member['email']}: {email_err}"
                             )
+
+                    # Grant graduation rewards — only reached when the member has
+                    # finished ALL milestones. Idempotent + individually guarded,
+                    # so re-attempting within the retry window is safe.
+                    await grant_graduation_rewards(
+                        cohort=cohort,
+                        enrollment=enrollment,
+                        member=member,
+                        completed_session_ids=completed_session_ids,
+                    )
 
             await db.commit()
 

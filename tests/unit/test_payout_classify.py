@@ -7,9 +7,13 @@ no record at all) does NOT credit the coach. Excused additionally creates
 a make-up obligation downstream.
 """
 
+from decimal import Decimal
+
 import pytest
 
 from services.payments_service.services.payout_calculator import (
+    _paid_classes,
+    _role_share,
     classify_session_for_payout,
 )
 
@@ -49,3 +53,48 @@ class TestClassifySessionForPayout:
         # we never accidentally credit the coach for an unclassified state.
         assert classify_session_for_payout("walkin") == "skip"
         assert classify_session_for_payout("") == "skip"
+
+
+class TestRoleShare:
+    """Main/assistant 70-30 split, applied from the active roster at pay time."""
+
+    def test_single_coach_gets_full_pay(self):
+        assert _role_share(1, "lead") == Decimal("1")
+
+    def test_zero_coaches_defaults_to_full(self):
+        # Defensive: never silently zero a coach out.
+        assert _role_share(0, "lead") == Decimal("1")
+
+    def test_two_coaches_lead_gets_seventy(self):
+        assert _role_share(2, "lead") == Decimal("0.70")
+
+    def test_two_coaches_assistant_gets_thirty(self):
+        assert _role_share(2, "assistant") == Decimal("0.30")
+
+    def test_lead_plus_assistant_shares_sum_to_one(self):
+        assert _role_share(2, "lead") + _role_share(2, "assistant") == Decimal("1.00")
+
+    def test_three_or_more_still_splits_by_role(self):
+        # >= 2 active coaches splits; lead still 70%.
+        assert _role_share(3, "lead") == Decimal("0.70")
+
+
+class TestPaidClasses:
+    """Cumulative per-student cap: never pay beyond total_classes."""
+
+    def test_under_cap_pays_all_delivered(self):
+        assert _paid_classes(delivered_count=4, prior_delivered=0, class_cap=12) == 4
+
+    def test_partial_remaining_caps_to_remaining(self):
+        # 10 already paid in earlier blocks, 4 delivered now, cap 12 → only 2.
+        assert _paid_classes(delivered_count=4, prior_delivered=10, class_cap=12) == 2
+
+    def test_cap_reached_pays_nothing(self):
+        assert _paid_classes(delivered_count=4, prior_delivered=12, class_cap=12) == 0
+
+    def test_over_cap_clamps_to_zero(self):
+        # Defensive: prior already exceeds cap (e.g. extra make-ups) → no pay.
+        assert _paid_classes(delivered_count=4, prior_delivered=14, class_cap=12) == 0
+
+    def test_no_attendance_pays_nothing(self):
+        assert _paid_classes(delivered_count=0, prior_delivered=0, class_cap=12) == 0

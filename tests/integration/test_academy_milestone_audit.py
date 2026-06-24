@@ -89,6 +89,58 @@ async def test_claim_writes_event(academy_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+async def test_claim_is_pending_until_approved(academy_client, db_session):
+    """A claim lands in PENDING (awaiting review); only a coach approval
+    flips it to ACHIEVED. achieved_at stays NULL until approval."""
+    from services.academy_service.app.main import app as academy_app
+    from services.academy_service.models import StudentProgress
+    from services.academy_service.models.enums import ProgressStatus
+
+    auth_id = str(uuid.uuid4())
+    enrollment, milestone, _ = await _seed_enrollment_and_milestone(
+        db_session, member_auth_id=auth_id
+    )
+
+    # 1. Student claims — should be PENDING, not ACHIEVED.
+    _override_user(academy_app, make_member_user(user_id=auth_id))
+    r = await academy_client.post(
+        f"/academy/enrollments/{enrollment.id}/progress/{milestone.id}/claim",
+        json={"student_notes": "attempt 1"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "pending"
+
+    progress = (
+        await db_session.execute(
+            select(StudentProgress).where(
+                StudentProgress.enrollment_id == enrollment.id
+            )
+        )
+    ).scalar_one()
+    await db_session.refresh(progress)
+    assert progress.status == ProgressStatus.PENDING
+    assert progress.achieved_at is None
+    assert progress.reviewed_at is None
+
+    # 2. Coach approves — now it becomes ACHIEVED.
+    _override_user(academy_app, make_coach_user(user_id=str(uuid.uuid4())))
+    r = await academy_client.post(
+        "/academy/progress",
+        params={
+            "enrollment_id": str(enrollment.id),
+            "milestone_id": str(milestone.id),
+        },
+        json={"status": "achieved", "coach_notes": "clean technique"},
+    )
+    assert r.status_code == 200, r.text
+
+    await db_session.refresh(progress)
+    assert progress.status == ProgressStatus.ACHIEVED
+    assert progress.reviewed_at is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 async def test_reject_then_resubmit_preserves_history(academy_client, db_session):
     """After reject → resubmit, both events (with rejection feedback) survive."""
     from services.academy_service.app.main import app as academy_app

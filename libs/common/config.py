@@ -173,6 +173,10 @@ class Settings(BaseSettings):
     )
     AWS_S3_BUCKET_PRIVATE: str = ""  # For private files (documents, payment proofs)
     CLOUDFRONT_URL: str = ""  # CDN URL for public bucket
+    # Stroke Lab storage: when STORAGE_BACKEND=s3 its uploads + evidence frames go to
+    # this S3 bucket (private; signed-URL access), under a strokelab-uploads/ or
+    # strokelab-annotated/ key prefix. Empty → falls back to AWS_S3_BUCKET_PRIVATE.
+    STROKELAB_S3_BUCKET: str = ""
 
     # Admin configuration
     ADMIN_EMAILS: list[str] = ["admin@admin.com", "contactugodaniels@gmail.com"]
