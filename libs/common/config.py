@@ -80,12 +80,25 @@ class Settings(BaseSettings):
     AI_DEFAULT_MODEL: str = "gpt-4o-mini"
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""  # Google AI Studio key — for the video coach (Gemini)
 
     # Stroke Lab VLM coach (the new pipeline; provider-agnostic via LiteLLM).
     # Defaults are the eval-locked picks — override per-env without redeploying.
     STROKELAB_ENABLE_COACH: bool = True
     STROKELAB_COACH_GATE_MODEL: str = "o4-mini"  # view/usability gate (reasoning)
+    # Holistic + per-instance coach model. The ONE swap point between providers:
+    #   OpenAI (stills):  STROKELAB_COACH_MODEL=gpt-4o                  + STROKELAB_COACH_VIDEO=false
+    #   Gemini (video):   STROKELAB_COACH_MODEL=gemini/gemini-3.5-flash + STROKELAB_COACH_VIDEO=true
+    #     gemini-3.5-flash = latest GA, best for video. Free testing: gemini/gemini-2.5-flash
+    #     on a NO-BILLING key (enabling billing on a project kills its free tier entirely).
+    # LiteLLM routes by the model string; GEMINI_API_KEY/OPENAI_API_KEY pick the creds.
     STROKELAB_COACH_MODEL: str = "gpt-4o"  # holistic + per-instance coaching
+    # Send the actual CLIP to the holistic coach (motion!) instead of 8 stills. Only
+    # honoured by video-capable models (Gemini); on a stills model it's ignored.
+    STROKELAB_COACH_VIDEO: bool = False
+    # Inline-video size ceiling (base64 in the request). Over this we fall back to
+    # stills for that clip (a downscale / Gemini File-API upload is the follow-up).
+    STROKELAB_COACH_VIDEO_MAX_MB: int = 18
     STROKELAB_COACH_SEGMENT_MODEL: str = "gpt-4o"  # per-frame phase classifier
     # Per-component on/off (the flow lives in pipeline/defaults.py; flip here).
     STROKELAB_COACH_SEGMENT: bool = True  # Stage-1 classify-every-frame + segment

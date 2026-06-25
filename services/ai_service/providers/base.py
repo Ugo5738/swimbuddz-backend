@@ -171,6 +171,8 @@ async def call_vlm(
     response_format: Optional[dict] = None,
     num_retries: int = 4,
     trace_name: Optional[str] = None,
+    video: Optional[bytes] = None,
+    video_mime: str = "video/mp4",
 ) -> AIProviderResponse:
     """Vision (multimodal) sibling of :func:`call_llm`.
 
@@ -210,6 +212,17 @@ async def call_vlm(
                 },
             }
         )
+    # Video input (Gemini): a base64 data-URI "file" block. LiteLLM maps file_data
+    # to Gemini's inline_data (mime + bytes). Inline only — the caller size-guards;
+    # larger clips fall back to stills (a Gemini File-API upload is the follow-up).
+    if video is not None:
+        vb64 = base64.b64encode(video).decode("ascii")
+        content.append(
+            {
+                "type": "file",
+                "file": {"file_data": f"data:{video_mime};base64,{vb64}"},
+            }
+        )
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -224,6 +237,13 @@ async def call_vlm(
         # honours Retry-After — essential on low TPM caps (OpenAI gpt-4o = 30k).
         "num_retries": num_retries,
     }
+    # Pass the provider key explicitly (overrides env) so a swap is just config —
+    # no need to also juggle which *_API_KEY env var LiteLLM picks up.
+    _key = {"google": settings.GEMINI_API_KEY, "openai": settings.OPENAI_API_KEY}.get(
+        provider
+    )
+    if _key:
+        kwargs["api_key"] = _key
     if response_format:
         kwargs["response_format"] = response_format
 
