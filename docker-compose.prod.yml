@@ -14,6 +14,11 @@ services:
       - --certificatesresolvers.le.acme.email=${LE_EMAIL}
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
       - --log.level=INFO
+      # Large video uploads on slow connections exceed Traefik v3's default 60s
+      # readTimeout, so the upload is dropped mid-flight ("Load failed" in-browser,
+      # ClientDisconnect in the gateway). 300s gives a 50 MB clip room to arrive.
+      - --entrypoints.websecure.transport.respondingTimeouts.readTimeout=300s
+      - --entrypoints.websecure.transport.respondingTimeouts.writeTimeout=300s
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
       - DOCKER_API_VERSION=${DOCKER_API_VERSION:-1.52}
