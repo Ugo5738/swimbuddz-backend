@@ -96,9 +96,10 @@ class Settings(BaseSettings):
     # Send the actual CLIP to the holistic coach (motion!) instead of 8 stills. Only
     # honoured by video-capable models (Gemini); on a stills model it's ignored.
     STROKELAB_COACH_VIDEO: bool = False
-    # Inline-video size ceiling (base64 in the request). Over this we fall back to
-    # stills for that clip (a downscale / Gemini File-API upload is the follow-up).
-    STROKELAB_COACH_VIDEO_MAX_MB: int = 18
+    # Inline-video ceiling AFTER downscale (the holistic coach transcodes every clip
+    # to 480p first). 14 keeps the base64 request under Gemini's ~20 MB inline limit;
+    # a downscaled clip rarely approaches it, so this is a safety net → stills.
+    STROKELAB_COACH_VIDEO_MAX_MB: int = 14
     STROKELAB_COACH_SEGMENT_MODEL: str = "gpt-4o"  # per-frame phase classifier
     # Per-component on/off (the flow lives in pipeline/defaults.py; flip here).
     STROKELAB_COACH_SEGMENT: bool = True  # Stage-1 classify-every-frame + segment

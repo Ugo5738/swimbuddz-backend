@@ -10,7 +10,11 @@ collator and UX treat them uniformly.
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -59,6 +63,49 @@ def _evidence_frames_video(text: str, frames: list) -> list[FrameRef]:
         i = min(range(len(frames)), key=lambda j: abs(frames[j].timestamp_s - t))
         refs.append(FrameRef(index=i, timestamp_s=frames[i].timestamp_s))
     return refs
+
+
+def _downscale_for_gemini(src: str, max_mb: int) -> bytes | None:
+    """Transcode the clip to a small 480p H.264 mp4 (motion preserved, audio dropped)
+    so it fits Gemini's inline limit, AND normalises phone formats (HEVC/.mov) to one
+    Gemini reads reliably. Real phone clips are 20–40 MB — over the inline cap — so we
+    transcode every clip rather than size-guard the original. Returns the bytes, or
+    None to fall back to stills (ffmpeg missing, transcode failed, or still too big)."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        logger.warning("video coach: ffmpeg not on PATH — falling back to stills")
+        return None
+    fd, out = tempfile.mkstemp(suffix=".mp4")
+    os.close(fd)
+    try:
+        subprocess.run(
+            [
+                ffmpeg, "-y", "-i", src,
+                "-vf", "scale=-2:480",  # cap height at 480p, keep aspect (even width)
+                "-c:v", "libx264", "-crf", "30", "-preset", "veryfast",
+                "-an",  # drop audio — the coach doesn't use it
+                "-movflags", "+faststart", out,
+            ],
+            capture_output=True, timeout=180, check=True,
+        )
+        data = Path(out).read_bytes()
+    except Exception as exc:  # ffmpeg missing/failed/timeout — degrade, don't crash
+        logger.warning("video coach: downscale failed (%s) — falling back to stills", exc)
+        return None
+    finally:
+        try:
+            os.unlink(out)
+        except OSError:
+            pass
+    cap = max_mb * 1024 * 1024
+    if len(data) > cap:
+        logger.info(
+            "video coach: downscaled clip still %.1f MB > %s MB cap — using stills",
+            len(data) / 1024 / 1024, max_mb,
+        )
+        return None
+    logger.info("video coach: downscaled clip to %.1f MB", len(data) / 1024 / 1024)
+    return data
 
 
 class HolisticCoachComponent(Component):
@@ -156,19 +203,9 @@ class HolisticCoachComponent(Component):
         )
 
     def _read_clip(self, ctx: RunContext) -> bytes | None:
-        """Clip bytes for inline video coaching, or None to fall back to stills
-        (clip unreadable, or over the inline size cap)."""
-        try:
-            data = Path(ctx.video_path).read_bytes()
-        except Exception as exc:
-            logger.warning("video coach: could not read clip %s", exc)
+        """Downscaled clip bytes for inline video coaching, or None to fall back to
+        stills. Transcodes to a small 480p mp4 (see `_downscale_for_gemini`) so even a
+        big phone clip fits Gemini's inline limit."""
+        if not ctx.video_path:
             return None
-        cap = ctx.config.coach_video_max_mb * 1024 * 1024
-        if len(data) > cap:
-            logger.info(
-                "video coach: clip %.1f MB over %s MB inline cap — using stills",
-                len(data) / 1024 / 1024,
-                ctx.config.coach_video_max_mb,
-            )
-            return None
-        return data
+        return _downscale_for_gemini(ctx.video_path, ctx.config.coach_video_max_mb)
