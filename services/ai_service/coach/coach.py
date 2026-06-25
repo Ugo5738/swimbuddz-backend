@@ -17,7 +17,9 @@ from services.ai_service.coach.frames import Frame
 from services.ai_service.coach.prompt import (
     RESPONSE_FORMAT,
     SYSTEM_PROMPT,
+    SYSTEM_PROMPT_VIDEO,
     build_user_prompt,
+    build_user_prompt_video,
 )
 
 
@@ -62,6 +64,7 @@ async def run_coach(
     temperature: float = 0.0,
     gate_context: Optional[dict] = None,
     goal_block: str = "",
+    video: Optional[bytes] = None,
 ) -> CoachReport:
     """Run the vision coach over pre-selected frames.
 
@@ -73,16 +76,28 @@ async def run_coach(
     # Imported lazily so frames.py stays usable without the LLM stack.
     from services.ai_service.providers.base import call_vlm
 
+    # Video mode (Gemini): send the clip itself + the motion-aware prompt; cite by
+    # timestamp. Stills mode (OpenAI): the validated 8-frame path. One swap point.
+    use_video = video is not None
+    base_user = (
+        build_user_prompt_video(stroke_hint)
+        if use_video
+        else build_user_prompt(frames, stroke_hint)
+    )
+    # The video coach timestamps every aspect → its JSON is much longer than the
+    # stills coach's; the 1500 default truncates it mid-string. Give it headroom.
+    vlm_max_tokens = max(max_tokens, 4096) if use_video else max_tokens
     resp = await call_vlm(
-        system_prompt=SYSTEM_PROMPT,
-        user_prompt=build_user_prompt(frames, stroke_hint)
+        system_prompt=SYSTEM_PROMPT_VIDEO if use_video else SYSTEM_PROMPT,
+        user_prompt=base_user
         + _gate_note(gate_context)
         + (f"\n\n{goal_block}" if goal_block else ""),
-        images=[f.jpeg for f in frames],
+        images=[] if use_video else [f.jpeg for f in frames],
+        video=video,
         model=model,
         image_detail=image_detail,
         temperature=temperature,
-        max_tokens=max_tokens,
+        max_tokens=vlm_max_tokens,
         response_format=RESPONSE_FORMAT,
         trace_name="strokelab_vlm_coach",
     )

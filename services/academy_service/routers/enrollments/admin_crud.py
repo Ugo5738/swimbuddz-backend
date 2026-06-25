@@ -6,6 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import dispatch_notification, get_member_by_id
 from libs.db.session import get_async_db
@@ -22,6 +23,7 @@ from services.academy_service.routers._shared import (
 )
 from services.academy_service.schemas import (
     EnrollmentCreate,
+    EnrollmentPauseResponse,
     EnrollmentResponse,
     EnrollmentUpdate,
 )
@@ -239,6 +241,54 @@ async def get_enrollment(
         pass
 
     return data
+
+
+@router.post(
+    "/enrollments/{enrollment_id}/pause", response_model=EnrollmentPauseResponse
+)
+async def admin_pause_enrollment(
+    enrollment_id: uuid.UUID,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Admin temporarily pauses a student (resumable). The student leaves the
+    attendance roster and the coach earns nothing for them from now on (the
+    payout clips eligible sessions at paused_at)."""
+    enrollment = await db.get(Enrollment, enrollment_id)
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    if enrollment.status != EnrollmentStatus.ENROLLED:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only an active (enrolled) student can be paused; this one is "
+                f"{enrollment.status.value}."
+            ),
+        )
+    if enrollment.paused_at is None:
+        enrollment.paused_at = utc_now()
+        await db.commit()
+        await db.refresh(enrollment)
+    return EnrollmentPauseResponse.model_validate(enrollment)
+
+
+@router.post(
+    "/enrollments/{enrollment_id}/resume", response_model=EnrollmentPauseResponse
+)
+async def admin_resume_enrollment(
+    enrollment_id: uuid.UUID,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Admin resumes a paused enrollment (clears paused_at)."""
+    enrollment = await db.get(Enrollment, enrollment_id)
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    if enrollment.paused_at is not None:
+        enrollment.paused_at = None
+        await db.commit()
+        await db.refresh(enrollment)
+    return EnrollmentPauseResponse.model_validate(enrollment)
 
 
 @router.patch("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)

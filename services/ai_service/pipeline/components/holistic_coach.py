@@ -10,9 +10,15 @@ collator and UX treat them uniformly.
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import time
+from pathlib import Path
 
+from libs.common.logging import get_logger
 from services.ai_service.coach.coach import run_coach
 from services.ai_service.coach.rubric import build_goal_block
 from services.ai_service.pipeline.component import Component
@@ -29,7 +35,11 @@ from services.ai_service.pipeline.types import (
     RunContext,
 )
 
+logger = get_logger(__name__)
+
 _CITE = re.compile(r"(?:frame\s*#?|#)\s*(\d+)", re.I)
+# Video mode cites moments by timestamp ("at t=2.1s" / "2.1s"), not frame index.
+_TS = re.compile(r"(\d+(?:\.\d+)?)\s*s\b", re.I)
 
 
 def _evidence_frames(text: str, frames: list) -> list[FrameRef]:
@@ -39,6 +49,79 @@ def _evidence_frames(text: str, frames: list) -> list[FrameRef]:
         if 0 <= i < len(frames):  # a wrong citation is worse than none — drop it
             refs.append(FrameRef(index=i, timestamp_s=frames[i].timestamp_s))
     return refs
+
+
+def _evidence_frames_video(text: str, frames: list) -> list[FrameRef]:
+    """Map a video-coach timestamp citation to the nearest extracted frame, so the
+    evidence-thumbnail machinery (keyed by frame index) still resolves while the
+    clip player seeks to that frame's time."""
+    refs: list[FrameRef] = []
+    if not frames:
+        return refs
+    for ts in _TS.findall(text or ""):
+        t = float(ts)
+        i = min(range(len(frames)), key=lambda j: abs(frames[j].timestamp_s - t))
+        refs.append(FrameRef(index=i, timestamp_s=frames[i].timestamp_s))
+    return refs
+
+
+def _downscale_for_gemini(src: str, max_mb: int) -> bytes | None:
+    """Transcode the clip to a small 480p H.264 mp4 (motion preserved, audio dropped)
+    so it fits Gemini's inline limit, AND normalises phone formats (HEVC/.mov) to one
+    Gemini reads reliably. Real phone clips are 20–40 MB — over the inline cap — so we
+    transcode every clip rather than size-guard the original. Returns the bytes, or
+    None to fall back to stills (ffmpeg missing, transcode failed, or still too big)."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        logger.warning("video coach: ffmpeg not on PATH — falling back to stills")
+        return None
+    fd, out = tempfile.mkstemp(suffix=".mp4")
+    os.close(fd)
+    try:
+        subprocess.run(
+            [
+                ffmpeg,
+                "-y",
+                "-i",
+                src,
+                "-vf",
+                "scale=-2:480",  # cap height at 480p, keep aspect (even width)
+                "-c:v",
+                "libx264",
+                "-crf",
+                "30",
+                "-preset",
+                "veryfast",
+                "-an",  # drop audio — the coach doesn't use it
+                "-movflags",
+                "+faststart",
+                out,
+            ],
+            capture_output=True,
+            timeout=180,
+            check=True,
+        )
+        data = Path(out).read_bytes()
+    except Exception as exc:  # ffmpeg missing/failed/timeout — degrade, don't crash
+        logger.warning(
+            "video coach: downscale failed (%s) — falling back to stills", exc
+        )
+        return None
+    finally:
+        try:
+            os.unlink(out)
+        except OSError:
+            pass
+    cap = max_mb * 1024 * 1024
+    if len(data) > cap:
+        logger.info(
+            "video coach: downscaled clip still %.1f MB > %s MB cap — using stills",
+            len(data) / 1024 / 1024,
+            max_mb,
+        )
+        return None
+    logger.info("video coach: downscaled clip to %.1f MB", len(data) / 1024 / 1024)
+    return data
 
 
 class HolisticCoachComponent(Component):
@@ -55,11 +138,16 @@ class HolisticCoachComponent(Component):
                 "view": getattr(ctx.gate, "view", "side-on"),
                 "swimmer_count": getattr(ctx.gate, "swimmer_count", 1),
             }
+        # Video mode: send the clip itself to a video-capable coach (Gemini). Falls
+        # back to stills if video is off, the clip is missing, or it's over the cap.
+        use_video = bool(ctx.config.coach_video and ctx.video_path)
         cache = ctx.cache
         if cache is not None and "holistic" in cache:
             raw = cache["holistic"]["raw"]  # replay — no API
             model, paid = cache["holistic"].get("model", "cached"), 0.0
+            used_video = bool(cache["holistic"].get("video"))
         else:
+            video_bytes = self._read_clip(ctx) if use_video else None
             report = await run_coach(
                 ctx.frames,
                 model=ctx.config.coach_model,
@@ -67,10 +155,14 @@ class HolisticCoachComponent(Component):
                 stroke_hint=ctx.stroke_hint,
                 gate_context=gate_context,
                 goal_block=build_goal_block(ctx.coaching),  # discipline framing (§12)
+                video=video_bytes,
             )
             raw, model, paid = report.raw, report.model, report.cost_usd
+            used_video = video_bytes is not None
             if cache is not None:
-                cache["holistic"] = {"raw": raw, "model": model}
+                cache["holistic"] = {"raw": raw, "model": model, "video": used_video}
+        # In video mode the coach cites timestamps; in stills mode, frame indices.
+        ev = _evidence_frames_video if used_video else _evidence_frames
         conf = raw.get("confidence") or 0.0
         findings: list[Finding] = []
 
@@ -80,9 +172,7 @@ class HolisticCoachComponent(Component):
                     component=self.name,
                     observation=fx.get("fault", "") or "",
                     severity=SEVERITY_FIX,
-                    evidence_frames=_evidence_frames(
-                        fx.get("evidence", ""), ctx.frames
-                    ),
+                    evidence_frames=ev(fx.get("evidence", ""), ctx.frames),
                     confidence=conf,
                     area=fx.get("area"),
                     extra={
@@ -98,9 +188,7 @@ class HolisticCoachComponent(Component):
                     component=self.name,
                     observation=w if isinstance(w, str) else str(w),
                     severity=SEVERITY_STRENGTH,
-                    evidence_frames=_evidence_frames(
-                        w if isinstance(w, str) else "", ctx.frames
-                    ),
+                    evidence_frames=ev(w if isinstance(w, str) else "", ctx.frames),
                     confidence=conf,
                 )
             )
@@ -126,5 +214,14 @@ class HolisticCoachComponent(Component):
                 "honest_numbers": raw.get("honest_numbers"),
                 "usable_for_coaching": raw.get("usable_for_coaching"),
                 "model": model,
+                "video": used_video,
             },
         )
+
+    def _read_clip(self, ctx: RunContext) -> bytes | None:
+        """Downscaled clip bytes for inline video coaching, or None to fall back to
+        stills. Transcodes to a small 480p mp4 (see `_downscale_for_gemini`) so even a
+        big phone clip fits Gemini's inline limit."""
+        if not ctx.video_path:
+            return None
+        return _downscale_for_gemini(ctx.video_path, ctx.config.coach_video_max_mb)

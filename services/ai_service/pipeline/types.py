@@ -142,6 +142,10 @@ class PipelineConfig:
     gate_votes: int = 3
     gate_detail: str = "low"
     coach_detail: str = "auto"
+    # Send the clip video (not stills) to the holistic coach. Only video-capable
+    # models (Gemini) honour it; ignored on a stills model.
+    coach_video: bool = False
+    coach_video_max_mb: int = 18
     segment_detail: str = "low"
     segment_batch: int = 12
     max_coached_recoveries: int = (

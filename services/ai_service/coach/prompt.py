@@ -25,6 +25,65 @@ SYSTEM_PROMPT = (
 )
 
 
+# ── Video-mode prompt (Gemini) ─────────────────────────────────────────────
+# Same rubric as the stills coach, with the medium-specific language flipped:
+# it's watching a VIDEO (it CAN see motion/timing), and it cites evidence by
+# TIMESTAMP, not by frame index. Derived from the one body so the two never drift
+# on the honesty gates / no-false-praise / output rules. (Counts still come from
+# the pose counter, not the coach — we keep "no count numbers".)
+_VIDEO_SWAPS: list[tuple[str, str]] = [
+    (
+        "roughly 6-10 STILL FRAMES (not video), sampled in time order from one short phone clip",
+        "a SHORT VIDEO (a few seconds) from one short phone clip",
+    ),
+    (
+        "The frames arrive in chronological order; each is labelled with an index (0, 1, 2, ...) "
+        "and, when provided, an approximate timestamp in seconds (frame 0 is earliest). When you "
+        'cite evidence, cite the frame index, and the timestamp too if you were given one (e.g. "frame #4 (t=2.1s)").',
+        'When you cite evidence, cite the TIMESTAMP in seconds where it is visible (e.g. "at t=2.1s").',
+    ),
+    (
+        "These are SNAPSHOTS, not motion. You CANNOT see movement between frames. "
+        "Treat every frame as a single frozen instant.",
+        "This is real video: you CAN see motion, timing, and rhythm as the stroke flows. "
+        "Use the movement to judge the recovery, the entry and catch timing, and the body roll.",
+    ),
+    (
+        "You CANNOT reliably count strokes, strokes-per-minute, tempo, or cadence from sparse stills.",
+        "You are watching video, so you CAN see timing and rhythm and describe them qualitatively "
+        "(never as a number).",
+    ),
+    (
+        "evidence: the frame index/indices (and timestamp if given) where it is actually visible, "
+        "plus a short note on what in that frame shows it",
+        "evidence: the TIMESTAMP in seconds where the fault is visible, plus a short note on what shows it",
+    ),
+    (
+        "if you cannot point to a frame, you cannot raise the fault. Prefer faults visible in two "
+        "or more frames. Never cite a frame for something it does not show.",
+        "if you cannot point to a moment, you cannot raise the fault. Never cite a moment for "
+        "something it does not show.",
+    ),
+    (
+        "never 1.0 — you are reading stills)",
+        "never 1.0 — you are reading a short clip)",
+    ),
+]
+
+
+def _to_video(body: str) -> str:
+    for old, new in _VIDEO_SWAPS:
+        body = body.replace(old, new)
+    return body
+
+
+SYSTEM_PROMPT_VIDEO = (
+    _to_video(_SYSTEM_PROMPT_BODY)
+    + "\n\n== JSON SCHEMA (your output MUST validate against this) ==\n"
+    + OUTPUT_SCHEMA
+)
+
+
 def build_user_prompt(frames, stroke_hint: str = "freestyle") -> str:
     """Tell the model how many frames it has and their timestamps."""
     listing = ", ".join(f"#{f.index} t={f.timestamp_s:.1f}s" for f in frames)
@@ -33,4 +92,14 @@ def build_user_prompt(frames, stroke_hint: str = "freestyle") -> str:
         f"clip. The uploader says it is {stroke_hint}. Frames: {listing}.\n"
         "Assess the swimmer following your instructions and return ONLY the "
         "JSON object."
+    )
+
+
+def build_user_prompt_video(stroke_hint: str = "freestyle") -> str:
+    """Video-mode user prompt — the model watches the attached clip directly."""
+    return (
+        "Here is a short video clip of one person swimming. The uploader says it "
+        f"is {stroke_hint}. Watch the motion, assess the swimmer following your "
+        "instructions, and return ONLY the JSON object. Cite evidence as "
+        'timestamps (e.g. "at t=2.1s").'
     )

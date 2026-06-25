@@ -189,7 +189,7 @@ async def _active_enrollments(
                     """
                 SELECT e.id AS enrollment_id, e.member_id, e.status,
                        e.created_at AS row_created_at,
-                       e.enrolled_at, e.dropped_at,
+                       e.enrolled_at, e.dropped_at, e.paused_at,
                        m.first_name, m.last_name
                 FROM public.enrollments e
                 LEFT JOIN public.members m ON m.id = e.member_id
@@ -304,6 +304,7 @@ async def _delivered_before(
     block_start: datetime,
     enrolled_at: datetime,
     dropped_at: Optional[datetime],
+    paused_at: Optional[datetime] = None,
 ) -> int:
     """Count a student's PRESENT/LATE classes in eligible cohort sessions that
     ran BEFORE this block — the basis for the cumulative per-student class cap
@@ -325,6 +326,10 @@ async def _delivered_before(
                       CAST(:dropped_at AS timestamptz) IS NULL
                       OR s.starts_at < CAST(:dropped_at AS timestamptz)
                   )
+                  AND (
+                      CAST(:paused_at AS timestamptz) IS NULL
+                      OR s.starts_at < CAST(:paused_at AS timestamptz)
+                  )
                   AND lower(ar.status::text) IN ('present', 'late')
                 """
             ),
@@ -335,6 +340,7 @@ async def _delivered_before(
                 "block_start": block_start,
                 "enrolled_at": enrolled_at,
                 "dropped_at": dropped_at,
+                "paused_at": paused_at,
             },
         )
     ).scalar()
@@ -442,10 +448,19 @@ async def compute_block_payout(
         if dropped_at is not None and dropped_at.tzinfo is None:
             dropped_at = dropped_at.replace(tzinfo=timezone.utc)
 
+        # A paused student is clipped the same way as a dropout: the coach earns
+        # nothing for sessions from the pause date onward (until resumed, which
+        # clears paused_at).
+        paused_at: Optional[datetime] = enr.get("paused_at")
+        if paused_at is not None and paused_at.tzinfo is None:
+            paused_at = paused_at.replace(tzinfo=timezone.utc)
+
         def _is_eligible(session: dict) -> bool:
             if session["starts_at"] <= enrolled_at:
                 return False
             if dropped_at is not None and session["starts_at"] >= dropped_at:
+                return False
+            if paused_at is not None and session["starts_at"] >= paused_at:
                 return False
             return True
 
@@ -508,7 +523,13 @@ async def compute_block_payout(
             # total_classes across all blocks: pay only up to the classes still
             # remaining after what prior blocks already covered.
             prior_delivered = await _delivered_before(
-                db, student_id, config.cohort_id, block_start, enrolled_at, dropped_at
+                db,
+                student_id,
+                config.cohort_id,
+                block_start,
+                enrolled_at,
+                dropped_at,
+                paused_at,
             )
             paid_classes = _paid_classes(
                 delivered_count, prior_delivered, class_cap or 0

@@ -187,8 +187,9 @@ async def analyze_swim_video(job_id: str) -> dict:
         return {"status": "completed"}
     except Exception as exc:  # pragma: no cover — failure path
         logger.exception("Stroke Lab job %s failed", job_id)
-        await _mark_failed(job_uuid, str(exc))
-        return {"status": "failed", "error": str(exc)}
+        reason = _failure_reason(exc)
+        await _mark_failed(job_uuid, reason)
+        return {"status": "failed", "error": reason}
 
 
 # ── Internal helpers ──────────────────────────────────────────────
@@ -331,6 +332,8 @@ async def _run_coach_pipeline(
     config = PipelineConfig(
         gate_model=s.STROKELAB_COACH_GATE_MODEL,
         coach_model=s.STROKELAB_COACH_MODEL,
+        coach_video=s.STROKELAB_COACH_VIDEO,
+        coach_video_max_mb=s.STROKELAB_COACH_VIDEO_MAX_MB,
         segment_model=s.STROKELAB_COACH_SEGMENT_MODEL,
         max_coached_recoveries=s.STROKELAB_COACH_MAX_RECOVERIES,
     )
@@ -535,6 +538,46 @@ async def _write_completed(
 
     if ready_email is not None:
         await send_ready_email(job_id, ready_email[0], ready_email[1])
+
+
+def _failure_reason(exc: Exception) -> str:
+    """Map a pipeline exception to a STABLE, user-mappable reason (the frontend turns
+    these into friendly copy + a retry). Never let a raw traceback reach the user."""
+    name, msg = type(exc).__name__, str(exc).lower()
+    if any(s in name for s in ("ServiceUnavailable", "Timeout", "RateLimit")) or any(
+        s in msg
+        for s in (
+            "503",
+            "unavailable",
+            "overloaded",
+            "high demand",
+            "rate limit",
+            "ratelimit",
+            "timed out",
+            "timeout",
+        )
+    ):
+        return "temporarily_unavailable"  # transient — a retry will likely work
+    if any(
+        s in msg
+        for s in (
+            "api key",
+            "api_key",
+            "authentication",
+            "unauthorized",
+            "permission",
+            "quota",
+            "insufficient_quota",
+            "billing",
+        )
+    ):
+        return "coach_unavailable"  # config/quota — a retry won't help
+    if any(
+        s in msg
+        for s in ("could not read", "unreadable", "decode", "corrupt", "no video")
+    ):
+        return "video_unreadable"
+    return "analysis_error"
 
 
 async def _mark_failed(job_id: uuid.UUID, error_message: str) -> None:

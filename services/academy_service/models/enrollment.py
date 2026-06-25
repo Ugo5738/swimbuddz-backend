@@ -107,6 +107,14 @@ class Enrollment(Base):
     dropped_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Temporary, resumable pause (set by an admin or the member). While set, the
+    # student is excluded from the active attendance roster (so they're never
+    # marked present) and the coach earns nothing for them from this date — the
+    # payout calculator clips eligible sessions at paused_at, mirroring
+    # dropped_at. Cleared on resume. NULL = active.
+    paused_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     source: Mapped[EnrollmentSource] = mapped_column(
         SAEnum(
             EnrollmentSource,

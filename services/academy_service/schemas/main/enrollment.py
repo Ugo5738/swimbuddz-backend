@@ -112,6 +112,9 @@ class EnrollmentResponse(EnrollmentBase):
     missed_installments_count: int = 0
     access_suspended: bool = False
     uses_installments: bool = False
+    # Temporary pause (resumable). NULL = active. While set the student is off
+    # the attendance roster and the coach earns nothing for them from this date.
+    paused_at: Optional[datetime] = None
 
     # Include details for UI
     cohort: Optional[CohortResponse] = None
@@ -128,3 +131,13 @@ class EnrollmentResponse(EnrollmentBase):
     member_email: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class EnrollmentPauseResponse(BaseModel):
+    """Lightweight result of a pause/resume action (avoids lazy-loading
+    cohort/program/progress relationships just to confirm a status change)."""
+
+    id: UUID
+    status: str
+    paused_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)

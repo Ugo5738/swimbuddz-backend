@@ -4,6 +4,7 @@ All providers (OpenAI, Anthropic, etc.) implement this interface
 via LiteLLM for model-agnostic routing.
 """
 
+import asyncio
 import json
 import time
 from typing import Optional
@@ -171,6 +172,8 @@ async def call_vlm(
     response_format: Optional[dict] = None,
     num_retries: int = 4,
     trace_name: Optional[str] = None,
+    video: Optional[bytes] = None,
+    video_mime: str = "video/mp4",
 ) -> AIProviderResponse:
     """Vision (multimodal) sibling of :func:`call_llm`.
 
@@ -210,6 +213,17 @@ async def call_vlm(
                 },
             }
         )
+    # Video input (Gemini): a base64 data-URI "file" block. LiteLLM maps file_data
+    # to Gemini's inline_data (mime + bytes). Inline only — the caller size-guards;
+    # larger clips fall back to stills (a Gemini File-API upload is the follow-up).
+    if video is not None:
+        vb64 = base64.b64encode(video).decode("ascii")
+        content.append(
+            {
+                "type": "file",
+                "file": {"file_data": f"data:{video_mime};base64,{vb64}"},
+            }
+        )
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -224,36 +238,61 @@ async def call_vlm(
         # honours Retry-After — essential on low TPM caps (OpenAI gpt-4o = 30k).
         "num_retries": num_retries,
     }
+    # Pass the provider key explicitly (overrides env) so a swap is just config —
+    # no need to also juggle which *_API_KEY env var LiteLLM picks up.
+    _key = {"google": settings.GEMINI_API_KEY, "openai": settings.OPENAI_API_KEY}.get(
+        provider
+    )
+    if _key:
+        kwargs["api_key"] = _key
     if response_format:
         kwargs["response_format"] = response_format
 
     start = time.monotonic()
-    try:
-        response = await litellm.acompletion(**kwargs)
-        elapsed_ms = int((time.monotonic() - start) * 1000)
-
-        text = response.choices[0].message.content or ""
-        usage = response.usage
+    # Retry transient provider errors ourselves: LiteLLM's num_retries does NOT cover
+    # Gemini's 503 "high demand" / overloaded (common on the free tier), so without
+    # this a momentary capacity blip fails the whole analysis. Backoff 1.5/3/6/12s.
+    for attempt in range(5):
         try:
-            cost = float(litellm.completion_cost(completion_response=response) or 0.0)
-        except Exception:
-            cost = 0.0
+            response = await litellm.acompletion(**kwargs)
+            break
+        except Exception as e:
+            name, msg = type(e).__name__, str(e)
+            transient = (
+                "ServiceUnavailable" in name
+                or "InternalServerError" in name
+                or "Overloaded" in name
+                or "503" in msg
+                or "UNAVAILABLE" in msg
+                or "overloaded" in msg.lower()
+            )
+            if transient and attempt < 4:
+                await asyncio.sleep(1.5 * (2**attempt))
+                continue
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            logger.error(
+                f"VLM call failed: {e}",
+                extra={"model": model, "latency_ms": elapsed_ms},
+            )
+            raise
 
-        return AIProviderResponse(
-            content=text,
-            model=model,
-            provider=provider,
-            input_tokens=usage.prompt_tokens if usage else 0,
-            output_tokens=usage.completion_tokens if usage else 0,
-            latency_ms=elapsed_ms,
-            cost_usd=cost,
-            raw_response=(
-                response.model_dump() if hasattr(response, "model_dump") else None
-            ),
-        )
-    except Exception as e:
-        elapsed_ms = int((time.monotonic() - start) * 1000)
-        logger.error(
-            f"VLM call failed: {e}", extra={"model": model, "latency_ms": elapsed_ms}
-        )
-        raise
+    elapsed_ms = int((time.monotonic() - start) * 1000)
+    text = response.choices[0].message.content or ""
+    usage = response.usage
+    try:
+        cost = float(litellm.completion_cost(completion_response=response) or 0.0)
+    except Exception:
+        cost = 0.0
+
+    return AIProviderResponse(
+        content=text,
+        model=model,
+        provider=provider,
+        input_tokens=usage.prompt_tokens if usage else 0,
+        output_tokens=usage.completion_tokens if usage else 0,
+        latency_ms=elapsed_ms,
+        cost_usd=cost,
+        raw_response=(
+            response.model_dump() if hasattr(response, "model_dump") else None
+        ),
+    )
