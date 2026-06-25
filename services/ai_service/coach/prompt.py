@@ -37,7 +37,7 @@ _VIDEO_SWAPS: list[tuple[str, str]] = [
         "a SHORT VIDEO (a few seconds) from one short phone clip",
     ),
     (
-        'The frames arrive in chronological order; each is labelled with an index (0, 1, 2, ...) '
+        "The frames arrive in chronological order; each is labelled with an index (0, 1, 2, ...) "
         "and, when provided, an approximate timestamp in seconds (frame 0 is earliest). When you "
         'cite evidence, cite the frame index, and the timestamp too if you were given one (e.g. "frame #4 (t=2.1s)").',
         'When you cite evidence, cite the TIMESTAMP in seconds where it is visible (e.g. "at t=2.1s").',

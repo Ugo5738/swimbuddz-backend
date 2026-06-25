@@ -544,22 +544,38 @@ def _failure_reason(exc: Exception) -> str:
     """Map a pipeline exception to a STABLE, user-mappable reason (the frontend turns
     these into friendly copy + a retry). Never let a raw traceback reach the user."""
     name, msg = type(exc).__name__, str(exc).lower()
-    if (
-        any(s in name for s in ("ServiceUnavailable", "Timeout", "RateLimit"))
-        or any(
-            s in msg
-            for s in ("503", "unavailable", "overloaded", "high demand", "rate limit",
-                      "ratelimit", "timed out", "timeout")
+    if any(s in name for s in ("ServiceUnavailable", "Timeout", "RateLimit")) or any(
+        s in msg
+        for s in (
+            "503",
+            "unavailable",
+            "overloaded",
+            "high demand",
+            "rate limit",
+            "ratelimit",
+            "timed out",
+            "timeout",
         )
     ):
         return "temporarily_unavailable"  # transient — a retry will likely work
     if any(
         s in msg
-        for s in ("api key", "api_key", "authentication", "unauthorized", "permission",
-                  "quota", "insufficient_quota", "billing")
+        for s in (
+            "api key",
+            "api_key",
+            "authentication",
+            "unauthorized",
+            "permission",
+            "quota",
+            "insufficient_quota",
+            "billing",
+        )
     ):
         return "coach_unavailable"  # config/quota — a retry won't help
-    if any(s in msg for s in ("could not read", "unreadable", "decode", "corrupt", "no video")):
+    if any(
+        s in msg
+        for s in ("could not read", "unreadable", "decode", "corrupt", "no video")
+    ):
         return "video_unreadable"
     return "analysis_error"
 

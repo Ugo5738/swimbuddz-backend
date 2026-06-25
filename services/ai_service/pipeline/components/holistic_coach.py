@@ -80,17 +80,32 @@ def _downscale_for_gemini(src: str, max_mb: int) -> bytes | None:
     try:
         subprocess.run(
             [
-                ffmpeg, "-y", "-i", src,
-                "-vf", "scale=-2:480",  # cap height at 480p, keep aspect (even width)
-                "-c:v", "libx264", "-crf", "30", "-preset", "veryfast",
+                ffmpeg,
+                "-y",
+                "-i",
+                src,
+                "-vf",
+                "scale=-2:480",  # cap height at 480p, keep aspect (even width)
+                "-c:v",
+                "libx264",
+                "-crf",
+                "30",
+                "-preset",
+                "veryfast",
                 "-an",  # drop audio — the coach doesn't use it
-                "-movflags", "+faststart", out,
+                "-movflags",
+                "+faststart",
+                out,
             ],
-            capture_output=True, timeout=180, check=True,
+            capture_output=True,
+            timeout=180,
+            check=True,
         )
         data = Path(out).read_bytes()
     except Exception as exc:  # ffmpeg missing/failed/timeout — degrade, don't crash
-        logger.warning("video coach: downscale failed (%s) — falling back to stills", exc)
+        logger.warning(
+            "video coach: downscale failed (%s) — falling back to stills", exc
+        )
         return None
     finally:
         try:
@@ -101,7 +116,8 @@ def _downscale_for_gemini(src: str, max_mb: int) -> bytes | None:
     if len(data) > cap:
         logger.info(
             "video coach: downscaled clip still %.1f MB > %s MB cap — using stills",
-            len(data) / 1024 / 1024, max_mb,
+            len(data) / 1024 / 1024,
+            max_mb,
         )
         return None
     logger.info("video coach: downscaled clip to %.1f MB", len(data) / 1024 / 1024)
