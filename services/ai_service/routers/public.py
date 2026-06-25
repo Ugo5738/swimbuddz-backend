@@ -354,6 +354,64 @@ async def inspect_public_analysis(
     return {"status": "inspecting"}
 
 
+# ── POST /ai/public/analyze/{job_id}/retry (re-run a failed job, free) ───────
+
+
+@router.post(
+    "/analyze/{job_id}/retry",
+    summary="Re-run a FAILED guest analysis on its stored clip — free (guest_token)",
+)
+async def retry_public_analysis(
+    job_id: uuid.UUID,
+    x_guest_token: Annotated[Optional[str], Header(alias="X-Guest-Token")] = None,
+    guest_token: Annotated[Optional[str], Query()] = None,
+    db: AsyncSession = Depends(get_async_db),
+) -> dict:
+    token = x_guest_token or guest_token
+    job = await db.get(AnalysisJob, job_id)
+    if (
+        job is None
+        or job.source != AnalysisJobSource.PUBLIC
+        or not token
+        or not job.guest_token
+        or not secrets.compare_digest(token, job.guest_token)
+    ):
+        raise HTTPException(status_code=404, detail="Job not found")
+    # Only a FAILED job is retryable; the credit was already refunded on failure, so
+    # the re-run is FREE (a transient hiccup shouldn't cost the user a clip).
+    if job.status != AnalysisJobStatus.FAILED:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "reason": "not_retryable",
+                "message": "Only a failed analysis can be retried.",
+            },
+        )
+    if not job.video_storage_path:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "reason": "clip_gone",
+                "message": "The original clip is no longer available — please upload again.",
+            },
+        )
+    job.status = AnalysisJobStatus.PENDING
+    job.error_message = None
+    job.started_at = None
+    job.completed_at = None
+    await db.commit()
+    try:
+        await _enqueue_analysis(
+            job.id, queue_name=PUBLIC_QUEUE_NAME, raise_on_error=True
+        )
+    except Exception as exc:
+        job.status = AnalysisJobStatus.FAILED
+        job.error_message = "temporarily_unavailable"
+        await db.commit()
+        raise HTTPException(status_code=502, detail="Could not queue retry") from exc
+    return {"status": "queued"}
+
+
 # ── GET /ai/public/credits ───────────────────────────────────────
 
 
