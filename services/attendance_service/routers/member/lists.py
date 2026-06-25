@@ -8,6 +8,7 @@ from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.service_client import (
+    get_confirmed_booking_member_ids,
     get_members_bulk,
     get_session_by_id,
     get_session_ids_for_cohort,
@@ -72,6 +73,21 @@ async def list_session_attendance(
         responses.append(resp)
 
     return responses
+
+
+@router.get("/sessions/{session_id}/booked-member-ids", response_model=List[str])
+async def list_session_booked_member_ids(
+    session_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Member IDs with a confirmed booking for this session, for the coach
+    attendance sheet's default (Present if booked, Absent if not). Same
+    access control as the attendance list (admin or the cohort's coach)."""
+    await require_admin_or_coach_for_session(session_id, current_user, db)
+    return await get_confirmed_booking_member_ids(
+        str(session_id), calling_service="attendance"
+    )
 
 
 @router.get(

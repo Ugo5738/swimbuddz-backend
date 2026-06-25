@@ -24,6 +24,7 @@ from services.academy_service.routers._shared import (
     compute_withdrawal_refund,
 )
 from services.academy_service.schemas import (
+    EnrollmentPauseResponse,
     EnrollmentResponse,
     WithdrawEnrollmentRequest,
     WithdrawEnrollmentResponse,
@@ -136,6 +137,74 @@ async def get_my_enrollment(
     await _sync_installment_state_for_enrollment(db, enrollment)
     await db.commit()
     return enrollment
+
+
+@router.post(
+    "/my-enrollments/{enrollment_id}/pause",
+    response_model=EnrollmentPauseResponse,
+)
+async def pause_my_enrollment(
+    enrollment_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Member temporarily pauses their own participation in a cohort.
+
+    While paused they drop off the attendance roster and the coach earns
+    nothing for them from now (the payout clips eligible sessions at paused_at).
+    Reversible via /resume. Only an ENROLLED, not-already-paused enrollment can
+    be paused.
+    """
+    enrollment = (
+        await db.execute(
+            select(Enrollment).where(
+                Enrollment.id == enrollment_id,
+                Enrollment.member_auth_id == current_user.user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    if enrollment.status != EnrollmentStatus.ENROLLED:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only an active (enrolled) student can be paused; this one is "
+                f"{enrollment.status.value}."
+            ),
+        )
+    if enrollment.paused_at is None:
+        enrollment.paused_at = utc_now()
+        await db.commit()
+        await db.refresh(enrollment)
+    return EnrollmentPauseResponse.model_validate(enrollment)
+
+
+@router.post(
+    "/my-enrollments/{enrollment_id}/resume",
+    response_model=EnrollmentPauseResponse,
+)
+async def resume_my_enrollment(
+    enrollment_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Member resumes a paused enrollment (clears paused_at)."""
+    enrollment = (
+        await db.execute(
+            select(Enrollment).where(
+                Enrollment.id == enrollment_id,
+                Enrollment.member_auth_id == current_user.user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    if enrollment.paused_at is not None:
+        enrollment.paused_at = None
+        await db.commit()
+        await db.refresh(enrollment)
+    return EnrollmentPauseResponse.model_validate(enrollment)
 
 
 @router.post(

@@ -62,6 +62,21 @@ async def get_session_ids_for_cohort(
     return resp.json()
 
 
+async def get_confirmed_booking_member_ids(
+    session_id: str, *, calling_service: str
+) -> list[str]:
+    """Member IDs with a CONFIRMED booking for a session (the 'expected to
+    attend' set). Used to pre-fill the coach attendance sheet."""
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.SESSIONS_SERVICE_URL,
+        path=f"/internal/sessions/{session_id}/confirmed-booking-member-ids",
+        calling_service=calling_service,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 async def get_completed_session_ids_for_cohort(
     cohort_id: str, *, calling_service: str
 ) -> list[str]:

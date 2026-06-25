@@ -9198,6 +9198,59 @@
         }
       }
     },
+    "/api/v1/internal/sessions/{session_id}/confirmed-booking-member-ids": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Confirmed Booking Member Ids",
+        "description": "Member IDs with a CONFIRMED booking for this session (the 'expected to\nattend' set). attendance-service uses this to pre-fill the coach attendance\nsheet \u2014 default Present if booked, Absent if not.",
+        "operationId": "get_confirmed_booking_member_ids_internal_sessions__session_id__confirmed_booking_member_ids_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Get Confirmed Booking Member Ids Internal Sessions  Session Id  Confirmed Booking Member Ids Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/sessions/cohorts/{cohort_id}/completed-session-ids": {
       "get": {
         "tags": [
@@ -9951,6 +10004,59 @@
                     "$ref": "#/components/schemas/AttendanceResponse"
                   },
                   "title": "Response List Session Attendance Attendance Sessions  Session Id  Attendance Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/attendance/sessions/{session_id}/booked-member-ids": {
+      "get": {
+        "tags": [
+          "attendance"
+        ],
+        "summary": "List Session Booked Member Ids",
+        "description": "Member IDs with a confirmed booking for this session, for the coach\nattendance sheet's default (Present if booked, Absent if not). Same\naccess control as the attendance list (admin or the cohort's coach).",
+        "operationId": "list_session_booked_member_ids_attendance_sessions__session_id__booked_member_ids_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response List Session Booked Member Ids Attendance Sessions  Session Id  Booked Member Ids Get"
                 }
               }
             }
@@ -11760,6 +11866,104 @@
         }
       }
     },
+    "/api/v1/academy/enrollments/{enrollment_id}/pause": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Admin Pause Enrollment",
+        "description": "Admin temporarily pauses a student (resumable). The student leaves the\nattendance roster and the coach earns nothing for them from now on (the\npayout clips eligible sessions at paused_at).",
+        "operationId": "admin_pause_enrollment_academy_enrollments__enrollment_id__pause_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentPauseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/enrollments/{enrollment_id}/resume": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Admin Resume Enrollment",
+        "description": "Admin resumes a paused enrollment (clears paused_at).",
+        "operationId": "admin_resume_enrollment_academy_enrollments__enrollment_id__resume_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentPauseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/enrollments/me": {
       "post": {
         "tags": [
@@ -11919,6 +12123,104 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EnrollmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/my-enrollments/{enrollment_id}/pause": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Pause My Enrollment",
+        "description": "Member temporarily pauses their own participation in a cohort.\n\nWhile paused they drop off the attendance roster and the coach earns\nnothing for them from now (the payout clips eligible sessions at paused_at).\nReversible via /resume. Only an ENROLLED, not-already-paused enrollment can\nbe paused.",
+        "operationId": "pause_my_enrollment_academy_my_enrollments__enrollment_id__pause_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentPauseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/my-enrollments/{enrollment_id}/resume": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Resume My Enrollment",
+        "description": "Member resumes a paused enrollment (clears paused_at).",
+        "operationId": "resume_my_enrollment_academy_my_enrollments__enrollment_id__resume_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentPauseResponse"
                 }
               }
             }
@@ -62127,6 +62429,38 @@
         "type": "object",
         "title": "EnrollmentMarkPaidRequest"
       },
+      "EnrollmentPauseResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "paused_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "EnrollmentPauseResponse",
+        "description": "Lightweight result of a pause/resume action (avoids lazy-loading\ncohort/program/progress relationships just to confirm a status change)."
+      },
       "EnrollmentResponse": {
         "properties": {
           "status": {
@@ -62217,6 +62551,18 @@
             "type": "boolean",
             "title": "Uses Installments",
             "default": false
+          },
+          "paused_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused At"
           },
           "cohort": {
             "anyOf": [

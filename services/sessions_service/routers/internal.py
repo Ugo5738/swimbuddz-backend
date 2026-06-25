@@ -412,6 +412,30 @@ async def get_session_ids_for_cohort(
     return [str(row[0]) for row in result.all()]
 
 
+@router.get("/{session_id}/confirmed-booking-member-ids", response_model=List[str])
+async def get_confirmed_booking_member_ids(
+    session_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Member IDs with a CONFIRMED booking for this session (the 'expected to
+    attend' set). attendance-service uses this to pre-fill the coach attendance
+    sheet — default Present if booked, Absent if not."""
+    rows = (
+        (
+            await db.execute(
+                select(SessionBooking.member_id).where(
+                    SessionBooking.session_id == session_id,
+                    SessionBooking.status == SessionBookingStatus.CONFIRMED,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [str(m) for m in rows]
+
+
 @router.get("/cohorts/{cohort_id}/completed-session-ids", response_model=List[str])
 async def get_completed_session_ids_for_cohort(
     cohort_id: uuid.UUID,
