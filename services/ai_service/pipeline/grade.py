@@ -62,6 +62,17 @@ _GRADES: dict[tuple[str, str], object] = {
     },
     ("recovery_elbow", "high"): (STRENGTH, _R_STRENGTH),
     ("recovery_elbow", "unclear"): (INFO, _R_UNCLEAR),
+    # ── body_rotation (shoulder/hip roll side-to-side) ──
+    ("body_rotation", "good"): (STRENGTH, _R_STRENGTH),
+    (
+        "body_rotation",
+        "limited",
+    ): {  # flat swimming = drag + weak catch; worst for distance
+        "sprint": (FIX, _R_PROP),
+        "distance": (FIX, _R_TOP),
+        "general": (FIX, _R_TOP),
+    },
+    ("body_rotation", "unclear"): (INFO, _R_UNCLEAR),
     # ── head_breathing → area "head_breath" ──
     ("head_breath", "lifted"): (FIX, _R_TOP),  # highest-impact adult fault (sinks legs)
     ("head_breath", "neutral"): (STRENGTH, _R_STRENGTH),
