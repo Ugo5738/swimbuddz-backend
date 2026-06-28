@@ -135,7 +135,7 @@ class Settings(BaseSettings):
         False  # dormant catch/pull/kick (underwater-only)
     )
     STROKELAB_COACH_SHARE_CARDS: bool = True  # render shareable per-finding cards
-    STROKELAB_COACH_MAX_RECOVERIES: int = 1  # how many recoveries to coach up-front
+    STROKELAB_COACH_MAX_RECOVERIES: int = 3  # how many recoveries to coach up-front
     # Per-instance drilldown unlock (§12.5) is a CONFIG-DRIVEN accuracy gate, not a
     # hard flag: it unlocks when the last-measured segmentation accuracy meets the
     # bar. Raise the bar to ~80 when you trust it; lower it (e.g. 50) to preview the

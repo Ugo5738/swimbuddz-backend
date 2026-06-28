@@ -6,6 +6,7 @@ via LiteLLM for model-agnostic routing.
 
 import asyncio
 import json
+import re
 import time
 from typing import Optional
 
@@ -161,6 +162,23 @@ def _provider_from_model(model: str) -> str:
     return "unknown"
 
 
+def _retry_after_seconds(msg: str) -> Optional[float]:
+    """Best-effort parse of a provider's requested retry delay from an error.
+
+    Gemini 429s embed ``"retryDelay": "26s"``; OpenAI/HTTP use ``Retry-After``.
+    Returns the delay in seconds (+1s buffer, capped) or None if not present.
+    """
+    m = re.search(
+        r'ret(?:ry)?[\-_ ]?(?:after|delay)["\s:]*?(\d+(?:\.\d+)?)\s*s?', msg, re.I
+    )
+    if not m:
+        return None
+    try:
+        return min(90.0, float(m.group(1)) + 1.0)
+    except ValueError:
+        return None
+
+
 async def call_vlm(
     system_prompt: str,
     user_prompt: str,
@@ -249,25 +267,54 @@ async def call_vlm(
         kwargs["response_format"] = response_format
 
     start = time.monotonic()
-    # Retry transient provider errors ourselves: LiteLLM's num_retries does NOT cover
-    # Gemini's 503 "high demand" / overloaded (common on the free tier), so without
-    # this a momentary capacity blip fails the whole analysis. Backoff 1.5/3/6/12s.
-    for attempt in range(5):
+    # Retry transient AND rate-limit errors ourselves. LiteLLM's num_retries gives up
+    # within ~tens of seconds, but two free-tier failure modes need more patience:
+    #   • 503 "high demand"/overloaded — a momentary capacity blip (short backoff).
+    #   • 429 "exceeded your current quota" — a PER-MINUTE window; LiteLLM bails too
+    #     fast, so we wait toward ~60s (honouring the provider's retryDelay) for the
+    #     window to reset. This is an async job — the user is emailed when it's done,
+    #     so a patient wait is far better than failing the analysis. Without this,
+    #     running several coaches on Gemini's free tier reliably 429s the later calls.
+    MAX_ATTEMPTS = 6
+    for attempt in range(MAX_ATTEMPTS):
         try:
             response = await litellm.acompletion(**kwargs)
             break
         except Exception as e:
             name, msg = type(e).__name__, str(e)
+            low = msg.lower()
+            rate_limited = (
+                "ratelimit" in name.lower()
+                or "429" in msg
+                or "quota" in low
+                or "resource_exhausted" in low
+                or "rate limit" in low
+            )
             transient = (
                 "ServiceUnavailable" in name
                 or "InternalServerError" in name
                 or "Overloaded" in name
                 or "503" in msg
                 or "UNAVAILABLE" in msg
-                or "overloaded" in msg.lower()
+                or "overloaded" in low
             )
-            if transient and attempt < 4:
-                await asyncio.sleep(1.5 * (2**attempt))
+            if (rate_limited or transient) and attempt < MAX_ATTEMPTS - 1:
+                if rate_limited:
+                    delay = _retry_after_seconds(msg) or min(
+                        60.0, 20.0 + 15.0 * attempt
+                    )
+                else:
+                    delay = 1.5 * (2**attempt)
+                logger.warning(
+                    "VLM %s — retry %d/%d in %.0fs (%s) model=%s",
+                    "rate-limited" if rate_limited else "transient",
+                    attempt + 1,
+                    MAX_ATTEMPTS,
+                    delay,
+                    name,
+                    model,
+                )
+                await asyncio.sleep(delay)
                 continue
             elapsed_ms = int((time.monotonic() - start) * 1000)
             logger.error(
