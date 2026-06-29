@@ -1,70 +1,35 @@
 """Stroke Lab storage adapter.
 
-Backend is configurable via ``STORAGE_BACKEND`` (``s3`` | ``supabase``) so Stroke Lab
-sits on the SAME storage as the rest of the app (prod is S3) instead of its own
-Supabase buckets. Two logical buckets:
+AI owns only opaque Stroke Lab storage references. The actual object operations
+upload, sign, verify, and delete through media_service, so Stroke Lab follows the
+same service-isolation pattern as the rest of the backend.
 
-  * ``strokelab-uploads``   — raw user/guest uploads. Private. Written by the API
-                              POST endpoint, read by the ARQ worker.
-  * ``strokelab-annotated`` — annotated mp4s + coach evidence frames (jpeg). Private.
-                              Read by the API GET endpoint via a short-lived URL.
-
-On ``s3`` these two become key prefixes inside one private S3 bucket
-(``STROKELAB_S3_BUCKET`` or ``AWS_S3_BUCKET_PRIVATE``); on ``supabase`` they're
-Supabase Storage buckets. Either way access is via short-lived signed/presigned
-URLs (never truly public) so a clip can be revoked later. Bucket creation is
-operator-side; the helpers assume the target bucket exists.
+Legacy rows stored bare keys such as ``guest/{token}/{job_id}.mp4``. Those keys
+are still resolved as objects under the historical private S3 prefixes
+``strokelab-uploads`` and ``strokelab-annotated`` through media_service.
 """
 
 from __future__ import annotations
 
-import asyncio
-import os
-import tempfile
 import uuid
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
-from libs.common.config import get_settings
+import httpx
 from libs.common.logging import get_logger
-from libs.common.supabase import get_supabase_admin_client
+from libs.common.service_client.media import (
+    delete_media_object,
+    sign_media_object,
+    upload_media_object,
+)
 
 logger = get_logger(__name__)
 
 
-UPLOADS_BUCKET = os.environ.get("STROKELAB_UPLOADS_BUCKET", "strokelab-uploads")
-ANNOTATED_BUCKET = os.environ.get("STROKELAB_ANNOTATED_BUCKET", "strokelab-annotated")
-
-
-# ── Storage backend — mirrors the rest of the app (STORAGE_BACKEND = s3 | supabase).
-# On s3, Stroke Lab joins the app on AWS S3 instead of its own Supabase buckets; the
-# logical bucket name (strokelab-uploads / strokelab-annotated) becomes the S3 key
-# prefix inside one private bucket. (S3 has no per-bucket MIME allow-list, so the jpeg
-# evidence frames that Supabase's video-only bucket rejected just work.)
-def _use_s3() -> bool:
-    return get_settings().STORAGE_BACKEND == "s3"
-
-
-def _s3_client():
-    import boto3  # lazy: only the s3 path needs it
-
-    s = get_settings()
-    return boto3.client(
-        "s3",
-        aws_access_key_id=s.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=s.AWS_SECRET_ACCESS_KEY,
-        region_name=s.AWS_REGION,
-    )
-
-
-def _s3_bucket() -> str:
-    s = get_settings()
-    return s.STROKELAB_S3_BUCKET or s.AWS_S3_BUCKET_PRIVATE
-
-
-def _s3_key(bucket: str, key: str) -> str:
-    return f"{bucket}/{key}"  # logical bucket → key prefix in the single private bucket
+LEGACY_UPLOADS_PREFIX = "strokelab-uploads"
+LEGACY_ANNOTATED_PREFIX = "strokelab-annotated"
+MEDIA_STORAGE_PREFIX = "media:"
+_MEDIA_CALLING_SERVICE = "ai_service"
 
 
 # Default signed-URL lifetime for playback. One hour is plenty for a
@@ -73,78 +38,47 @@ def _s3_key(bucket: str, key: str) -> str:
 DEFAULT_SIGNED_URL_TTL_SECONDS = 3600
 
 
-def make_object_key(member_auth_id: uuid.UUID, job_id: uuid.UUID, suffix: str) -> str:
-    """Storage key layout: ``{member_auth_id}/{job_id}.{suffix}``.
-
-    Keying by member prefix gives us per-user delete + per-user usage
-    queries for free (Supabase storage supports prefix listing).
-    """
-    return f"{member_auth_id}/{job_id}.{suffix}"
+def media_storage_path(object_key: str) -> str:
+    """Store media-service object keys as opaque AI storage references."""
+    return f"{MEDIA_STORAGE_PREFIX}{object_key}"
 
 
-def make_guest_object_key(guest_token: str, job_id: uuid.UUID, suffix: str) -> str:
-    """Storage key layout for PUBLIC/guest jobs: ``guest/{guest_token}/{job_id}.{suffix}``.
-
-    Guests have no member id, so namespace under the unguessable per-job token
-    (32 random bytes). The distinct ``guest/`` prefix keeps guest objects
-    isolated from member uploads (``{member_auth_id}/...``).
-    """
-    return f"guest/{guest_token}/{job_id}.{suffix}"
+def is_media_storage_path(path: str | None) -> bool:
+    return bool(path and path.startswith(MEDIA_STORAGE_PREFIX))
 
 
-# ── Sync helpers (thin wrappers over supabase-py's storage API) ────
+def media_object_key(path: str) -> str:
+    if not is_media_storage_path(path):
+        raise ValueError("Not a media-service storage path")
+    return path[len(MEDIA_STORAGE_PREFIX) :]
 
 
-def _upload_sync(bucket: str, key: str, data: bytes, content_type: str) -> None:
-    if _use_s3():
-        _s3_client().put_object(
-            Bucket=_s3_bucket(),
-            Key=_s3_key(bucket, key),
-            Body=data,
-            ContentType=content_type,
-        )
-        return
-    client = get_supabase_admin_client()
-    client.storage.from_(bucket).upload(
-        key,
-        data,
-        file_options={"content-type": content_type, "upsert": "true"},
+def _legacy_object_key(key: str, legacy_prefix: str) -> str:
+    return f"{legacy_prefix}/{key.lstrip('/')}"
+
+
+def _object_key_for_storage_path(path: str, legacy_prefix: str) -> str:
+    if is_media_storage_path(path):
+        return media_object_key(path)
+    return _legacy_object_key(path, legacy_prefix)
+
+
+async def _signed_url_for_path(path: str, legacy_prefix: str, expires_in: int) -> str:
+    return await sign_media_object(
+        object_key=_object_key_for_storage_path(path, legacy_prefix),
+        calling_service=_MEDIA_CALLING_SERVICE,
+        expires_in=expires_in,
     )
 
 
-def _download_sync(bucket: str, key: str) -> bytes:
-    if _use_s3():
-        resp = _s3_client().get_object(Bucket=_s3_bucket(), Key=_s3_key(bucket, key))
-        return resp["Body"].read()
-    client = get_supabase_admin_client()
-    return client.storage.from_(bucket).download(key)
+async def _delete_storage_path(path: str, legacy_prefix: str) -> None:
+    await delete_media_object(
+        object_key=_object_key_for_storage_path(path, legacy_prefix),
+        calling_service=_MEDIA_CALLING_SERVICE,
+    )
 
 
-def _signed_url_sync(bucket: str, key: str, expires_in: int) -> str:
-    if _use_s3():
-        return _s3_client().generate_presigned_url(
-            "get_object",
-            Params={"Bucket": _s3_bucket(), "Key": _s3_key(bucket, key)},
-            ExpiresIn=expires_in,
-        )
-    client = get_supabase_admin_client()
-    res = client.storage.from_(bucket).create_signed_url(key, expires_in)
-    # supabase-py returns {"signedURL": "..."} on success.
-    url = res.get("signedURL") or res.get("signed_url") or ""
-    if not url:
-        raise RuntimeError(f"Supabase returned no signed URL for {bucket}/{key}: {res}")
-    return url
-
-
-def _delete_sync(bucket: str, key: str) -> None:
-    if _use_s3():
-        _s3_client().delete_object(Bucket=_s3_bucket(), Key=_s3_key(bucket, key))
-        return
-    client = get_supabase_admin_client()
-    client.storage.from_(bucket).remove([key])
-
-
-# ── Async-facing helpers (offload sync calls to a thread) ─────────
+# ── Async-facing media_service helpers ───────────────────────────
 
 
 async def upload_user_video(
@@ -154,10 +88,16 @@ async def upload_user_video(
     content_type: str = "video/mp4",
     suffix: str = "mp4",
 ) -> str:
-    """Upload a user video. Returns the storage path."""
-    key = make_object_key(member_auth_id, job_id, suffix)
-    await asyncio.to_thread(_upload_sync, UPLOADS_BUCKET, key, data, content_type)
-    return key
+    """Upload a user video through media_service. Returns the storage path."""
+    resp = await upload_media_object(
+        purpose="strokelab_original",
+        filename=f"{job_id}.{suffix}",
+        content_type=content_type,
+        data=data,
+        linked_id=f"member/{member_auth_id}/{job_id}",
+        calling_service=_MEDIA_CALLING_SERVICE,
+    )
+    return media_storage_path(str(resp["object_key"]))
 
 
 async def upload_guest_video(
@@ -167,10 +107,16 @@ async def upload_guest_video(
     content_type: str = "video/mp4",
     suffix: str = "mp4",
 ) -> str:
-    """Upload a PUBLIC/guest video. Returns the storage path."""
-    key = make_guest_object_key(guest_token, job_id, suffix)
-    await asyncio.to_thread(_upload_sync, UPLOADS_BUCKET, key, data, content_type)
-    return key
+    """Upload a PUBLIC/guest video through media_service. Returns the path."""
+    resp = await upload_media_object(
+        purpose="strokelab_original",
+        filename=f"{job_id}.{suffix}",
+        content_type=content_type,
+        data=data,
+        linked_id=f"guest/{guest_token}/{job_id}",
+        calling_service=_MEDIA_CALLING_SERVICE,
+    )
+    return media_storage_path(str(resp["object_key"]))
 
 
 async def upload_annotated_video(
@@ -180,11 +126,16 @@ async def upload_annotated_video(
     content_type: str = "video/mp4",
     suffix: str = "mp4",
 ) -> str:
-    """Upload an annotated mp4 from the worker's local filesystem."""
-    key = make_object_key(member_auth_id, job_id, suffix)
-    data = local_path.read_bytes()
-    await asyncio.to_thread(_upload_sync, ANNOTATED_BUCKET, key, data, content_type)
-    return key
+    """Upload an annotated mp4 through media_service."""
+    resp = await upload_media_object(
+        purpose="strokelab_annotated",
+        filename=f"{job_id}.{suffix}",
+        content_type=content_type,
+        data=local_path.read_bytes(),
+        linked_id=f"member/{member_auth_id}/{job_id}",
+        calling_service=_MEDIA_CALLING_SERVICE,
+    )
+    return media_storage_path(str(resp["object_key"]))
 
 
 async def upload_guest_annotated_video(
@@ -196,50 +147,51 @@ async def upload_guest_annotated_video(
 ) -> str:
     """Upload a PUBLIC/guest annotated mp4 from the worker's local filesystem.
 
-    Keys under ``guest/{guest_token}/...`` (guests have no member id), mirroring
-    the original upload's prefix in the annotated bucket.
+    The guest token is retained in ``linked_id`` so media_service namespaces the
+    object under a guest-specific Stroke Lab prefix in the private bucket.
     """
-    key = make_guest_object_key(guest_token, job_id, suffix)
-    data = local_path.read_bytes()
-    await asyncio.to_thread(_upload_sync, ANNOTATED_BUCKET, key, data, content_type)
-    return key
+    resp = await upload_media_object(
+        purpose="strokelab_annotated",
+        filename=f"{job_id}.{suffix}",
+        content_type=content_type,
+        data=local_path.read_bytes(),
+        linked_id=f"guest/{guest_token}/{job_id}",
+        calling_service=_MEDIA_CALLING_SERVICE,
+    )
+    return media_storage_path(str(resp["object_key"]))
 
 
-@contextmanager
-def temp_file_from_storage(bucket: str, key: str):
-    """Sync context manager: download a stored object to a NamedTemporaryFile
-    and yield its Path. The file is deleted on exit.
-
-    Used inside the ARQ task (which is async) by wrapping in
-    ``asyncio.to_thread`` — keeping a single sync impl avoids juggling
-    async fds in cv2/MediaPipe code paths.
-    """
-    data = _download_sync(bucket, key)
-    suffix = Path(key).suffix or ".bin"
-    fd, tmp_path = tempfile.mkstemp(suffix=suffix)
-    try:
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(data)
-        yield Path(tmp_path)
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
+async def download_storage_path(
+    storage_path: str,
+    dest_dir: Path,
+    *,
+    legacy_prefix: str = LEGACY_UPLOADS_PREFIX,
+) -> Path:
+    """Download an AI storage reference into ``dest_dir`` through media_service."""
+    object_key = _object_key_for_storage_path(storage_path, legacy_prefix)
+    signed_url = await _signed_url_for_path(
+        storage_path, legacy_prefix, DEFAULT_SIGNED_URL_TTL_SECONDS
+    )
+    dest = dest_dir / (Path(object_key).name or "upload.bin")
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.get(signed_url)
+        resp.raise_for_status()
+    dest.write_bytes(resp.content)
+    return dest
 
 
 async def signed_url_for_upload(
     key: str, expires_in: int = DEFAULT_SIGNED_URL_TTL_SECONDS
 ) -> str:
     """Signed URL for the user's *original* uploaded clip."""
-    return await asyncio.to_thread(_signed_url_sync, UPLOADS_BUCKET, key, expires_in)
+    return await _signed_url_for_path(key, LEGACY_UPLOADS_PREFIX, expires_in)
 
 
 async def signed_url_for_annotated(
     key: str, expires_in: int = DEFAULT_SIGNED_URL_TTL_SECONDS
 ) -> str:
     """Signed URL for the annotated mp4."""
-    return await asyncio.to_thread(_signed_url_sync, ANNOTATED_BUCKET, key, expires_in)
+    return await _signed_url_for_path(key, LEGACY_ANNOTATED_PREFIX, expires_in)
 
 
 # ── Coach evidence frames (reuse the annotated bucket; no new per-env bucket) ──
@@ -248,9 +200,12 @@ async def signed_url_for_annotated(
 def make_evidence_key(
     prefix: str, job_id: uuid.UUID, label: str, subdir: str = "evidence"
 ) -> str:
-    """Coach-image key ``{prefix}/{job_id}/{subdir}/{label}.jpg`` in the annotated
-    bucket. ``prefix`` is ``{member_auth_id}`` or ``guest/{guest_token}``; ``label``
-    (e.g. ``holistic_coach:3``) is sanitised; ``subdir`` is ``evidence`` or ``share``."""
+    """Legacy-shaped coach-image name used as the media upload filename.
+
+    ``prefix`` is ``{member_auth_id}`` or ``guest/{guest_token}``; ``label``
+    (e.g. ``holistic_coach:3``) is sanitised; ``subdir`` is ``evidence`` or
+    ``share``.
+    """
     safe = "".join(c if (c.isalnum() or c in "-_") else "_" for c in label)
     return f"{prefix}/{job_id}/{subdir}/{safe}.jpg"
 
@@ -258,13 +213,20 @@ def make_evidence_key(
 async def upload_evidence_frames(
     prefix: str, job_id: uuid.UUID, frames: dict[str, bytes], subdir: str = "evidence"
 ) -> dict[str, str]:
-    """Upload coach images (label → jpeg bytes). Returns label → key. ``subdir``
-    separates evidence frames from share cards."""
+    """Upload coach images (label -> jpeg bytes). Returns label -> storage path."""
     keys: dict[str, str] = {}
     for label, data in frames.items():
-        key = make_evidence_key(prefix, job_id, label, subdir)
-        await asyncio.to_thread(_upload_sync, ANNOTATED_BUCKET, key, data, "image/jpeg")
-        keys[label] = key
+        legacy_key = make_evidence_key(prefix, job_id, label, subdir)
+        purpose = "strokelab_share" if subdir == "share" else "strokelab_evidence"
+        resp = await upload_media_object(
+            purpose=purpose,
+            filename=f"{Path(legacy_key).name}",
+            content_type="image/jpeg",
+            data=data,
+            linked_id=f"{prefix}/{job_id}/{subdir}",
+            calling_service=_MEDIA_CALLING_SERVICE,
+        )
+        keys[label] = media_storage_path(str(resp["object_key"]))
     return keys
 
 
@@ -272,7 +234,7 @@ async def signed_url_for_evidence(
     key: str, expires_in: int = DEFAULT_SIGNED_URL_TTL_SECONDS
 ) -> str:
     """Signed URL for a coach evidence frame (lives in the annotated bucket)."""
-    return await asyncio.to_thread(_signed_url_sync, ANNOTATED_BUCKET, key, expires_in)
+    return await _signed_url_for_path(key, LEGACY_ANNOTATED_PREFIX, expires_in)
 
 
 async def delete_job_assets(
@@ -285,16 +247,16 @@ async def delete_job_assets(
     evidence frames so erasure/retention sweeps don't leave orphaned images."""
     if uploaded_key:
         try:
-            await asyncio.to_thread(_delete_sync, UPLOADS_BUCKET, uploaded_key)
+            await _delete_storage_path(uploaded_key, LEGACY_UPLOADS_PREFIX)
         except Exception as exc:
             logger.warning("Could not delete upload %s: %s", uploaded_key, exc)
     if annotated_key:
         try:
-            await asyncio.to_thread(_delete_sync, ANNOTATED_BUCKET, annotated_key)
+            await _delete_storage_path(annotated_key, LEGACY_ANNOTATED_PREFIX)
         except Exception as exc:
             logger.warning("Could not delete annotated %s: %s", annotated_key, exc)
     for key in evidence_keys or []:
         try:
-            await asyncio.to_thread(_delete_sync, ANNOTATED_BUCKET, key)
+            await _delete_storage_path(key, LEGACY_ANNOTATED_PREFIX)
         except Exception as exc:
             logger.warning("Could not delete evidence %s: %s", key, exc)

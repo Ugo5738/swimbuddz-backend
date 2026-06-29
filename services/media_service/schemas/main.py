@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ===== ALBUM SCHEMAS =====
@@ -276,3 +276,71 @@ class MediaDownloadResponse(BaseModel):
 
     download_url: str
     expires_at: datetime
+
+
+# ===== INTERNAL MEDIA OBJECT SCHEMAS =====
+
+
+class InternalDirectUploadCreateRequest(BaseModel):
+    """Service-to-service request for a browser direct-upload target."""
+
+    purpose: str
+    filename: str = "upload.bin"
+    content_type: str = "application/octet-stream"
+    size_bytes: int = Field(gt=0)
+    linked_id: Optional[str] = None
+    expires_in: int = Field(default=900, ge=60, le=3600)
+
+
+class InternalDirectUploadCreateResponse(BaseModel):
+    """Presigned PUT target plus the opaque media object key."""
+
+    object_key: str
+    bucket_type: str
+    upload_url: str
+    method: str = "PUT"
+    headers: dict[str, str]
+    expires_in: int
+
+
+class InternalObjectVerifyRequest(BaseModel):
+    object_key: str
+    bucket_type: str = "private"
+
+
+class InternalObjectMetadataResponse(BaseModel):
+    object_key: str
+    bucket_type: str
+    size_bytes: int
+    content_type: Optional[str] = None
+    etag: Optional[str] = None
+
+
+class InternalObjectSignRequest(BaseModel):
+    object_key: str
+    bucket_type: str = "private"
+    expires_in: int = Field(default=3600, ge=60, le=86400)
+
+
+class InternalObjectSignResponse(BaseModel):
+    url: str
+    expires_in: int
+
+
+class InternalObjectUploadRequest(BaseModel):
+    """Service-to-service small-object upload.
+
+    Large browser uploads should use InternalDirectUploadCreateRequest instead.
+    """
+
+    purpose: str
+    filename: str = "upload.bin"
+    content_type: str = "application/octet-stream"
+    data_base64: str
+    linked_id: Optional[str] = None
+
+
+class InternalObjectUploadResponse(BaseModel):
+    object_key: str
+    bucket_type: str
+    url: str

@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     GEMINI_API_KEY: str = ""  # Google AI Studio key — for the video coach (Gemini)
+    # Optional app-owned quota ceilings for Gemini visibility emails/admin views.
+    # Google does not return a reliable "remaining quota" counter per response, so
+    # these let us estimate remaining capacity from our own ai_requests ledger.
+    GEMINI_RPM_LIMIT: int = 0  # requests per minute; 0 = unknown/not configured
+    GEMINI_TPM_LIMIT: int = 0  # tokens per minute; 0 = unknown/not configured
+    GEMINI_RPD_LIMIT: int = 0  # requests per day; 0 = unknown/not configured
 
     # Stroke Lab VLM coach (the new pipeline; provider-agnostic via LiteLLM).
     # Defaults are the eval-locked picks — override per-env without redeploying.
@@ -197,10 +203,8 @@ class Settings(BaseSettings):
     )
     AWS_S3_BUCKET_PRIVATE: str = ""  # For private files (documents, payment proofs)
     CLOUDFRONT_URL: str = ""  # CDN URL for public bucket
-    # Stroke Lab storage: when STORAGE_BACKEND=s3 its uploads + evidence frames go to
-    # this S3 bucket (private; signed-URL access), under a strokelab-uploads/ or
-    # strokelab-annotated/ key prefix. Empty → falls back to AWS_S3_BUCKET_PRIVATE.
-    STROKELAB_S3_BUCKET: str = ""
+    # Stroke Lab media is owned by media_service and stored in AWS_S3_BUCKET_PRIVATE
+    # under Stroke Lab object prefixes.
 
     # Admin configuration
     ADMIN_EMAILS: list[str] = ["admin@admin.com", "contactugodaniels@gmail.com"]

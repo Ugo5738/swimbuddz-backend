@@ -6,9 +6,10 @@ from io import BytesIO
 from typing import Optional, Tuple
 from urllib.parse import urlparse
 
+from PIL import Image
+
 from libs.common.config import get_settings
 from libs.common.supabase import get_supabase_admin_client
-from PIL import Image
 
 
 class BucketType(str, Enum):
@@ -56,6 +57,10 @@ PURPOSE_BUCKET_MAP = {
     "payment_proof": BucketType.PRIVATE,
     "milestone_evidence": BucketType.PRIVATE,
     "milestone_video": BucketType.PRIVATE,
+    "strokelab_original": BucketType.PRIVATE,
+    "strokelab_annotated": BucketType.PRIVATE,
+    "strokelab_evidence": BucketType.PRIVATE,
+    "strokelab_share": BucketType.PRIVATE,
 }
 
 
@@ -97,6 +102,9 @@ class StorageService:
         filename: str,
         content_type: str = "image/jpeg",
         bucket_type: BucketType = BucketType.PUBLIC,
+        *,
+        preserve_filename: bool = False,
+        generate_thumbnail: bool = True,
     ) -> Tuple[str, Optional[str]]:
         """
         Upload media (photo/video) and generate thumbnail if image.
@@ -106,25 +114,33 @@ class StorageService:
             filename: The filename/path to use for storage
             content_type: MIME type of the file
             bucket_type: Which bucket to use (PUBLIC or PRIVATE)
+            preserve_filename: Store exactly at filename instead of UUID-renaming it
+            generate_thumbnail: Generate image thumbnail where applicable
 
         Returns: (file_url, thumbnail_url)
         """
-        # Generate unique filename
-        file_ext = filename.split(".")[-1]
-        unique_filename = f"{uuid.uuid4()}.{file_ext}"
+        if preserve_filename:
+            unique_filename = filename
+        else:
+            # Generate unique filename
+            file_ext = filename.split(".")[-1]
+            unique_filename = f"{uuid.uuid4()}.{file_ext}"
 
-        # Preserve directory structure if filename contains path
-        if "/" in filename:
-            # Keep the directory structure, just make the filename unique
-            dir_path = "/".join(filename.split("/")[:-1])
-            unique_filename = f"{dir_path}/{uuid.uuid4()}.{file_ext}"
+            # Preserve directory structure if filename contains path
+            if "/" in filename:
+                # Keep the directory structure, just make the filename unique
+                dir_path = "/".join(filename.split("/")[:-1])
+                unique_filename = f"{dir_path}/{uuid.uuid4()}.{file_ext}"
 
         thumbnail_url = None
 
         # Only generate thumbnail for images
-        if content_type.startswith("image/"):
-            thumbnail_filename = unique_filename.replace(
-                f".{file_ext}", f"_thumb.{file_ext}"
+        if generate_thumbnail and content_type.startswith("image/"):
+            file_ext = unique_filename.rsplit(".", 1)[-1]
+            thumbnail_filename = (
+                unique_filename.replace(f".{file_ext}", f"_thumb.{file_ext}")
+                if "." in unique_filename
+                else f"{unique_filename}_thumb"
             )
             thumbnail_data = self._create_thumbnail(file_data)
 
@@ -211,17 +227,27 @@ class StorageService:
         file_url: str,
         thumbnail_url: Optional[str] = None,
         bucket_type: Optional[BucketType] = None,
+        *,
+        is_key: bool = False,
     ):
-        """Delete media and thumbnail from storage."""
+        """Delete media and thumbnail from storage.
+
+        ``file_url`` is the historical public/private URL by default. Internal
+        callers that already own an object key can pass ``is_key=True``.
+        """
         if self.backend == "supabase":
             # Extract path from URL
             # URL format: .../storage/v1/object/public/bucket/media/filename
             try:
-                path = file_url.split(f"{self.bucket}/")[-1]
+                path = file_url if is_key else file_url.split(f"{self.bucket}/")[-1]
                 self.supabase.storage.from_(self.bucket).remove([path])
 
                 if thumbnail_url:
-                    thumb_path = thumbnail_url.split(f"{self.bucket}/")[-1]
+                    thumb_path = (
+                        thumbnail_url
+                        if is_key
+                        else thumbnail_url.split(f"{self.bucket}/")[-1]
+                    )
                     self.supabase.storage.from_(self.bucket).remove([thumb_path])
             except Exception:
                 pass  # Ignore errors during deletion
@@ -240,12 +266,16 @@ class StorageService:
                         bucket = self.bucket_public
 
                 # Extract key from URL path (works for S3 and CloudFront)
-                key = urlparse(file_url).path.lstrip("/")
+                key = file_url if is_key else urlparse(file_url).path.lstrip("/")
                 if key:
                     self.s3_client.delete_object(Bucket=bucket, Key=key)
 
                 if thumbnail_url:
-                    thumb_key = urlparse(thumbnail_url).path.lstrip("/")
+                    thumb_key = (
+                        thumbnail_url
+                        if is_key
+                        else urlparse(thumbnail_url).path.lstrip("/")
+                    )
                     if thumb_key:
                         self.s3_client.delete_object(Bucket=bucket, Key=thumb_key)
             except Exception:
@@ -256,28 +286,64 @@ class StorageService:
         file_key: str,
         bucket_type: BucketType = BucketType.PRIVATE,
         expiration: int = 3600,
+        *,
+        operation: str = "get_object",
+        content_type: Optional[str] = None,
     ) -> str:
         """
-        Generate a presigned URL for accessing private files.
+        Generate a presigned URL for accessing or uploading private files.
 
         Args:
             file_key: The S3 object key
             bucket_type: Which bucket the file is in
             expiration: URL expiration time in seconds (default 1 hour)
+            operation: S3 operation to sign ("get_object" or "put_object")
+            content_type: Required for "put_object" browser uploads
 
         Returns: Presigned URL string
         """
         if self.backend != "s3":
             raise ValueError("Presigned URLs are only supported for S3 backend")
+        if operation not in {"get_object", "put_object"}:
+            raise ValueError("Unsupported presigned URL operation")
 
         bucket = self._get_s3_bucket(bucket_type)
+        params = {"Bucket": bucket, "Key": file_key}
+        if operation == "put_object":
+            params["ContentType"] = content_type or "application/octet-stream"
+        kwargs = {"Params": params, "ExpiresIn": expiration}
+        if operation == "put_object":
+            kwargs["HttpMethod"] = "PUT"
+        return self.s3_client.generate_presigned_url(operation, **kwargs)
 
-        url = self.s3_client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": bucket, "Key": file_key},
-            ExpiresIn=expiration,
-        )
-        return url
+    async def head_object(
+        self,
+        file_key: str,
+        bucket_type: BucketType = BucketType.PRIVATE,
+    ) -> dict:
+        """Return metadata for an object owned by the media service."""
+        if self.backend == "s3":
+            bucket = self._get_s3_bucket(bucket_type)
+            resp = self.s3_client.head_object(Bucket=bucket, Key=file_key)
+            return {
+                "object_key": file_key,
+                "bucket_type": bucket_type.value,
+                "size_bytes": int(resp.get("ContentLength") or 0),
+                "content_type": resp.get("ContentType"),
+                "etag": str(resp.get("ETag") or "").strip('"') or None,
+            }
+
+        try:
+            data = self.supabase.storage.from_(self.bucket).download(file_key)
+        except Exception as exc:
+            raise FileNotFoundError(file_key) from exc
+        return {
+            "object_key": file_key,
+            "bucket_type": bucket_type.value,
+            "size_bytes": len(data),
+            "content_type": None,
+            "etag": None,
+        }
 
 
 # Singleton instance
