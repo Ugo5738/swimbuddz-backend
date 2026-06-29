@@ -109,6 +109,10 @@ async def inspect_instance(job_id: str, aspect: str, instance_id: int) -> dict:
         gate_model=s.STROKELAB_COACH_GATE_MODEL,
         coach_model=s.STROKELAB_COACH_MODEL,
         segment_model=s.STROKELAB_COACH_SEGMENT_MODEL,
+        # The chunk coach cuts a video clip for the chosen stroke, just like the
+        # free flow — so on-demand gets the same motion-aware multi-aspect read.
+        coach_video=s.STROKELAB_COACH_VIDEO,
+        coach_video_max_mb=s.STROKELAB_COACH_VIDEO_MAX_MB,
     )
 
     # 2. Re-extract the strip (cv2) and coach the one instance (gate/segment $0
@@ -127,20 +131,24 @@ async def inspect_instance(job_id: str, aspect: str, instance_id: int) -> dict:
             coaching=coach_context,
             instances=instances,
             cache=cache,
+            video_path=str(video),  # lets the chunk coach cut this stroke's clip
         )
-        finding = await comp_cls().coach_instance(ctx, instance_id)
-        if finding is None:
+        # coach_instances returns a LIST: a single-aspect component yields one
+        # finding; the chunk coach yields the full multi-aspect read for the stroke.
+        findings = await comp_cls().coach_instances(ctx, instance_id)
+        if not findings:
             return {"status": "no_finding"}
 
-        # 3. Upload the evidence frame(s) this finding cites.
+        # 3. Upload the evidence frame(s) every finding cites.
         prefix = (
             f"guest/{guest_token}"
             if source == AnalysisJobSource.PUBLIC
             else str(member_auth_id)
         )
         evidence = {
-            f"{finding.component}:{ref.index}": strip[ref.index].jpeg
-            for ref in finding.evidence_frames
+            f"{f.component}:{ref.index}": strip[ref.index].jpeg
+            for f in findings
+            for ref in f.evidence_frames
             if 0 <= ref.index < len(strip)
         }
         evidence_keys: dict = {}
@@ -150,10 +158,12 @@ async def inspect_instance(job_id: str, aspect: str, instance_id: int) -> dict:
             except Exception:
                 logger.warning("inspect: evidence upload failed for %s", job_id)
 
-    enc = _enc(finding)
+    encs = [_enc(f) for f in findings]
+    component_name = comp_cls.name
 
-    # 4. Persist: append the finding into coach_result (replace any prior read of
-    #    the same instance/aspect — idempotent), merge cache + evidence keys.
+    # 4. Persist into coach_result: replace ALL of this component's prior reads of
+    #    this instance (idempotent — a single-aspect read swaps one finding, a chunk
+    #    read swaps the whole stroke's multi-aspect set), then add the fresh read(s).
     async with AsyncSessionLocal() as session:
         rs = await session.execute(
             select(AnalysisResult).where(AnalysisResult.job_id == job_uuid)
@@ -165,11 +175,11 @@ async def inspect_instance(job_id: str, aspect: str, instance_id: int) -> dict:
         result_obj = dict(cr.get("result") or {})
         results_list = list(result_obj.get("results") or [])
         bucket = next(
-            (r for r in results_list if r.get("component") == comp_cls.name), None
+            (r for r in results_list if r.get("component") == component_name), None
         )
         if bucket is None:
             bucket = {
-                "component": comp_cls.name,
+                "component": component_name,
                 "findings": [],
                 "cost_usd": 0.0,
                 "error": None,
@@ -177,11 +187,9 @@ async def inspect_instance(job_id: str, aspect: str, instance_id: int) -> dict:
             }
             results_list.append(bucket)
         bucket["findings"] = [
-            f
-            for f in bucket.get("findings", [])
-            if not (f.get("instance_id") == instance_id and f.get("area") == aspect)
+            f for f in bucket.get("findings", []) if f.get("instance_id") != instance_id
         ]
-        bucket["findings"].append(enc)
+        bucket["findings"].extend(encs)
         result_obj["results"] = results_list
         cr["result"] = result_obj
         cr["cache"] = ctx.cache  # now holds the new instance's verdict for $0 re-view

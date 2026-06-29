@@ -36,6 +36,7 @@ from services.ai_service.pipeline.components.aspect import (
 )
 from services.ai_service.pipeline.types import (
     ComponentResult,
+    Finding,
     Granularity,
     InputProfile,
     Instance,
@@ -55,14 +56,22 @@ CHUNK_PAD_S = 2.0
 # answer — guessing an unseen aspect is the dishonesty we explicitly forbid.
 CHUNK_PROMPT = """\
 You are an expert freestyle coach (Total Immersion trained) watching a SHORT ~4s \
-VIDEO CLIP of ONE freestyle stroke, filmed side-on: the camera-side arm recovering \
-forward over the water as the body rolls around it. WATCH THE MOTION across the \
-clip and judge the whole stroke, not one frozen frame.
+VIDEO CLIP of ONE freestyle stroke — usually the camera-side arm recovering \
+forward over the water. The clip may be filmed from the SIDE or from an ELEVATED / \
+OVERHEAD angle on the pool deck; BOTH are coachable for what they show. WATCH THE \
+MOTION across the clip and judge the whole stroke, not one frozen frame.
 
 Assess ONLY what you can CLEARLY see. If an aspect is hidden underwater, off-frame, \
 blurred, or ambiguous, set "visible": false, "verdict": "unclear", "note": "", \
-"confidence": 0.0 — do NOT guess. NEVER invent a fault or a strength. Reading fewer \
-aspects honestly beats reading all four with bluffs.
+"confidence": 0.0 — do NOT guess. NEVER invent a fault or a strength.
+
+WHAT THE ANGLE SHOWS — do NOT refuse a coachable clip just because it isn't a \
+perfect side-on: From the SIDE you can judge all four aspects. From an ELEVATED or \
+OVERHEAD angle you can STILL clearly see the arm's recovery path (elbow high / wide \
+/ dropped), the body's rotation, and the head — COACH those. What a top-down angle \
+usually can't show is whether the hips and legs sink, so from overhead mark \
+body_line "unclear" rather than guessing. If more than one swimmer is in frame, \
+read ONLY the most prominent, most central swimmer.
 
 For each aspect, pick the ONE verdict the clip actually shows. Use ONLY these exact \
 strings:
@@ -289,3 +298,37 @@ class ChunkCoachComponent(AspectCoachComponent):
                 )
             )
         return out
+
+    async def coach_instances(self, ctx: RunContext, instance_id: int) -> list[Finding]:
+        """On-demand: coach ONE chosen recovery on EVERY visible aspect — the SAME
+        multi-aspect video read the free chunks get (recovery, rotation, head, body
+        line). Reuses run()'s chunk-clip + cache + grade machinery for one instance;
+        returns all its findings, or [] if the instance isn't in this run."""
+        inst = next(
+            (
+                i
+                for i in ctx.instances
+                if i.phase == self.consumes
+                and i.instance_id == instance_id
+                and (not self.arm or i.arm == self.arm)
+            ),
+            None,
+        )
+        strip = ctx.strip or ctx.frames
+        if inst is None or not strip:
+            return []
+        window = self._window(inst, strip)
+        goal = build_goal_block(ctx.coaching)
+        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{COACH_VOICE}"
+        if goal:
+            system_prompt = f"{system_prompt}\n\n{goal}"
+        cache = ctx.cache
+        key = f"{self.name}:{inst.instance_id}"
+        if cache is not None and key in cache:
+            parsed = cache[key]  # replay — no API
+        else:
+            clip = self._read_chunk(ctx, inst) if ctx.config.coach_video else None
+            parsed, _ = await self._coach_chunk(window, clip, system_prompt, ctx)
+            if cache is not None:
+                cache[key] = parsed
+        return self._findings_multi(parsed, inst, window, ctx)

@@ -246,3 +246,10 @@ class AspectCoachComponent(Component):
                 cache[key] = parsed
         findings = self._findings(parsed, inst, window, ctx)
         return findings[0] if findings else None
+
+    async def coach_instances(self, ctx: RunContext, instance_id: int) -> list[Finding]:
+        """On-demand read for one instance as a LIST. Default = this aspect's single
+        ``coach_instance`` wrapped; the multi-aspect chunk coach overrides this to
+        return a full per-aspect read so on-demand matches the free-flow chunk."""
+        f = await self.coach_instance(ctx, instance_id)
+        return [f] if f else []
