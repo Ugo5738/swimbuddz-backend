@@ -254,11 +254,11 @@ def wrap_html(
             <!-- Footer -->
             <div class="email-footer">
                 <p style="margin-bottom: 8px;"><strong style="color: #64748b;">SwimBuddz</strong></p>
-                <p>House 505, Amuwo-Odofin, Lagos State, Nigeria</p>
+                <p>Lagos, Nigeria</p>
                 <p>
                     <a href="https://swimbuddz.com">swimbuddz.com</a>
                     &nbsp;&middot;&nbsp;
-                    <a href="mailto:hello@swimbuddz.com">hello@swimbuddz.com</a>
+                    <a href="mailto:swimbuddz@gmail.com">swimbuddz@gmail.com</a>
                 </p>
                 <p style="margin-top: 12px; font-size: 12px; color: #cbd5e1;">
                     &copy; 2026 SwimBuddz Limited. All rights reserved.
