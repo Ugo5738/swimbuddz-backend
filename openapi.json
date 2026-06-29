@@ -37855,13 +37855,159 @@
         }
       }
     },
+    "/api/v1/events/open-swim": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Create Open Swim",
+        "description": "Create a member-hosted open-swim meet.\n\nAdults-only (18+). If ``pool_id`` is set it must be an active-partner\nper-swimmer pool; the per-swimmer fee is snapshotted and the optional\norganizer surcharge is added. No pool = a free/informal meet.",
+        "operationId": "create_open_swim_events_open_swim_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenSwimCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/events/open-swim/{event_id}": {
+      "patch": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Update Open Swim",
+        "description": "Edit a meet you created (creator only).",
+        "operationId": "update_open_swim_events_open_swim__event_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenSwimUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Cancel Open Swim",
+        "description": "Cancel a meet you created (creator only); refund anyone who paid.",
+        "operationId": "cancel_open_swim_events_open_swim__event_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/events/{event_id}/rsvp": {
       "post": {
         "tags": [
           "events"
         ],
         "summary": "Create Or Update Rsvp",
-        "description": "Create or update RSVP for an event.\n\nWhen pay_with_bubbles=True and status='going', the member's wallet is debited\nfor the event fee on the first 'going' RSVP.",
+        "description": "Create or update RSVP for an event.\n\nWhen pay_with_bubbles=True and the member commits to 'going' (and hasn't\nalready paid), their wallet is debited for the event fee \u2014 this covers both\na new 'going' RSVP and a maybe/not_going \u2192 going switch.",
         "operationId": "create_or_update_rsvp_events__event_id__rsvp_post",
         "security": [
           {
@@ -51321,6 +51467,17 @@
               }
             ],
             "title": "Profile Photo Url"
+          },
+          "date_of_birth": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Of Birth"
           }
         },
         "type": "object",
@@ -90544,6 +90701,51 @@
             ],
             "title": "Cost Naira"
           },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "pool_fee_naira": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Fee Naira"
+          },
+          "organizer_surcharge_naira": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organizer Surcharge Naira"
+          },
+          "total_cost_naira": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Cost Naira"
+          },
           "created_by": {
             "type": "string",
             "format": "uuid",
@@ -90694,6 +90896,185 @@
         "title": "EventUpdate",
         "description": "Schema for updating an event."
       },
+      "OpenSwimCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "max_capacity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Capacity"
+          },
+          "tier_access": {
+            "type": "string",
+            "title": "Tier Access",
+            "default": "community"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "organizer_surcharge_naira": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organizer Surcharge Naira"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "start_time"
+        ],
+        "title": "OpenSwimCreate",
+        "description": "Schema for a member creating their own open-swim meet.\n\n`event_type` is forced to \"open_swim\" server-side. If `pool_id` is set the\nmeet is a paid pool meet (the per-swimmer fee is snapshotted from the pool and\nthe optional surcharge added); if null it is a free/informal meet."
+      },
+      "OpenSwimUpdate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "max_capacity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Capacity"
+          },
+          "organizer_surcharge_naira": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organizer Surcharge Naira"
+          }
+        },
+        "type": "object",
+        "title": "OpenSwimUpdate",
+        "description": "Schema for a member editing their own open-swim meet (all fields optional)."
+      },
       "RSVPCreate": {
         "properties": {
           "status": {
@@ -90703,6 +91084,11 @@
           "pay_with_bubbles": {
             "type": "boolean",
             "title": "Pay With Bubbles",
+            "default": false
+          },
+          "waiver_accepted": {
+            "type": "boolean",
+            "title": "Waiver Accepted",
             "default": false
           }
         },
