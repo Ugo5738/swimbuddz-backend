@@ -20,6 +20,7 @@ import time
 
 from libs.common.logging import get_logger
 from services.ai_service.pipeline.component import Component
+from services.ai_service.pipeline.components.aspect import COACH_VOICE
 from services.ai_service.pipeline.types import (
     SEVERITY_FIX,
     SEVERITY_STRENGTH,
@@ -151,7 +152,7 @@ class AggregatorComponent(Component):
 
         try:
             resp = await call_vlm(
-                system_prompt=AGG_PROMPT,
+                system_prompt=f"{AGG_PROMPT}\n\n{COACH_VOICE}",
                 user_prompt=(
                     "Per-stroke notes:\n"
                     + json.dumps(notes, ensure_ascii=False)

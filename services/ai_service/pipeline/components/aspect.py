@@ -38,6 +38,15 @@ from services.ai_service.pipeline.types import (
 # coach_fn(frames, *, system_prompt, model, image_detail, max_tokens) -> (dict, cost)
 CoachFn = Callable[..., Awaitable[tuple[dict, float]]]
 
+# Every coaching note is spoken DIRECTLY to the swimmer ("you"/"your"), the way a
+# coach on the pool deck talks — never "the swimmer"/third person. Appended to every
+# coach system prompt so the voice is consistent across components.
+COACH_VOICE = (
+    "VOICE: Write every note speaking DIRECTLY to the swimmer as 'you' and 'your' "
+    "(e.g. \"your elbow leads the recovery nicely\") — never 'the swimmer', 'he', "
+    "or 'she', and never the third person."
+)
+
 
 async def _vlm_coach(
     frames,
@@ -157,7 +166,7 @@ class AspectCoachComponent(Component):
         strip = ctx.strip or ctx.frames
         coach_fn = self._coach_fn or _vlm_coach
 
-        system_prompt = self.SYSTEM_PROMPT
+        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{COACH_VOICE}"
         goal = build_goal_block(ctx.coaching)  # soft, honesty-fenced clause (or "")
         if goal:
             system_prompt = f"{system_prompt}\n\n{goal}"
@@ -216,7 +225,7 @@ class AspectCoachComponent(Component):
         if inst is None or not strip:
             return None
         window = self._window(inst, strip)
-        system_prompt = self.SYSTEM_PROMPT
+        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{COACH_VOICE}"
         goal = build_goal_block(ctx.coaching)
         if goal:
             system_prompt = f"{system_prompt}\n\n{goal}"

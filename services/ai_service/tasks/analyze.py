@@ -319,6 +319,7 @@ async def _run_coach_pipeline(
     from services.ai_service.pipeline.store import _enc
     from services.ai_service.pipeline.types import (
         InputProfile,
+        Phase,
         PipelineConfig,
         RunContext,
     )
@@ -371,6 +372,16 @@ async def _run_coach_pipeline(
             for ref in finding.evidence_frames:
                 if 0 <= ref.index < len(src):
                     evidence[f"{cr.component}:{ref.index}"] = src[ref.index].jpeg
+
+    # A thumbnail for EVERY detected near-arm recovery — not just the coached ones —
+    # so every stroke-by-stroke tile shows its moment, coached or not. Grab the strip
+    # frame nearest each recovery peak; key it by instance so the tile resolves it
+    # (recovery_thumbnail:<instance_id>) independent of whether a finding cites a frame.
+    if strip:
+        for inst in ctx.instances:
+            if inst.phase == Phase.RECOVERY and inst.arm == "near":
+                nearest = min(strip, key=lambda f: abs(f.timestamp_s - inst.peak_s))
+                evidence[f"recovery_thumbnail:{inst.instance_id}"] = nearest.jpeg
 
     # Render a shareable branded card per FIX finding (best-effort, gated by config).
     share_cards: dict[str, bytes] = {}

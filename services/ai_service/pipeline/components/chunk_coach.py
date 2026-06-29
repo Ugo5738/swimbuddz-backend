@@ -30,6 +30,7 @@ from pathlib import Path
 from libs.common.logging import get_logger
 from services.ai_service.coach.rubric import build_goal_block
 from services.ai_service.pipeline.components.aspect import (
+    COACH_VOICE,
     AspectCoachComponent,
     _representatives,
 )
@@ -158,9 +159,9 @@ class ChunkCoachComponent(AspectCoachComponent):
         strip = ctx.strip or ctx.frames
         reps = _representatives(insts, self._rep_cap(ctx))
         goal = build_goal_block(ctx.coaching)
-        system_prompt = (
-            f"{self.SYSTEM_PROMPT}\n\n{goal}" if goal else self.SYSTEM_PROMPT
-        )
+        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{COACH_VOICE}"
+        if goal:
+            system_prompt = f"{system_prompt}\n\n{goal}"
 
         cache = ctx.cache
         findings = []
