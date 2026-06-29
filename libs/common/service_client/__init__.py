@@ -23,6 +23,13 @@ from .core import (
     internal_post,
     internal_request,
 )
+from .media import (
+    create_media_direct_upload,
+    delete_media_object,
+    sign_media_object,
+    upload_media_object,
+    verify_media_object,
+)
 from .members import (
     get_admin_members,
     get_birthdays_today,
@@ -83,6 +90,12 @@ __all__ = [
     "internal_post",
     "internal_patch",
     "internal_delete",
+    # Media
+    "create_media_direct_upload",
+    "verify_media_object",
+    "sign_media_object",
+    "upload_media_object",
+    "delete_media_object",
     # Members
     "get_member_by_auth_id",
     "search_members",

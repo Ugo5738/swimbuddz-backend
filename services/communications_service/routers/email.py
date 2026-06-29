@@ -14,9 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
 from libs.common.emails.core import send_email
 from libs.common.logging import get_logger
-from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.communications_service.models import MessageLog, MessageRecipientType
 
@@ -213,6 +213,13 @@ async def send_templated_email(
             to_email=request.to_email,
             retry_url=d.get("retry_url", "https://analyzer.swimbuddz.com"),
             member_name=d.get("member_name", ""),
+        ),
+        "analyzer_usage": lambda d: analyzer.send_analyzer_usage_email(
+            to_email=request.to_email,
+            job_id=d.get("job_id", ""),
+            guest_email=d.get("guest_email", ""),
+            outcome=d.get("outcome", ""),
+            provider_usage=d.get("provider_usage") or {},
         ),
         # --- Academy templates ---
         "enrollment_confirmation": lambda d: academy.send_enrollment_confirmation_email(

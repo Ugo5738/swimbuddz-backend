@@ -5,7 +5,7 @@ has been removed — the VLM coach (``services.ai_service.coach`` +
 ``services.ai_service.pipeline``) is the primary engine now. What remains in
 this package is light, shared infra imported directly from its submodules:
 
-    from services.ai_service.analysis.storage import temp_file_from_storage, ...
+    from services.ai_service.analysis.storage import download_storage_path, ...
     from services.ai_service.analysis.drills import resolve_drill
     from services.ai_service.analysis.version import STROKELAB_ENGINE_VERSION
 

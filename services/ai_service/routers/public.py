@@ -21,6 +21,7 @@ import secrets
 import uuid
 from typing import Annotated, Optional
 
+import httpx
 from fastapi import (
     APIRouter,
     Depends,
@@ -33,14 +34,21 @@ from fastapi import (
     UploadFile,
     status,
 )
-from libs.common.logging import get_logger
-from libs.db.session import get_async_db
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from libs.common.logging import get_logger
+from libs.common.service_client.media import (
+    create_media_direct_upload,
+    verify_media_object,
+)
+from libs.db.session import get_async_db
 from services.ai_service.analysis.storage import (
     delete_job_assets,
+    is_media_storage_path,
+    media_object_key,
+    media_storage_path,
     signed_url_for_annotated,
     signed_url_for_upload,
     upload_guest_video,
@@ -62,7 +70,8 @@ from services.ai_service.routers.analyze import (
     MAX_UPLOAD_BYTES,
     SUPPORTED_STROKES,
     _enqueue_analysis,
-    _enqueue_inspect,
+    _queue_depth,
+    _start_inspect_job,
 )
 from services.ai_service.schemas.analysis import (
     GumroadRedeemRequest,
@@ -71,6 +80,19 @@ from services.ai_service.schemas.analysis import (
     PublicAnalysisJobDetailResponse,
     PublicAnalysisJobResponse,
     PublicCreditsResponse,
+    PublicDirectUploadRequest,
+    PublicDirectUploadResponse,
+)
+from services.ai_service.services.credit_ops import (
+    PERMALINK_CREDITS,
+    NoCreditsError,
+    acquire_for_submit,
+    find_reservation,
+    find_sale_grant,
+    get_balance,
+    grant_paid,
+    refund_reservation,
+    revoke_sale,
 )
 from services.ai_service.services.drilldown import (
     drilldown_unlocked,
@@ -78,16 +100,6 @@ from services.ai_service.services.drilldown import (
     existing_inspect_finding,
     timeline_view_unlocked,
     validate_inspect,
-)
-from services.ai_service.services.credit_ops import (
-    PERMALINK_CREDITS,
-    NoCreditsError,
-    acquire_for_submit,
-    find_sale_grant,
-    get_balance,
-    grant_paid,
-    refund_reservation,
-    revoke_sale,
 )
 from services.ai_service.services.gumroad import (
     GUMROAD_PING_TOKEN,
@@ -100,6 +112,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/public", tags=["stroke-lab-public"])
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_DIRECT_UPLOAD_TTL_SECONDS = 900
 
 
 def _normalize_email(raw: str) -> str:
@@ -116,7 +129,225 @@ def _status_str(job: AnalysisJob) -> str:
     return job.status.value if hasattr(job.status, "value") else str(job.status)
 
 
+def _ready_hint(depth: int | None) -> str:
+    if depth is None or depth <= 1:
+        return "We'll email you a link as soon as it's ready."
+    return (
+        f"You're in the analysis queue behind about {depth - 1} clip"
+        f"{'' if depth - 1 == 1 else 's'}. We'll email you a link as soon as it's ready."
+    )
+
+
 # ── POST /ai/public/analyze ──────────────────────────────────────
+
+
+@router.post(
+    "/analyze/uploads",
+    response_model=PublicDirectUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a guest job and issue a media-service upload URL",
+)
+async def create_public_direct_upload(
+    req: PublicDirectUploadRequest,
+    db: AsyncSession = Depends(get_async_db),
+) -> PublicDirectUploadResponse:
+    """Issue a media-service-owned presigned PUT target for the analyzer.
+
+    This is the preferred browser path for real videos: the API never buffers the
+    multipart body, and analysis is not queued until /complete verifies the object.
+    The legacy multipart endpoint below remains as a fallback for local/dev.
+    """
+    if req.stroke_type not in SUPPORTED_STROKES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only freestyle is supported. Got: {req.stroke_type}",
+        )
+    email = _normalize_email(req.guest_email)
+    if req.size_bytes <= 0:
+        raise HTTPException(status_code=400, detail="Empty video upload")
+    if req.size_bytes > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Video exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit",
+        )
+
+    # Preflight the credit gate so a user without credits doesn't upload a large
+    # file only to be rejected. The complete step still reserves atomically, so a
+    # race between two tabs is handled correctly there.
+    bal = await get_balance(db, raw_email=email)
+    if not bal["can_submit_free"] and bal["remaining_credits"] <= 0:
+        raise HTTPException(
+            status_code=402,
+            detail={"reason": "no_credits", "buy_url_base": GUMROAD_CHECKOUT_BASE},
+        )
+
+    guest_token = secrets.token_urlsafe(32)
+    job = AnalysisJob(
+        member_auth_id=None,
+        guest_email=email,
+        guest_token=guest_token,
+        source=AnalysisJobSource.PUBLIC,
+        stroke_type=req.stroke_type,
+        video_storage_path="",
+        status=AnalysisJobStatus.PENDING,
+        **parse_coach_context(req.discipline, req.level, req.focus_area, req.goal_text),
+    )
+    db.add(job)
+    await db.flush()
+
+    try:
+        upload = await create_media_direct_upload(
+            purpose="strokelab_original",
+            filename=req.filename,
+            content_type=req.content_type or "video/mp4",
+            size_bytes=req.size_bytes,
+            linked_id=f"guest/{guest_token}/{job.id}",
+            expires_in=_DIRECT_UPLOAD_TTL_SECONDS,
+            calling_service="ai_service",
+        )
+    except httpx.HTTPStatusError as exc:
+        await db.rollback()
+        logger.exception("Media direct-upload init failed: %s", exc)
+        code = exc.response.status_code if exc.response is not None else 502
+        raise HTTPException(
+            status_code=501 if code == 501 else 502,
+            detail="Direct upload is not available in this environment."
+            if code == 501
+            else "Could not initialize storage upload.",
+        ) from exc
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("Could not create public direct upload: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Could not initialize storage upload.",
+        ) from exc
+
+    job.video_storage_path = media_storage_path(str(upload["object_key"]))
+    await db.commit()
+    return PublicDirectUploadResponse(
+        job_id=job.id,
+        guest_token=guest_token,
+        upload_url=str(upload["upload_url"]),
+        headers=dict(upload.get("headers") or {}),
+        expires_in=int(upload.get("expires_in") or _DIRECT_UPLOAD_TTL_SECONDS),
+    )
+
+
+@router.post(
+    "/analyze/{job_id}/complete-upload",
+    response_model=PublicAnalysisJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Verify a direct upload, reserve credit, and queue analysis",
+)
+async def complete_public_direct_upload(
+    job_id: uuid.UUID,
+    x_guest_token: Annotated[Optional[str], Header(alias="X-Guest-Token")] = None,
+    guest_token: Annotated[Optional[str], Query()] = None,
+    db: AsyncSession = Depends(get_async_db),
+) -> PublicAnalysisJobResponse:
+    token = x_guest_token or guest_token
+    job = await db.get(AnalysisJob, job_id)
+    if (
+        job is None
+        or job.source != AnalysisJobSource.PUBLIC
+        or not token
+        or not job.guest_token
+        or not secrets.compare_digest(token, job.guest_token)
+    ):
+        raise HTTPException(status_code=404, detail="Job not found")
+    existing_reserve = await find_reservation(db, job_id=job.id)
+    if job.status in (AnalysisJobStatus.PROCESSING, AnalysisJobStatus.COMPLETED) or (
+        job.status == AnalysisJobStatus.PENDING and existing_reserve is not None
+    ):
+        depth = await _queue_depth(PUBLIC_QUEUE_NAME)
+        return PublicAnalysisJobResponse(
+            job_id=job.id,
+            status=_status_str(job),
+            stroke_type=job.stroke_type,
+            guest_token=job.guest_token,
+            credits_remaining=0,
+            queue_depth=depth,
+            estimated_ready_hint=_ready_hint(depth),
+            created_at=job.created_at,
+            started_at=job.started_at,
+            completed_at=job.completed_at,
+        )
+    if job.status != AnalysisJobStatus.PENDING:
+        raise HTTPException(status_code=409, detail="Upload is not active")
+    if not job.video_storage_path:
+        raise HTTPException(status_code=409, detail="Upload was not initialized")
+
+    if not is_media_storage_path(job.video_storage_path):
+        raise HTTPException(status_code=409, detail="Upload cannot be verified")
+
+    try:
+        meta = await verify_media_object(
+            object_key=media_object_key(job.video_storage_path),
+            calling_service="ai_service",
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=409, detail="Upload is not complete yet"
+        ) from exc
+    size = int(meta.get("size_bytes") or 0)
+    if size <= 0:
+        raise HTTPException(status_code=400, detail="Empty video upload")
+    if size > MAX_UPLOAD_BYTES:
+        await delete_job_assets(job.video_storage_path, None)
+        await db.delete(job)
+        await db.commit()
+        raise HTTPException(
+            status_code=413,
+            detail=f"Video exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit",
+        )
+
+    try:
+        reserve_entry = await acquire_for_submit(
+            db, raw_email=job.guest_email or "", job_id=job.id
+        )
+    except NoCreditsError:
+        await delete_job_assets(job.video_storage_path, None)
+        await db.delete(job)
+        await db.commit()
+        raise HTTPException(
+            status_code=402,
+            detail={"reason": "no_credits", "buy_url_base": GUMROAD_CHECKOUT_BASE},
+        )
+
+    job.status = AnalysisJobStatus.PENDING
+    credits_remaining = reserve_entry.balance_after
+    await db.commit()
+    await db.refresh(job)
+
+    try:
+        await _enqueue_analysis(
+            job.id, queue_name=PUBLIC_QUEUE_NAME, raise_on_error=True
+        )
+    except Exception as exc:
+        logger.exception("Public enqueue failed for job %s: %s", job.id, exc)
+        await refund_reservation(db, raw_email=job.guest_email or "", job_id=job.id)
+        job.status = AnalysisJobStatus.FAILED
+        job.error_message = "Could not queue analysis"
+        await db.commit()
+        raise HTTPException(
+            status_code=502,
+            detail="Could not queue your analysis; your credit was refunded. Please try again.",
+        ) from exc
+
+    depth = await _queue_depth(PUBLIC_QUEUE_NAME)
+    return PublicAnalysisJobResponse(
+        job_id=job.id,
+        status=_status_str(job),
+        stroke_type=job.stroke_type,
+        guest_token=job.guest_token or "",
+        credits_remaining=credits_remaining,
+        queue_depth=depth,
+        estimated_ready_hint=_ready_hint(depth),
+        created_at=job.created_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+    )
 
 
 @router.post(
@@ -225,12 +456,15 @@ async def create_public_analysis_job(
             detail="Could not queue your analysis; your credit was refunded. Please try again.",
         ) from exc
 
+    depth = await _queue_depth(PUBLIC_QUEUE_NAME)
     return PublicAnalysisJobResponse(
         job_id=job.id,
         status=_status_str(job),
         stroke_type=job.stroke_type,
         guest_token=guest_token,
         credits_remaining=credits_remaining,
+        queue_depth=depth,
+        estimated_ready_hint=_ready_hint(depth),
         created_at=job.created_at,
         started_at=job.started_at,
         completed_at=job.completed_at,
@@ -297,6 +531,11 @@ async def get_public_analysis_job(
     if payload is not None and result_row is not None:
         payload.coach_evidence_urls = await sign_coach_evidence(result_row)
         payload.coach_share_urls = await sign_coach_share(result_row)
+    depth = (
+        await _queue_depth(PUBLIC_QUEUE_NAME)
+        if job.status in (AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING)
+        else None
+    )
     return PublicAnalysisJobDetailResponse(
         job_id=job.id,
         status=_status_str(job),
@@ -311,6 +550,7 @@ async def get_public_analysis_job(
         result=payload,
         original_video_url=original_url,
         annotated_video_url=annotated_url,
+        queue_depth=depth,
     )
 
 
@@ -348,10 +588,16 @@ async def inspect_public_analysis(
         return {"status": "ready", "finding": existing}  # already coached → $0
     validate_inspect(result_row, req.aspect, req.instance_id)
     try:
-        await _enqueue_inspect(job_id, req.aspect, req.instance_id, PUBLIC_QUEUE_NAME)
+        return await _start_inspect_job(
+            db,
+            job_id=job_id,
+            result_row=result_row,
+            aspect=req.aspect,
+            instance_id=req.instance_id,
+            queue_name=PUBLIC_QUEUE_NAME,
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Could not queue inspect") from exc
-    return {"status": "inspecting"}
 
 
 # ── POST /ai/public/analyze/{job_id}/retry (re-run a failed job, free) ───────

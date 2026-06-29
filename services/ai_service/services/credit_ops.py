@@ -97,6 +97,13 @@ async def find_sale_grant(
     return await _existing(db, f"gumroad-sale-{sale_id}")
 
 
+async def find_reservation(
+    db: AsyncSession, *, job_id: uuid.UUID
+) -> Optional[AnalyzerCreditLedger]:
+    """Return the existing reserve ledger row for a job, if completion retried."""
+    return await _existing(db, f"reserve-{job_id}")
+
+
 def _post(
     db: AsyncSession,
     account: AnalyzerCreditAccount,

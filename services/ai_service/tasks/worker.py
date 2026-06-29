@@ -24,15 +24,19 @@ async def task_analyze_swim_video(ctx: dict, job_id: str) -> dict:
 
 
 async def task_inspect_instance(
-    ctx: dict, job_id: str, aspect: str, instance_id: int
+    ctx: dict, job_id: str, aspect: str, instance_id: int, attempt: int = 1
 ) -> dict:
     """ARQ wrapper for the per-stroke drilldown (coach one stored instance)."""
     from services.ai_service.tasks.inspect import inspect_instance
 
     logger.info(
-        "Running: task_inspect_instance %s #%s for %s", aspect, instance_id, job_id
+        "Running: task_inspect_instance %s #%s for %s (attempt %s)",
+        aspect,
+        instance_id,
+        job_id,
+        attempt,
     )
-    return await inspect_instance(job_id, aspect, instance_id)
+    return await inspect_instance(job_id, aspect, instance_id, attempt=attempt)
 
 
 class WorkerSettings:

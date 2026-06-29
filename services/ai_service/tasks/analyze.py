@@ -25,15 +25,13 @@ import tempfile
 import uuid
 from pathlib import Path
 
+from sqlalchemy import delete, select
+
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.config import AsyncSessionLocal
-from sqlalchemy import delete, select
-
-from services.ai_service.pipeline.types import CoachContext  # import-light (no cv2)
 from services.ai_service.analysis.storage import (
-    UPLOADS_BUCKET,
-    temp_file_from_storage,
+    download_storage_path,
     upload_evidence_frames,
 )
 from services.ai_service.constants import PUBLIC_MAX_DURATION_SECONDS
@@ -44,11 +42,20 @@ from services.ai_service.models import (
     AnalysisResult,
     SwimFrameLabel,
 )
+from services.ai_service.pipeline.types import CoachContext  # import-light (no cv2)
+from services.ai_service.providers.base import (
+    start_vlm_usage_capture,
+    stop_vlm_usage_capture,
+)
 from services.ai_service.services.credit_ops import (
     consume_reservation,
     refund_reservation,
 )
 from services.ai_service.services.notify import send_failed_email, send_ready_email
+from services.ai_service.services.provider_usage import (
+    gemini_quota_estimate,
+    record_usage_events,
+)
 
 logger = get_logger(__name__)
 
@@ -85,6 +92,16 @@ async def analyze_swim_video(job_id: str) -> dict:
             goal_text=job.goal_text,
         )
 
+    capture_token = start_vlm_usage_capture()
+
+    def _collect_usage_events() -> list[dict]:
+        nonlocal capture_token
+        if capture_token is None:
+            return []
+        events = stop_vlm_usage_capture(capture_token)
+        capture_token = None
+        return events
+
     # 2. The VLM coach is the analysis now — PRIMARY + REQUIRED. A coach
     # exception propagates to the failure path (FAILED + refund); a gate refusal
     # is handled explicitly below.
@@ -94,8 +111,7 @@ async def analyze_swim_video(job_id: str) -> dict:
         with tempfile.TemporaryDirectory(prefix="strokelab_") as workdir:
             workdir_path = Path(workdir)
 
-            # Pull the upload to a tempfile (temp_file_from_storage is sync; we
-            # download into our workdir for cleanliness).
+            # Pull the upload into our workdir through media_service.
             uploaded_local = await _download_upload(video_storage_path, workdir_path)
 
             # Public DoS guard: reject over-long clips BEFORE the expensive
@@ -113,7 +129,9 @@ async def analyze_swim_video(job_id: str) -> dict:
                         duration,
                         PUBLIC_MAX_DURATION_SECONDS,
                     )
-                    await _mark_failed(job_uuid, "too_long")
+                    await _mark_failed(
+                        job_uuid, "too_long", usage_events=_collect_usage_events()
+                    )
                     return {"status": "failed", "error": "too_long"}
 
             # Persist each stage as it finishes so the result page renders
@@ -130,14 +148,22 @@ async def analyze_swim_video(job_id: str) -> dict:
                 # Coach disabled (STROKELAB_ENABLE_COACH off) — there is no
                 # fallback engine now, so the job can't produce a result.
                 logger.error("Coach disabled but job %s reached the worker", job_id)
-                await _mark_failed(job_uuid, "coach_unavailable")
+                await _mark_failed(
+                    job_uuid,
+                    "coach_unavailable",
+                    usage_events=_collect_usage_events(),
+                )
                 return {"status": "failed", "error": "coach_unavailable"}
 
             # Gate refusal: an above-water/side-on clip we can't read. Refund and
             # surface the "film a side-on clip" guidance — we won't guess.
             if _coach_refused(coach_payload):
                 logger.info("Stroke Lab job %s refused by the gate", job_id)
-                await _mark_failed(job_uuid, "could_not_track")
+                await _mark_failed(
+                    job_uuid,
+                    "could_not_track",
+                    usage_events=_collect_usage_events(),
+                )
                 return {"status": "refused"}
 
             # Non-refused but empty: a coach component errored and was swallowed,
@@ -145,7 +171,11 @@ async def analyze_swim_video(job_id: str) -> dict:
             # give the same "film a clearer clip" guidance.
             if not _coach_has_content(coach_payload):
                 logger.warning("Stroke Lab job %s produced no coaching content", job_id)
-                await _mark_failed(job_uuid, "could_not_track")
+                await _mark_failed(
+                    job_uuid,
+                    "could_not_track",
+                    usage_events=_collect_usage_events(),
+                )
                 return {"status": "failed", "error": "no_coaching"}
 
             # Pop the transient image BYTES (never store them in the JSON column)
@@ -182,13 +212,19 @@ async def analyze_swim_video(job_id: str) -> dict:
 
         # 3. Persist result row + flip status. detected_stroke echoes the
         # requested stroke; the pose-derived observability columns are NULL.
-        await _write_completed(job_uuid, stroke_type, coach_payload, frame_labels)
+        await _write_completed(
+            job_uuid,
+            stroke_type,
+            coach_payload,
+            frame_labels,
+            usage_events=_collect_usage_events(),
+        )
         logger.info("Stroke Lab job %s completed (coach-primary)", job_id)
         return {"status": "completed"}
     except Exception as exc:  # pragma: no cover — failure path
         logger.exception("Stroke Lab job %s failed", job_id)
         reason = _failure_reason(exc)
-        await _mark_failed(job_uuid, reason)
+        await _mark_failed(job_uuid, reason, usage_events=_collect_usage_events())
         return {"status": "failed", "error": reason}
 
 
@@ -221,14 +257,7 @@ def _coach_has_content(coach_payload: dict) -> bool:
 
 async def _download_upload(storage_path: str, workdir: Path) -> Path:
     """Pull the user's upload into the worker's temp workdir."""
-
-    def _do_download() -> Path:
-        with temp_file_from_storage(UPLOADS_BUCKET, storage_path) as tmp:
-            dest = workdir / Path(storage_path).name
-            dest.write_bytes(tmp.read_bytes())
-            return dest
-
-    return await asyncio.to_thread(_do_download)
+    return await download_storage_path(storage_path, workdir)
 
 
 def _probe_duration_seconds(path: Path) -> float | None:
@@ -312,7 +341,6 @@ async def _run_coach_pipeline(
     import cv2
 
     from libs.common.config import get_settings
-
     from services.ai_service.coach.frames import extract_key_frames
     from services.ai_service.pipeline.defaults import build_default_registry
     from services.ai_service.pipeline.runner import run_pipeline
@@ -469,8 +497,9 @@ async def _write_completed(
     detected_stroke: str,
     coach_payload: dict | None = None,
     frame_labels: list[dict] | None = None,
+    usage_events: list[dict] | None = None,
 ) -> None:
-    ready_email: tuple[str, str] | None = None
+    ready_email: tuple[str, str, dict | None] | None = None
     async with AsyncSessionLocal() as session:
         job = await session.get(AnalysisJob, job_id)
         if job is None:
@@ -483,6 +512,21 @@ async def _write_completed(
         # The annotated pose-overlay video is retired with the pose engine; the
         # result page falls back to the original clip.
         job.annotated_video_storage_path = None
+
+        provider_usage = None
+        if usage_events is not None:
+            run_usage = await record_usage_events(
+                session,
+                events=usage_events,
+                request_type="strokelab_analysis",
+                requesting_service="ai_service",
+            )
+            provider_usage = {
+                "run": run_usage,
+                "gemini_quota": await gemini_quota_estimate(session),
+            }
+            if coach_payload is not None:
+                coach_payload["provider_usage"] = provider_usage
 
         # Replace any prior result row (idempotency for re-runs).
         existing = await session.execute(
@@ -545,11 +589,13 @@ async def _write_completed(
             # actual send is best-effort, after commit (design §8.1).
             if job.email_sent_at is None:
                 job.email_sent_at = utc_now()
-                ready_email = (job.guest_email, job.guest_token or "")
+                ready_email = (job.guest_email, job.guest_token or "", provider_usage)
         await session.commit()
 
     if ready_email is not None:
-        await send_ready_email(job_id, ready_email[0], ready_email[1])
+        await send_ready_email(
+            job_id, ready_email[0], ready_email[1], provider_usage=ready_email[2]
+        )
 
 
 def _failure_reason(exc: Exception) -> str:
@@ -592,12 +638,26 @@ def _failure_reason(exc: Exception) -> str:
     return "analysis_error"
 
 
-async def _mark_failed(job_id: uuid.UUID, error_message: str) -> None:
-    failed_email: str | None = None
+async def _mark_failed(
+    job_id: uuid.UUID, error_message: str, usage_events: list[dict] | None = None
+) -> None:
+    failed_email: tuple[str, dict | None] | None = None
     async with AsyncSessionLocal() as session:
         job = await session.get(AnalysisJob, job_id)
         if job is None:
             return
+        provider_usage = None
+        if usage_events is not None:
+            run_usage = await record_usage_events(
+                session,
+                events=usage_events,
+                request_type="strokelab_analysis",
+                requesting_service="ai_service",
+            )
+            provider_usage = {
+                "run": run_usage,
+                "gemini_quota": await gemini_quota_estimate(session),
+            }
         job.status = AnalysisJobStatus.FAILED
         job.completed_at = utc_now()
         # Cap error_message at a sane length so a giant traceback can't
@@ -611,8 +671,8 @@ async def _mark_failed(job_id: uuid.UUID, error_message: str) -> None:
             # best-effort after commit (design §8.6).
             if job.email_sent_at is None:
                 job.email_sent_at = utc_now()
-                failed_email = job.guest_email
+                failed_email = (job.guest_email, provider_usage)
         await session.commit()
 
     if failed_email is not None:
-        await send_failed_email(job_id, failed_email)
+        await send_failed_email(job_id, failed_email[0], provider_usage=failed_email[1])

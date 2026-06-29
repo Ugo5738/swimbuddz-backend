@@ -6,15 +6,14 @@ guest-job serialization with a NULL member_auth_id, and the credit gate
 (first submit per email is free; the next is paywalled with 402).
 
 Storage + enqueue are mocked so submit runs offline: `mock_public_io` patches
-the *sync* Supabase upload/delete (`_upload_sync` / `_delete_sync`) — not
-`upload_guest_video` — so the real `make_guest_object_key` still builds the
-`guest/...` key, and patches the arq enqueue so no Redis is needed. The credit
-ledger runs for real against the test db_session. Emails are unique per call so
-each test gets its own fresh free credit.
+the media-service client boundary used by `upload_guest_video`, and patches the
+arq enqueue so no Redis is needed. The credit ledger runs for real against the
+test db_session. Emails are unique per call so each test gets its own fresh free
+credit.
 """
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -41,13 +40,27 @@ def _unique_email() -> str:
 
 @pytest.fixture
 def mock_public_io():
-    """Patch Supabase upload/delete (sync) + arq enqueue so submit runs offline.
+    """Patch media upload/delete + arq enqueue so submit runs offline.
 
     Yields the enqueue mock so tests can assert it was awaited.
     """
+
+    async def _fake_upload_media_object(**kwargs):
+        return {
+            "object_key": (
+                "strokelab/original/" f"{kwargs['linked_id']}/{kwargs['filename']}"
+            )
+        }
+
     with (
-        patch("services.ai_service.analysis.storage._upload_sync", new=MagicMock()),
-        patch("services.ai_service.analysis.storage._delete_sync", new=MagicMock()),
+        patch(
+            "services.ai_service.analysis.storage.upload_media_object",
+            new=AsyncMock(side_effect=_fake_upload_media_object),
+        ),
+        patch(
+            "services.ai_service.analysis.storage.delete_media_object",
+            new=AsyncMock(),
+        ),
         patch(
             "services.ai_service.routers.public._enqueue_analysis", new=AsyncMock()
         ) as enq,
@@ -95,8 +108,10 @@ async def test_public_submit_creates_guest_job(ai_client, db_session, mock_publi
     # The job stores the typed (lowercased) email; the credit account is keyed to
     # the canonical form (+tag / Gmail-dots stripped).
     assert job.guest_email == email.lower()
-    # The real guest-key builder ran (only the network upload was mocked).
-    assert job.video_storage_path == f"guest/{job.guest_token}/{job_id}.mp4"
+    # The job stores an opaque media-service object reference.
+    assert job.video_storage_path == (
+        "media:strokelab/original/" f"guest/{job.guest_token}/{job_id}/{job_id}.mp4"
+    )
     mock_public_io.assert_awaited_once()
 
 
