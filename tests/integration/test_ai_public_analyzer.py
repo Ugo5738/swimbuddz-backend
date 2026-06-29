@@ -13,6 +13,7 @@ credit.
 """
 
 import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -22,6 +23,7 @@ from services.ai_service.models import (
     AnalysisJobSource,
     AnalysisJobStatus,
 )
+from services.ai_service.routers.public import _completed_result_needs_free_retry
 
 _SUBMIT = "/ai/public/analyze"
 
@@ -232,3 +234,65 @@ async def test_public_poll_404_for_member_job(ai_client, db_session):
 
     r = await ai_client.get(_poll(str(mj.id)), headers={"X-Guest-Token": "anything"})
     assert r.status_code == 404, r.text
+
+
+# ── retry eligibility ────────────────────────────────────────────
+
+
+def _result_row(components):
+    return SimpleNamespace(coach_result={"result": {"results": components}})
+
+
+def _result_payload(payload):
+    return SimpleNamespace(coach_result={"result": payload})
+
+
+def test_completed_public_result_needs_free_retry_when_empty_or_limited():
+    assert _completed_result_needs_free_retry(None) is True
+    assert (
+        _completed_result_needs_free_retry(
+            _result_row([{"component": "holistic", "findings": [], "error": "quota"}])
+        )
+        is True
+    )
+    assert (
+        _completed_result_needs_free_retry(
+            _result_row(
+                [
+                    {
+                        "component": "collate",
+                        "findings": [{"available": True}],
+                        "error": None,
+                    }
+                ]
+            )
+        )
+        is True
+    )
+
+
+def test_completed_public_result_does_not_need_free_retry_when_refused():
+    assert (
+        _completed_result_needs_free_retry(
+            _result_payload({"refused": True, "gate_tier": "refuse", "results": []})
+        )
+        is False
+    )
+
+
+def test_completed_public_result_does_not_need_free_retry_with_coaching_findings():
+    assert (
+        _completed_result_needs_free_retry(
+            _result_row(
+                [
+                    {"component": "gate", "findings": [], "error": None},
+                    {
+                        "component": "chunk_coach",
+                        "findings": [{"available": True}],
+                        "error": None,
+                    },
+                ]
+            )
+        )
+        is False
+    )

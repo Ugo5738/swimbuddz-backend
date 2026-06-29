@@ -138,6 +138,33 @@ def _ready_hint(depth: int | None) -> str:
     )
 
 
+def _completed_result_needs_free_retry(result_row: AnalysisResult | None) -> bool:
+    """True for completed jobs whose coach read is partial or empty.
+
+    A system-limited completed job should be retryable without charging another
+    credit. A genuinely successful completed read should not be requeued through
+    this free retry endpoint.
+    """
+    coach_result = (result_row.coach_result if result_row is not None else None) or {}
+    result = coach_result.get("result") or {}
+    if result.get("refused") or result.get("gate_tier") == "refuse":
+        return False
+
+    components = result.get("results") or []
+    non_gate = [c for c in components if c.get("component") != "gate"]
+    if any(c.get("error") for c in non_gate):
+        return True
+
+    coaching_findings = [
+        finding
+        for component in non_gate
+        if component.get("component") not in {"collate"}
+        for finding in (component.get("findings") or [])
+        if finding.get("available", True)
+    ]
+    return not coaching_findings
+
+
 # ── POST /ai/public/analyze ──────────────────────────────────────
 
 
@@ -605,7 +632,7 @@ async def inspect_public_analysis(
 
 @router.post(
     "/analyze/{job_id}/retry",
-    summary="Re-run a FAILED guest analysis on its stored clip — free (guest_token)",
+    summary="Re-run a failed or partial guest analysis on its stored clip — free (guest_token)",
 )
 async def retry_public_analysis(
     job_id: uuid.UUID,
@@ -623,14 +650,23 @@ async def retry_public_analysis(
         or not secrets.compare_digest(token, job.guest_token)
     ):
         raise HTTPException(status_code=404, detail="Job not found")
-    # Only a FAILED job is retryable; the credit was already refunded on failure, so
-    # the re-run is FREE (a transient hiccup shouldn't cost the user a clip).
-    if job.status != AnalysisJobStatus.FAILED:
+    result_row = None
+    if job.status == AnalysisJobStatus.COMPLETED:
+        rs = await db.execute(
+            select(AnalysisResult).where(AnalysisResult.job_id == job_id)
+        )
+        result_row = rs.scalar_one_or_none()
+
+    retryable = job.status == AnalysisJobStatus.FAILED or (
+        job.status == AnalysisJobStatus.COMPLETED
+        and _completed_result_needs_free_retry(result_row)
+    )
+    if not retryable:
         raise HTTPException(
             status_code=409,
             detail={
                 "reason": "not_retryable",
-                "message": "Only a failed analysis can be retried.",
+                "message": "Only a failed or partial analysis can be retried.",
             },
         )
     if not job.video_storage_path:
