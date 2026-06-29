@@ -28411,7 +28411,7 @@
         "tags": [
           "stroke-lab-public"
         ],
-        "summary": "Re-run a FAILED guest analysis on its stored clip \u2014 free (guest_token)",
+        "summary": "Re-run a failed or partial guest analysis on its stored clip \u2014 free (guest_token)",
         "operationId": "retry_public_analysis_ai_public_analyze__job_id__retry_post",
         "parameters": [
           {
