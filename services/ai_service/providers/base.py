@@ -5,6 +5,7 @@ via LiteLLM for model-agnostic routing.
 """
 
 import asyncio
+import contextvars
 import json
 import re
 import time
@@ -14,6 +15,28 @@ from libs.common.config import get_settings
 from libs.common.logging import get_logger
 
 logger = get_logger(__name__)
+
+_VLM_EVENTS: contextvars.ContextVar[Optional[list[dict]]] = contextvars.ContextVar(
+    "vlm_events", default=None
+)
+
+
+def start_vlm_usage_capture():
+    """Start collecting VLM call telemetry in the current async context."""
+    return _VLM_EVENTS.set([])
+
+
+def stop_vlm_usage_capture(token) -> list[dict]:
+    """Stop collecting VLM telemetry and return the captured events."""
+    events = list(_VLM_EVENTS.get() or [])
+    _VLM_EVENTS.reset(token)
+    return events
+
+
+def _record_vlm_event(event: dict) -> None:
+    bucket = _VLM_EVENTS.get()
+    if bucket is not None:
+        bucket.append(event)
 
 
 class AIProviderResponse:
@@ -314,12 +337,44 @@ async def call_vlm(
                     name,
                     model,
                 )
+                _record_vlm_event(
+                    {
+                        "kind": "retry",
+                        "reason": "rate_limited" if rate_limited else "transient",
+                        "attempt": attempt + 1,
+                        "max_attempts": MAX_ATTEMPTS,
+                        "delay_s": delay,
+                        "error_type": name,
+                        "message": msg[:500],
+                        "model": model,
+                        "provider": provider,
+                        "trace_name": trace_name,
+                    }
+                )
                 await asyncio.sleep(delay)
                 continue
             elapsed_ms = int((time.monotonic() - start) * 1000)
             logger.error(
                 f"VLM call failed: {e}",
                 extra={"model": model, "latency_ms": elapsed_ms},
+            )
+            _record_vlm_event(
+                {
+                    "kind": "failure",
+                    "reason": "rate_limited"
+                    if rate_limited
+                    else "transient"
+                    if transient
+                    else "error",
+                    "attempt": attempt + 1,
+                    "max_attempts": MAX_ATTEMPTS,
+                    "error_type": name,
+                    "message": msg[:500],
+                    "model": model,
+                    "provider": provider,
+                    "trace_name": trace_name,
+                    "latency_ms": elapsed_ms,
+                }
             )
             raise
 
@@ -331,12 +386,28 @@ async def call_vlm(
     except Exception:
         cost = 0.0
 
+    input_tokens = usage.prompt_tokens if usage else 0
+    output_tokens = usage.completion_tokens if usage else 0
+    _record_vlm_event(
+        {
+            "kind": "success",
+            "model": model,
+            "provider": provider,
+            "trace_name": trace_name,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+            "cost_usd": cost,
+            "latency_ms": elapsed_ms,
+        }
+    )
+
     return AIProviderResponse(
         content=text,
         model=model,
         provider=provider,
-        input_tokens=usage.prompt_tokens if usage else 0,
-        output_tokens=usage.completion_tokens if usage else 0,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
         latency_ms=elapsed_ms,
         cost_usd=cost,
         raw_response=(

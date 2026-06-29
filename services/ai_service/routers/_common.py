@@ -87,6 +87,7 @@ def build_result_payload(result: AnalysisResult) -> AnalysisResultPayload:
         tracking_gaps=tracking_gaps,
         # Expose only the derived PipelineResult, never the internal VLM cache.
         coach_result=(result.coach_result or {}).get("result"),
+        inspect_statuses=(result.coach_result or {}).get("inspect_jobs") or None,
         instances=_sanitized_instances(result),
     )
 

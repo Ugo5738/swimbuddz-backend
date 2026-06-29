@@ -13,6 +13,7 @@ import os
 import uuid
 from urllib.parse import quote
 
+from libs.common.config import get_settings
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 
@@ -30,8 +31,47 @@ def _result_url(job_id: uuid.UUID, guest_token: str) -> str:
     return f"{ANALYZER_BASE_URL}/r/{job_id}?guest_token={quote(guest_token, safe='')}"
 
 
+def _usage_recipients() -> list[str]:
+    settings = get_settings()
+    emails = list(getattr(settings, "ADMIN_EMAILS", None) or [])
+    fallback = getattr(settings, "ADMIN_EMAIL", "")
+    if fallback and fallback not in emails:
+        emails.append(fallback)
+    return [email for email in emails if email]
+
+
+async def _send_usage_email(
+    *,
+    job_id: uuid.UUID,
+    guest_email: str,
+    outcome: str,
+    provider_usage: dict | None,
+) -> None:
+    if not provider_usage:
+        return
+    for email in _usage_recipients():
+        try:
+            await get_email_client().send_template(
+                template_type="analyzer_usage",
+                to_email=email,
+                template_data={
+                    "job_id": str(job_id),
+                    "guest_email": guest_email,
+                    "outcome": outcome,
+                    "provider_usage": provider_usage,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 — best-effort, never raise
+            logger.warning(
+                "usage email failed for job %s to %s: %s", job_id, email, exc
+            )
+
+
 async def send_ready_email(
-    job_id: uuid.UUID, guest_email: str, guest_token: str
+    job_id: uuid.UUID,
+    guest_email: str,
+    guest_token: str,
+    provider_usage: dict | None = None,
 ) -> bool:
     """Email the guest a link to their finished analysis. Returns True on send.
 
@@ -48,9 +88,18 @@ async def send_ready_email(
     except Exception as exc:  # noqa: BLE001 — best-effort, never raise
         logger.warning("ready email failed for job %s: %s", job_id, exc)
         return False
+    finally:
+        await _send_usage_email(
+            job_id=job_id,
+            guest_email=guest_email,
+            outcome="completed",
+            provider_usage=provider_usage,
+        )
 
 
-async def send_failed_email(job_id: uuid.UUID, guest_email: str) -> bool:
+async def send_failed_email(
+    job_id: uuid.UUID, guest_email: str, provider_usage: dict | None = None
+) -> bool:
     """Email the guest that we couldn't analyze their clip (credit refunded).
 
     Renders the branded ``analyzer_failed`` template in communications_service.
@@ -64,3 +113,10 @@ async def send_failed_email(job_id: uuid.UUID, guest_email: str) -> bool:
     except Exception as exc:  # noqa: BLE001 — best-effort, never raise
         logger.warning("failed-clip email failed for job %s: %s", job_id, exc)
         return False
+    finally:
+        await _send_usage_email(
+            job_id=job_id,
+            guest_email=guest_email,
+            outcome="failed",
+            provider_usage=provider_usage,
+        )

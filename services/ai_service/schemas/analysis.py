@@ -8,7 +8,6 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ── Request body ─────────────────────────────────────────────────
 
 
@@ -28,6 +27,31 @@ class InspectRequest(BaseModel):
 
     aspect: str = Field(description="aspect id: body_line | recovery_elbow | …")
     instance_id: int = Field(ge=0, description="which instance of that aspect/phase")
+
+
+class PublicDirectUploadRequest(BaseModel):
+    """Start a direct browser-to-S3 public analyzer upload."""
+
+    guest_email: str
+    filename: str = "clip.mp4"
+    content_type: str = "video/mp4"
+    size_bytes: int = Field(gt=0)
+    stroke_type: str = "freestyle"
+    discipline: str = "general"
+    level: Optional[str] = None
+    focus_area: Optional[str] = None
+    goal_text: Optional[str] = None
+
+
+class PublicDirectUploadResponse(BaseModel):
+    """Private presigned PUT target for a public analyzer upload."""
+
+    job_id: uuid.UUID
+    guest_token: str
+    upload_url: str
+    method: str = "PUT"
+    headers: dict[str, str] = {}
+    expires_in: int
 
 
 # ── Lifecycle response (no result yet) ───────────────────────────
@@ -117,6 +141,9 @@ class AnalysisResultPayload(BaseModel):
     # Signed shareable-card URLs, same "<component>:<index>" keying (one per FIX
     # finding). Signed at response time; None if absent.
     coach_share_urls: Optional[dict[str, str]] = None
+    # Per-instance on-demand coach jobs, keyed "<aspect>:<instance_id>". This gives
+    # the frontend status/backoff visibility while a stroke read is queued/retrying.
+    inspect_statuses: Optional[dict[str, dict]] = None
 
 
 class AnalysisJobDetailResponse(AnalysisJobResponse):
@@ -144,6 +171,7 @@ class PublicAnalysisJobResponse(BaseModel):
     guest_token: str
     credits_remaining: int = 0
     estimated_ready_hint: str = "We'll email you a link as soon as it's ready."
+    queue_depth: Optional[int] = None
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -171,6 +199,7 @@ class PublicAnalysisJobDetailResponse(BaseModel):
     result: Optional[AnalysisResultPayload] = None
     original_video_url: Optional[str] = None
     annotated_video_url: Optional[str] = None
+    queue_depth: Optional[int] = None
 
 
 class GumroadRedeemRequest(BaseModel):

@@ -28085,6 +28085,123 @@
         }
       }
     },
+    "/api/v1/ai/public/analyze/uploads": {
+      "post": {
+        "tags": [
+          "stroke-lab-public"
+        ],
+        "summary": "Create a guest job and issue a media-service upload URL",
+        "description": "Issue a media-service-owned presigned PUT target for the analyzer.\n\nThis is the preferred browser path for real videos: the API never buffers the\nmultipart body, and analysis is not queued until /complete verifies the object.\nThe legacy multipart endpoint below remains as a fallback for local/dev.",
+        "operationId": "create_public_direct_upload_ai_public_analyze_uploads_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicDirectUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicDirectUploadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/public/analyze/{job_id}/complete-upload": {
+      "post": {
+        "tags": [
+          "stroke-lab-public"
+        ],
+        "summary": "Verify a direct upload, reserve credit, and queue analysis",
+        "operationId": "complete_public_direct_upload_ai_public_analyze__job_id__complete_upload_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "guest_token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Guest Token"
+            }
+          },
+          {
+            "name": "X-Guest-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Guest-Token"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicAnalysisJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/public/analyze": {
       "post": {
         "tags": [
@@ -39690,6 +39807,243 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/internal/media/direct-uploads": {
+      "post": {
+        "tags": [
+          "media-internal"
+        ],
+        "summary": "Create Direct Upload",
+        "description": "Issue a media-owned presigned PUT URL for browser direct uploads.",
+        "operationId": "create_direct_upload_internal_media_direct_uploads_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalDirectUploadCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalDirectUploadCreateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/media/objects/verify": {
+      "post": {
+        "tags": [
+          "media-internal"
+        ],
+        "summary": "Verify Object",
+        "description": "Return object metadata after a direct upload completes.",
+        "operationId": "verify_object_internal_media_objects_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalObjectVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalObjectMetadataResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/media/objects/sign": {
+      "post": {
+        "tags": [
+          "media-internal"
+        ],
+        "summary": "Sign Object",
+        "description": "Return a short-lived read URL for a private media object.",
+        "operationId": "sign_object_internal_media_objects_sign_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalObjectSignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalObjectSignResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/media/objects/upload": {
+      "post": {
+        "tags": [
+          "media-internal"
+        ],
+        "summary": "Upload Object",
+        "description": "Upload small generated media artifacts owned by another service.",
+        "operationId": "upload_object_internal_media_objects_upload_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalObjectUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalObjectUploadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/media/objects/delete": {
+      "post": {
+        "tags": [
+          "media-internal"
+        ],
+        "summary": "Delete Object",
+        "description": "Best-effort object deletion by key.",
+        "operationId": "delete_object_internal_media_objects_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalObjectVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Delete Object Internal Media Objects Delete Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/media/admin/enrollments/{enrollment_id}/evidence": {
@@ -77312,6 +77666,21 @@
               }
             ],
             "title": "Coach Share Urls"
+          },
+          "inspect_statuses": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inspect Statuses"
           }
         },
         "type": "object",
@@ -78218,6 +78587,17 @@
               }
             ],
             "title": "Annotated Video Url"
+          },
+          "queue_depth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Depth"
           }
         },
         "type": "object",
@@ -78258,6 +78638,17 @@
             "type": "string",
             "title": "Estimated Ready Hint",
             "default": "We'll email you a link as soon as it's ready."
+          },
+          "queue_depth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Depth"
           },
           "created_at": {
             "type": "string",
@@ -78323,6 +78714,122 @@
         ],
         "title": "PublicCreditsResponse",
         "description": "GET /ai/public/credits \u2014 coarse, non-enumerable balance. ``free_used`` is\nintentionally NOT exposed (it is the 'has this email been used' leak)."
+      },
+      "PublicDirectUploadRequest": {
+        "properties": {
+          "guest_email": {
+            "type": "string",
+            "title": "Guest Email"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "default": "clip.mp4"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type",
+            "default": "video/mp4"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Size Bytes"
+          },
+          "stroke_type": {
+            "type": "string",
+            "title": "Stroke Type",
+            "default": "freestyle"
+          },
+          "discipline": {
+            "type": "string",
+            "title": "Discipline",
+            "default": "general"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "focus_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus Area"
+          },
+          "goal_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "guest_email",
+          "size_bytes"
+        ],
+        "title": "PublicDirectUploadRequest",
+        "description": "Start a direct browser-to-S3 public analyzer upload."
+      },
+      "PublicDirectUploadResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "guest_token": {
+            "type": "string",
+            "title": "Guest Token"
+          },
+          "upload_url": {
+            "type": "string",
+            "title": "Upload Url"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method",
+            "default": "PUT"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Headers",
+            "default": {}
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "guest_token",
+          "upload_url",
+          "expires_in"
+        ],
+        "title": "PublicDirectUploadResponse",
+        "description": "Private presigned PUT target for a public analyzer upload."
       },
       "QueueRecentJob": {
         "properties": {
@@ -92203,6 +92710,265 @@
           "file"
         ],
         "title": "Body_upload_media_media_media_post"
+      },
+      "InternalDirectUploadCreateRequest": {
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "default": "upload.bin"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type",
+            "default": "application/octet-stream"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Size Bytes"
+          },
+          "linked_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linked Id"
+          },
+          "expires_in": {
+            "type": "integer",
+            "maximum": 3600.0,
+            "minimum": 60.0,
+            "title": "Expires In",
+            "default": 900
+          }
+        },
+        "type": "object",
+        "required": [
+          "purpose",
+          "size_bytes"
+        ],
+        "title": "InternalDirectUploadCreateRequest",
+        "description": "Service-to-service request for a browser direct-upload target."
+      },
+      "InternalDirectUploadCreateResponse": {
+        "properties": {
+          "object_key": {
+            "type": "string",
+            "title": "Object Key"
+          },
+          "bucket_type": {
+            "type": "string",
+            "title": "Bucket Type"
+          },
+          "upload_url": {
+            "type": "string",
+            "title": "Upload Url"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method",
+            "default": "PUT"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Headers"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_key",
+          "bucket_type",
+          "upload_url",
+          "headers",
+          "expires_in"
+        ],
+        "title": "InternalDirectUploadCreateResponse",
+        "description": "Presigned PUT target plus the opaque media object key."
+      },
+      "InternalObjectMetadataResponse": {
+        "properties": {
+          "object_key": {
+            "type": "string",
+            "title": "Object Key"
+          },
+          "bucket_type": {
+            "type": "string",
+            "title": "Bucket Type"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
+          "etag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Etag"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_key",
+          "bucket_type",
+          "size_bytes"
+        ],
+        "title": "InternalObjectMetadataResponse"
+      },
+      "InternalObjectSignRequest": {
+        "properties": {
+          "object_key": {
+            "type": "string",
+            "title": "Object Key"
+          },
+          "bucket_type": {
+            "type": "string",
+            "title": "Bucket Type",
+            "default": "private"
+          },
+          "expires_in": {
+            "type": "integer",
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "title": "Expires In",
+            "default": 3600
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_key"
+        ],
+        "title": "InternalObjectSignRequest"
+      },
+      "InternalObjectSignResponse": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "expires_in"
+        ],
+        "title": "InternalObjectSignResponse"
+      },
+      "InternalObjectUploadRequest": {
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "default": "upload.bin"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type",
+            "default": "application/octet-stream"
+          },
+          "data_base64": {
+            "type": "string",
+            "title": "Data Base64"
+          },
+          "linked_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linked Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "purpose",
+          "data_base64"
+        ],
+        "title": "InternalObjectUploadRequest",
+        "description": "Service-to-service small-object upload.\n\nLarge browser uploads should use InternalDirectUploadCreateRequest instead."
+      },
+      "InternalObjectUploadResponse": {
+        "properties": {
+          "object_key": {
+            "type": "string",
+            "title": "Object Key"
+          },
+          "bucket_type": {
+            "type": "string",
+            "title": "Bucket Type"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_key",
+          "bucket_type",
+          "url"
+        ],
+        "title": "InternalObjectUploadResponse"
+      },
+      "InternalObjectVerifyRequest": {
+        "properties": {
+          "object_key": {
+            "type": "string",
+            "title": "Object Key"
+          },
+          "bucket_type": {
+            "type": "string",
+            "title": "Bucket Type",
+            "default": "private"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_key"
+        ],
+        "title": "InternalObjectVerifyRequest"
       },
       "MediaDownloadResponse": {
         "properties": {

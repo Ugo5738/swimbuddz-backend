@@ -13,18 +13,19 @@ in the next file (queue monitoring).
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 from typing import Annotated, Optional
 
 from arq import create_pool
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.ai_service.analysis.storage import (
     delete_job_assets,
     signed_url_for_annotated,
@@ -32,11 +33,7 @@ from services.ai_service.analysis.storage import (
     upload_user_video,
 )
 from services.ai_service.constants import MEMBER_QUEUE_NAME
-from services.ai_service.models import (
-    AnalysisJob,
-    AnalysisJobStatus,
-    AnalysisResult,
-)
+from services.ai_service.models import AnalysisJob, AnalysisJobStatus, AnalysisResult
 from services.ai_service.routers._common import (
     build_result_payload,
     parse_coach_context,
@@ -53,6 +50,7 @@ from services.ai_service.services.drilldown import (
     existing_inspect_finding,
     validate_inspect,
 )
+from services.ai_service.services.inspect_status import inspect_key, set_inspect_status
 
 logger = get_logger(__name__)
 
@@ -65,6 +63,7 @@ SUPPORTED_STROKES = {"freestyle"}
 # Hard upload limit per the design doc.
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 MAX_LIST_LIMIT = 50
+_ACTIVE_INSPECT_STATUSES = {"queued", "processing", "retrying"}
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -149,26 +148,100 @@ async def _enqueue_analysis(
             raise
 
 
+async def _queue_depth(queue_name: str = MEMBER_QUEUE_NAME) -> int | None:
+    """Best-effort ARQ queue depth for UX/backpressure hints."""
+    pool = await create_pool(get_redis_settings())
+    try:
+        return int(await pool.zcard(queue_name))
+    except Exception:
+        logger.debug("Could not read ARQ queue depth for %s", queue_name, exc_info=True)
+        return None
+    finally:
+        await pool.close()
+
+
 async def _enqueue_inspect(
     job_id: uuid.UUID,
     aspect: str,
     instance_id: int,
     queue_name: str = MEMBER_QUEUE_NAME,
+    *,
+    attempt: int = 1,
+    defer_by_seconds: float | None = None,
 ) -> None:
     """Push a per-stroke drilldown task onto an AI queue. Raises on failure so the
     caller can surface a 502 (no credit is charged for inspect today, so there's
     nothing to refund)."""
     pool = await create_pool(get_redis_settings())
     try:
+        kwargs = {}
+        if defer_by_seconds:
+            kwargs["_defer_by"] = timedelta(seconds=defer_by_seconds)
         await pool.enqueue_job(
             "task_inspect_instance",
             str(job_id),
             aspect,
             instance_id,
+            attempt,
             _queue_name=queue_name,
+            **kwargs,
         )
     finally:
         await pool.close()
+
+
+async def _start_inspect_job(
+    db: AsyncSession,
+    *,
+    job_id: uuid.UUID,
+    result_row: AnalysisResult,
+    aspect: str,
+    instance_id: int,
+    queue_name: str,
+) -> dict:
+    """Persist visible inspect status, then enqueue the worker task."""
+    key = inspect_key(aspect, instance_id)
+    current = ((result_row.coach_result or {}).get("inspect_jobs") or {}).get(key)
+    if current and current.get("status") in _ACTIVE_INSPECT_STATUSES:
+        return {
+            "status": current.get("status"),
+            "inspect_status": current,
+            "queue_depth": current.get("queue_depth"),
+        }
+
+    depth = await _queue_depth(queue_name)
+    estimated_depth = depth + 1 if depth is not None else None
+    payload = await set_inspect_status(
+        db,
+        job_id=job_id,
+        aspect=aspect,
+        instance_id=instance_id,
+        status="queued",
+        attempt=1,
+        message="Queued for the video coach.",
+        queue_depth=estimated_depth,
+    )
+    await db.commit()
+    try:
+        await _enqueue_inspect(job_id, aspect, instance_id, queue_name, attempt=1)
+    except Exception:
+        await set_inspect_status(
+            db,
+            job_id=job_id,
+            aspect=aspect,
+            instance_id=instance_id,
+            status="failed",
+            attempt=1,
+            message="Could not queue the video coach. Try again.",
+            error_reason="queue_failed",
+        )
+        await db.commit()
+        raise
+    return {
+        "status": "queued",
+        "inspect_status": payload,
+        "queue_depth": estimated_depth,
+    }
 
 
 # ── POST /ai/analyze ─────────────────────────────────────────────
@@ -356,10 +429,16 @@ async def inspect_analysis(
         return {"status": "ready", "finding": existing}  # already coached → $0
     validate_inspect(result_row, req.aspect, req.instance_id)
     try:
-        await _enqueue_inspect(job_id, req.aspect, req.instance_id, MEMBER_QUEUE_NAME)
+        return await _start_inspect_job(
+            db,
+            job_id=job_id,
+            result_row=result_row,
+            aspect=req.aspect,
+            instance_id=req.instance_id,
+            queue_name=MEMBER_QUEUE_NAME,
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Could not queue inspect") from exc
-    return {"status": "inspecting"}
 
 
 # ── DELETE /ai/analyze/{job_id} ──────────────────────────────────
