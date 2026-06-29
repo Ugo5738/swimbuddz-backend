@@ -60,18 +60,26 @@ def existing_inspect_finding(
     result_row: AnalysisResult, aspect: str, instance_id: int
 ) -> Optional[dict]:
     """The already-coached finding for this aspect+instance, if any — so a re-view
-    returns instantly and never re-charges. Matches on (area, instance_id)."""
+    returns instantly and never re-charges. Matches on (area, instance_id); the
+    'chunk' meta-aspect (the full multi-aspect read) matches any chunk_coach finding
+    on the instance."""
     results = ((result_row.coach_result or {}).get("result") or {}).get("results") or []
     for bucket in results:
         for f in bucket.get("findings") or []:
-            if f.get("area") == aspect and f.get("instance_id") == instance_id:
+            if f.get("instance_id") != instance_id:
+                continue
+            if aspect == "chunk":
+                if bucket.get("component") == "chunk_coach":
+                    return f
+            elif f.get("area") == aspect:
                 return f
     return None
 
 
 def validate_inspect(result_row: AnalysisResult, aspect: str, instance_id: int) -> None:
-    """400/404 if the aspect is unknown or the instance isn't in this run."""
-    if aspect not in ASPECTS:
+    """400/404 if the aspect is unknown or the instance isn't in this run. 'chunk'
+    is the full multi-aspect read for one stroke (the same the free chunks get)."""
+    if aspect != "chunk" and aspect not in ASPECTS:
         raise HTTPException(status_code=400, detail=f"Unknown aspect: {aspect}")
     cache = (result_row.coach_result or {}).get("cache") or {}
     instances = cache.get("instances") or []

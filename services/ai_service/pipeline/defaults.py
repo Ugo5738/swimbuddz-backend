@@ -75,6 +75,9 @@ _ASPECT_COMPONENTS = {
     "body_line": BodyLineComponent,
     "entry_reach": EntryReachComponent,
     "head_breath": HeadBreathingComponent,
+    # The full multi-aspect read for ONE stroke — the SAME component the free flow
+    # runs on the pre-coached chunks, so on-demand and the full flow are identical.
+    "chunk": ChunkCoachComponent,
 }
 
 

@@ -36,6 +36,7 @@ from services.ai_service.pipeline.components.aspect import (
 )
 from services.ai_service.pipeline.types import (
     ComponentResult,
+    Finding,
     Granularity,
     InputProfile,
     Instance,
@@ -297,3 +298,37 @@ class ChunkCoachComponent(AspectCoachComponent):
                 )
             )
         return out
+
+    async def coach_instances(self, ctx: RunContext, instance_id: int) -> list[Finding]:
+        """On-demand: coach ONE chosen recovery on EVERY visible aspect — the SAME
+        multi-aspect video read the free chunks get (recovery, rotation, head, body
+        line). Reuses run()'s chunk-clip + cache + grade machinery for one instance;
+        returns all its findings, or [] if the instance isn't in this run."""
+        inst = next(
+            (
+                i
+                for i in ctx.instances
+                if i.phase == self.consumes
+                and i.instance_id == instance_id
+                and (not self.arm or i.arm == self.arm)
+            ),
+            None,
+        )
+        strip = ctx.strip or ctx.frames
+        if inst is None or not strip:
+            return []
+        window = self._window(inst, strip)
+        goal = build_goal_block(ctx.coaching)
+        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{COACH_VOICE}"
+        if goal:
+            system_prompt = f"{system_prompt}\n\n{goal}"
+        cache = ctx.cache
+        key = f"{self.name}:{inst.instance_id}"
+        if cache is not None and key in cache:
+            parsed = cache[key]  # replay — no API
+        else:
+            clip = self._read_chunk(ctx, inst) if ctx.config.coach_video else None
+            parsed, _ = await self._coach_chunk(window, clip, system_prompt, ctx)
+            if cache is not None:
+                cache[key] = parsed
+        return self._findings_multi(parsed, inst, window, ctx)
