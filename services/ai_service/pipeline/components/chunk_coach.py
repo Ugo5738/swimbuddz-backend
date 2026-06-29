@@ -19,6 +19,7 @@ the whole component is unit-testable with NO API.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import subprocess
@@ -29,6 +30,7 @@ from pathlib import Path
 from libs.common.logging import get_logger
 from services.ai_service.coach.rubric import build_goal_block
 from services.ai_service.pipeline.components.aspect import (
+    COACH_VOICE,
     AspectCoachComponent,
     _representatives,
 )
@@ -52,29 +54,62 @@ CHUNK_PAD_S = 2.0
 # re-grade them for the swimmer's discipline. "not visible" is a first-class
 # answer — guessing an unseen aspect is the dishonesty we explicitly forbid.
 CHUNK_PROMPT = """\
-You are an expert freestyle swimming coach watching a SHORT VIDEO CLIP of ONE \
-stroke cycle — the camera-side arm swinging forward over the water, and the body \
-around it. WATCH THE MOTION across the clip.
+You are an expert freestyle coach (Total Immersion trained) watching a SHORT ~4s \
+VIDEO CLIP of ONE freestyle stroke, filmed side-on: the camera-side arm recovering \
+forward over the water as the body rolls around it. WATCH THE MOTION across the \
+clip and judge the whole stroke, not one frozen frame.
 
-Assess ONLY the aspects you can CLEARLY see from this angle. If an aspect is not \
-clearly visible, mark it not visible — do NOT guess.
+Assess ONLY what you can CLEARLY see. If an aspect is hidden underwater, off-frame, \
+blurred, or ambiguous, set "visible": false, "verdict": "unclear", "note": "", \
+"confidence": 0.0 — do NOT guess. NEVER invent a fault or a strength. Reading fewer \
+aspects honestly beats reading all four with bluffs.
 
-Aspects and their allowed verdicts:
-- recovery_elbow: "high" (elbow leads, above the hand) | "wide" (swung out to the \
-side) | "dropped" (low/trailing) | "unclear"
-- body_rotation: "good" (body rolls onto each side) | "limited" (stays flat) | \
-"unclear"
-- head_breath: "neutral" (head still, eyes down) | "lifted" (head/eyes forward, \
-sinking the hips) | "unclear"
-- body_line: "flat" (hips and legs ride near the surface) | "hips_low" | \
-"legs_low" | "piked" | "arched" | "unclear"
+For each aspect, pick the ONE verdict the clip actually shows. Use ONLY these exact \
+strings:
 
-For each aspect, write ONE short, plain-English sentence describing what you saw \
-(no jargon). Return ONLY this JSON:
+recovery_elbow — the over-water arm swinging forward:
+- "high": elbow rides above and ahead of the hand; hand soft, low, close to the \
+water; forearm relaxed — a loose high-elbow recovery. (best)
+- "wide": the whole arm swings out to the side, hand looping far from the body, \
+straight/stiff or windmilled rather than led by the elbow.
+- "dropped": elbow sits low, at or below the hand; arm thrown straight or trailing, \
+so the hand leads instead of the elbow.
+- "unclear"
+
+body_rotation — roll on the long (head-to-toe) axis as the arm recovers:
+- "good": the body clearly rolls onto its side — hip and shoulder turn together \
+toward the recovering arm.
+- "limited": the body stays flat/belly-down, shoulders and hips square to the \
+bottom, little or no roll.
+- "unclear"
+
+head_breath — head and gaze:
+- "neutral": head still and heavy, eyes down toward the bottom, waterline near the \
+crown; head moves with the roll, not on its own.
+- "lifted": head/eyes pushed forward or up (looking down the lane), neck cranked, \
+forehead high.
+- "unclear" (e.g. a mid-breath turn where resting head position can't be judged).
+
+body_line — how level the body rides (long, balanced, "swimming downhill"):
+- "flat": long and level, hips and legs near the surface. (best)
+- "hips_low": hips/seat sag below the line while the chest stays up.
+- "legs_low": legs/feet sink and drag below the surface, dropping the back half.
+- "piked": body folds at the hips into a shallow V (jackknife).
+- "arched": lower back over-extends (banana), chest/head up, hips dropped.
+- "unclear"
+
+Classify what you SEE, never the discipline you assume.
+
+For each visible aspect, write "note" as ONE short plain-English sentence spoken \
+DIRECTLY to the swimmer ("you", "your") describing what you actually saw — no \
+jargon, no numbers, no frame talk. Set "confidence" by how clearly the clip shows \
+it (lower for distant, blurred, or part-hidden views).
+
+Return ONLY this JSON, nothing else:
 {"aspects": [
   {"aspect": "recovery_elbow", "visible": true, "verdict": "<enum>", "note": "<sentence>", "confidence": 0.0-1.0},
   {"aspect": "body_rotation", "visible": true, "verdict": "<enum>", "note": "<sentence>", "confidence": 0.0-1.0},
-  {"aspect": "head_breath", "visible": false, "verdict": "unclear", "note": "", "confidence": 0.0},
+  {"aspect": "head_breath", "visible": true, "verdict": "<enum>", "note": "<sentence>", "confidence": 0.0-1.0},
   {"aspect": "body_line", "visible": true, "verdict": "<enum>", "note": "<sentence>", "confidence": 0.0-1.0}
 ]}"""
 
@@ -157,14 +192,14 @@ class ChunkCoachComponent(AspectCoachComponent):
         strip = ctx.strip or ctx.frames
         reps = _representatives(insts, self._rep_cap(ctx))
         goal = build_goal_block(ctx.coaching)
-        system_prompt = (
-            f"{self.SYSTEM_PROMPT}\n\n{goal}" if goal else self.SYSTEM_PROMPT
-        )
+        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{COACH_VOICE}"
+        if goal:
+            system_prompt = f"{system_prompt}\n\n{goal}"
 
         cache = ctx.cache
         findings = []
         cost = 0.0
-        for inst in reps:
+        for idx, inst in enumerate(reps):
             window = self._window(inst, strip)  # peak frames → evidence/thumbnail
             key = f"{self.name}:{inst.instance_id}"
             if cache is not None and key in cache:
@@ -175,6 +210,9 @@ class ChunkCoachComponent(AspectCoachComponent):
                 cost += c
                 if cache is not None:
                     cache[key] = parsed
+                # Space the chunk calls so 3 Gemini video calls don't burst the cap.
+                if ctx.config.coach_call_delay_s and idx < len(reps) - 1:
+                    await asyncio.sleep(ctx.config.coach_call_delay_s)
             findings.extend(self._findings_multi(parsed, inst, window, ctx))
 
         return ComponentResult(

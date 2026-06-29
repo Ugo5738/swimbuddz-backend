@@ -53,6 +53,21 @@ class Event(Base):
     )  # minimum tier required: community/club/academy
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
+    # --- Member-created pool meets (event_type="open_swim") ---
+    # Selected pool for a paid pool meet. Plain cross-service ref to pools_service
+    # (no FK by architecture). NULL = no pool / informal venue / free meet.
+    # Members may only select active-partner pools that bill per-swimmer.
+    pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    # Per-swimmer pool fee snapshotted from the pool at creation (kobo). NULL = free.
+    pool_fee_kobo: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Organizer's optional add-on charged per attendee (kobo). Collected into the
+    # company account; the organizer's share is disbursed manually off-platform.
+    organizer_surcharge_kobo: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )

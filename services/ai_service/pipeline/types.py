@@ -151,6 +151,10 @@ class PipelineConfig:
     max_coached_recoveries: int = (
         1  # don't auto-VLM every recovery — coach a representative
     )
+    # Seconds to wait between successive VLM calls within one analysis. Spaces the
+    # per-chunk coach + multi-rep aspect calls so several Gemini calls don't burst
+    # the free-tier per-minute limit. 0 = no delay (the patient retry is the backstop).
+    coach_call_delay_s: float = 0.0
 
 
 # ── Goal-aware coaching (Stage-2 §12) ─────────────────────────────────────────
@@ -202,6 +206,10 @@ class RunContext:
     # When set (a dict), components replay their PAID VLM outputs from it instead of
     # calling the API — so reusing a saved run costs $0. None = always call the VLM.
     cache: Optional[dict] = None
+    # Accumulated as each analysis component completes (the runner extends it) so a
+    # late component (the aggregator) can read EVERY prior finding without a
+    # cross-component channel. Empty until the runner starts the analysis loop.
+    run_findings: list[Finding] = field(default_factory=list)
 
 
 @dataclass

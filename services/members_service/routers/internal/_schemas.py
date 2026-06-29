@@ -25,6 +25,9 @@ class MemberBasic(BaseModel):
     phone: str | None = None
     community_paid_until: str | None = None
     profile_photo_url: str | None = None
+    # ISO-8601 date-of-birth (from MemberProfile). Used by cross-service callers
+    # for age gates (e.g. events_service adults-only meets). None if unset.
+    date_of_birth: str | None = None
 
 
 class CoachProfileBasic(BaseModel):

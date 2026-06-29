@@ -108,6 +108,16 @@ class Settings(BaseSettings):
     STROKELAB_COACH_ENTRY: bool = False  # Stage-2 entry/reach aspect (off until eval)
     STROKELAB_COACH_HEAD: bool = False  # Stage-2 head/breathing aspect (off until eval)
     STROKELAB_COACH_HOLISTIC: bool = True  # whole-clip coach
+    # Chunk-centric coach (the holistic replacement): coach EACH free recovery chunk
+    # on every visible aspect in one video call, then aggregate into a summary. OFF
+    # until the frontend renders the new shape — flip CHUNK + AGGREGATE on and
+    # HOLISTIC off together (a coordinated backend+frontend deploy).
+    STROKELAB_COACH_CHUNK: bool = False  # per-chunk multi-aspect video coach
+    STROKELAB_COACH_AGGREGATE: bool = False  # collated summary over the chunk findings
+    # Seconds between successive VLM calls in one analysis — spaces the per-chunk +
+    # multi-rep calls so they don't burst Gemini's free-tier per-minute cap (async
+    # job, the user waits). 0 = no spacing (the patient retry is the backstop).
+    STROKELAB_COACH_INTER_VLM_DELAY_S: float = 0.0
     STROKELAB_COACH_POSE_RECOVERY: bool = False  # Stage-1 deterministic pose recovery
     # count (yolov8-pose). OFF by default: runs the pose model on dense frames per job
     # (worker CPU) — enable per-env once the box is sized. Gates the count/drilldown

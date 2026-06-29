@@ -5,6 +5,8 @@ from services.events_service.schemas.main import (
     EventCreate,
     EventResponse,
     EventUpdate,
+    OpenSwimCreate,
+    OpenSwimUpdate,
     RSVPCreate,
     RSVPResponse,
 )
@@ -14,6 +16,8 @@ __all__ = [
     "EventCreate",
     "EventResponse",
     "EventUpdate",
+    "OpenSwimCreate",
+    "OpenSwimUpdate",
     "RSVPCreate",
     "RSVPResponse",
 ]

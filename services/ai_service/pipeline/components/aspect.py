@@ -18,6 +18,7 @@ wording (the prompt block) and priority (grade). Absent instances → zero findi
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Awaitable, Callable, Optional
 
@@ -36,6 +37,15 @@ from services.ai_service.pipeline.types import (
 
 # coach_fn(frames, *, system_prompt, model, image_detail, max_tokens) -> (dict, cost)
 CoachFn = Callable[..., Awaitable[tuple[dict, float]]]
+
+# Every coaching note is spoken DIRECTLY to the swimmer ("you"/"your"), the way a
+# coach on the pool deck talks — never "the swimmer"/third person. Appended to every
+# coach system prompt so the voice is consistent across components.
+COACH_VOICE = (
+    "VOICE: Write every note speaking DIRECTLY to the swimmer as 'you' and 'your' "
+    "(e.g. \"your elbow leads the recovery nicely\") — never 'the swimmer', 'he', "
+    "or 'she', and never the third person."
+)
 
 
 async def _vlm_coach(
@@ -156,7 +166,7 @@ class AspectCoachComponent(Component):
         strip = ctx.strip or ctx.frames
         coach_fn = self._coach_fn or _vlm_coach
 
-        system_prompt = self.SYSTEM_PROMPT
+        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{COACH_VOICE}"
         goal = build_goal_block(ctx.coaching)  # soft, honesty-fenced clause (or "")
         if goal:
             system_prompt = f"{system_prompt}\n\n{goal}"
@@ -164,7 +174,8 @@ class AspectCoachComponent(Component):
         cache = ctx.cache
         findings: list[Finding] = []
         cost = 0.0
-        for inst in _representatives(insts, self._rep_cap(ctx)):
+        reps = _representatives(insts, self._rep_cap(ctx))
+        for idx, inst in enumerate(reps):
             window = self._window(inst, strip)
             key = f"{self.name}:{inst.instance_id}"
             if cache is not None and key in cache:
@@ -179,6 +190,9 @@ class AspectCoachComponent(Component):
                 )
                 if cache is not None:
                     cache[key] = parsed
+                # Space successive PAID calls so they don't burst the per-minute cap.
+                if ctx.config.coach_call_delay_s and idx < len(reps) - 1:
+                    await asyncio.sleep(ctx.config.coach_call_delay_s)
             cost += c
             findings.extend(self._findings(parsed, inst, window, ctx))
 
@@ -211,7 +225,7 @@ class AspectCoachComponent(Component):
         if inst is None or not strip:
             return None
         window = self._window(inst, strip)
-        system_prompt = self.SYSTEM_PROMPT
+        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{COACH_VOICE}"
         goal = build_goal_block(ctx.coaching)
         if goal:
             system_prompt = f"{system_prompt}\n\n{goal}"

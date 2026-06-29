@@ -191,6 +191,11 @@ async def get_member_by_id(
         last_name=member.last_name,
         email=member.email,
         phone=member.profile.phone if member.profile else None,
+        date_of_birth=(
+            member.profile.date_of_birth.isoformat()
+            if member.profile and member.profile.date_of_birth
+            else None
+        ),
     )
 
 
@@ -219,6 +224,11 @@ async def get_members_bulk(
             last_name=m.last_name,
             email=m.email,
             phone=m.profile.phone if m.profile else None,
+            date_of_birth=(
+                m.profile.date_of_birth.isoformat()
+                if m.profile and m.profile.date_of_birth
+                else None
+            ),
             community_paid_until=(
                 m.membership.community_paid_until.isoformat()
                 if m.membership and m.membership.community_paid_until
