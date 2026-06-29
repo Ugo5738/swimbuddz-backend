@@ -740,8 +740,28 @@ The opt-out lives on `notification_preferences.email_birthday` (boolean, default
 #### `POST /api/v1/events/{event_id}/rsvp`
 
 - **Auth:** Required
-- **Description:** RSVP to event
+- **Description:** RSVP to event. For paid open-swim meets, joining ("going") requires `waiver_accepted: true` and the member to be 18+; the charge is the pool fee + organizer surcharge.
 - **Response 201:** `EventRSVPRead`
+
+#### `POST /api/v1/events/open-swim`
+
+- **Auth:** Required (member, 18+)
+- **Description:** Host a member-created open-swim meet. If `pool_id` is set it must be an active-partner per-swimmer pool (the per-swimmer fee is snapshotted); no pool = a free/informal meet. Quota: 3 upcoming meets per member.
+- **Body:** `OpenSwimCreate`
+- **Response 201:** `EventResponse`
+
+#### `PATCH /api/v1/events/open-swim/{event_id}`
+
+- **Auth:** Required (meet creator only)
+- **Description:** Edit a meet you created.
+- **Body:** `OpenSwimUpdate`
+- **Response 200:** `EventResponse`
+
+#### `DELETE /api/v1/events/open-swim/{event_id}`
+
+- **Auth:** Required (meet creator only)
+- **Description:** Cancel a meet you created; refunds paid attendees in Bubbles (idempotent).
+- **Response 204:** No content
 
 ---
 

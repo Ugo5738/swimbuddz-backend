@@ -54,7 +54,8 @@ async def get_member_by_id(member_id: str, *, calling_service: str) -> Optional[
     """Look up a member by their member ID.
 
     Returns dict with {id, auth_id, first_name, last_name, email, phone,
-    community_paid_until, profile_photo_url} or None. `auth_id` is the
+    community_paid_until, profile_photo_url, date_of_birth} or None.
+    `date_of_birth` is ISO-8601 (or None) — used for age gates. `auth_id` is the
     Supabase user UUID — required to call members-service activation
     endpoints which key on auth_id (e.g. `/admin/members/by-auth/{auth_id}
     /academy/activate`).

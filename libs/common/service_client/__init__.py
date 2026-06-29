@@ -38,6 +38,7 @@ from .members import (
     list_pods,
     search_members,
 )
+from .pools import get_partner_pool
 from .payments import (
     PaystackProxyError,
     _proxy_error_from,
@@ -96,6 +97,8 @@ __all__ = [
     "get_eligible_coaches",
     "get_pod_by_id",
     "list_pods",
+    # Pools
+    "get_partner_pool",
     # Academy
     "check_cohort_enrollment",
     "list_enrollment_progress",
