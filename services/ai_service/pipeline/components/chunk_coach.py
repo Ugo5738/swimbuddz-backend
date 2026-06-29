@@ -55,14 +55,22 @@ CHUNK_PAD_S = 2.0
 # answer — guessing an unseen aspect is the dishonesty we explicitly forbid.
 CHUNK_PROMPT = """\
 You are an expert freestyle coach (Total Immersion trained) watching a SHORT ~4s \
-VIDEO CLIP of ONE freestyle stroke, filmed side-on: the camera-side arm recovering \
-forward over the water as the body rolls around it. WATCH THE MOTION across the \
-clip and judge the whole stroke, not one frozen frame.
+VIDEO CLIP of ONE freestyle stroke — usually the camera-side arm recovering \
+forward over the water. The clip may be filmed from the SIDE or from an ELEVATED / \
+OVERHEAD angle on the pool deck; BOTH are coachable for what they show. WATCH THE \
+MOTION across the clip and judge the whole stroke, not one frozen frame.
 
 Assess ONLY what you can CLEARLY see. If an aspect is hidden underwater, off-frame, \
 blurred, or ambiguous, set "visible": false, "verdict": "unclear", "note": "", \
-"confidence": 0.0 — do NOT guess. NEVER invent a fault or a strength. Reading fewer \
-aspects honestly beats reading all four with bluffs.
+"confidence": 0.0 — do NOT guess. NEVER invent a fault or a strength.
+
+WHAT THE ANGLE SHOWS — do NOT refuse a coachable clip just because it isn't a \
+perfect side-on: From the SIDE you can judge all four aspects. From an ELEVATED or \
+OVERHEAD angle you can STILL clearly see the arm's recovery path (elbow high / wide \
+/ dropped), the body's rotation, and the head — COACH those. What a top-down angle \
+usually can't show is whether the hips and legs sink, so from overhead mark \
+body_line "unclear" rather than guessing. If more than one swimmer is in frame, \
+read ONLY the most prominent, most central swimmer.
 
 For each aspect, pick the ONE verdict the clip actually shows. Use ONLY these exact \
 strings:
