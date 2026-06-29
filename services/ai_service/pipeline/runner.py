@@ -126,6 +126,10 @@ async def run_pipeline(
         res = await _safe_run(comp, ctx)
         total += res.cost_usd
         results.append(res)
+        # Accumulate findings so a LATE component (the aggregator) can read every
+        # prior finding via ctx — its own findings land after it reads, so it never
+        # sees itself.
+        ctx.run_findings.extend(res.findings)
         await _emit(tier)  # persist the partial so the page can render this section
 
     return PipelineResult(

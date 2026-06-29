@@ -19,6 +19,7 @@ the whole component is unit-testable with NO API.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import subprocess
@@ -164,7 +165,7 @@ class ChunkCoachComponent(AspectCoachComponent):
         cache = ctx.cache
         findings = []
         cost = 0.0
-        for inst in reps:
+        for idx, inst in enumerate(reps):
             window = self._window(inst, strip)  # peak frames → evidence/thumbnail
             key = f"{self.name}:{inst.instance_id}"
             if cache is not None and key in cache:
@@ -175,6 +176,9 @@ class ChunkCoachComponent(AspectCoachComponent):
                 cost += c
                 if cache is not None:
                     cache[key] = parsed
+                # Space the chunk calls so 3 Gemini video calls don't burst the cap.
+                if ctx.config.coach_call_delay_s and idx < len(reps) - 1:
+                    await asyncio.sleep(ctx.config.coach_call_delay_s)
             findings.extend(self._findings_multi(parsed, inst, window, ctx))
 
         return ComponentResult(

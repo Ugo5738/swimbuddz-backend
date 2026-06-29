@@ -18,6 +18,7 @@ wording (the prompt block) and priority (grade). Absent instances → zero findi
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Awaitable, Callable, Optional
 
@@ -164,7 +165,8 @@ class AspectCoachComponent(Component):
         cache = ctx.cache
         findings: list[Finding] = []
         cost = 0.0
-        for inst in _representatives(insts, self._rep_cap(ctx)):
+        reps = _representatives(insts, self._rep_cap(ctx))
+        for idx, inst in enumerate(reps):
             window = self._window(inst, strip)
             key = f"{self.name}:{inst.instance_id}"
             if cache is not None and key in cache:
@@ -179,6 +181,9 @@ class AspectCoachComponent(Component):
                 )
                 if cache is not None:
                     cache[key] = parsed
+                # Space successive PAID calls so they don't burst the per-minute cap.
+                if ctx.config.coach_call_delay_s and idx < len(reps) - 1:
+                    await asyncio.sleep(ctx.config.coach_call_delay_s)
             cost += c
             findings.extend(self._findings(parsed, inst, window, ctx))
 

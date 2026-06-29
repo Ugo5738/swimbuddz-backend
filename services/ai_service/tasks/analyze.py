@@ -336,6 +336,7 @@ async def _run_coach_pipeline(
         coach_video_max_mb=s.STROKELAB_COACH_VIDEO_MAX_MB,
         segment_model=s.STROKELAB_COACH_SEGMENT_MODEL,
         max_coached_recoveries=s.STROKELAB_COACH_MAX_RECOVERIES,
+        coach_call_delay_s=s.STROKELAB_COACH_INTER_VLM_DELAY_S,
     )
 
     def _strip_n() -> int:

@@ -43,7 +43,9 @@ at call time with ``Registry.set_enabled(name, on)`` / ``run.py --disable <name>
 
 from __future__ import annotations
 
+from services.ai_service.pipeline.components.aggregator import AggregatorComponent
 from services.ai_service.pipeline.components.body_line import BodyLineComponent
+from services.ai_service.pipeline.components.chunk_coach import ChunkCoachComponent
 from services.ai_service.pipeline.components.collate import CollateComponent
 from services.ai_service.pipeline.components.entry_reach import EntryReachComponent
 from services.ai_service.pipeline.components.gate import GateComponent
@@ -95,11 +97,17 @@ def build_default_registry() -> Registry:
     # the per-instance coaches (so they coach the pose-derived recovery instances).
     reg.register(PoseRecoveryComponent(), enabled=s.STROKELAB_COACH_POSE_RECOVERY)
     reg.register(RecoveryCoachComponent(), enabled=s.STROKELAB_COACH_RECOVERY)
+    # Chunk-centric coach: coaches each free recovery chunk on every visible aspect
+    # (one video call/chunk). Replaces holistic + the standalone aspect coaches when on.
+    reg.register(ChunkCoachComponent(), enabled=s.STROKELAB_COACH_CHUNK)
     reg.register(BodyLineComponent(), enabled=s.STROKELAB_COACH_BODY_LINE)
     reg.register(EntryReachComponent(), enabled=s.STROKELAB_COACH_ENTRY)
     reg.register(HeadBreathingComponent(), enabled=s.STROKELAB_COACH_HEAD)
     reg.register(HolisticCoachComponent(), enabled=s.STROKELAB_COACH_HOLISTIC)
     reg.register(CollateComponent(), enabled=s.STROKELAB_COACH_COLLATE)
+    # Aggregator runs LAST (after the chunk coach + collate) so ctx.run_findings holds
+    # every per-chunk finding for it to collate into the summary + top fixes.
+    reg.register(AggregatorComponent(), enabled=s.STROKELAB_COACH_AGGREGATE)
     # Dormant underwater components — registered + pluggable, off by default.
     reg.register(CatchComponent(), enabled=s.STROKELAB_COACH_UNDERWATER)
     reg.register(PullComponent(), enabled=s.STROKELAB_COACH_UNDERWATER)
