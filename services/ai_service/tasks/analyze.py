@@ -237,6 +237,12 @@ async def analyze_swim_video(job_id: str) -> dict:
                     job_id,
                     retryable_error[:200],
                 )
+                await _mark_failed(
+                    job_uuid,
+                    "temporarily_unavailable",
+                    usage_events=_collect_usage_events(),
+                )
+                return {"status": "failed", "error": "temporarily_unavailable"}
 
             # Non-refused but empty: a coach component errored and was swallowed,
             # leaving no real findings. Don't charge for a blank read — refund and
