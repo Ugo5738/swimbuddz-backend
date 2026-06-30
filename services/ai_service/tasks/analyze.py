@@ -23,10 +23,13 @@ from __future__ import annotations
 import asyncio
 import tempfile
 import uuid
+from datetime import timedelta
 from pathlib import Path
 
+from arq import create_pool
 from sqlalchemy import delete, select
 
+from libs.common.arq_config import get_redis_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.config import AsyncSessionLocal
@@ -34,7 +37,11 @@ from services.ai_service.analysis.storage import (
     download_storage_path,
     upload_evidence_frames,
 )
-from services.ai_service.constants import PUBLIC_MAX_DURATION_SECONDS
+from services.ai_service.constants import (
+    MEMBER_QUEUE_NAME,
+    PUBLIC_MAX_DURATION_SECONDS,
+    PUBLIC_QUEUE_NAME,
+)
 from services.ai_service.models import (
     AnalysisJob,
     AnalysisJobSource,
@@ -58,6 +65,25 @@ from services.ai_service.services.provider_usage import (
 )
 
 logger = get_logger(__name__)
+
+_MAIN_COACH_COMPONENT = "chunk_coach"
+_MAIN_COACH_AUTO_RETRY_DELAYS_SECONDS = (60, 180, 600)
+_RETRYABLE_COACH_ERROR_MARKERS = (
+    "internalservererror",
+    "serviceunavailable",
+    "ratelimit",
+    "rate limit",
+    "timeout",
+    "timed out",
+    "resourceexhausted",
+    "resource exhausted",
+    "temporarily unavailable",
+    "overloaded",
+    "high demand",
+    "500",
+    "503",
+    "429",
+)
 
 
 async def analyze_swim_video(job_id: str) -> dict:
@@ -84,6 +110,17 @@ async def analyze_swim_video(job_id: str) -> dict:
         video_storage_path = job.video_storage_path
         source = job.source
         guest_token = job.guest_token
+        existing = await session.execute(
+            select(AnalysisResult).where(AnalysisResult.job_id == job_uuid)
+        )
+        existing_result = existing.scalar_one_or_none()
+        existing_payload = (
+            existing_result.coach_result
+            if existing_result is not None and existing_result.coach_result
+            else {}
+        )
+        replay_cache = existing_payload.get("cache") or None
+        retry_attempt = int((existing_payload.get("retry") or {}).get("attempt") or 0)
         # Goal-aware coaching context (§12) — captured while the session is open.
         coach_context = CoachContext(
             discipline=job.discipline,
@@ -142,7 +179,10 @@ async def analyze_swim_video(job_id: str) -> dict:
             # Run the coach (gate → classify → per-instance + holistic). A raise
             # here propagates to the failure path below.
             coach_payload = await _run_coach_pipeline(
-                uploaded_local, coach_context, on_progress=_persist_progress
+                uploaded_local,
+                coach_context,
+                on_progress=_persist_progress,
+                replay_cache=replay_cache,
             )
             if coach_payload is None:
                 # Coach disabled (STROKELAB_ENABLE_COACH off) — there is no
@@ -165,6 +205,44 @@ async def analyze_swim_video(job_id: str) -> dict:
                     usage_events=_collect_usage_events(),
                 )
                 return {"status": "refused"}
+
+            retryable_error = _main_coach_retryable_error(coach_payload)
+            if retryable_error:
+                next_attempt = retry_attempt + 1
+                if next_attempt <= len(_MAIN_COACH_AUTO_RETRY_DELAYS_SECONDS):
+                    delay = _MAIN_COACH_AUTO_RETRY_DELAYS_SECONDS[next_attempt - 1]
+                    await _mark_coach_retrying(
+                        job_uuid,
+                        coach_payload,
+                        attempt=next_attempt,
+                        delay_seconds=delay,
+                        usage_events=_collect_usage_events(),
+                    )
+                    logger.warning(
+                        "Stroke Lab job %s will retry AI coach in %ss "
+                        "(attempt %s/%s): %s",
+                        job_id,
+                        delay,
+                        next_attempt,
+                        len(_MAIN_COACH_AUTO_RETRY_DELAYS_SECONDS),
+                        retryable_error[:200],
+                    )
+                    return {
+                        "status": "retrying",
+                        "attempt": next_attempt,
+                        "delay_seconds": delay,
+                    }
+                logger.warning(
+                    "Stroke Lab job %s exhausted AI coach retries: %s",
+                    job_id,
+                    retryable_error[:200],
+                )
+                await _mark_failed(
+                    job_uuid,
+                    "temporarily_unavailable",
+                    usage_events=_collect_usage_events(),
+                )
+                return {"status": "failed", "error": "temporarily_unavailable"}
 
             # Non-refused but empty: a coach component errored and was swallowed,
             # leaving no real findings. Don't charge for a blank read — refund and
@@ -245,6 +323,8 @@ def _coach_has_content(coach_payload: dict) -> bool:
     'unavailable' placeholders (the underwater can't-see cards) don't count."""
     results = (coach_payload.get("result") or {}).get("results") or []
     for cr in results:
+        if cr.get("component") in {"gate", "collate"}:
+            continue
         for f in cr.get("findings") or []:
             if f.get("available", True) and f.get("severity") in (
                 "fix",
@@ -253,6 +333,27 @@ def _coach_has_content(coach_payload: dict) -> bool:
             ):
                 return True
     return False
+
+
+def _main_coach_retryable_error(coach_payload: dict) -> str | None:
+    """Return the transient main-coach error, if this run should auto-retry.
+
+    The count/collate stages can succeed without any coaching content. For the
+    product, ``chunk_coach`` is the essential read: if it fails on a transient
+    Gemini/LLM error, keep the job alive and retry instead of completing an empty
+    result.
+    """
+    results = (coach_payload.get("result") or {}).get("results") or []
+    for cr in results:
+        if cr.get("component") != _MAIN_COACH_COMPONENT:
+            continue
+        err = str(cr.get("error") or "")
+        if not err:
+            return None
+        low = err.lower()
+        if any(marker in low for marker in _RETRYABLE_COACH_ERROR_MARKERS):
+            return err
+    return None
 
 
 async def _download_upload(storage_path: str, workdir: Path) -> Path:
@@ -326,6 +427,7 @@ async def _run_coach_pipeline(
     video_path: Path,
     coach_context: CoachContext | None = None,
     on_progress=None,
+    replay_cache: dict | None = None,
 ) -> dict | None:
     """Run the VLM-coach pipeline; return a JSON-serialisable stored run.
 
@@ -385,7 +487,7 @@ async def _run_coach_pipeline(
         profile=InputProfile.UNKNOWN,
         config=config,
         coaching=coach_context or CoachContext(),  # goal-aware grading/framing (§12)
-        cache={},  # collect the paid VLM outputs so we can re-derive for free
+        cache=dict(replay_cache or {}),  # replay paid VLM outputs on auto-retry
         video_path=str(video_path),  # lets pose_recovery decode its own dense frames
     )
     result = await run_pipeline(ctx, build_default_registry(), on_progress=on_progress)
@@ -490,6 +592,118 @@ async def _write_partial(job_id: uuid.UUID, partial) -> None:
             await session.commit()
     except Exception:
         logger.debug("partial-progress write skipped for job %s", job_id, exc_info=True)
+
+
+def _analysis_queue_name(source: AnalysisJobSource) -> str:
+    return (
+        PUBLIC_QUEUE_NAME if source == AnalysisJobSource.PUBLIC else MEMBER_QUEUE_NAME
+    )
+
+
+def _retry_payload(
+    coach_payload: dict,
+    *,
+    attempt: int,
+    delay_seconds: int,
+    queued_at,
+) -> dict:
+    payload = {
+        k: v
+        for k, v in coach_payload.items()
+        if k not in {"evidence", "share_cards", "frame_labels"}
+    }
+    next_retry_at = queued_at + timedelta(seconds=delay_seconds)
+    payload["partial"] = True
+    payload["retry"] = {
+        "status": "retrying",
+        "attempt": attempt,
+        "max_attempts": len(_MAIN_COACH_AUTO_RETRY_DELAYS_SECONDS),
+        "next_retry_at": next_retry_at.isoformat(),
+        "message": "The AI coach hit a temporary error and is retrying automatically.",
+    }
+    result = payload.get("result")
+    if isinstance(result, dict):
+        meta = dict(result.get("meta") or {})
+        meta["ai_coach_retry"] = payload["retry"]
+        result["meta"] = meta
+    return payload
+
+
+async def _enqueue_analysis_retry(
+    job_id: uuid.UUID,
+    *,
+    queue_name: str,
+    delay_seconds: int,
+) -> None:
+    pool = await create_pool(get_redis_settings())
+    try:
+        await pool.enqueue_job(
+            "task_analyze_swim_video",
+            str(job_id),
+            _queue_name=queue_name,
+            _defer_by=timedelta(seconds=delay_seconds),
+        )
+    finally:
+        await pool.close()
+
+
+async def _mark_coach_retrying(
+    job_id: uuid.UUID,
+    coach_payload: dict,
+    *,
+    attempt: int,
+    delay_seconds: int,
+    usage_events: list[dict] | None = None,
+) -> None:
+    queued_at = utc_now()
+    queue_name = MEMBER_QUEUE_NAME
+    async with AsyncSessionLocal() as session:
+        job = await session.get(AnalysisJob, job_id)
+        if job is None:
+            return
+        queue_name = _analysis_queue_name(job.source)
+
+        if usage_events is not None:
+            run_usage = await record_usage_events(
+                session,
+                events=usage_events,
+                request_type="strokelab_analysis",
+                requesting_service="ai_service",
+            )
+            coach_payload["provider_usage"] = {
+                "run": run_usage,
+                "gemini_quota": await gemini_quota_estimate(session),
+            }
+
+        job.status = AnalysisJobStatus.PENDING
+        job.error_message = None
+        job.completed_at = None
+
+        payload = _retry_payload(
+            coach_payload,
+            attempt=attempt,
+            delay_seconds=delay_seconds,
+            queued_at=queued_at,
+        )
+        existing = await session.execute(
+            select(AnalysisResult).where(AnalysisResult.job_id == job_id)
+        )
+        row = existing.scalar_one_or_none()
+        if row is None:
+            session.add(AnalysisResult(job_id=job_id, coach_result=payload))
+        else:
+            row.coach_result = payload
+        await session.commit()
+
+    try:
+        await _enqueue_analysis_retry(
+            job_id,
+            queue_name=queue_name,
+            delay_seconds=delay_seconds,
+        )
+    except Exception:
+        logger.exception("Failed to enqueue AI coach retry for job %s", job_id)
+        await _mark_failed(job_id, "temporarily_unavailable")
 
 
 async def _write_completed(

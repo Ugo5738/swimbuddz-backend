@@ -26,10 +26,12 @@ from services.ai_service.pipeline.types import (
     RunContext,
 )
 
-# Views from which freestyle technique cannot be coached at all → hard refuse.
-_REFUSE_VIEWS = {"underwater", "overhead", "head-on"}
+# Views from which above-water freestyle technique cannot be coached at all.
+# Overhead/elevated footage can still show recovery/head/rotation, so coach it as
+# borderline rather than refusing it outright.
+_REFUSE_VIEWS = {"underwater", "head-on"}
 _CONFIDENT = 0.6  # vote agreement needed to act on a "bad" verdict
-_CLEAN = 0.67  # vote agreement needed to call an accept "clean"
+_CLEAN = 2 / 3  # vote agreement needed to call an accept "clean"
 
 
 def _tier(v: GateVerdict) -> GateTier:
@@ -39,7 +41,7 @@ def _tier(v: GateVerdict) -> GateTier:
         return GateTier.REFUSE
     if v.view in _REFUSE_VIEWS and v.agreement >= _CONFIDENT:
         return GateTier.REFUSE
-    if v.usable and v.agreement >= _CLEAN:
+    if v.usable and v.view == "side-on" and v.agreement >= _CLEAN:
         return GateTier.CLEAN
     return GateTier.BORDERLINE  # angled / split-vote / uncertain → coach with a nudge
 
