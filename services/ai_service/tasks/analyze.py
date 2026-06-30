@@ -21,6 +21,7 @@ columns (pose_detection_rate, frames_*) are honestly NULL on coach runs.
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import tempfile
 import uuid
 from datetime import timedelta
@@ -151,25 +152,26 @@ async def analyze_swim_video(job_id: str) -> dict:
             # Pull the upload into our workdir through media_service.
             uploaded_local = await _download_upload(video_storage_path, workdir_path)
 
-            # Public DoS guard: reject over-long clips BEFORE the expensive
-            # pipeline. The client also fast-fails on duration; this catches
-            # uploads that bypassed it. _mark_failed refunds the credit (a
-            # rejected clip never costs the guest). Members are unaffected.
+            # Public cost guard: upload/storage success is separate from the
+            # bounded coaching window. Long public clips are stored as-is, but
+            # the coach reads only the first configured window.
+            analysis_local = uploaded_local
             if source == AnalysisJobSource.PUBLIC:
                 duration = await asyncio.to_thread(
                     _probe_duration_seconds, uploaded_local
                 )
                 if duration is not None and duration > PUBLIC_MAX_DURATION_SECONDS:
                     logger.info(
-                        "Public job %s rejected: %.1fs exceeds %ss cap",
+                        "Public job %s uses %.1fs analysis window from %.1fs clip",
                         job_id,
+                        PUBLIC_MAX_DURATION_SECONDS,
                         duration,
+                    )
+                    analysis_local = await _create_analysis_window_clip(
+                        uploaded_local,
+                        workdir_path,
                         PUBLIC_MAX_DURATION_SECONDS,
                     )
-                    await _mark_failed(
-                        job_uuid, "too_long", usage_events=_collect_usage_events()
-                    )
-                    return {"status": "failed", "error": "too_long"}
 
             # Persist each stage as it finishes so the result page renders
             # section-by-section (progressive rendering). Best-effort.
@@ -179,7 +181,7 @@ async def analyze_swim_video(job_id: str) -> dict:
             # Run the coach (gate → classify → per-instance + holistic). A raise
             # here propagates to the failure path below.
             coach_payload = await _run_coach_pipeline(
-                uploaded_local,
+                analysis_local,
                 coach_context,
                 on_progress=_persist_progress,
                 replay_cache=replay_cache,
@@ -377,6 +379,53 @@ def _probe_duration_seconds(path: Path) -> float | None:
     if fps <= 0 or frames <= 0:
         return None
     return frames / fps
+
+
+async def _create_analysis_window_clip(
+    video_path: Path,
+    workdir: Path,
+    max_seconds: int,
+) -> Path:
+    """Create a temporary first-window clip for public analysis.
+
+    The original upload remains stored untouched; this file only bounds compute
+    and model cost for the worker.
+    """
+    out = workdir / f"{video_path.stem}_analysis_window.mp4"
+    await asyncio.to_thread(_trim_video_sync, video_path, out, max_seconds)
+    return out
+
+
+def _trim_video_sync(video_path: Path, out: Path, max_seconds: int) -> None:
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(video_path),
+        "-t",
+        str(max_seconds),
+        "-map",
+        "0:v:0",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "24",
+        "-movflags",
+        "+faststart",
+        str(out),
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=180)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError("Could not prepare analysis window") from exc
+    if not out.exists() or out.stat().st_size <= 0:
+        raise RuntimeError("Analysis window clip was empty")
 
 
 def _coach_enabled() -> bool:
