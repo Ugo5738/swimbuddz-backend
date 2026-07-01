@@ -68,7 +68,7 @@ from services.ai_service.services.provider_usage import (
 logger = get_logger(__name__)
 
 _MAIN_COACH_COMPONENT = "chunk_coach"
-_MAIN_COACH_AUTO_RETRY_DELAYS_SECONDS = (60, 180, 600)
+_MAIN_COACH_AUTO_RETRY_DELAYS_SECONDS = (120, 300, 900, 1800, 3600)
 _RETRYABLE_COACH_ERROR_MARKERS = (
     "internalservererror",
     "serviceunavailable",
@@ -197,18 +197,10 @@ async def analyze_swim_video(job_id: str) -> dict:
                 )
                 return {"status": "failed", "error": "coach_unavailable"}
 
-            # Gate refusal: an above-water/side-on clip we can't read. Refund and
-            # surface the "film a side-on clip" guidance — we won't guess.
-            if _coach_refused(coach_payload):
-                logger.info("Stroke Lab job %s refused by the gate", job_id)
-                await _mark_failed(
-                    job_uuid,
-                    "could_not_track",
-                    usage_events=_collect_usage_events(),
-                )
-                return {"status": "refused"}
-
-            retryable_error = _main_coach_retryable_error(coach_payload)
+            # Transient AI failures must win over "refused" / "empty" handling:
+            # a temporary Gemini 503 can surface as a component error and otherwise
+            # look like the clip was unreadable.
+            retryable_error = _coach_retryable_error(coach_payload)
             if retryable_error:
                 next_attempt = retry_attempt + 1
                 if next_attempt <= len(_MAIN_COACH_AUTO_RETRY_DELAYS_SECONDS):
@@ -245,6 +237,31 @@ async def analyze_swim_video(job_id: str) -> dict:
                     usage_events=_collect_usage_events(),
                 )
                 return {"status": "failed", "error": "temporarily_unavailable"}
+
+            system_error = _coach_system_error(coach_payload)
+            if system_error:
+                logger.error(
+                    "Stroke Lab job %s failed in AI coach setup: %s",
+                    job_id,
+                    system_error[:200],
+                )
+                await _mark_failed(
+                    job_uuid,
+                    "coach_unavailable",
+                    usage_events=_collect_usage_events(),
+                )
+                return {"status": "failed", "error": "coach_unavailable"}
+
+            # Gate refusal: an above-water/side-on clip we can't read. Refund and
+            # surface the "film a side-on clip" guidance — we won't guess.
+            if _coach_refused(coach_payload):
+                logger.info("Stroke Lab job %s refused by the gate", job_id)
+                await _mark_failed(
+                    job_uuid,
+                    "could_not_track",
+                    usage_events=_collect_usage_events(),
+                )
+                return {"status": "refused"}
 
             # Non-refused but empty: a coach component errored and was swallowed,
             # leaving no real findings. Don't charge for a blank read — refund and
@@ -304,6 +321,31 @@ async def analyze_swim_video(job_id: str) -> dict:
     except Exception as exc:  # pragma: no cover — failure path
         logger.exception("Stroke Lab job %s failed", job_id)
         reason = _failure_reason(exc)
+        if reason == "temporarily_unavailable":
+            next_attempt = retry_attempt + 1
+            if next_attempt <= len(_MAIN_COACH_AUTO_RETRY_DELAYS_SECONDS):
+                delay = _MAIN_COACH_AUTO_RETRY_DELAYS_SECONDS[next_attempt - 1]
+                await _mark_coach_retrying(
+                    job_uuid,
+                    coach_payload or existing_payload or {},
+                    attempt=next_attempt,
+                    delay_seconds=delay,
+                    usage_events=_collect_usage_events(),
+                )
+                logger.warning(
+                    "Stroke Lab job %s will retry after transient exception in %ss "
+                    "(attempt %s/%s): %s",
+                    job_id,
+                    delay,
+                    next_attempt,
+                    len(_MAIN_COACH_AUTO_RETRY_DELAYS_SECONDS),
+                    str(exc)[:200],
+                )
+                return {
+                    "status": "retrying",
+                    "attempt": next_attempt,
+                    "delay_seconds": delay,
+                }
         await _mark_failed(job_uuid, reason, usage_events=_collect_usage_events())
         return {"status": "failed", "error": reason}
 
@@ -337,25 +379,64 @@ def _coach_has_content(coach_payload: dict) -> bool:
     return False
 
 
-def _main_coach_retryable_error(coach_payload: dict) -> str | None:
-    """Return the transient main-coach error, if this run should auto-retry.
+def _coach_retryable_error(coach_payload: dict) -> str | None:
+    """Return a transient coach error, if this run should auto-retry.
 
-    The count/collate stages can succeed without any coaching content. For the
-    product, ``chunk_coach`` is the essential read: if it fails on a transient
-    Gemini/LLM error, keep the job alive and retry instead of completing an empty
-    result.
+    A Gemini/LLM 429/500/503 can land in the gate, segmentation, chunk coach, or
+    another enabled stage. Keep the job alive and retry instead of turning that
+    system hiccup into "could not track the swimmer."
     """
     results = (coach_payload.get("result") or {}).get("results") or []
     for cr in results:
-        if cr.get("component") != _MAIN_COACH_COMPONENT:
-            continue
         err = str(cr.get("error") or "")
         if not err:
-            return None
+            continue
         low = err.lower()
         if any(marker in low for marker in _RETRYABLE_COACH_ERROR_MARKERS):
             return err
     return None
+
+
+def _main_coach_retryable_error(coach_payload: dict) -> str | None:
+    """Backward-compatible alias for tests/imports."""
+    return _coach_retryable_error(coach_payload)
+
+
+def _coach_system_error(coach_payload: dict) -> str | None:
+    """Return a non-retryable system/configuration error from the coach.
+
+    These are not swimmer-clip problems. In particular, auth/config failures
+    should refund as ``coach_unavailable`` instead of being collapsed
+    into ``could_not_track`` by the generic empty-output guard.
+    """
+    results = (coach_payload.get("result") or {}).get("results") or []
+    for cr in results:
+        err = str(cr.get("error") or "")
+        if not err:
+            continue
+        low = err.lower()
+        if any(
+            marker in low
+            for marker in (
+                "authenticationerror",
+                "unauthenticated",
+                "invalid authentication credentials",
+                "api key not valid",
+                "access_token_type_unsupported",
+                "permissiondenied",
+                "permission denied",
+                "forbidden",
+                "401",
+                "403",
+            )
+        ):
+            return err
+    return None
+
+
+def _main_coach_system_error(coach_payload: dict) -> str | None:
+    """Backward-compatible alias for tests/imports."""
+    return _coach_system_error(coach_payload)
 
 
 async def _download_upload(storage_path: str, workdir: Path) -> Path:
@@ -668,13 +749,18 @@ def _retry_payload(
         "attempt": attempt,
         "max_attempts": len(_MAIN_COACH_AUTO_RETRY_DELAYS_SECONDS),
         "next_retry_at": next_retry_at.isoformat(),
-        "message": "The AI coach hit a temporary error and is retrying automatically.",
+        "message": "The AI coach is busy and is retrying automatically.",
     }
-    result = payload.get("result")
-    if isinstance(result, dict):
-        meta = dict(result.get("meta") or {})
-        meta["ai_coach_retry"] = payload["retry"]
-        result["meta"] = meta
+    result = dict(payload.get("result") or {})
+    result.setdefault("input_profile", "unknown")
+    result.setdefault("gate_tier", "clean")
+    result.setdefault("results", [])
+    result.setdefault("total_cost_usd", 0)
+    result.setdefault("refused", False)
+    meta = dict(result.get("meta") or {})
+    meta["ai_coach_retry"] = payload["retry"]
+    result["meta"] = meta
+    payload["result"] = result
     return payload
 
 
@@ -904,7 +990,7 @@ def _failure_reason(exc: Exception) -> str:
 async def _mark_failed(
     job_id: uuid.UUID, error_message: str, usage_events: list[dict] | None = None
 ) -> None:
-    failed_email: tuple[str, dict | None] | None = None
+    failed_email: tuple[str, str, dict | None] | None = None
     async with AsyncSessionLocal() as session:
         job = await session.get(AnalysisJob, job_id)
         if job is None:
@@ -934,8 +1020,17 @@ async def _mark_failed(
             # best-effort after commit (design §8.6).
             if job.email_sent_at is None:
                 job.email_sent_at = utc_now()
-                failed_email = (job.guest_email, provider_usage)
+                failed_email = (
+                    job.guest_email,
+                    job.error_message or "",
+                    provider_usage,
+                )
         await session.commit()
 
     if failed_email is not None:
-        await send_failed_email(job_id, failed_email[0], provider_usage=failed_email[1])
+        await send_failed_email(
+            job_id,
+            failed_email[0],
+            reason=failed_email[1],
+            provider_usage=failed_email[2],
+        )

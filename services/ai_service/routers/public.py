@@ -532,7 +532,11 @@ async def get_public_analysis_job(
     # Expose the result while PROCESSING too — the worker writes a partial
     # coach_result after each stage (progressive rendering), so the page can
     # render finished sections instead of a blank "analyzing" wait.
-    if job.status in (AnalysisJobStatus.COMPLETED, AnalysisJobStatus.PROCESSING):
+    if job.status in (
+        AnalysisJobStatus.PENDING,
+        AnalysisJobStatus.PROCESSING,
+        AnalysisJobStatus.COMPLETED,
+    ):
         rs = await db.execute(
             select(AnalysisResult).where(AnalysisResult.job_id == job_id)
         )
