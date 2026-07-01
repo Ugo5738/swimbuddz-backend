@@ -136,6 +136,7 @@ async def send_analyzer_failed_email(
     to_email: str,
     retry_url: str = "https://analyzer.swimbuddz.com",
     member_name: str = "",
+    reason: str | None = None,
 ) -> bool:
     """Notify a guest that their clip couldn't be analyzed (credit refunded)."""
     name_line = f"Hi {member_name}," if member_name else "Hi there,"
@@ -144,34 +145,62 @@ async def send_analyzer_failed_email(
         if member_name
         else "<p>Hi there,</p>"
     )
-    subject = "We couldn't analyze your freestyle clip"
-
-    body = (
-        f"{name_line}\n\n"
-        "We couldn't analyze your clip this time, and your credit has been "
-        "refunded.\n\n"
-        "Tips: film side-on with the swimmer clearly in frame, 10–90 seconds, "
-        "exported as MP4.\n\n"
-        f"Try again: {retry_url}\n\n"
-        "— SwimBuddz Stroke Lab"
+    temporary = reason == "temporarily_unavailable"
+    subject = (
+        "The SwimBuddz AI coach is busy"
+        if temporary
+        else "We couldn't analyze your freestyle clip"
     )
 
-    inner_html = (
-        greeting_html
-        + "<p>We couldn't analyze your clip this time — and your credit has been "
-        "<strong>refunded</strong>.</p>"
-        + "<p>For the best results, film <strong>side-on</strong> with the swimmer "
-        "clearly in frame, 10–90 seconds long, and exported as MP4.</p>"
-        + cta_button("Try Another Clip", retry_url)
-        + sign_off()
-    )
+    if temporary:
+        body = (
+            f"{name_line}\n\n"
+            "The AI coach stayed busy longer than expected, so we stopped this "
+            "run and refunded your credit. This was on our end, not your clip.\n\n"
+            f"Try again: {retry_url}\n\n"
+            "— SwimBuddz Stroke Lab"
+        )
+    else:
+        body = (
+            f"{name_line}\n\n"
+            "We couldn't analyze your clip this time, and your credit has been "
+            "refunded.\n\n"
+            "Tips: film side-on with the swimmer clearly in frame, 10–90 seconds, "
+            "exported as MP4.\n\n"
+            f"Try again: {retry_url}\n\n"
+            "— SwimBuddz Stroke Lab"
+        )
+
+    if temporary:
+        inner_html = (
+            greeting_html
+            + "<p>The AI coach stayed busy longer than expected, so we stopped this "
+            "run and your credit has been <strong>refunded</strong>.</p>"
+            + "<p>This was on our end, not your clip. Please try again shortly.</p>"
+            + cta_button("Try Again", retry_url)
+            + sign_off()
+        )
+    else:
+        inner_html = (
+            greeting_html
+            + "<p>We couldn't analyze your clip this time — and your credit has been "
+            "<strong>refunded</strong>.</p>"
+            + "<p>For the best results, film <strong>side-on</strong> with the swimmer "
+            "clearly in frame, 10–90 seconds long, and exported as MP4.</p>"
+            + cta_button("Try Another Clip", retry_url)
+            + sign_off()
+        )
 
     html_body = wrap_html(
-        title="We couldn't analyze your clip",
+        title="The AI coach is busy" if temporary else "We couldn't analyze your clip",
         subtitle="Your credit has been refunded",
         body_html=inner_html,
         header_gradient=GRADIENT_AMBER,
-        preheader="We couldn't analyze your clip — your credit was refunded.",
+        preheader=(
+            "The AI coach stayed busy — your credit was refunded."
+            if temporary
+            else "We couldn't analyze your clip — your credit was refunded."
+        ),
     )
 
     return await send_email(to_email, subject, body, html_body)

@@ -213,6 +213,7 @@ async def send_templated_email(
             to_email=request.to_email,
             retry_url=d.get("retry_url", "https://analyzer.swimbuddz.com"),
             member_name=d.get("member_name", ""),
+            reason=d.get("reason"),
         ),
         "analyzer_usage": lambda d: analyzer.send_analyzer_usage_email(
             to_email=request.to_email,

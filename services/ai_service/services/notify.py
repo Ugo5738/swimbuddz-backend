@@ -98,7 +98,10 @@ async def send_ready_email(
 
 
 async def send_failed_email(
-    job_id: uuid.UUID, guest_email: str, provider_usage: dict | None = None
+    job_id: uuid.UUID,
+    guest_email: str,
+    reason: str | None = None,
+    provider_usage: dict | None = None,
 ) -> bool:
     """Email the guest that we couldn't analyze their clip (credit refunded).
 
@@ -108,7 +111,7 @@ async def send_failed_email(
         return await get_email_client().send_template(
             template_type="analyzer_failed",
             to_email=guest_email,
-            template_data={"retry_url": ANALYZER_BASE_URL},
+            template_data={"retry_url": ANALYZER_BASE_URL, "reason": reason},
         )
     except Exception as exc:  # noqa: BLE001 — best-effort, never raise
         logger.warning("failed-clip email failed for job %s: %s", job_id, exc)
