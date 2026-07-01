@@ -246,6 +246,20 @@ async def analyze_swim_video(job_id: str) -> dict:
                 )
                 return {"status": "failed", "error": "temporarily_unavailable"}
 
+            system_error = _main_coach_system_error(coach_payload)
+            if system_error:
+                logger.error(
+                    "Stroke Lab job %s failed in AI coach setup: %s",
+                    job_id,
+                    system_error[:200],
+                )
+                await _mark_failed(
+                    job_uuid,
+                    "coach_unavailable",
+                    usage_events=_collect_usage_events(),
+                )
+                return {"status": "failed", "error": "coach_unavailable"}
+
             # Non-refused but empty: a coach component errored and was swallowed,
             # leaving no real findings. Don't charge for a blank read — refund and
             # give the same "film a clearer clip" guidance.
@@ -354,6 +368,40 @@ def _main_coach_retryable_error(coach_payload: dict) -> str | None:
             return None
         low = err.lower()
         if any(marker in low for marker in _RETRYABLE_COACH_ERROR_MARKERS):
+            return err
+    return None
+
+
+def _main_coach_system_error(coach_payload: dict) -> str | None:
+    """Return a non-retryable system/configuration error from the main coach.
+
+    These are not swimmer-clip problems. In particular, auth/config failures
+    should refund as ``coach_unavailable`` instead of being collapsed
+    into ``could_not_track`` by the generic empty-output guard.
+    """
+    results = (coach_payload.get("result") or {}).get("results") or []
+    for cr in results:
+        if cr.get("component") != _MAIN_COACH_COMPONENT:
+            continue
+        err = str(cr.get("error") or "")
+        if not err:
+            return None
+        low = err.lower()
+        if any(
+            marker in low
+            for marker in (
+                "authenticationerror",
+                "unauthenticated",
+                "invalid authentication credentials",
+                "api key not valid",
+                "access_token_type_unsupported",
+                "permissiondenied",
+                "permission denied",
+                "forbidden",
+                "401",
+                "403",
+            )
+        ):
             return err
     return None
 
