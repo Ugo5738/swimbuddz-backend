@@ -104,6 +104,13 @@ def _draw_circle(img: "PILImage", center: tuple, radius: int, fill):
     img.paste(circle, (center[0] - radius, center[1] - radius), circle)
 
 
+def _open_photo_respecting_orientation(photo_data: bytes) -> "PILImage":
+    """Open an uploaded photo with EXIF orientation applied."""
+    from PIL import Image, ImageOps
+
+    return ImageOps.exif_transpose(Image.open(io.BytesIO(photo_data))).convert("RGBA")
+
+
 def _paste_circular_photo(
     img: "PILImage", photo_url: str, center: tuple, radius: int
 ) -> bool:
@@ -116,7 +123,7 @@ def _paste_circular_photo(
         # Download photo to memory
         with urllib.request.urlopen(photo_url, timeout=5) as resp:
             photo_data = resp.read()
-        photo = Image.open(io.BytesIO(photo_data)).convert("RGBA")
+        photo = _open_photo_respecting_orientation(photo_data)
 
         # Center-crop to square
         w, h = photo.size

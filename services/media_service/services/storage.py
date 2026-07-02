@@ -6,7 +6,7 @@ from io import BytesIO
 from typing import Optional, Tuple
 from urllib.parse import urlparse
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from libs.common.config import get_settings
 from libs.common.supabase import get_supabase_admin_client
@@ -119,6 +119,9 @@ class StorageService:
 
         Returns: (file_url, thumbnail_url)
         """
+        if content_type.startswith("image/"):
+            file_data = self._normalize_image_orientation(file_data, content_type)
+
         if preserve_filename:
             unique_filename = filename
         else:
@@ -168,18 +171,75 @@ class StorageService:
 
         return file_url, thumbnail_url
 
+    def _normalize_image_orientation(self, image_data: bytes, content_type: str) -> bytes:
+        """Apply EXIF orientation to stored image bytes.
+
+        Some phone cameras store portrait photos as sideways pixels plus an EXIF
+        orientation tag. Browsers often honor that tag, but Pillow/canvas-based
+        downstream consumers can ignore or strip it. Persisting upright pixels
+        avoids that mismatch.
+        """
+        normalized_type = content_type.split(";", 1)[0].lower()
+        if normalized_type in {"image/gif", "image/svg+xml"}:
+            return image_data
+
+        try:
+            img = Image.open(BytesIO(image_data))
+            orientation = img.getexif().get(274)
+            if not orientation or orientation == 1:
+                return image_data
+
+            fmt = img.format or self._format_from_content_type(normalized_type)
+            img = ImageOps.exif_transpose(img)
+            return self._encode_image_without_orientation(img, fmt, image_data)
+        except Exception:
+            return image_data
+
+    def _format_from_content_type(self, content_type: str) -> str:
+        return {
+            "image/jpeg": "JPEG",
+            "image/jpg": "JPEG",
+            "image/png": "PNG",
+            "image/webp": "WEBP",
+            "image/tiff": "TIFF",
+        }.get(content_type, "JPEG")
+
+    def _encode_image_without_orientation(
+        self, img: Image.Image, fmt: str, fallback: bytes
+    ) -> bytes:
+        fmt = "JPEG" if fmt.upper() == "JPG" else fmt.upper()
+        try:
+            if fmt == "JPEG" and img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+
+            buffer = BytesIO()
+            save_kwargs = {}
+            icc_profile = img.info.get("icc_profile")
+            if icc_profile:
+                save_kwargs["icc_profile"] = icc_profile
+            if fmt == "JPEG":
+                save_kwargs["quality"] = 95
+
+            img.save(buffer, format=fmt, **save_kwargs)
+            return buffer.getvalue()
+        except Exception:
+            return fallback
+
     def _create_thumbnail(
         self, image_data: bytes, size: Tuple[int, int] = (600, 600)
     ) -> bytes:
         """Create thumbnail from image data. Default 600x600 for good quality on album covers."""
         try:
             img = Image.open(BytesIO(image_data))
+            fmt = img.format or "JPEG"
+            img = ImageOps.exif_transpose(img)
             img.thumbnail(size, Image.Resampling.LANCZOS)
 
             # Convert to bytes
             buffer = BytesIO()
             # Preserve format or default to JPEG
-            fmt = img.format or "JPEG"
+            if fmt.upper() == "JPEG" and img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
             img.save(buffer, format=fmt)
             return buffer.getvalue()
         except Exception:
