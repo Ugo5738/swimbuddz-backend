@@ -188,7 +188,7 @@ class StorageService:
         try:
             img = Image.open(BytesIO(image_data))
             orientation = img.getexif().get(274)
-            if not orientation or orientation == 1:
+            if orientation not in (2, 3, 4, 5, 6, 7, 8):
                 return image_data
 
             fmt = img.format or self._format_from_content_type(normalized_type)
