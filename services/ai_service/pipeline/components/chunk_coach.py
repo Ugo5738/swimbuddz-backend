@@ -50,6 +50,8 @@ logger = get_logger(__name__)
 # enough to read rotation/head/body-line across the stroke, short enough to stay
 # cheap on tokens.
 CHUNK_PAD_S = 2.0
+_CHUNK_PARSE_SNIPPET_CHARS = 400
+_PARSE_ERROR_KEY = "_parse_error"
 
 # Multi-aspect prompt. Closed-enum verdicts MUST match grade.py so grade() can
 # re-grade them for the swimmer's discipline. "not visible" is a first-class
@@ -186,7 +188,7 @@ class ChunkCoachComponent(AspectCoachComponent):
     arm = "near"  # camera-facing arm — most reliable side-on (fallback: far)
     granularity = Granularity.CHUNK
     image_detail = "auto"
-    max_tokens = 800  # multi-aspect JSON is longer than a single-aspect verdict
+    max_tokens = 1600  # multi-aspect JSON is longer than a single-aspect verdict
     SYSTEM_PROMPT = CHUNK_PROMPT
     profiles = (InputProfile.SIDE_ON_ABOVE, InputProfile.UNKNOWN)
 
@@ -207,29 +209,74 @@ class ChunkCoachComponent(AspectCoachComponent):
 
         cache = ctx.cache
         findings = []
+        chunk_diagnostics = []
+        parse_failures = 0
         cost = 0.0
         for idx, inst in enumerate(reps):
             window = self._window(inst, strip)  # peak frames → evidence/thumbnail
             key = f"{self.name}:{inst.instance_id}"
-            if cache is not None and key in cache:
+            cached = False
+            cache_invalid = False
+            used_video = False
+            if cache is not None and key in cache and _valid_cached_chunk(cache[key]):
                 parsed = cache[key]  # replay — no API
+                cached = True
             else:
+                if cache is not None and key in cache:
+                    cache_invalid = True
+                    logger.info(
+                        "chunk coach: ignoring invalid cached response; instance=%s",
+                        inst.instance_id,
+                    )
                 clip = self._read_chunk(ctx, inst) if ctx.config.coach_video else None
+                used_video = clip is not None
                 parsed, c = await self._coach_chunk(window, clip, system_prompt, ctx)
                 cost += c
-                if cache is not None:
+                if cache is not None and not _chunk_parse_failed(parsed):
                     cache[key] = parsed
                 # Space the chunk calls so 3 Gemini video calls don't burst the cap.
                 if ctx.config.coach_call_delay_s and idx < len(reps) - 1:
                     await asyncio.sleep(ctx.config.coach_call_delay_s)
-            findings.extend(self._findings_multi(parsed, inst, window, ctx))
+            if _chunk_parse_failed(parsed):
+                parse_failures += 1
+            chunk_findings = self._findings_multi(parsed, inst, window, ctx)
+            findings.extend(chunk_findings)
+            diag = _chunk_diagnostics(
+                parsed,
+                instance_id=inst.instance_id,
+                cached=cached,
+                cache_invalid=cache_invalid,
+                used_video=used_video,
+                findings=len(chunk_findings),
+            )
+            chunk_diagnostics.append(diag)
+            logger.info(
+                "chunk coach: instance=%s parse_ok=%s aspects=%s visible=%s "
+                "unclear=%s findings=%s cached=%s used_video=%s",
+                diag["instance_id"],
+                diag["parse_ok"],
+                diag["aspect_count"],
+                diag["visible_count"],
+                diag["unclear_count"],
+                diag["findings"],
+                diag["cached"],
+                diag["used_video"],
+            )
 
         return ComponentResult(
             self.name,
             findings,
             cost_usd=cost,
             latency_ms=int((time.monotonic() - start) * 1000),
-            meta={"coached_chunks": len(reps), "available_instances": len(insts)},
+            error=f"chunk_parse_failed: {parse_failures}/{len(reps)} chunks"
+            if parse_failures
+            else None,
+            meta={
+                "coached_chunks": len(reps),
+                "available_instances": len(insts),
+                "parse_failures": parse_failures,
+                "chunk_diagnostics": chunk_diagnostics,
+            },
         )
 
     def _read_chunk(self, ctx: RunContext, inst: Instance) -> bytes | None:
@@ -269,8 +316,25 @@ class ChunkCoachComponent(AspectCoachComponent):
         )
         try:
             return resp.parse_json(), resp.cost_usd
-        except Exception:
-            return {}, resp.cost_usd
+        except Exception as exc:
+            content = resp.content or ""
+            snippet = " ".join(content.split())[:_CHUNK_PARSE_SNIPPET_CHARS]
+            logger.warning(
+                "chunk coach: JSON parse failed; model=%s provider=%s "
+                "output_tokens=%s content_chars=%s error=%s content_start=%r",
+                resp.model,
+                resp.provider,
+                resp.output_tokens,
+                len(content),
+                f"{type(exc).__name__}: {exc}",
+                snippet,
+            )
+            return {
+                _PARSE_ERROR_KEY: True,
+                "parse_error_type": type(exc).__name__,
+                "output_tokens": resp.output_tokens,
+                "content_chars": len(content),
+            }, resp.cost_usd
 
     def _findings_multi(self, parsed: dict, inst: Instance, window, ctx):
         """One graded Finding per CLEARLY-VISIBLE aspect. not-visible / unclear →
@@ -324,11 +388,68 @@ class ChunkCoachComponent(AspectCoachComponent):
             system_prompt = f"{system_prompt}\n\n{goal}"
         cache = ctx.cache
         key = f"{self.name}:{inst.instance_id}"
-        if cache is not None and key in cache:
+        if cache is not None and key in cache and _valid_cached_chunk(cache[key]):
             parsed = cache[key]  # replay — no API
         else:
+            if cache is not None and key in cache:
+                logger.info(
+                    "chunk coach: ignoring invalid cached response; instance=%s",
+                    inst.instance_id,
+                )
             clip = self._read_chunk(ctx, inst) if ctx.config.coach_video else None
             parsed, _ = await self._coach_chunk(window, clip, system_prompt, ctx)
-            if cache is not None:
+            if cache is not None and not _chunk_parse_failed(parsed):
                 cache[key] = parsed
         return self._findings_multi(parsed, inst, window, ctx)
+
+
+def _chunk_parse_failed(parsed: dict) -> bool:
+    return isinstance(parsed, dict) and bool(parsed.get(_PARSE_ERROR_KEY))
+
+
+def _valid_cached_chunk(parsed: dict) -> bool:
+    """Only replay structurally valid paid chunk responses.
+
+    Legacy runs cached ``{}`` when Gemini returned truncated JSON. Treat those as
+    invalid so a retry recomputes the chunk instead of silently replaying a blank.
+    """
+    return (
+        isinstance(parsed, dict)
+        and not _chunk_parse_failed(parsed)
+        and isinstance(parsed.get("aspects"), list)
+    )
+
+
+def _chunk_diagnostics(
+    parsed: dict,
+    *,
+    instance_id: int,
+    cached: bool,
+    used_video: bool,
+    findings: int,
+    cache_invalid: bool = False,
+) -> dict:
+    aspects = parsed.get("aspects") if isinstance(parsed, dict) else None
+    aspect_dicts = [a for a in (aspects or []) if isinstance(a, dict)]
+    verdicts = [str(a.get("verdict") or "").strip() for a in aspect_dicts]
+    diag = {
+        "instance_id": instance_id,
+        "cached": cached,
+        "cache_invalid": cache_invalid,
+        "used_video": used_video,
+        "parse_ok": not _chunk_parse_failed(parsed),
+        "aspect_count": len(aspect_dicts),
+        "visible_count": sum(1 for a in aspect_dicts if bool(a.get("visible"))),
+        "unclear_count": sum(1 for verdict in verdicts if verdict in ("", "unclear")),
+        "with_note_count": sum(1 for a in aspect_dicts if str(a.get("note") or "")),
+        "findings": findings,
+    }
+    if _chunk_parse_failed(parsed):
+        diag.update(
+            {
+                "parse_error_type": str(parsed.get("parse_error_type") or "unknown"),
+                "output_tokens": parsed.get("output_tokens"),
+                "content_chars": parsed.get("content_chars"),
+            }
+        )
+    return diag

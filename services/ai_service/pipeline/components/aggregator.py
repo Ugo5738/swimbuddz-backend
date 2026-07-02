@@ -36,6 +36,7 @@ logger = get_logger(__name__)
 
 # Severity priority for picking the representative (worst) chunk of an aspect.
 _SEV_ORDER = {SEVERITY_FIX: 0, SEVERITY_STRENGTH: 1}
+_AGG_PARSE_SNIPPET_CHARS = 400
 
 AGG_PROMPT = """You are the HEAD freestyle coach (Total Immersion trained) writing \
 a swimmer's overall feedback from per-stroke notes taken across a few of their \
@@ -81,6 +82,7 @@ class AggregatorComponent(Component):
     consumes = Phase.CLIP
     granularity = Granularity.CHUNK
     profiles = (InputProfile.SIDE_ON_ABOVE, InputProfile.UNKNOWN)
+    max_tokens = 1600
 
     async def run(self, ctx: RunContext) -> ComponentResult:
         start = time.monotonic()
@@ -88,7 +90,7 @@ class AggregatorComponent(Component):
         if not chunk:
             return ComponentResult(self.name, [])  # nothing to collate
         rep = self._rep_by_area(chunk)  # most-severe chunk per aspect → grounding
-        parsed, cost, model = await self._summarize(chunk, ctx)
+        parsed, cost, model, diagnostics = await self._summarize(chunk, ctx)
 
         if not parsed:  # LLM failed → keep the read via a deterministic synthesis
             return ComponentResult(
@@ -96,7 +98,12 @@ class AggregatorComponent(Component):
                 self._fallback(rep),
                 cost_usd=cost,
                 latency_ms=int((time.monotonic() - start) * 1000),
-                meta={"summary": None, "model": model, "fallback": True},
+                meta={
+                    "summary": None,
+                    "model": model,
+                    "fallback": True,
+                    "diagnostics": diagnostics,
+                },
             )
 
         findings: list[Finding] = []
@@ -139,7 +146,11 @@ class AggregatorComponent(Component):
             findings,
             cost_usd=cost,
             latency_ms=int((time.monotonic() - start) * 1000),
-            meta={"summary": parsed.get("summary"), "model": model},
+            meta={
+                "summary": parsed.get("summary"),
+                "model": model,
+                "diagnostics": diagnostics,
+            },
         )
 
     def _rep_by_area(self, chunk: list[Finding]) -> dict[str, Finding]:
@@ -172,6 +183,7 @@ class AggregatorComponent(Component):
         ]
         from services.ai_service.providers.base import call_vlm  # lazy: needs litellm
 
+        diagnostics = {"notes_count": len(notes), "max_tokens": self.max_tokens}
         try:
             resp = await call_vlm(
                 system_prompt=f"{AGG_PROMPT}\n\n{COACH_VOICE}",
@@ -182,16 +194,71 @@ class AggregatorComponent(Component):
                 ),
                 images=[],
                 model=ctx.config.coach_model,
-                max_tokens=900,
+                max_tokens=self.max_tokens,
                 response_format={"type": "json_object"},
                 trace_name="strokelab_aggregate",
             )
-            return resp.parse_json(), resp.cost_usd, resp.model
-        except Exception as exc:  # rate-limit slipped past retries / bad JSON
-            logger.warning(
-                "aggregator: summary failed (%s) — deterministic fallback", exc
+        except Exception as exc:  # rate-limit slipped past retries / provider failure
+            diagnostics.update(
+                {
+                    "parse_ok": False,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:200],
+                }
             )
-            return None, 0.0, "fallback"
+            logger.warning(
+                "aggregator: summary call failed; model=%s max_tokens=%s "
+                "notes=%s error=%s",
+                ctx.config.coach_model,
+                self.max_tokens,
+                len(notes),
+                f"{type(exc).__name__}: {exc}",
+            )
+            return None, 0.0, "fallback", diagnostics
+
+        diagnostics.update(
+            {
+                "model": resp.model,
+                "provider": resp.provider,
+                "output_tokens": resp.output_tokens,
+                "content_chars": len(resp.content or ""),
+            }
+        )
+        try:
+            parsed = resp.parse_json()
+            diagnostics.update(
+                {
+                    "parse_ok": True,
+                    "priority_fix_count": len(parsed.get("priority_fixes") or []),
+                    "strength_count": len(parsed.get("strengths") or []),
+                    "has_summary": bool(parsed.get("summary")),
+                }
+            )
+            return parsed, resp.cost_usd, resp.model, diagnostics
+        except Exception as exc:  # rate-limit slipped past retries / bad JSON
+            content = resp.content or ""
+            diagnostics.update(
+                {
+                    "parse_ok": False,
+                    "parse_error_type": type(exc).__name__,
+                    "content_start": " ".join(content.split())[
+                        :_AGG_PARSE_SNIPPET_CHARS
+                    ],
+                }
+            )
+            logger.warning(
+                "aggregator: JSON parse failed; model=%s provider=%s "
+                "max_tokens=%s output_tokens=%s content_chars=%s error=%s "
+                "content_start=%r",
+                resp.model,
+                resp.provider,
+                self.max_tokens,
+                resp.output_tokens,
+                len(content),
+                f"{type(exc).__name__}: {exc}",
+                diagnostics["content_start"],
+            )
+            return None, resp.cost_usd, resp.model, diagnostics
 
     def _fallback(self, rep: dict[str, Finding]) -> list[Finding]:
         """No summary text, but re-surface the deduped fixes/strengths so the
