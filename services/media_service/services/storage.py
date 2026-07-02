@@ -171,7 +171,9 @@ class StorageService:
 
         return file_url, thumbnail_url
 
-    def _normalize_image_orientation(self, image_data: bytes, content_type: str) -> bytes:
+    def _normalize_image_orientation(
+        self, image_data: bytes, content_type: str
+    ) -> bytes:
         """Apply EXIF orientation to stored image bytes.
 
         Some phone cameras store portrait photos as sideways pixels plus an EXIF
