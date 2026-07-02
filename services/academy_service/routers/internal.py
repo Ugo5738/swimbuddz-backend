@@ -2,7 +2,7 @@ from datetime import datetime as _datetime
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel as _BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from services.academy_service.models import StudentProgress
 from services.academy_service.routers._shared import (
@@ -310,6 +310,74 @@ class MemberAcademySummary(_BaseModel):
     milestones_in_progress: int = 0
     programs_enrolled: int = 0
     certificates_earned: int = 0
+
+
+class MemberCohortEnrollment(_BaseModel):
+    enrollment_id: str
+    cohort_id: str
+    member_id: str
+    status: str | None = None
+    enrolled_at: str | None = None
+    dropped_at: str | None = None
+    paused_at: str | None = None
+    cohort_start_date: str | None = None
+    cohort_end_date: str | None = None
+
+
+@router.get(
+    "/member-cohort-enrollments/{member_auth_id}",
+    response_model=List[MemberCohortEnrollment],
+)
+async def get_member_cohort_enrollments_internal(
+    member_auth_id: str,
+    date_from: _datetime = Query(..., alias="from"),
+    date_to: _datetime = Query(..., alias="to"),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return academy cohort enrollments that overlap a reporting window."""
+    eligible_statuses = [
+        EnrollmentStatus.ENROLLED,
+        EnrollmentStatus.GRADUATED,
+        EnrollmentStatus.DROPPED,
+        EnrollmentStatus.DROPOUT_PENDING,
+    ]
+    query = (
+        select(Enrollment)
+        .where(
+            Enrollment.member_auth_id == member_auth_id,
+            Enrollment.cohort_id.is_not(None),
+            Enrollment.status.in_(eligible_statuses),
+            or_(Enrollment.enrolled_at.is_(None), Enrollment.enrolled_at <= date_to),
+            or_(Enrollment.dropped_at.is_(None), Enrollment.dropped_at >= date_from),
+        )
+        .options(selectinload(Enrollment.cohort))
+        .order_by(Enrollment.enrolled_at.asc().nullsfirst())
+    )
+
+    result = await db.execute(query)
+    enrollments = result.scalars().all()
+    return [
+        MemberCohortEnrollment(
+            enrollment_id=str(e.id),
+            cohort_id=str(e.cohort_id),
+            member_id=str(e.member_id),
+            status=e.status.value if e.status else None,
+            enrolled_at=e.enrolled_at.isoformat() if e.enrolled_at else None,
+            dropped_at=e.dropped_at.isoformat() if e.dropped_at else None,
+            paused_at=e.paused_at.isoformat() if e.paused_at else None,
+            cohort_start_date=(
+                e.cohort.start_date.isoformat()
+                if e.cohort and e.cohort.start_date
+                else None
+            ),
+            cohort_end_date=(
+                e.cohort.end_date.isoformat()
+                if e.cohort and e.cohort.end_date
+                else None
+            ),
+        )
+        for e in enrollments
+    ]
 
 
 @router.get(

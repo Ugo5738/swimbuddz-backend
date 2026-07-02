@@ -77,7 +77,7 @@ async def get_my_quarterly_report(
 async def get_my_quarterly_card(
     year: int = Query(..., ge=2025, le=2030),
     quarter: int = Query(..., ge=1, le=4),
-    format: str = Query("square", regex="^(square|story)$"),
+    format: str = Query("square", regex="^(square|post|story)$"),
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):

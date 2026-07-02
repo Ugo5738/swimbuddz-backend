@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
-from libs.db.session import get_async_db
 from libs.common.datetime_utils import utc_now
+from libs.db.session import get_async_db
 from services.sessions_service.models import (
     BookingChannel,
     Session,
@@ -59,6 +59,25 @@ class SessionBasic(BaseModel):
     week_number: Optional[int] = None
     lesson_title: Optional[str] = None
     timezone: str = "Africa/Lagos"
+
+
+class MemberSessionCommitment(BaseModel):
+    """A confirmed member commitment joined to its scheduled session."""
+
+    booking_id: str
+    session_id: str
+    member_id: str
+    member_auth_id: str
+    title: str
+    session_type: str
+    session_status: str
+    starts_at: str
+    ends_at: str
+    location_name: Optional[str] = None
+    cohort_id: Optional[str] = None
+    pod_id: Optional[str] = None
+    event_id: Optional[str] = None
+    week_number: Optional[int] = None
 
 
 class NextSessionResponse(BaseModel):
@@ -297,6 +316,63 @@ async def get_session_detailed_stats(
     )
 
 
+@router.get(
+    "/member/{member_auth_id}/session-commitments",
+    response_model=List[MemberSessionCommitment],
+)
+async def list_member_session_commitments(
+    member_auth_id: str,
+    date_from: datetime = Query(..., alias="from"),
+    date_to: datetime = Query(..., alias="to"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Confirmed, dated session commitments for member reporting.
+
+    This uses the session's scheduled time as the reporting window, not the
+    booking creation time. It lets reporting distinguish "expected to attend"
+    from attendance records that happen to exist.
+    """
+    result = await db.execute(
+        select(SessionBooking, Session)
+        .join(Session, Session.id == SessionBooking.session_id)
+        .where(
+            SessionBooking.member_auth_id == member_auth_id,
+            SessionBooking.status == SessionBookingStatus.CONFIRMED,
+            Session.starts_at >= date_from,
+            Session.starts_at <= date_to,
+            Session.status.in_(
+                [
+                    SessionStatus.SCHEDULED,
+                    SessionStatus.IN_PROGRESS,
+                    SessionStatus.COMPLETED,
+                ]
+            ),
+        )
+        .order_by(Session.starts_at.asc())
+    )
+
+    return [
+        MemberSessionCommitment(
+            booking_id=str(booking.id),
+            session_id=str(session.id),
+            member_id=str(booking.member_id),
+            member_auth_id=booking.member_auth_id,
+            title=session.title,
+            session_type=session.session_type.value,
+            session_status=session.status.value,
+            starts_at=session.starts_at.isoformat(),
+            ends_at=session.ends_at.isoformat(),
+            location_name=session.location_name,
+            cohort_id=str(session.cohort_id) if session.cohort_id else None,
+            pod_id=str(session.pod_id) if session.pod_id else None,
+            event_id=str(session.event_id) if session.event_id else None,
+            week_number=session.week_number,
+        )
+        for booking, session in result.all()
+    ]
+
+
 @router.get("/durations")
 async def get_session_durations(
     ids: str = Query(..., description="Comma-separated session UUIDs"),
@@ -457,6 +533,65 @@ async def get_completed_session_ids_for_cohort(
     query = query.order_by(Session.starts_at.asc())
     result = await db.execute(query)
     return [str(row[0]) for row in result.all()]
+
+
+@router.get("/cohorts/{cohort_id}/sessions", response_model=List[SessionBasic])
+async def get_sessions_for_cohort_internal(
+    cohort_id: uuid.UUID,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    statuses: str = Query(
+        "scheduled,in_progress,completed",
+        description="Comma-separated session statuses to include.",
+    ),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get dated cohort sessions for reporting and academy integrations."""
+    parsed_statuses: list[SessionStatus] = []
+    invalid: list[str] = []
+    for raw_status in [s.strip() for s in statuses.split(",") if s.strip()]:
+        try:
+            parsed_statuses.append(SessionStatus(raw_status))
+        except ValueError:
+            invalid.append(raw_status)
+    if invalid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid status value(s): {', '.join(invalid)}",
+        )
+
+    query = select(Session).where(Session.cohort_id == cohort_id)
+    if parsed_statuses:
+        query = query.where(Session.status.in_(parsed_statuses))
+    if start_date:
+        query = query.where(Session.starts_at >= start_date)
+    if end_date:
+        query = query.where(Session.starts_at <= end_date)
+    query = query.order_by(Session.starts_at.asc())
+
+    result = await db.execute(query)
+    sessions = result.scalars().all()
+    return [
+        SessionBasic(
+            id=str(s.id),
+            title=s.title,
+            session_type=s.session_type.value,
+            status=s.status.value,
+            starts_at=s.starts_at.isoformat(),
+            ends_at=s.ends_at.isoformat(),
+            location_name=s.location_name,
+            location_address=s.location_address,
+            location=s.location.value if s.location else None,
+            cohort_id=str(s.cohort_id) if s.cohort_id else None,
+            capacity=s.capacity,
+            pool_fee=s.pool_fee,
+            week_number=s.week_number,
+            lesson_title=s.lesson_title,
+            timezone=s.timezone,
+        )
+        for s in sessions
+    ]
 
 
 @router.post(
