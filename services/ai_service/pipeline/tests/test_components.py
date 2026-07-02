@@ -11,6 +11,8 @@ import asyncio
 
 from services.ai_service.coach.frames import Frame
 from services.ai_service.coach.pose import RecoveryResult
+from services.ai_service.pipeline.components.aggregator import AggregatorComponent
+from services.ai_service.pipeline.components.chunk_coach import ChunkCoachComponent
 from services.ai_service.pipeline.components.collate import CollateComponent
 from services.ai_service.pipeline.components.pose_recovery import PoseRecoveryComponent
 from services.ai_service.pipeline.components.recovery_coach import (
@@ -20,6 +22,8 @@ from services.ai_service.pipeline.components.segment import PhaseSegmentComponen
 from services.ai_service.pipeline.segment import FrameLabel
 from services.ai_service.pipeline.types import (
     SEVERITY_FIX,
+    SEVERITY_STRENGTH,
+    Finding,
     Instance,
     Phase,
     RunContext,
@@ -139,6 +143,200 @@ def test_recovery_coach_honest_zero_when_no_recoveries():
 
     res = asyncio.run(RecoveryCoachComponent(coach_fn=fake_coach).run(ctx))
     assert res.findings == []
+
+
+def test_chunk_coach_uses_larger_token_budget_and_emits_diagnostics():
+    seen: dict = {}
+    ctx = RunContext(frames=_strip(8), strip=_strip(8), cache={})
+    ctx.instances = [
+        Instance(Phase.RECOVERY, 0, 0.3, 0.9, 0.6, arm="near"),
+    ]
+
+    async def fake_coach(frames, **kw):
+        seen.update(kw)
+        return {
+            "aspects": [
+                {
+                    "aspect": "recovery_elbow",
+                    "visible": True,
+                    "verdict": "dropped",
+                    "note": "Your elbow drops as your arm comes forward.",
+                    "confidence": 0.8,
+                },
+                {
+                    "aspect": "body_line",
+                    "visible": False,
+                    "verdict": "unclear",
+                    "note": "",
+                    "confidence": 0.0,
+                },
+            ]
+        }, 0.01
+
+    res = asyncio.run(ChunkCoachComponent(coach_fn=fake_coach).run(ctx))
+
+    assert seen["max_tokens"] == 1600
+    assert len(res.findings) == 1
+    assert res.error is None
+    diag = res.meta["chunk_diagnostics"][0]
+    assert diag["parse_ok"] is True
+    assert diag["aspect_count"] == 2
+    assert diag["visible_count"] == 1
+    assert diag["unclear_count"] == 1
+    assert diag["findings"] == 1
+    assert ctx.cache["chunk_coach:0"]["aspects"]
+
+
+def test_chunk_coach_parse_failure_is_diagnostic_and_not_cached():
+    ctx = RunContext(frames=_strip(8), strip=_strip(8), cache={})
+    ctx.instances = [
+        Instance(Phase.RECOVERY, 0, 0.3, 0.9, 0.6, arm="near"),
+    ]
+
+    async def fake_coach(frames, **kw):
+        return {
+            "_parse_error": True,
+            "parse_error_type": "JSONDecodeError",
+            "output_tokens": 786,
+            "content_chars": 707,
+        }, 0.01
+
+    res = asyncio.run(ChunkCoachComponent(coach_fn=fake_coach).run(ctx))
+
+    assert res.findings == []
+    assert res.error == "chunk_parse_failed: 1/1 chunks"
+    assert "chunk_coach:0" not in ctx.cache
+    diag = res.meta["chunk_diagnostics"][0]
+    assert diag["parse_ok"] is False
+    assert diag["parse_error_type"] == "JSONDecodeError"
+    assert diag["output_tokens"] == 786
+    assert diag["content_chars"] == 707
+
+
+def test_chunk_coach_ignores_legacy_empty_cache_and_recomputes():
+    calls = 0
+    ctx = RunContext(frames=_strip(8), strip=_strip(8), cache={"chunk_coach:0": {}})
+    ctx.instances = [
+        Instance(Phase.RECOVERY, 0, 0.3, 0.9, 0.6, arm="near"),
+    ]
+
+    async def fake_coach(frames, **kw):
+        nonlocal calls
+        calls += 1
+        return {
+            "aspects": [
+                {
+                    "aspect": "head_breath",
+                    "visible": True,
+                    "verdict": "neutral",
+                    "note": "Your head stays quiet and aligned.",
+                    "confidence": 0.8,
+                }
+            ]
+        }, 0.01
+
+    res = asyncio.run(ChunkCoachComponent(coach_fn=fake_coach).run(ctx))
+
+    assert calls == 1
+    assert len(res.findings) == 1
+    assert ctx.cache["chunk_coach:0"]["aspects"]
+    diag = res.meta["chunk_diagnostics"][0]
+    assert diag["cached"] is False
+    assert diag["cache_invalid"] is True
+    assert diag["parse_ok"] is True
+    assert diag["findings"] == 1
+
+
+def test_aggregator_uses_larger_token_budget_and_emits_diagnostics(monkeypatch):
+    seen: dict = {}
+    ctx = RunContext(frames=_strip(2), strip=_strip(2))
+    ctx.run_findings = [
+        Finding(
+            component="chunk_coach",
+            observation="Your elbow leads the recovery well.",
+            severity=SEVERITY_STRENGTH,
+            area="recovery_elbow",
+            confidence=0.9,
+            extra={"t": 1.2},
+        )
+    ]
+
+    class Resp:
+        model = "gemini/gemini-2.5-flash"
+        provider = "google"
+        output_tokens = 240
+        cost_usd = 0.02
+        content = (
+            '{"summary":"A clean read.","priority_fixes":[],'
+            '"strengths":["Your recovery stays relaxed."]}'
+        )
+
+        def parse_json(self):
+            return {
+                "summary": "A clean read.",
+                "priority_fixes": [],
+                "strengths": ["Your recovery stays relaxed."],
+            }
+
+    async def fake_call_vlm(**kw):
+        seen.update(kw)
+        return Resp()
+
+    monkeypatch.setattr("services.ai_service.providers.base.call_vlm", fake_call_vlm)
+
+    res = asyncio.run(AggregatorComponent().run(ctx))
+
+    assert seen["max_tokens"] == 1600
+    assert res.error is None
+    assert res.cost_usd == 0.02
+    assert len(res.findings) == 1
+    diag = res.meta["diagnostics"]
+    assert diag["parse_ok"] is True
+    assert diag["notes_count"] == 1
+    assert diag["output_tokens"] == 240
+    assert diag["strength_count"] == 1
+    assert diag["has_summary"] is True
+
+
+def test_aggregator_parse_failure_keeps_fallback_and_diagnostics(monkeypatch):
+    ctx = RunContext(frames=_strip(2), strip=_strip(2))
+    ctx.run_findings = [
+        Finding(
+            component="chunk_coach",
+            observation="Your head stays neutral.",
+            severity=SEVERITY_STRENGTH,
+            area="head_breath",
+            confidence=0.8,
+            extra={"t": 2.0},
+        )
+    ]
+
+    class Resp:
+        model = "gemini/gemini-2.5-flash"
+        provider = "google"
+        output_tokens = 900
+        cost_usd = 0.03
+        content = '{"summary": "This response was truncated'
+
+        def parse_json(self):
+            raise ValueError("unterminated string")
+
+    async def fake_call_vlm(**kw):
+        return Resp()
+
+    monkeypatch.setattr("services.ai_service.providers.base.call_vlm", fake_call_vlm)
+
+    res = asyncio.run(AggregatorComponent().run(ctx))
+
+    assert res.cost_usd == 0.03
+    assert len(res.findings) == 1
+    assert res.findings[0].area == "head_breath"
+    assert res.meta["fallback"] is True
+    diag = res.meta["diagnostics"]
+    assert diag["parse_ok"] is False
+    assert diag["parse_error_type"] == "ValueError"
+    assert diag["output_tokens"] == 900
+    assert "truncated" in diag["content_start"]
 
 
 def test_pose_recovery_replaces_near_recovery_instances():

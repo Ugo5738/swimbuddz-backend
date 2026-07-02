@@ -1,7 +1,7 @@
 """Shareable card image generator using Pillow.
 
 Generates "SwimBuddz Wrapped" style cards for quarterly reports.
-Two formats: square (1080x1080) and story (1080x1920).
+Formats: square (1080x1080), post (1080x1350), and story (1080x1920).
 
 Design: Vibrant gradient background (purple → blue → teal),
 white DM Sans typography, bold hero stat, circular avatar with photo.
@@ -34,6 +34,7 @@ GOLD = (255, 215, 0)
 
 FORMATS = {
     "square": (1080, 1080),
+    "post": (1080, 1350),
     "story": (1080, 1920),
 }
 
@@ -104,6 +105,13 @@ def _draw_circle(img: "PILImage", center: tuple, radius: int, fill):
     img.paste(circle, (center[0] - radius, center[1] - radius), circle)
 
 
+def _open_photo_respecting_orientation(photo_data: bytes) -> "PILImage":
+    """Open an uploaded photo with EXIF orientation applied."""
+    from PIL import Image, ImageOps
+
+    return ImageOps.exif_transpose(Image.open(io.BytesIO(photo_data))).convert("RGBA")
+
+
 def _paste_circular_photo(
     img: "PILImage", photo_url: str, center: tuple, radius: int
 ) -> bool:
@@ -116,7 +124,7 @@ def _paste_circular_photo(
         # Download photo to memory
         with urllib.request.urlopen(photo_url, timeout=5) as resp:
             photo_data = resp.read()
-        photo = Image.open(io.BytesIO(photo_data)).convert("RGBA")
+        photo = _open_photo_respecting_orientation(photo_data)
 
         # Center-crop to square
         w, h = photo.size
@@ -166,7 +174,7 @@ def _get_initials(name: str) -> str:
     return "?"
 
 
-def _load_fonts(is_story=False):
+def _load_fonts(format: str = "square"):
     """Load DM Sans fonts (bundled, closest to Canva Sans) with fallbacks."""
     from PIL import ImageFont
 
@@ -191,18 +199,61 @@ def _load_fonts(is_story=False):
     regular = [dm_regular, dv_regular]
     light = [dm_light, dm_regular, dv_regular]
 
+    if format == "story":
+        sizes = {
+            "hero": 300,
+            "hero_label": 48,
+            "name": 48,
+            "quarter": 45,
+            "initials": 60,
+            "stat_label": 24,
+            "stat_value": 50,
+            "badge": 32,
+            "fun_fact": 32,
+            "footer": 28,
+            "brand": 35,
+        }
+    elif format == "post":
+        sizes = {
+            "hero": 250,
+            "hero_label": 35,
+            "name": 38,
+            "quarter": 32,
+            "initials": 50,
+            "stat_label": 20,
+            "stat_value": 40,
+            "badge": 26,
+            "fun_fact": 26,
+            "footer": 24,
+            "brand": 28,
+        }
+    else:
+        sizes = {
+            "hero": 250,
+            "hero_label": 35,
+            "name": 35,
+            "quarter": 30,
+            "initials": 46,
+            "stat_label": 18,
+            "stat_value": 38,
+            "badge": 24,
+            "fun_fact": 24,
+            "footer": 22,
+            "brand": 27,
+        }
+
     return {
-        "hero": _try(bold, 300) if is_story else _try(bold, 250),
-        "hero_label": _try(light, 48) if is_story else _try(light, 35),
-        "name": _try(bold, 48) if is_story else _try(bold, 35),
-        "quarter": _try(bold, 45) if is_story else _try(bold, 30),
-        "initials": _try(bold, 60) if is_story else _try(bold, 46),
-        "stat_label": _try(regular, 24) if is_story else _try(regular, 18),
-        "stat_value": _try(bold, 50) if is_story else _try(bold, 38),
-        "badge": _try(bold, 32) if is_story else _try(bold, 24),
-        "fun_fact": _try(regular, 32) if is_story else _try(regular, 24),
-        "footer": _try(regular, 28) if is_story else _try(regular, 22),
-        "brand": _try(bold, 35) if is_story else _try(bold, 27),
+        "hero": _try(bold, sizes["hero"]),
+        "hero_label": _try(light, sizes["hero_label"]),
+        "name": _try(bold, sizes["name"]),
+        "quarter": _try(bold, sizes["quarter"]),
+        "initials": _try(bold, sizes["initials"]),
+        "stat_label": _try(regular, sizes["stat_label"]),
+        "stat_value": _try(bold, sizes["stat_value"]),
+        "badge": _try(bold, sizes["badge"]),
+        "fun_fact": _try(regular, sizes["fun_fact"]),
+        "footer": _try(regular, sizes["footer"]),
+        "brand": _try(bold, sizes["brand"]),
     }
 
 
@@ -234,19 +285,68 @@ def _pick_fun_fact(report: "MemberQuarterlyReport") -> str:
     return "On your way to fish status"
 
 
-def _pick_third_stat(report: "MemberQuarterlyReport"):
+def _format_hours(hours: float) -> str:
+    if hours == int(hours):
+        return f"{int(hours)}h"
+    return f"{hours:.1f}h"
+
+
+def _primary_segment(report: "MemberQuarterlyReport") -> str:
+    """Choose the strongest segment to represent on the wrapped card."""
+    sessions_by_type = getattr(report, "sessions_by_type", None) or {}
+    member_tier = str(getattr(report, "member_tier", "") or "").lower()
+
+    if (
+        sessions_by_type.get("cohort_class", 0) > 0
+        or getattr(report, "programs_enrolled", 0) > 0
+        or getattr(report, "milestones_achieved", 0) > 0
+        or "academy" in member_tier
+    ):
+        return "academy"
+    if sessions_by_type.get("club", 0) > 0 or "club" in member_tier:
+        return "club"
+    return "community"
+
+
+def _pick_community_primary_stat(report: "MemberQuarterlyReport") -> tuple[str, str]:
+    """Community cards should not lead with attendance percentage."""
+    volunteer_hours = float(getattr(report, "volunteer_hours", 0.0) or 0.0)
+    if volunteer_hours > 0:
+        return (_format_hours(volunteer_hours), "Volunteered")
+
+    bubbles = int(getattr(report, "bubbles_earned", 0) or 0)
+    if bubbles > 0:
+        return (str(bubbles), "Bubbles")
+
+    for attr, label in [
+        ("events_attended", "Events"),
+        ("rides_taken", "Rides"),
+        ("orders_placed", "Orders"),
+    ]:
+        value = int(getattr(report, attr, 0) or 0)
+        if value > 0:
+            return (str(value), label)
+
+    pool_hours = float(getattr(report, "pool_hours", 0.0) or 0.0)
+    if pool_hours > 0:
+        display = f"{pool_hours:.0f}" if pool_hours >= 10 else f"{pool_hours:.1f}"
+        return (display, "Pool hours")
+
+    return (str(getattr(report, "total_sessions_attended", 0) or 0), "Sessions")
+
+
+def _pick_third_stat(
+    report: "MemberQuarterlyReport", excluded_labels: set[str] | None = None
+):
     """Pick the 3rd stat pill using fallback chain:
     Milestones > Volunteer Hours > Bubbles > other non-zero > None (show 2 only).
     """
-    if report.milestones_achieved > 0:
+    excluded_labels = excluded_labels or set()
+    if "Milestones" not in excluded_labels and report.milestones_achieved > 0:
         return (str(report.milestones_achieved), "Milestones")
-    if report.volunteer_hours > 0:
-        if report.volunteer_hours == int(report.volunteer_hours):
-            vol_display = f"{int(report.volunteer_hours)}h"
-        else:
-            vol_display = f"{report.volunteer_hours:.1f}h"
-        return (vol_display, "Volunteered")
-    if report.bubbles_earned > 0:
+    if "Volunteered" not in excluded_labels and report.volunteer_hours > 0:
+        return (_format_hours(report.volunteer_hours), "Volunteered")
+    if "Bubbles" not in excluded_labels and report.bubbles_earned > 0:
         return (str(report.bubbles_earned), "Bubbles")
 
     for val, display, label in [
@@ -255,9 +355,32 @@ def _pick_third_stat(report: "MemberQuarterlyReport"):
         (report.certificates_earned, str(report.certificates_earned), "Certs"),
         (report.orders_placed, str(report.orders_placed), "Orders"),
     ]:
-        if val > 0:
+        if label not in excluded_labels and val > 0:
             return (display, label)
     return None
+
+
+def _card_stats(report: "MemberQuarterlyReport") -> list[tuple[str, str]]:
+    """Build card stat pills with segment-aware first metric."""
+    segment = _primary_segment(report)
+    if segment == "academy":
+        first = (f"{report.attendance_rate * 100:.0f}%", "Academy attendance")
+    elif segment == "club":
+        first = (f"{report.attendance_rate * 100:.0f}%", "Club attendance")
+    else:
+        first = _pick_community_primary_stat(report)
+
+    stats = [
+        first,
+        (
+            f"{report.streak_longest}w" if report.streak_longest > 0 else "0w",
+            "Streak",
+        ),
+    ]
+    third = _pick_third_stat(report, excluded_labels={first[1], "Streak"})
+    if third:
+        stats.append(third)
+    return stats
 
 
 async def _fetch_member_photo_url(member_auth_id: str) -> str | None:
@@ -324,7 +447,9 @@ async def generate_card_image(
 
     width, height = FORMATS.get(format, FORMATS["square"])
     is_story = format == "story"
-    fonts = _load_fonts(is_story=is_story)
+    is_post = format == "post"
+    is_portrait = is_story or is_post
+    fonts = _load_fonts(format=format)
 
     img = _gradient_bg(width, height).convert("RGBA")
     draw = ImageDraw.Draw(img)
@@ -383,12 +508,12 @@ async def generate_card_image(
         anchor="mm",
     )
 
-    y += logo_size + (vh(1) if is_story else 0)
+    y += logo_size + (vh(1) if is_story else vh(0.6) if is_post else 0)
 
     # ═══════════════════════════════════════════
     # AVATAR — large circle with photo or initials
     # ═══════════════════════════════════════════
-    avatar_r = vw(10) if is_story else vw(8)  # ~86px radius = 172px diameter
+    avatar_r = vw(10) if is_story else vw(8.5) if is_post else vw(8)
     avatar_cy = y + avatar_r
 
     # Try member photo — fetch from members service at generation time
@@ -416,7 +541,7 @@ async def generate_card_image(
     draw = ImageDraw.Draw(img)
     draw.text((cx, y), report.member_name, fill=WHITE, font=fonts["name"], anchor="mt")
     y += _text_height(draw, report.member_name, fonts["name"]) + (
-        vh(1) if is_story else vh(3)
+        vh(1) if is_story else vh(1.5) if is_post else vh(3)
     )
 
     # ═══════════════════════════════════════════
@@ -436,6 +561,8 @@ async def generate_card_image(
 
     if is_story:
         y += vh(4)
+    elif is_post:
+        y += vh(1.25)
 
     draw.text((cx, y), hero_val, fill=WHITE, font=fonts["hero"], anchor="mt")
     y += _text_height(draw, hero_val, fonts["hero"]) + vh(1.5)
@@ -447,7 +574,9 @@ async def generate_card_image(
         font=fonts["hero_label"],
         anchor="mt",
     )
-    y += _text_height(draw, hero_unit, fonts["hero_label"]) + vh(3)
+    y += _text_height(draw, hero_unit, fonts["hero_label"]) + (
+        vh(2.5) if is_post else vh(3)
+    )
 
     # ═══════════════════════════════════════════
     # BADGE + PERCENTILE (combined)
@@ -486,18 +615,10 @@ async def generate_card_image(
     # ═══════════════════════════════════════════
     # STATS ROW — label on TOP, value on BOTTOM
     # ═══════════════════════════════════════════
-    stats = []
-    stats.append((f"{report.attendance_rate * 100:.0f}%", "Attendance"))
-    stats.append(
-        (f"{report.streak_longest}w" if report.streak_longest > 0 else "0w", "Streak")
-    )
-
-    third = _pick_third_stat(report)
-    if third:
-        stats.append(third)
+    stats = _card_stats(report)
 
     num_stats = len(stats)
-    pill_h = vh(7.5) if is_story else vh(8)
+    pill_h = vh(7.5) if is_story else vh(6.7) if is_post else vh(8)
     pill_gap = vh(3.5) if is_story else vw(2.5)
     total_pill_w = width - pad * 2 - (num_stats - 1) * pill_gap
     pill_w = total_pill_w // num_stats
@@ -513,7 +634,7 @@ async def generate_card_image(
         # LABEL on top, VALUE below — with good spacing
         lbl_h = _text_height(draw, lbl, fonts["stat_label"])
         val_h = _text_height(draw, val, fonts["stat_value"])
-        inner_gap = 30 if is_story else 15
+        inner_gap = 30 if is_story else 20 if is_post else 15
         total_inner = lbl_h + inner_gap + val_h
         lbl_top = y + (pill_h - total_inner) // 2
 
@@ -532,7 +653,7 @@ async def generate_card_image(
             anchor="mt",
         )
 
-    y += pill_h + vh(4)
+    y += pill_h + (vh(2.5) if is_post else vh(4))
 
     # ═══════════════════════════════════════════
     # FUN FACT
@@ -548,11 +669,11 @@ async def generate_card_image(
 
     # ═══════════════════════════════════════════
     # QR CODE + FOOTER
-    # Story: QR centered between fun fact and "...Join the wave"
-    # Square: QR bottom-right, "...Join the wave" bottom-center
+    # Portrait: QR centered between fun fact and "...Join the wave"
+    # Square: QR bottom-left, "...Join the wave" bottom-center
     # ═══════════════════════════════════════════
     referral_link = await _fetch_referral_link(report.member_auth_id)
-    qr_inner = vw(20) if is_story else vw(8)  # story bigger, square stays same
+    qr_inner = vw(20) if is_story else vw(9) if is_post else vw(8)
     qr_pad = 8  # padding inside the background box
     qr_box = qr_inner + qr_pad * 2  # total box size
     qr_generated = None
@@ -582,8 +703,8 @@ async def generate_card_image(
     except ImportError:
         logger.debug("qrcode not available, skipping")
 
-    if is_story:
-        # Story: "...Join the wave" anchored at bottom, QR centered above it
+    if is_portrait:
+        # Portrait layouts: footer anchored at bottom, QR centered above it.
         footer_y = height - vh(6)
         draw.text(
             (cx, footer_y),
@@ -595,7 +716,7 @@ async def generate_card_image(
 
         # QR centered between fun fact and footer
         if qr_generated:
-            qr_y = footer_y - qr_box - vh(3)
+            qr_y = footer_y - qr_box - (vh(3) if is_story else vh(2.25))
             img.paste(qr_generated, (cx - qr_box // 2, qr_y), qr_generated)
             draw = ImageDraw.Draw(img)
     else:
