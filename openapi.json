@@ -8999,6 +8999,78 @@
         }
       }
     },
+    "/api/v1/internal/sessions/member/{member_auth_id}/session-commitments": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "List Member Session Commitments",
+        "description": "Confirmed, dated session commitments for member reporting.\n\nThis uses the session's scheduled time as the reporting window, not the\nbooking creation time. It lets reporting distinguish \"expected to attend\"\nfrom attendance records that happen to exist.",
+        "operationId": "list_member_session_commitments_internal_sessions_member__member_auth_id__session_commitments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberSessionCommitment"
+                  },
+                  "title": "Response List Member Session Commitments Internal Sessions Member  Member Auth Id  Session Commitments Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/sessions/durations": {
       "get": {
         "tags": [
@@ -9321,6 +9393,105 @@
                     "type": "string"
                   },
                   "title": "Response Get Completed Session Ids For Cohort Internal Sessions Cohorts  Cohort Id  Completed Session Ids Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/sessions/cohorts/{cohort_id}/sessions": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Sessions For Cohort Internal",
+        "description": "Get dated cohort sessions for reporting and academy integrations.",
+        "operationId": "get_sessions_for_cohort_internal_internal_sessions_cohorts__cohort_id__sessions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          },
+          {
+            "name": "statuses",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated session statuses to include.",
+              "default": "scheduled,in_progress,completed",
+              "title": "Statuses"
+            },
+            "description": "Comma-separated session statuses to include."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionBasic"
+                  },
+                  "title": "Response Get Sessions For Cohort Internal Internal Sessions Cohorts  Cohort Id  Sessions Get"
                 }
               }
             }
@@ -14140,6 +14311,73 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/academy/member-cohort-enrollments/{member_auth_id}": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Member Cohort Enrollments Internal",
+        "description": "Return academy cohort enrollments that overlap a reporting window.",
+        "operationId": "get_member_cohort_enrollments_internal_internal_academy_member_cohort_enrollments__member_auth_id__get",
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberCohortEnrollment"
+                  },
+                  "title": "Response Get Member Cohort Enrollments Internal Internal Academy Member Cohort Enrollments  Member Auth Id  Get"
+                }
               }
             }
           },
@@ -21140,7 +21378,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "pattern": "^(square|story)$",
+              "pattern": "^(square|post|story)$",
               "default": "square",
               "title": "Format"
             }
@@ -57246,6 +57484,115 @@
         "title": "MakeupStatus",
         "description": "Lifecycle of a MakeupBooking (individual-learner make-up / reschedule)."
       },
+      "MemberSessionCommitment": {
+        "properties": {
+          "booking_id": {
+            "type": "string",
+            "title": "Booking Id"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "member_id": {
+            "type": "string",
+            "title": "Member Id"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "title": "Member Auth Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "session_type": {
+            "type": "string",
+            "title": "Session Type"
+          },
+          "session_status": {
+            "type": "string",
+            "title": "Session Status"
+          },
+          "starts_at": {
+            "type": "string",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "title": "Ends At"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
+          },
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id"
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "week_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week Number"
+          }
+        },
+        "type": "object",
+        "required": [
+          "booking_id",
+          "session_id",
+          "member_id",
+          "member_auth_id",
+          "title",
+          "session_type",
+          "session_status",
+          "starts_at",
+          "ends_at"
+        ],
+        "title": "MemberSessionCommitment",
+        "description": "A confirmed member commitment joined to its scheduled session."
+      },
       "NextSessionResponse": {
         "properties": {
           "starts_at": {
@@ -63343,6 +63690,95 @@
         },
         "type": "object",
         "title": "MemberAcademySummary"
+      },
+      "MemberCohortEnrollment": {
+        "properties": {
+          "enrollment_id": {
+            "type": "string",
+            "title": "Enrollment Id"
+          },
+          "cohort_id": {
+            "type": "string",
+            "title": "Cohort Id"
+          },
+          "member_id": {
+            "type": "string",
+            "title": "Member Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "enrolled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrolled At"
+          },
+          "dropped_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dropped At"
+          },
+          "paused_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused At"
+          },
+          "cohort_start_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Start Date"
+          },
+          "cohort_end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort End Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enrollment_id",
+          "cohort_id",
+          "member_id"
+        ],
+        "title": "MemberCohortEnrollment"
       },
       "MemberMilestoneClaimRequest": {
         "properties": {
