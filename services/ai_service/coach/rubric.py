@@ -14,6 +14,81 @@ from typing import Optional
 
 from services.ai_service.pipeline.types import CoachContext
 
+TI_CORE_BLOCK = """\
+== TOTAL IMMERSION-INFORMED COACHING DOCTRINE ==
+Use this as the coaching philosophy, not as a reason to invent observations.
+Priority order: Balance and comfort first; streamline and vessel shape second;
+whole-body propulsion last. Never lead with "pull harder" or "kick harder" when a
+visible balance or drag issue explains the problem.
+
+Coach one focal point at a time. Prefer one clear foundation fix over a long list.
+Speak in efficiency language: release the head, lengthen the body, reduce drag,
+quiet the water, rotate from the core, and let the arms work with the body rather
+than muscling through the water.
+
+FREESTYLE POSITION MODEL: Prefer a patient front-quadrant line (one hand/arm
+stays forward while the other recovers, without freezing the lead arm forever);
+side-lying skate/rotation with hip and shoulder moving together; quiet entry and
+spear into the long line; relaxed high-elbow recovery with elbow leading and hand
+hanging softly; and a compact kick that supports rhythm and rotation. For
+efficiency/distance this often means a 2-beat kick, but do not mark other kick
+patterns wrong for every swimmer or goal. The underwater catch is an anchor for
+the body to move past, not a brute-force arm yank, and it must not be guessed from
+above-water footage.
+
+This is a Total Immersion-informed SwimBuddz rubric. Do not imply official TI
+certification, licensing, or affiliation.
+"""
+
+_TI_ASPECT_BLOCKS = {
+    "body_line": (
+        "BODY LINE TI FOCUS: Treat the swimmer as a vessel. A heavy, eyes-down "
+        "head and long level body come before propulsion. If hips or legs sink, "
+        "frame it as drag and prescribe a balance focal point such as Superman "
+        "Glide / eyes down rather than more effort."
+    ),
+    "head_breath": (
+        "HEAD/BREATH TI FOCUS: The head should stay relaxed and aligned with the "
+        "spine. Breathing should come from body rotation, not lifting the chin. "
+        "Use cues like weightless head, one-goggle breath, and keep the head on "
+        "the pillow. Never infer breathing rhythm from one visible breath."
+    ),
+    "recovery_elbow": (
+        "RECOVERY TI FOCUS: The recovering arm should rest. Look for elbow-led, "
+        "soft-hand recovery: shark-fin elbow, floppy hand, quiet shoulder. "
+        "Fingertip-drag is a drill cue, not a requirement that every normal stroke "
+        "literally drag the fingers. If the arm is tense, straight, dropped, or "
+        "wide, prescribe Shark Fin / Zipper / fingertip-drag style focal points."
+    ),
+    "entry_reach": (
+        "ENTRY/REACH TI FOCUS: Favor a clean mail-slot entry and patient lead "
+        "hand that lengthens the vessel into a skate line. Ideally one arm stays "
+        "forward as the other recovers; the lead hand should not drop too early. "
+        "From side-on footage, judge reach relative to the head/shoulder only. "
+        "Never call crossover unless the camera angle actually supports "
+        "cross-midline judgment."
+    ),
+    "body_rotation": (
+        "ROTATION TI FOCUS: Rotation should be core-led: hip and shoulder move "
+        "together as the body skates from side to side. Limited roll is a balance "
+        "and drag issue before it is a power issue. Prescribe Zen Skate or Switch "
+        "drills when rotation is the visible problem."
+    ),
+    "catch_pull": (
+        "CATCH/PULL TI FOCUS: The catch is an underwater anchoring skill. From "
+        "above-water footage, show an honest unavailable card rather than "
+        "guessing. Ask for underwater footage or in-person coaching before "
+        "commenting on high-elbow catch or pull path."
+    ),
+    "kick": (
+        "KICK TI FOCUS: For efficiency-first freestyle, the kick is rhythm and "
+        "rotation support, not brute force. A compact 2-beat kick often fits "
+        "distance/efficiency work, but sprinting may use more kick. Do not judge "
+        "kick timing or 2-beat versus 6-beat rhythm unless the footage truly shows "
+        "it."
+    ),
+}
+
 _AIM = {
     "sprint": (
         "training for SPRINT freestyle — short and fast, where power and tempo "
@@ -47,6 +122,17 @@ _FOCUS_LABEL = {
     "head_breath": "their head position and breathing",
     "entry_reach": "their hand entry and reach",
 }
+
+
+def build_ti_block(aspect: Optional[str] = None) -> str:
+    """Shared TI-informed doctrine appended to coach prompts.
+
+    ``aspect`` can be an AREA_LABELS / grade key such as ``body_line`` or
+    ``head_breath``. Unknown aspect returns the core block only.
+    """
+    if aspect and aspect in _TI_ASPECT_BLOCKS:
+        return f"{TI_CORE_BLOCK}\n{_TI_ASPECT_BLOCKS[aspect]}"
+    return TI_CORE_BLOCK
 
 
 def build_goal_block(coaching: Optional[CoachContext] = None) -> str:

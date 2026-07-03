@@ -28,7 +28,7 @@ import time
 from pathlib import Path
 
 from libs.common.logging import get_logger
-from services.ai_service.coach.rubric import build_goal_block
+from services.ai_service.coach.rubric import build_goal_block, build_ti_block
 from services.ai_service.pipeline.components.aspect import (
     COACH_VOICE,
     AspectCoachComponent,
@@ -57,7 +57,8 @@ _PARSE_ERROR_KEY = "_parse_error"
 # re-grade them for the swimmer's discipline. "not visible" is a first-class
 # answer — guessing an unseen aspect is the dishonesty we explicitly forbid.
 CHUNK_PROMPT = """\
-You are an expert freestyle coach (Total Immersion trained) watching a SHORT ~4s \
+You are an expert freestyle coach using a Total Immersion-informed SwimBuddz rubric \
+watching a SHORT ~4s \
 VIDEO CLIP of ONE freestyle stroke — usually the camera-side arm recovering \
 forward over the water. The clip may be filmed from the SIDE or from an ELEVATED / \
 OVERHEAD angle on the pool deck; BOTH are coachable for what they show. WATCH THE \
@@ -66,6 +67,19 @@ MOTION across the clip and judge the whole stroke, not one frozen frame.
 Assess ONLY what you can CLEARLY see. If an aspect is hidden underwater, off-frame, \
 blurred, or ambiguous, set "visible": false, "verdict": "unclear", "note": "", \
 "confidence": 0.0 — do NOT guess. NEVER invent a fault or a strength.
+
+Use the TI order: balance/comfort first, streamline/vessel shape second, \
+whole-body propulsion last. Do not lead with more effort when a visible head, body \
+line, or drag issue explains the stroke.
+
+Use this TI position model to interpret the visible aspects, without adding extra \
+verdicts: a patient front-quadrant line where one arm stays forward while the \
+other recovers; side-lying skate rotation with hip and shoulder moving together; \
+quiet mail-slot entry and spear; relaxed high-elbow recovery with elbow leading \
+and hand hanging softly; and compact kick timing that supports rotation. A 2-beat \
+kick often fits efficiency/distance swimming, but do not require it for every \
+goal, do not require literal fingertip dragging in normal swimming, and do not \
+judge kick timing unless it is clearly visible.
 
 WHAT THE ANGLE SHOWS — do NOT refuse a coachable clip just because it isn't a \
 perfect side-on: From the SIDE you can judge all four aspects. From an ELEVATED or \
@@ -203,7 +217,7 @@ class ChunkCoachComponent(AspectCoachComponent):
         strip = ctx.strip or ctx.frames
         reps = _representatives(insts, self._rep_cap(ctx))
         goal = build_goal_block(ctx.coaching)
-        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{COACH_VOICE}"
+        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{build_ti_block()}\n\n{COACH_VOICE}"
         if goal:
             system_prompt = f"{system_prompt}\n\n{goal}"
 
@@ -383,7 +397,7 @@ class ChunkCoachComponent(AspectCoachComponent):
             return []
         window = self._window(inst, strip)
         goal = build_goal_block(ctx.coaching)
-        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{COACH_VOICE}"
+        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{build_ti_block()}\n\n{COACH_VOICE}"
         if goal:
             system_prompt = f"{system_prompt}\n\n{goal}"
         cache = ctx.cache

@@ -52,7 +52,8 @@ class CatchComponent(_UnderwaterComponent):
     name = "catch"
     consumes = Phase.CATCH
     unavailable_reason = (
-        "The catch happens underwater — film from below the surface to assess it."
+        "The catch is an underwater anchoring skill — film from below the surface "
+        "or work with a coach in the pool before judging it."
     )
     unavailable_area = "catch_pull"
 
@@ -61,7 +62,8 @@ class PullComponent(_UnderwaterComponent):
     name = "pull"
     consumes = Phase.PULL
     unavailable_reason = (
-        "The underwater pull isn't visible from an above-water, side-on angle."
+        "The underwater pull path is hidden from an above-water side angle, so I "
+        "won't guess at it from this clip."
     )
     unavailable_area = "catch_pull"
 
@@ -70,6 +72,7 @@ class FlutterKickComponent(_UnderwaterComponent):
     name = "flutter_kick"
     consumes = Phase.CLIP  # the kick runs through the whole cycle (no dedicated phase)
     unavailable_reason = (
-        "Flutter-kick depth and amplitude need an underwater or head-on view."
+        "Kick timing and depth need clearer underwater or head-on footage; from "
+        "this view, quiet-leg rhythm would be a guess."
     )
     unavailable_area = "kick"

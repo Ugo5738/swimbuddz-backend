@@ -14,10 +14,12 @@ from services.ai_service.pipeline.components.aspect import AspectCoachComponent
 from services.ai_service.pipeline.types import Granularity, Instance, Phase
 
 BODY_LINE_PROMPT = """\
-You are a freestyle coach. These still frames show a swimmer GLIDING (no arm over \
-the water). Judge ONLY the BODY LINE — how level the body sits, head to feet. \
-Look for: the head LIFTED/looking-forward vs neutral/looking-down, the HIPS \
-riding low, the LEGS sinking, a PIKE (bend) at the hips, or an over-ARCHED back. \
+You are a freestyle coach using a Total Immersion-informed balance-first rubric. \
+These still frames show a swimmer GLIDING (no arm over the water). Judge ONLY the \
+BODY LINE — how level the vessel sits, head to feet. Look for: a relaxed, heavy \
+head with eyes down vs a LIFTED/looking-forward head, HIPS riding low, LEGS \
+sinking, a PIKE (bend) at the hips, or an over-ARCHED back. Treat a lifted head \
+or sinking hips/legs as a balance and drag problem, not a need to kick harder. \
 IGNORE any frame where the head is turned to the side to breathe — a breath \
 briefly lifts the hips and would fool you. If you cannot see the waterline \
 cutting across the SIDE of the body, say "unclear" — do not guess. \
