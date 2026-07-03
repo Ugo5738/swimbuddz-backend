@@ -27,10 +27,14 @@ from services.ai_service.pipeline.types import (
 _ELBOW_SCORE = {"high": 2, "wide": 1, "dropped": 0}
 
 RECOVERY_PROMPT = """\
-You are a freestyle coach. These still frames, in time order, show ONE over-water \
-arm recovery (the arm swinging forward above the water). Comment ONLY on this \
-recovery — nothing else. Is the elbow HIGH (leading, above the hand) or DROPPED/ \
-LOW or swung WIDE out to the side? If the frames don't show it clearly, say so. \
+You are a freestyle coach using a Total Immersion-informed relaxed-recovery \
+rubric. These still frames, in time order, show ONE over-water arm recovery (the \
+arm swinging forward above the water). Comment ONLY on this recovery — nothing \
+else. In TI terms, the recovery arm should rest: elbow leads like a shark fin, \
+forearm/hand hang loose, and the shoulder stays quiet. Fingertip-drag/zipper is a \
+teaching cue for this relaxed path, not a requirement that the fingers literally \
+drag in normal swimming. Is the elbow HIGH (leading, above the hand), DROPPED/LOW, \
+or swung WIDE out to the side? If the frames don't show it clearly, say so. \
 Return ONLY this JSON: {"assessment": "<one short plain sentence>", "elbow": \
 "high" | "dropped" | "wide" | "unclear", "confidence": 0.0-1.0}"""
 

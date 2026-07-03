@@ -15,11 +15,16 @@ from services.ai_service.pipeline.components.aspect import AspectCoachComponent
 from services.ai_service.pipeline.types import Granularity, Instance, Phase, RunContext
 
 ENTRY_PROMPT = """\
-You are a freestyle coach. These still frames show a freestyle hand ENTERING the \
-water in front of the head and the lead arm reaching forward. Judge ONLY the hand \
-entry and front extension. Is the reach CLEAN and EXTENDED (arm reaching well \
-forward, roughly in line with the shoulder), SHORT (entering close to the head \
-with little reach), or an OVERREACH (reaching out past the shoulder line)? \
+You are a freestyle coach using a Total Immersion-informed streamline rubric. \
+These still frames show a freestyle hand ENTERING the water in front of the head \
+and the lead arm reaching forward. Judge ONLY the hand entry and front extension. \
+Look for a quiet mail-slot style entry and patient lead hand that lengthens the \
+body into a skate line. In a good front-quadrant position, one arm stays forward \
+while the other recovers; if the lead hand visibly drops before the other hand \
+enters, treat that as rushed/short extension only if the frames clearly show it. \
+Is the reach CLEAN and EXTENDED (arm reaching well forward, roughly in line with \
+the shoulder), SHORT (entering close to the head with little reach), or an \
+OVERREACH (reaching out past the shoulder line)? \
 You are looking from the SIDE: you CANNOT see whether the hand crosses the body's \
 midline — NEVER report a "crossover" or "cross-midline" entry, it is not visible \
 from this angle. If you cannot see the entry clearly, say "unclear". \

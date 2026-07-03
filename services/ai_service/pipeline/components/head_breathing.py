@@ -11,21 +11,19 @@ breathing rhythm / frequency / count.
 from __future__ import annotations
 
 from services.ai_service.pipeline.components.aspect import AspectCoachComponent
-from services.ai_service.pipeline.types import (
-    Granularity,
-    Instance,
-    Phase,
-    RunContext,
-)
+from services.ai_service.pipeline.types import Granularity, Instance, Phase, RunContext
 
 HEAD_BREATH_PROMPT = """\
-You are a freestyle coach. These still frames show a freestyle swimmer's head. \
-Judge the HEAD CARRIAGE: is the head NEUTRAL (face down, looking toward the bottom, \
-the waterline around the crown) or LIFTED (looking forward/up — which sinks the \
-legs)? If a frame clearly shows the head turned to the SIDE to take a breath, also \
-report which side. Do NOT report breathing rhythm, frequency, or how OFTEN they \
-breathe — only the head position and, if you can see it, the side of a breath. If \
-the head isn't clearly visible, say "unclear". \
+You are a freestyle coach using a Total Immersion-informed balance-first rubric. \
+These still frames show a freestyle swimmer's head. Judge the HEAD CARRIAGE: is \
+the head NEUTRAL (relaxed/weightless, face down, looking toward the bottom, \
+waterline around the crown) or LIFTED (looking forward/up, chin leading — which \
+sinks the legs)? If a frame clearly shows the head turned to the SIDE to take a \
+breath, also report which side. A good breath comes from body rotation with the \
+head staying low; do not ask the swimmer to lift for air. Do NOT report breathing \
+rhythm, frequency, or how OFTEN they breathe — only the head position and, if you \
+can see it, the side of a breath. If the head isn't clearly visible, say \
+"unclear". \
 Return ONLY this JSON: {"head": "neutral" | "lifted" | "unclear", "breath_side": \
 "left" | "right" | "both" | "none_seen", "note": "<one short plain sentence>", \
 "confidence": 0.0-1.0}"""
