@@ -22,7 +22,7 @@ import asyncio
 import time
 from typing import Awaitable, Callable, Optional
 
-from services.ai_service.coach.rubric import build_goal_block
+from services.ai_service.coach.rubric import build_goal_block, build_ti_block
 from services.ai_service.pipeline.component import Component
 from services.ai_service.pipeline.grade import grade
 from services.ai_service.pipeline.types import (
@@ -30,8 +30,8 @@ from services.ai_service.pipeline.types import (
     Finding,
     FrameRef,
     Granularity,
-    Instance,
     InputProfile,
+    Instance,
     RunContext,
 )
 
@@ -166,7 +166,9 @@ class AspectCoachComponent(Component):
         strip = ctx.strip or ctx.frames
         coach_fn = self._coach_fn or _vlm_coach
 
-        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{COACH_VOICE}"
+        system_prompt = (
+            f"{self.SYSTEM_PROMPT}\n\n{build_ti_block(self.aspect)}\n\n{COACH_VOICE}"
+        )
         goal = build_goal_block(ctx.coaching)  # soft, honesty-fenced clause (or "")
         if goal:
             system_prompt = f"{system_prompt}\n\n{goal}"
@@ -225,7 +227,9 @@ class AspectCoachComponent(Component):
         if inst is None or not strip:
             return None
         window = self._window(inst, strip)
-        system_prompt = f"{self.SYSTEM_PROMPT}\n\n{COACH_VOICE}"
+        system_prompt = (
+            f"{self.SYSTEM_PROMPT}\n\n{build_ti_block(self.aspect)}\n\n{COACH_VOICE}"
+        )
         goal = build_goal_block(ctx.coaching)
         if goal:
             system_prompt = f"{system_prompt}\n\n{goal}"

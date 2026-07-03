@@ -19,6 +19,7 @@ import json
 import time
 
 from libs.common.logging import get_logger
+from services.ai_service.coach.rubric import build_ti_block
 from services.ai_service.pipeline.component import Component
 from services.ai_service.pipeline.components.aspect import COACH_VOICE
 from services.ai_service.pipeline.types import (
@@ -38,7 +39,8 @@ logger = get_logger(__name__)
 _SEV_ORDER = {SEVERITY_FIX: 0, SEVERITY_STRENGTH: 1}
 _AGG_PARSE_SNIPPET_CHARS = 400
 
-AGG_PROMPT = """You are the HEAD freestyle coach (Total Immersion trained) writing \
+AGG_PROMPT = """You are the HEAD freestyle coach using a Total Immersion-informed \
+SwimBuddz rubric, writing \
 a swimmer's overall feedback from per-stroke notes taken across a few of their \
 strokes. Each note carries an aspect id, what was seen, and a severity (fix = work \
 on this, strength = doing well, info = neutral).
@@ -57,10 +59,23 @@ PRIORITISE (fix the foundation first — it unlocks everything else):
 you swim downhill; a lifted head or sinking hips make every other fault worse and \
 tire you fastest.
 2. body_rotation NEXT — rolling onto each side feeds a longer, stronger stroke.
-3. recovery_elbow and other recovery/propulsion details LAST.
+3. entry_reach and recovery_elbow NEXT — streamline and relaxation before force.
+4. catch/pull/kick propulsion details LAST, and only if the notes actually support \
+them.
 Within that order, lead with the notes marked most severe. Return AT MOST 3 \
 priority_fixes — fewer is better, never pad. Each fix's "area" MUST be an aspect id \
 from the notes.
+
+TI POSITION MODEL
+- Treat patient front-quadrant length as an entry/reach issue: one arm stays \
+forward while the other recovers, without freezing there forever.
+- Treat side-lying skate and hip/shoulder rotation as the clean body position for \
+freestyle, after body line and head position are handled.
+- Treat relaxed high-elbow recovery as elbow-led with a soft hand; \
+fingertip-drag/zipper is a drill cue, not a literal requirement in every stroke.
+- Treat kick rhythm as support for rotation. A compact 2-beat kick is often right \
+for efficiency/distance, but do not make it universal or mention it unless the \
+notes actually show a kick/rhythm issue.
 
 VOICE & SUBSTANCE
 - Warm, calm, direct — a real coach at poolside, not a textbook. No hype, no \
@@ -68,6 +83,12 @@ jargon, no numbers.
 - Per fix: "fault" = one plain sentence on what's off; "why_it_matters" = one \
 sentence on how it slows or tires you; "drill" = ONE short, water-safe thing to try \
 next session.
+- Drill map: body_line/head_breath -> Superman Glide or eyes-down balance focal \
+point; recovery_elbow -> Shark Fin or Zipper/fingertip-drag; entry_reach -> \
+Patient Lead Hand, SpearSkate, or Switch drill; body_rotation -> Zen Skate or \
+Switch drill; kick -> quiet legs in skate or a gentle 2-beat rhythm only when \
+visible and goal-appropriate; catch/pull -> request underwater footage or an \
+in-person coach unless the notes truly saw it.
 - Add a "strength" ONLY if a note genuinely shows one. An empty strengths list is \
 honest and fine.
 
@@ -186,7 +207,7 @@ class AggregatorComponent(Component):
         diagnostics = {"notes_count": len(notes), "max_tokens": self.max_tokens}
         try:
             resp = await call_vlm(
-                system_prompt=f"{AGG_PROMPT}\n\n{COACH_VOICE}",
+                system_prompt=f"{AGG_PROMPT}\n\n{build_ti_block()}\n\n{COACH_VOICE}",
                 user_prompt=(
                     "Per-stroke notes:\n"
                     + json.dumps(notes, ensure_ascii=False)
