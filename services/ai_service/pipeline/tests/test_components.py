@@ -26,6 +26,7 @@ from services.ai_service.pipeline.types import (
     Finding,
     Instance,
     Phase,
+    PipelineConfig,
     RunContext,
 )
 
@@ -170,21 +171,65 @@ def test_chunk_coach_uses_larger_token_budget_and_emits_diagnostics():
                     "note": "",
                     "confidence": 0.0,
                 },
+                {
+                    "aspect": "entry_reach",
+                    "visible": True,
+                    "verdict": "short",
+                    "note": "Your lead arm drops before the other hand replaces it.",
+                    "confidence": 0.8,
+                },
             ]
         }, 0.01
 
     res = asyncio.run(ChunkCoachComponent(coach_fn=fake_coach).run(ctx))
 
     assert seen["max_tokens"] == 1600
-    assert len(res.findings) == 1
+    assert len(res.findings) == 2
+    assert {f.area for f in res.findings} == {"recovery_elbow", "entry_reach"}
+    assert any(
+        f.area == "entry_reach" and f.severity == SEVERITY_FIX for f in res.findings
+    )
     assert res.error is None
     diag = res.meta["chunk_diagnostics"][0]
     assert diag["parse_ok"] is True
-    assert diag["aspect_count"] == 2
-    assert diag["visible_count"] == 1
+    assert diag["aspect_count"] == 3
+    assert diag["visible_count"] == 2
     assert diag["unclear_count"] == 1
-    assert diag["findings"] == 1
+    assert diag["findings"] == 2
     assert ctx.cache["chunk_coach:0"]["aspects"]
+
+
+def test_chunk_coach_default_reps_skip_the_first_recovery_when_possible():
+    ctx = RunContext(
+        frames=_strip(30),
+        strip=_strip(30),
+        cache={},
+        config=PipelineConfig(max_coached_recoveries=3),
+    )
+    ctx.instances = [
+        Instance(Phase.RECOVERY, i, i * 1.0, i * 1.0 + 0.4, i * 1.0 + 0.2, arm="near")
+        for i in range(6)
+    ]
+
+    async def fake_coach(frames, **kw):
+        return {
+            "aspects": [
+                {
+                    "aspect": "recovery_elbow",
+                    "visible": True,
+                    "verdict": "high",
+                    "note": "Your elbow leads the recovery softly.",
+                    "confidence": 0.8,
+                }
+            ]
+        }, 0.01
+
+    res = asyncio.run(ChunkCoachComponent(coach_fn=fake_coach).run(ctx))
+
+    assert res.error is None
+    assert [d["instance_id"] for d in res.meta["chunk_diagnostics"]] == [1, 3, 5]
+    assert sorted(ctx.cache) == ["chunk_coach:1", "chunk_coach:3", "chunk_coach:5"]
+    assert all(f.instance_id in {1, 3, 5} for f in res.findings)
 
 
 def test_chunk_coach_parse_failure_is_diagnostic_and_not_cached():
