@@ -82,9 +82,9 @@ goal, do not require literal fingertip dragging in normal swimming, and do not \
 judge kick timing unless it is clearly visible.
 
 WHAT THE ANGLE SHOWS — do NOT refuse a coachable clip just because it isn't a \
-perfect side-on: From the SIDE you can judge all four aspects. From an ELEVATED or \
+perfect side-on: From the SIDE you can judge all five aspects. From an ELEVATED or \
 OVERHEAD angle you can STILL clearly see the arm's recovery path (elbow high / wide \
-/ dropped), the body's rotation, and the head — COACH those. What a top-down angle \
+/ dropped), entry/reach timing, the body's rotation, and the head — COACH those. What a top-down angle \
 usually can't show is whether the hips and legs sink, so from overhead mark \
 body_line "unclear" rather than guessing. If more than one swimmer is in frame, \
 read ONLY the most prominent, most central swimmer.
@@ -99,6 +99,15 @@ water; forearm relaxed — a loose high-elbow recovery. (best)
 straight/stiff or windmilled rather than led by the elbow.
 - "dropped": elbow sits low, at or below the hand; arm thrown straight or trailing, \
 so the hand leads instead of the elbow.
+- "unclear"
+
+entry_reach — the lead arm / hand timing as the other arm recovers:
+- "clean_extended": the lead arm stays forward long enough to lengthen the body, \
+then enters/spears cleanly into a patient front-quadrant line. (best)
+- "short": the lead arm drops, pulls, or starts back too early before the recovering \
+arm replaces it, shortening the line and reducing glide.
+- "overreach": the hand reaches too far past the shoulder line or spears across \
+the body from this angle; use ONLY when the camera clearly supports it.
 - "unclear"
 
 body_rotation — roll on the long (head-to-toe) axis as the arm recovers:
@@ -133,6 +142,7 @@ it (lower for distant, blurred, or part-hidden views).
 Return ONLY this JSON, nothing else:
 {"aspects": [
   {"aspect": "recovery_elbow", "visible": true, "verdict": "<enum>", "note": "<sentence>", "confidence": 0.0-1.0},
+  {"aspect": "entry_reach", "visible": true, "verdict": "<enum>", "note": "<sentence>", "confidence": 0.0-1.0},
   {"aspect": "body_rotation", "visible": true, "verdict": "<enum>", "note": "<sentence>", "confidence": 0.0-1.0},
   {"aspect": "head_breath", "visible": true, "verdict": "<enum>", "note": "<sentence>", "confidence": 0.0-1.0},
   {"aspect": "body_line", "visible": true, "verdict": "<enum>", "note": "<sentence>", "confidence": 0.0-1.0}
@@ -193,6 +203,17 @@ def _cut_chunk(src: str, start_s: float, dur_s: float, max_mb: int) -> bytes | N
     return data
 
 
+def _default_chunk_representatives(instances: list[Instance], k: int) -> list[Instance]:
+    """Pick default free chunks, skipping the first recovery when possible.
+
+    The first detected recovery is often a start/settling stroke. It remains
+    available for on-demand coaching, but it is a weak default sample.
+    """
+    if len(instances) <= 1:
+        return _representatives(instances, k)
+    return _representatives(instances[1:], k)
+
+
 class ChunkCoachComponent(AspectCoachComponent):
     """Coach the visible aspects of each free recovery chunk in one video call."""
 
@@ -215,7 +236,7 @@ class ChunkCoachComponent(AspectCoachComponent):
         if not insts:
             return ComponentResult(self.name, [])  # honest zero — nothing to coach
         strip = ctx.strip or ctx.frames
-        reps = _representatives(insts, self._rep_cap(ctx))
+        reps = _default_chunk_representatives(insts, self._rep_cap(ctx))
         goal = build_goal_block(ctx.coaching)
         system_prompt = f"{self.SYSTEM_PROMPT}\n\n{build_ti_block()}\n\n{COACH_VOICE}"
         if goal:
