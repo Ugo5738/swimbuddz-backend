@@ -53,7 +53,11 @@ from services.ai_service.analysis.storage import (
     signed_url_for_upload,
     upload_guest_video,
 )
-from services.ai_service.constants import GUMROAD_CHECKOUT_BASE, PUBLIC_QUEUE_NAME
+from services.ai_service.constants import (
+    GUMROAD_CHECKOUT_BASE,
+    PUBLIC_MAX_UPLOAD_BYTES,
+    PUBLIC_QUEUE_NAME,
+)
 from services.ai_service.models import (
     AnalysisJob,
     AnalysisJobSource,
@@ -67,7 +71,7 @@ from services.ai_service.routers._common import (
     sign_coach_share,
 )
 from services.ai_service.routers.analyze import (
-    MAX_UPLOAD_BYTES,
+    MAX_UPLOAD_BYTES as LEGACY_MULTIPART_MAX_UPLOAD_BYTES,
     SUPPORTED_STROKES,
     _enqueue_analysis,
     _queue_depth,
@@ -112,7 +116,15 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/public", tags=["stroke-lab-public"])
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-_DIRECT_UPLOAD_TTL_SECONDS = 900
+_DIRECT_UPLOAD_TTL_SECONDS = 3600
+
+
+def _format_upload_limit(size_bytes: int) -> str:
+    gib = 1024 * 1024 * 1024
+    mib = 1024 * 1024
+    if size_bytes >= gib and size_bytes % gib == 0:
+        return f"{size_bytes // gib} GB"
+    return f"{size_bytes // mib} MB"
 
 
 def _normalize_email(raw: str) -> str:
@@ -192,10 +204,10 @@ async def create_public_direct_upload(
     email = _normalize_email(req.guest_email)
     if req.size_bytes <= 0:
         raise HTTPException(status_code=400, detail="Empty video upload")
-    if req.size_bytes > MAX_UPLOAD_BYTES:
+    if req.size_bytes > PUBLIC_MAX_UPLOAD_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"Video exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit",
+            detail=f"Video exceeds {_format_upload_limit(PUBLIC_MAX_UPLOAD_BYTES)} limit",
         )
 
     # Preflight the credit gate so a user without credits doesn't upload a large
@@ -320,13 +332,13 @@ async def complete_public_direct_upload(
     size = int(meta.get("size_bytes") or 0)
     if size <= 0:
         raise HTTPException(status_code=400, detail="Empty video upload")
-    if size > MAX_UPLOAD_BYTES:
+    if size > PUBLIC_MAX_UPLOAD_BYTES:
         await delete_job_assets(job.video_storage_path, None)
         await db.delete(job)
         await db.commit()
         raise HTTPException(
             status_code=413,
-            detail=f"Video exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit",
+            detail=f"Video exceeds {_format_upload_limit(PUBLIC_MAX_UPLOAD_BYTES)} limit",
         )
 
     try:
@@ -405,10 +417,10 @@ async def create_public_analysis_job(
     data = await video.read()
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty video upload")
-    if len(data) > MAX_UPLOAD_BYTES:
+    if len(data) > LEGACY_MULTIPART_MAX_UPLOAD_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"Video exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit",
+            detail=f"Video exceeds {LEGACY_MULTIPART_MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit",
         )
 
     # Per-job bearer token — server-minted, never client-supplied.

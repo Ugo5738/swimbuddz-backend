@@ -14,9 +14,10 @@ services:
       - --certificatesresolvers.le.acme.email=${LE_EMAIL}
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
       - --log.level=INFO
-      # Large video uploads on slow connections exceed Traefik v3's default 60s
-      # readTimeout, so the upload is dropped mid-flight ("Load failed" in-browser,
-      # ClientDisconnect in the gateway). 300s gives a 50 MB clip room to arrive.
+      # Multipart fallbacks on slow connections can exceed Traefik v3's default
+      # 60s readTimeout, so the request is dropped mid-flight ("Load failed" in
+      # browser, ClientDisconnect in the gateway). Public analyzer videos use
+      # direct-to-storage upload and do not stream through Traefik.
       - --entrypoints.websecure.transport.respondingTimeouts.readTimeout=300s
       - --entrypoints.websecure.transport.respondingTimeouts.writeTimeout=300s
     environment:
