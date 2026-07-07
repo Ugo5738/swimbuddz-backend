@@ -57,8 +57,8 @@ class WorkerSettings:
     max_tries = 1
 
     # Generous timeout — design budget is <90s per minute of video, but
-    # cold-starts have to download the pose + YOLO models (~10 MB) and a
-    # 50 MB upload before any inference starts.
+    # cold-starts have to download the pose + YOLO models (~10 MB) and the
+    # stored clip before any inference starts.
     job_timeout = 600
 
     functions = [task_analyze_swim_video, task_inspect_instance]

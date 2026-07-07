@@ -2,6 +2,8 @@
 
 import os
 
+_GIB = 1024 * 1024 * 1024
+
 # ARQ queue names. Member (logged-in) and PUBLIC (guest analyzer) jobs run on
 # SEPARATE queues so a public traffic spike can't starve member analyses. Both
 # are processed by the same task; isolation is by queue + a dedicated capped
@@ -19,3 +21,10 @@ GUMROAD_CHECKOUT_BASE = os.environ.get(
 # the client/UX duration checks, so a crafted over-long upload can't burn the
 # whole worker job_timeout. Generous so legitimate clips are never rejected.
 PUBLIC_MAX_DURATION_SECONDS = int(os.environ.get("PUBLIC_MAX_DURATION_SECONDS", "120"))
+
+# Public analyzer direct-to-storage upload cap. This applies to the browser
+# presigned-URL path only; legacy multipart uploads still use the smaller API
+# memory-safe cap in routers/analyze.py.
+PUBLIC_MAX_UPLOAD_BYTES = int(
+    os.environ.get("STROKELAB_PUBLIC_MAX_UPLOAD_BYTES", str(2 * _GIB))
+)
