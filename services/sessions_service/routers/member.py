@@ -30,13 +30,12 @@ from services.sessions_service.schemas import (
     SessionResponse,
     SessionUpdate,
 )
-
-settings = get_settings()
+from services.sessions_service.services.notifications import (
+    trigger_session_published_notifications,
+)
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
-
-# Short notice threshold in hours
-SHORT_NOTICE_THRESHOLD_HOURS = 6
+settings = get_settings()
 
 
 @router.get("/", response_model=List[SessionResponse])
@@ -261,6 +260,12 @@ async def create_session(
     await db.commit()
     await db.refresh(session)
 
+    if session.status == SessionStatus.SCHEDULED:
+        await trigger_session_published_notifications(
+            session_id=session.id,
+            starts_at=session.starts_at,
+        )
+
     return session
 
 
@@ -322,10 +327,6 @@ async def publish_session(
             detail="Cannot publish a session that has already started or passed",
         )
 
-    # Determine if this is short notice
-    hours_until_start = (session.starts_at - now).total_seconds() / 3600
-    is_short_notice = hours_until_start < SHORT_NOTICE_THRESHOLD_HOURS
-
     # Update session status
     session.status = SessionStatus.SCHEDULED
     session.published_at = now
@@ -333,30 +334,11 @@ async def publish_session(
     await db.commit()
     await db.refresh(session)
 
-    # Trigger notifications via HTTP call to communications_service.
-    # Best-effort: notification failures must not cause a 500 after the
-    # session has already been published in the database.
-    settings = get_settings()
-    try:
-        await internal_post(
-            service_url=settings.COMMUNICATIONS_SERVICE_URL,
-            path="/internal/communications/session-published",
-            calling_service="sessions",
-            json={
-                "session_id": str(session.id),
-                "is_short_notice": is_short_notice,
-                "short_notice_message": short_notice_message or "",
-            },
-        )
-    except Exception as exc:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.error(
-            "Failed to trigger publish notifications for session %s: %s",
-            session_id,
-            exc,
-        )
+    await trigger_session_published_notifications(
+        session_id=session.id,
+        starts_at=session.starts_at,
+        short_notice_message=short_notice_message or "",
+    )
 
     return session
 
@@ -479,9 +461,10 @@ async def update_session(
     for field, value in update_data.items():
         setattr(session, field, value)
 
-    # If admins schedule a draft directly (without calling /publish), treat it
-    # as published but do not trigger announcements.
-    if old_status == SessionStatus.DRAFT and session.status == SessionStatus.SCHEDULED:
+    became_scheduled = (
+        old_status == SessionStatus.DRAFT and session.status == SessionStatus.SCHEDULED
+    )
+    if became_scheduled:
         if session.published_at is None:
             session.published_at = utc_now()
     elif (
@@ -492,6 +475,13 @@ async def update_session(
     db.add(session)
     await db.commit()
     await db.refresh(session)
+
+    if became_scheduled:
+        await trigger_session_published_notifications(
+            session_id=session.id,
+            starts_at=session.starts_at,
+        )
+
     return session
 
 

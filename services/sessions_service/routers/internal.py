@@ -52,6 +52,7 @@ class SessionBasic(BaseModel):
     location_address: Optional[str] = None
     location: Optional[str] = None
     cohort_id: Optional[str] = None
+    pod_id: Optional[str] = None
     capacity: int
     # pool_fee is returned in KOBO (integer) for service-to-service use.
     # Consuming services: call kobo_to_bubbles(pool_fee) to get the Bubble charge.
@@ -138,6 +139,7 @@ async def get_scheduled_sessions(
             location_address=s.location_address,
             location=s.location.value if s.location else None,
             cohort_id=str(s.cohort_id) if s.cohort_id else None,
+            pod_id=str(s.pod_id) if s.pod_id else None,
             capacity=s.capacity,
             pool_fee=s.pool_fee,
             week_number=s.week_number,
@@ -437,6 +439,7 @@ async def get_session_by_id(
         location_address=session.location_address,
         location=session.location.value if session.location else None,
         cohort_id=str(session.cohort_id) if session.cohort_id else None,
+        pod_id=str(session.pod_id) if session.pod_id else None,
         capacity=session.capacity,
         pool_fee=session.pool_fee,
         week_number=session.week_number,
@@ -584,6 +587,7 @@ async def get_sessions_for_cohort_internal(
             location_address=s.location_address,
             location=s.location.value if s.location else None,
             cohort_id=str(s.cohort_id) if s.cohort_id else None,
+            pod_id=str(s.pod_id) if s.pod_id else None,
             capacity=s.capacity,
             pool_fee=s.pool_fee,
             week_number=s.week_number,
@@ -618,6 +622,17 @@ async def generate_cohort_sessions(
         db, cohort_id, body.from_date, body.to_date
     )
     await db.commit()
+
+    from services.sessions_service.services.notifications import (
+        trigger_session_published_notifications,
+    )
+
+    for entry in result.get("created_sessions", []):
+        await trigger_session_published_notifications(
+            session_id=entry["session_id"],
+            starts_at=datetime.fromisoformat(entry["starts_at"]),
+        )
+
     return GenerateCohortSessionsResponse(**result)
 
 

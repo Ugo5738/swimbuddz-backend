@@ -12,19 +12,20 @@ from typing import Optional
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import (
     dispatch_notification,
     get_members_bulk,
+    get_pod_by_id,
     get_session_by_id,
     internal_get,
 )
 from libs.db.session import get_async_db
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.communications_service.models import (
     NotificationPreferences,
     ScheduledNotification,
@@ -164,16 +165,6 @@ async def send_session_announcement(
                 SHORT_NOTICE_THRESHOLD_HOURS * 3600
             )
 
-            # Determine subscription field based on session type
-            session_type_subscription_map = {
-                "community": "subscribe_community_sessions",
-                "club": "subscribe_club_sessions",
-                "event": "subscribe_event_sessions",
-            }
-            subscription_field = session_type_subscription_map.get(
-                session["session_type"], "subscribe_community_sessions"
-            )
-
             # Get active members from members-service
             settings = get_settings()
             members_resp = await internal_get(
@@ -186,38 +177,27 @@ async def send_session_announcement(
                 return
             all_members = members_resp.json()
 
-            # Filter by notification preferences (our own table)
-            member_ids_with_prefs = {}
-            for m in all_members:
-                member_ids_with_prefs[m["id"]] = m
-
-            # Get notification preferences for these members
-            member_uuids = [UUID(m["id"]) for m in all_members]
-            prefs_result = await db.execute(
-                select(NotificationPreferences).where(
-                    NotificationPreferences.member_id.in_(member_uuids)
-                )
+            accessible_members = await _get_session_announcement_members(
+                session=session,
+                active_members=all_members,
             )
-            prefs_map = {str(p.member_id): p for p in prefs_result.scalars().all()}
+            prefs_map = await _get_notification_preferences_by_auth(
+                db,
+                accessible_members,
+            )
 
             # Filter members based on preferences
             eligible_members = []
-            for m in all_members:
-                pref = prefs_map.get(m["id"])
-                # Default: subscribed (None means opted-in)
-                subscribed = True
-                if pref:
-                    sub_val = getattr(pref, subscription_field, None)
-                    if sub_val is False:
-                        subscribed = False
-                    if pref.email_session_reminders is False:
-                        subscribed = False
-                if subscribed:
+            for m in accessible_members:
+                pref = prefs_map.get(m.get("auth_id"))
+                if _should_send_session_announcement(session, pref):
                     eligible_members.append(m)
 
             # Format session details
-            session_date = session_start.strftime("%A, %B %d, %Y")
-            session_time = session_start.strftime("%I:%M %p")
+            local_tz = ZoneInfo(session.get("timezone", "Africa/Lagos"))
+            local_start = session_start.astimezone(local_tz)
+            session_date = local_start.strftime("%A, %B %d, %Y")
+            session_time = local_start.strftime("%I:%M %p")
 
             sent_count = 0
             for member in eligible_members:
@@ -399,7 +379,7 @@ async def _process_single_notification(
     sent_count = 0
     for member in members:
         # Check preferences
-        prefs = await _get_member_preferences(db, UUID(member["id"]))
+        prefs = await _get_member_preferences(db, member)
         if not _should_send_reminder(prefs, reminder_type):
             continue
 
@@ -640,13 +620,126 @@ async def _get_session_attendees_and_coaches(
     return all_members
 
 
+def _member_tiers(member: dict) -> set[str]:
+    """Return normalized access tiers from an internal member payload."""
+    tiers = {
+        str(t).lower() for t in (member.get("active_tiers") or []) if t is not None
+    }
+    primary = member.get("primary_tier")
+    if primary:
+        tiers.add(str(primary).lower())
+
+    if "academy" in tiers:
+        tiers.update({"club", "community"})
+    if "club" in tiers:
+        tiers.add("community")
+    if not tiers:
+        tiers.add("community")
+    return tiers
+
+
+async def _get_session_announcement_members(
+    *,
+    session: dict,
+    active_members: list[dict],
+) -> list[dict]:
+    """Return members allowed to receive a new-session announcement."""
+    session_type = session.get("session_type")
+
+    if session_type == "cohort_class":
+        cohort_id = session.get("cohort_id")
+        if not cohort_id:
+            return []
+        settings = get_settings()
+        resp = await internal_get(
+            service_url=settings.ACADEMY_SERVICE_URL,
+            path=f"/internal/academy/cohorts/{cohort_id}/enrolled-students",
+            calling_service="communications",
+        )
+        if resp.status_code != 200:
+            logger.error(
+                "Failed to get enrolled students for cohort session %s",
+                session.get("id"),
+            )
+            return []
+        member_ids = [row["member_id"] for row in resp.json() if row.get("member_id")]
+        return await get_members_bulk(member_ids, calling_service="communications")
+
+    if session_type == "club" and session.get("pod_id"):
+        pod = await get_pod_by_id(session["pod_id"], calling_service="communications")
+        if not pod:
+            logger.error(
+                "Failed to get pod %s for club session %s",
+                session.get("pod_id"),
+                session.get("id"),
+            )
+            return []
+        return await get_members_bulk(
+            pod.get("active_member_ids") or [],
+            calling_service="communications",
+        )
+
+    if session_type == "club":
+        return [m for m in active_members if "club" in _member_tiers(m)]
+
+    if session_type == "academy":
+        return [m for m in active_members if "academy" in _member_tiers(m)]
+
+    if session_type == "community":
+        return [m for m in active_members if "community" in _member_tiers(m)]
+
+    # Events keep the previous broad active-member behavior, with preferences
+    # applied below.
+    return active_members
+
+
+async def _get_notification_preferences_by_auth(
+    db: AsyncSession,
+    members: list[dict],
+) -> dict[str, NotificationPreferences]:
+    auth_ids = [m["auth_id"] for m in members if m.get("auth_id")]
+    if not auth_ids:
+        return {}
+    prefs_result = await db.execute(
+        select(NotificationPreferences).where(
+            NotificationPreferences.member_auth_id.in_(auth_ids)
+        )
+    )
+    return {p.member_auth_id: p for p in prefs_result.scalars().all()}
+
+
+def _should_send_session_announcement(
+    session: dict,
+    pref: Optional[NotificationPreferences],
+) -> bool:
+    """Check session-announcement preferences. Missing prefs default to opted-in."""
+    if pref is None:
+        return True
+    if pref.email_session_reminders is False:
+        return False
+
+    session_type = session.get("session_type")
+    if session_type == "community":
+        return pref.subscribe_community_sessions
+    if session_type == "club":
+        return pref.subscribe_club_sessions
+    if session_type == "event":
+        return pref.subscribe_event_sessions
+    if session_type in {"academy", "cohort_class"}:
+        return pref.email_academy_updates
+    return True
+
+
 async def _get_member_preferences(
-    db: AsyncSession, member_id: UUID
+    db: AsyncSession, member: dict
 ) -> Optional[NotificationPreferences]:
     """Get notification preferences for a member."""
+    auth_id = member.get("auth_id")
+    if not auth_id:
+        return None
     result = await db.execute(
         select(NotificationPreferences).where(
-            NotificationPreferences.member_id == member_id
+            NotificationPreferences.member_auth_id == auth_id
         )
     )
     return result.scalar_one_or_none()
@@ -741,18 +834,11 @@ async def send_weekly_session_digest() -> None:
                 return
             all_members = members_resp.json()
 
-            # Filter by weekly digest preference (our own table)
-            member_uuids = [UUID(m["id"]) for m in all_members]
-            prefs_result = await db.execute(
-                select(NotificationPreferences).where(
-                    NotificationPreferences.member_id.in_(member_uuids)
-                )
-            )
-            prefs_map = {str(p.member_id): p for p in prefs_result.scalars().all()}
+            prefs_map = await _get_notification_preferences_by_auth(db, all_members)
 
             eligible_members = []
             for m in all_members:
-                pref = prefs_map.get(m["id"])
+                pref = prefs_map.get(m.get("auth_id"))
                 # Default: opted-in (None means yes)
                 if pref and pref.weekly_session_digest is False:
                     continue

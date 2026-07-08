@@ -25,7 +25,6 @@ import uuid
 
 import pytest
 
-
 # Migration 785e73dd9714 (member_id UUID → member_auth_id string) has been
 # applied. xfail marker removed.
 
@@ -104,3 +103,32 @@ async def test_preferences_by_member_id_endpoint_is_gone(communications_client):
         f"/preferences/{uuid.uuid4()}",
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_session_notification_pref_lookup_uses_member_auth_id(db_session):
+    """Session notification tasks must key prefs by auth_id, not Member.id."""
+    from services.communications_service.models import NotificationPreferences
+    from services.communications_service.tasks.session_notifications import (
+        _get_notification_preferences_by_auth,
+    )
+
+    prefs = NotificationPreferences(
+        member_auth_id="auth-session-pref-test",
+        subscribe_club_sessions=False,
+    )
+    db_session.add(prefs)
+    await db_session.commit()
+
+    pref_map = await _get_notification_preferences_by_auth(
+        db_session,
+        [
+            {
+                "id": str(uuid.uuid4()),
+                "auth_id": "auth-session-pref-test",
+            }
+        ],
+    )
+
+    assert pref_map["auth-session-pref-test"].subscribe_club_sessions is False

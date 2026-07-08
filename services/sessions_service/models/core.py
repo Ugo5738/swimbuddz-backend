@@ -231,6 +231,12 @@ class SessionTemplate(Base):
     """Template for recurring sessions."""
 
     __tablename__ = "session_templates"
+    __table_args__ = (
+        CheckConstraint(
+            "pod_id IS NULL OR session_type = 'club'",
+            name="ck_session_templates_pod_only_for_club",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -262,6 +268,12 @@ class SessionTemplate(Base):
     )
     location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     location_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Optional pod scope for Club templates. NULL means a general Club template.
+    pod_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
 
     # Capacity & Fees
     capacity: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
@@ -375,3 +387,16 @@ def _validate_session_discriminator_event(mapper, connection, target):
         event_id=target.event_id,
         pod_id=target.pod_id,
     )
+
+
+@event.listens_for(SessionTemplate, "before_insert")
+@event.listens_for(SessionTemplate, "before_update")
+def _validate_session_template_pod_scope_event(mapper, connection, target):
+    """Reject non-club templates that carry a pod scope."""
+    session_type = (
+        target.session_type.value
+        if hasattr(target.session_type, "value")
+        else str(target.session_type)
+    )
+    if target.pod_id is not None and session_type != SessionType.CLUB.value:
+        raise ValueError("Only club session templates may set pod_id")

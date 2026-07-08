@@ -45,7 +45,6 @@ from .members import (
     list_pods,
     search_members,
 )
-from .pools import get_partner_pool
 from .payments import (
     PaystackProxyError,
     _proxy_error_from,
@@ -58,6 +57,7 @@ from .payments import (
     validate_discount_code,
     verify_store_payment,
 )
+from .pools import get_partner_pool
 from .sessions import (
     generate_cohort_sessions,
     get_booking_by_id,
@@ -67,6 +67,7 @@ from .sessions import (
     get_session_by_id,
     get_session_ids_for_cohort,
 )
+from .transport import attach_session_ride_configs
 from .volunteer import (
     cancel_opportunities_for_context,
     grant_challenge_volunteer_hours,
@@ -125,6 +126,8 @@ __all__ = [
     "get_session_by_id",
     "get_next_session_for_cohort",
     "get_session_ids_for_cohort",
+    # Transport
+    "attach_session_ride_configs",
     # Wallet
     "get_wallet_balance",
     "grant_pool_submission_reward",

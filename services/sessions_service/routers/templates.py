@@ -3,21 +3,28 @@ import uuid
 from datetime import datetime, timedelta
 from typing import List
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-from libs.common.service_client import materialise_opportunities_from_session_template
+from libs.common.config import get_settings
+from libs.common.datetime_utils import utc_now
+from libs.common.service_client import (
+    attach_session_ride_configs,
+    materialise_opportunities_from_session_template,
+)
 from libs.db.session import get_async_db
-from services.sessions_service.models import Session, SessionTemplate
+from services.sessions_service.models import Session, SessionStatus, SessionTemplate
 from services.sessions_service.schemas.templates import (
     GenerateSessionsRequest,
     SessionTemplateCreate,
     SessionTemplateResponse,
     SessionTemplateUpdate,
+)
+from services.sessions_service.services.notifications import (
+    trigger_session_published_notifications,
 )
 
 logger = logging.getLogger(__name__)
@@ -112,6 +119,10 @@ async def update_template(
         update_data["pool_fee"] = round(update_data["pool_fee"] * 100)
     if "ride_share_fee" in update_data and update_data["ride_share_fee"] is not None:
         update_data["ride_share_fee"] = round(update_data["ride_share_fee"] * 100)
+    next_type = update_data.get("session_type")
+    next_type_value = next_type.value if hasattr(next_type, "value") else next_type
+    if next_type_value and next_type_value != "club":
+        update_data["pod_id"] = None
 
     for field, value in update_data.items():
         setattr(template, field, value)
@@ -168,14 +179,15 @@ async def generate_sessions(
 
     created_sessions = []
     conflicts = []
+    warnings: list[str] = []
+    ride_config_attached = 0
+    volunteer_opportunities_created = 0
 
     for week in range(request.weeks):
         session_date = today + timedelta(days=days_ahead + (week * 7))
 
         # Combine date with template time and localize to configured timezone
         from zoneinfo import ZoneInfo
-
-        from libs.common.config import get_settings
 
         settings = get_settings()
 
@@ -188,6 +200,7 @@ async def generate_sessions(
         start_datetime = local_dt.astimezone(ZoneInfo("UTC"))
 
         end_datetime = start_datetime + timedelta(minutes=template.duration_minutes)
+        local_end_dt = local_dt + timedelta(minutes=template.duration_minutes)
 
         # Check for conflicts if skip_conflicts is True
         if request.skip_conflicts:
@@ -220,36 +233,23 @@ async def generate_sessions(
         session = Session(
             title=template.title,
             description=template.description,
+            status=SessionStatus.SCHEDULED,
             pool_id=template.pool_id,
             location_name=session_location_name,
             session_type=template.session_type,
+            pod_id=template.pod_id,
             pool_fee=template.pool_fee,  # both are kobo integers after migration
+            ride_share_fee=template.ride_share_fee,
             capacity=template.capacity,
             starts_at=start_datetime,
             ends_at=end_datetime,
+            timezone=settings.TIMEZONE,
             template_id=template.id,
             is_recurring_instance=True,
+            published_at=utc_now(),
         )
         db.add(session)
         await db.flush()  # Flush to get session ID
-
-        # If template has ride share config, attach it to the session
-        if template.ride_share_config:
-            try:
-                from libs.common.config import get_settings
-
-                settings = get_settings()
-                async with httpx.AsyncClient() as client:
-                    await client.post(
-                        f"{settings.TRANSPORT_SERVICE_URL}/transport/sessions/{session.id}/ride-configs",
-                        json=template.ride_share_config,
-                        timeout=5.0,
-                    )
-            except Exception as e:
-                # Log error but don't fail session creation
-                print(
-                    f"Warning: Failed to attach ride config to session {session.id}: {e}"
-                )
 
         created_sessions.append(
             {
@@ -260,12 +260,36 @@ async def generate_sessions(
                 # build the response, so the API contract is unchanged.
                 "_session_id": str(session.id),
                 "_local_date": session_date.isoformat(),
-                "_local_start_time": start_datetime.time().isoformat(),
-                "_local_end_time": end_datetime.time().isoformat(),
+                "_local_start_time": local_dt.time().isoformat(),
+                "_local_end_time": local_end_dt.time().isoformat(),
+                "_location_name": session_location_name,
+                "_ride_share_config": template.ride_share_config,
             }
         )
 
     await db.commit()
+
+    for entry in created_sessions:
+        if entry.get("_ride_share_config"):
+            try:
+                await attach_session_ride_configs(
+                    session_id=entry["_session_id"],
+                    configs=entry["_ride_share_config"],
+                    calling_service="sessions",
+                )
+                ride_config_attached += 1
+            except Exception as exc:
+                message = (
+                    "Failed to attach ride config to session "
+                    f"{entry['_session_id']}: {exc}"
+                )
+                logger.error(message)
+                warnings.append(message)
+
+        await trigger_session_published_notifications(
+            session_id=entry["_session_id"],
+            starts_at=datetime.fromisoformat(entry["start_time"]),
+        )
 
     # Fan out volunteer opportunities for each session, based on the parent
     # template's SessionTemplateVolunteerSlot rows. Best effort: a
@@ -280,14 +304,19 @@ async def generate_sessions(
                 date=entry["_local_date"],
                 start_time=entry["_local_start_time"],
                 end_time=entry["_local_end_time"],
-                location_name=session_location_name,
+                location_name=entry["_location_name"],
             )
+            volunteer_opportunities_created += int(result.get("created_count") or 0)
         except Exception as exc:
             logger.error(
                 "Failed to materialise volunteer opportunities for session %s (template %s): %s",
                 entry["_session_id"],
                 template.id,
                 exc,
+            )
+            warnings.append(
+                "Failed to materialise volunteer opportunities for "
+                f"session {entry['_session_id']}: {exc}"
             )
 
     # Strip internal fields from the API response.
@@ -301,4 +330,7 @@ async def generate_sessions(
         "skipped": len(conflicts),
         "sessions": response_sessions,
         "conflicts": conflicts,
+        "ride_config_attached": ride_config_attached,
+        "volunteer_opportunities_created": volunteer_opportunities_created,
+        "warnings": warnings,
     }

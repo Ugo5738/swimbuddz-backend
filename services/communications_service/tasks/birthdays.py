@@ -17,10 +17,7 @@ from libs.common.service_client import (
     get_birthdays_today,
 )
 from libs.db.session import get_async_db
-from services.communications_service.models import (
-    Notification,
-    NotificationPreferences,
-)
+from services.communications_service.models import Notification, NotificationPreferences
 from services.communications_service.templates.birthdays import send_birthday_email
 
 logger = get_logger(__name__)
@@ -46,16 +43,16 @@ async def send_daily_birthday_celebrations() -> None:
             celebrated_member_ids: list[str] = []
 
             if adults:
-                adult_uuids = [UUID(m["id"]) for m in adults]
+                adult_auth_ids = [m["auth_id"] for m in adults if m.get("auth_id")]
                 prefs_result = await db.execute(
                     select(NotificationPreferences).where(
-                        NotificationPreferences.member_id.in_(adult_uuids)
+                        NotificationPreferences.member_auth_id.in_(adult_auth_ids)
                     )
                 )
-                prefs_map = {str(p.member_id): p for p in prefs_result.scalars().all()}
+                prefs_map = {p.member_auth_id: p for p in prefs_result.scalars().all()}
 
                 for m in adults:
-                    pref = prefs_map.get(m["id"])
+                    pref = prefs_map.get(m.get("auth_id"))
                     if pref is not None and not pref.email_birthday:
                         continue
 

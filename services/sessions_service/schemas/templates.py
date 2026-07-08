@@ -3,6 +3,7 @@ from datetime import datetime, time
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
+
 from services.sessions_service.models import SessionType
 
 
@@ -16,6 +17,8 @@ class SessionTemplateBase(BaseModel):
     location: Optional[str] = None
     location_name: Optional[str] = None
     session_type: SessionType = SessionType.COMMUNITY
+    # Optional for Club templates only. NULL = general Club template.
+    pod_id: Optional[uuid.UUID] = None
     # API uses naira (float); DB stores kobo (int). Routers handle conversion.
     pool_fee: float = 0.0
     ride_share_fee: float = 0.0
@@ -32,6 +35,8 @@ class SessionTemplateCreate(SessionTemplateBase):
     def _require_pool_reference(self) -> "SessionTemplateCreate":
         if not self.pool_id and not self.location:
             raise ValueError("Either pool_id or location must be provided")
+        if self.session_type != SessionType.CLUB and self.pod_id is not None:
+            raise ValueError("Only club session templates may set pod_id")
         return self
 
 
@@ -41,6 +46,8 @@ class SessionTemplateUpdate(BaseModel):
     pool_id: Optional[uuid.UUID] = None
     location: Optional[str] = None
     location_name: Optional[str] = None
+    session_type: Optional[SessionType] = None
+    pod_id: Optional[uuid.UUID] = None
     pool_fee: Optional[float] = None  # naira — router converts to kobo on write
     ride_share_fee: Optional[float] = None  # naira — router converts to kobo on write
     capacity: Optional[int] = None
@@ -50,6 +57,13 @@ class SessionTemplateUpdate(BaseModel):
     auto_generate: Optional[bool] = None
     is_active: Optional[bool] = None
     ride_share_config: Optional[List[Dict]] = None
+
+    @model_validator(mode="after")
+    def _validate_pod_scope(self) -> "SessionTemplateUpdate":
+        if self.session_type and self.session_type != SessionType.CLUB:
+            if self.pod_id is not None:
+                raise ValueError("Only club session templates may set pod_id")
+        return self
 
 
 class SessionTemplateResponse(SessionTemplateBase):
@@ -77,6 +91,7 @@ class SessionTemplateResponse(SessionTemplateBase):
             "location": obj.location,
             "location_name": obj.location_name,
             "session_type": obj.session_type,
+            "pod_id": obj.pod_id,
             "pool_fee": (obj.pool_fee or 0) / 100.0,
             "ride_share_fee": (obj.ride_share_fee or 0) / 100.0,
             "capacity": obj.capacity,

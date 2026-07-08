@@ -23,7 +23,11 @@ class MemberBasic(BaseModel):
     last_name: str
     email: str
     phone: str | None = None
+    primary_tier: str | None = None
+    active_tiers: list[str] | None = None
     community_paid_until: str | None = None
+    club_paid_until: str | None = None
+    academy_paid_until: str | None = None
     profile_photo_url: str | None = None
     # ISO-8601 date-of-birth (from MemberProfile). Used by cross-service callers
     # for age gates (e.g. events_service adults-only meets). None if unset.
@@ -140,6 +144,7 @@ class ApprovedMemberBasic(BaseModel):
 
 class BirthdayMember(BaseModel):
     id: str
+    auth_id: str | None = None
     first_name: str
     last_name: str
     email: str
