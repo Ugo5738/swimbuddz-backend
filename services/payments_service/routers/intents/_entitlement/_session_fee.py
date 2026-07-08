@@ -6,17 +6,17 @@ contract end-to-end; the dispatcher (`_dispatcher._apply_entitlement`)
 just routes by `payment.purpose`.
 """
 
+from datetime import datetime
+
 import httpx
 from fastapi import HTTPException, status
 
 from libs.auth.dependencies import _service_role_jwt
 from libs.common.config import get_settings
-from libs.common.logging import get_logger
-from datetime import datetime
+from libs.common.currency import bubbles_to_naira
 from libs.common.emails.client import get_email_client
-from services.payments_service.models import (
-    Payment,
-)
+from libs.common.logging import get_logger
+from services.payments_service.models import Payment
 from services.payments_service.schemas import (
     SessionAttendanceRole,
     SessionAttendanceStatus,
@@ -174,7 +174,7 @@ async def apply_session_fee(payment: Payment) -> None:
             )
             fee_bubbles_ngn = float(
                 (payment.payment_metadata or {}).get("bubbles_value_ngn")
-                or (fee_bubbles * 100)
+                or bubbles_to_naira(fee_bubbles)
             )
 
             # Send the email via centralized email service

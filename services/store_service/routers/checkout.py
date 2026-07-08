@@ -1,8 +1,13 @@
 """Store checkout router: Paystack payment initialization and verification."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
+from libs.common.currency import bubbles_to_naira
 from libs.common.logging import get_logger
 from libs.common.service_client import (
     dispatch_notification,
@@ -12,10 +17,6 @@ from libs.common.service_client import (
     verify_store_payment,
 )
 from libs.db.session import get_async_db
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from services.store_service.models import Order, OrderItem, OrderStatus
 from services.store_service.schemas import PaymentInitRequest, PaymentInitResponse
 
@@ -60,7 +61,7 @@ async def _send_order_confirmation_email(order: Order, db) -> None:
         ]
 
         bubbles = order.bubbles_applied or 0
-        bubbles_ngn = float(bubbles * 100) if bubbles else 0
+        bubbles_ngn = float(bubbles_to_naira(bubbles)) if bubbles else 0
 
         email_client = get_email_client()
         await email_client.send_template(
@@ -276,7 +277,7 @@ async def verify_payment(
     def _verify_response(status: str, message: str) -> dict:
         """Build verify response with full price breakdown."""
         bubbles = order.bubbles_applied or 0
-        bubbles_ngn = float(bubbles * 100) if bubbles else 0
+        bubbles_ngn = float(bubbles_to_naira(bubbles)) if bubbles else 0
         return {
             "status": status,
             "order_number": order.order_number,

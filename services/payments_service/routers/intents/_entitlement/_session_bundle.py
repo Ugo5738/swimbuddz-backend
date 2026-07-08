@@ -6,26 +6,23 @@ contract end-to-end; the dispatcher (`_dispatcher._apply_entitlement`)
 just routes by `payment.purpose`.
 """
 
+from datetime import datetime
+
 import httpx
 from fastapi import HTTPException, status
 
 from libs.auth.dependencies import _service_role_jwt
 from libs.common.config import get_settings
-from libs.common.logging import get_logger
-from datetime import datetime
+from libs.common.currency import bubbles_to_naira
 from libs.common.emails.client import get_email_client
-from services.payments_service.models import (
-    Payment,
-)
+from libs.common.logging import get_logger
+from services.payments_service.models import Payment
 from services.payments_service.schemas import (
     SessionAttendanceRole,
     SessionAttendanceStatus,
 )
 
-from .._helpers import (
-    _debit_bubbles,
-    _update_pending_payment_reference,
-)
+from .._helpers import _debit_bubbles, _update_pending_payment_reference
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -143,7 +140,7 @@ async def apply_session_bundle(payment: Payment) -> None:
             )
             bundle_bubbles_ngn = float(
                 (payment.payment_metadata or {}).get("bubbles_value_ngn")
-                or (bundle_bubbles * 100)
+                or bubbles_to_naira(bundle_bubbles)
             )
             per_session_bubbles = (
                 bundle_bubbles // session_count if session_count else 0

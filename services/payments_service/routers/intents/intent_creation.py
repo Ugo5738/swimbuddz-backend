@@ -16,15 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import _service_role_jwt, get_current_user
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
-from libs.common.currency import KOBO_PER_NAIRA
-from libs.common.logging import get_logger
+from libs.common.currency import KOBO_PER_NAIRA, bubbles_to_naira
 from libs.common.datetime_utils import utc_now
+from libs.common.logging import get_logger
 from libs.db.session import get_async_db
-from services.payments_service.models import (
-    Payment,
-    PaymentPurpose,
-    PaymentStatus,
-)
+from services.payments_service.models import Payment, PaymentPurpose, PaymentStatus
 from services.payments_service.schemas import (
     CreatePaymentIntentRequest,
     PaymentIntentResponse,
@@ -495,7 +491,7 @@ async def create_payment_intent(
     }
     bubbles_to_apply_val = payload.bubbles_to_apply or 0
     if bubbles_to_apply_val > 0 and payload.purpose in bubbles_purposes:
-        bubbles_value_ngn = bubbles_to_apply_val * 100
+        bubbles_value_ngn = bubbles_to_naira(bubbles_to_apply_val)
         if bubbles_value_ngn > amount:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

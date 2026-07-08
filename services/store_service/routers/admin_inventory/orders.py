@@ -7,8 +7,12 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
+from libs.common.currency import bubbles_to_naira
 from libs.common.logging import get_logger
 from libs.common.service_client import (
     dispatch_notification,
@@ -16,9 +20,6 @@ from libs.common.service_client import (
     get_member_by_auth_id,
 )
 from libs.db.session import get_async_db
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.store_service.models import (
     AuditEntityType,
     Order,
@@ -231,7 +232,7 @@ async def mark_order_paid(
             delivery_address_str = f"{addr.get('street', '')}, {addr.get('city', '')}, {addr.get('state', '')}"
 
         bubbles = order.bubbles_applied or 0
-        bubbles_ngn = float(bubbles * 100) if bubbles else 0
+        bubbles_ngn = float(bubbles_to_naira(bubbles)) if bubbles else 0
 
         email_client = get_email_client()
         await email_client.send_template(
