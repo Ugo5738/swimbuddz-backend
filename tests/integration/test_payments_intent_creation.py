@@ -37,7 +37,6 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -748,6 +747,44 @@ async def test_session_booking_applies_bubbles(payments_client, monkeypatch):
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["amount"] == 1500.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_session_booking_values_bubbles_at_100_naira(
+    payments_client, db_session, monkeypatch
+):
+    """Regression: ₦3,500 with 6 Bubbles must charge ₦2,900, not ₦3,494."""
+    from sqlalchemy import select
+
+    from services.payments_service.app.main import app as payments_app
+    from services.payments_service.models import Payment
+
+    _override_current_user_email(payments_app)
+    _install_paystack_stubs(monkeypatch)
+
+    response = await payments_client.post(
+        "/payments/intents",
+        json={
+            "purpose": "session_booking",
+            "session_id": str(uuid.uuid4()),
+            "direct_amount": 3500.0,
+            "bubbles_to_apply": 6,
+            "payment_metadata": {"booking_id": str(uuid.uuid4())},
+        },
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["amount"] == 2900.0
+
+    row = (
+        await db_session.execute(
+            select(Payment).where(Payment.reference == body["reference"])
+        )
+    ).scalar_one()
+    meta = row.payment_metadata or {}
+    assert meta["bubbles_to_apply"] == 6
+    assert meta["bubbles_value_ngn"] == 600
 
 
 # ===========================================================================
