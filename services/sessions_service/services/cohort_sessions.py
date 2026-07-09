@@ -98,6 +98,7 @@ async def generate_sessions_for_cohort(
     created = 0
     skipped = 0
     week_numbers: list[int] = []
+    created_sessions: list[dict[str, str]] = []
     wk = max_week
     start = template.starts_at
     for _ in range(_MAX_WEEKS):
@@ -112,7 +113,9 @@ async def generate_sessions_for_cohort(
         if start.date() in existing_dates:
             skipped += 1
             continue
+        session_id = uuid.uuid4()
         session = Session(
+            id=session_id,
             session_type=SessionType.COHORT_CLASS,
             status=SessionStatus.SCHEDULED,
             title=f"Week {wk} - {title_base}",
@@ -135,7 +138,18 @@ async def generate_sessions_for_cohort(
         db.add(session)
         existing_dates.add(start.date())
         week_numbers.append(wk)
+        created_sessions.append(
+            {
+                "session_id": str(session_id),
+                "starts_at": start.isoformat(),
+            }
+        )
         created += 1
 
     await db.flush()
-    return {"created": created, "skipped": skipped, "week_numbers": week_numbers}
+    return {
+        "created": created,
+        "skipped": skipped,
+        "week_numbers": week_numbers,
+        "created_sessions": created_sessions,
+    }

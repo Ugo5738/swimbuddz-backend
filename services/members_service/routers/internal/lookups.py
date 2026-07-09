@@ -8,22 +8,63 @@ FastAPI doesn't capture the literal segment as a UUID.
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.common.media_utils import resolve_media_urls
 from libs.db.session import get_async_db
 from services.members_service.models import Member
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from services.members_service.services.member_service import normalize_member_tiers
 
-from ._schemas import (
-    ApprovedMemberBasic,
-    MemberBasic,
-    MemberSearchResult,
-)
+from ._schemas import ApprovedMemberBasic, MemberBasic, MemberSearchResult
 
 router = APIRouter()
+
+
+def _membership_fields(member: Member) -> dict:
+    membership = member.membership
+    if not membership:
+        return {
+            "primary_tier": "community",
+            "active_tiers": ["community"],
+            "community_paid_until": None,
+            "club_paid_until": None,
+            "academy_paid_until": None,
+        }
+
+    primary_tier, active_tiers, changed = normalize_member_tiers(
+        current_tier=membership.primary_tier,
+        current_tiers=membership.active_tiers,
+        community_paid_until=membership.community_paid_until,
+        club_paid_until=membership.club_paid_until,
+        academy_paid_until=membership.academy_paid_until,
+    )
+    if changed:
+        membership.primary_tier = primary_tier
+        membership.active_tiers = active_tiers
+
+    return {
+        "primary_tier": primary_tier,
+        "active_tiers": active_tiers,
+        "community_paid_until": (
+            membership.community_paid_until.isoformat()
+            if membership.community_paid_until
+            else None
+        ),
+        "club_paid_until": (
+            membership.club_paid_until.isoformat()
+            if membership.club_paid_until
+            else None
+        ),
+        "academy_paid_until": (
+            membership.academy_paid_until.isoformat()
+            if membership.academy_paid_until
+            else None
+        ),
+    }
 
 
 @router.get("/by-auth/{auth_id}", response_model=MemberBasic)
@@ -46,6 +87,7 @@ async def get_member_by_auth_id(
 
     return MemberBasic(
         id=str(member.id),
+        auth_id=member.auth_id,
         first_name=member.first_name,
         last_name=member.last_name,
         email=member.email,
@@ -60,18 +102,26 @@ async def get_active_members(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get all active members (for notifications/communications)."""
-    result = await db.execute(select(Member).where(Member.is_active.is_(True)))
+    result = await db.execute(
+        select(Member)
+        .options(selectinload(Member.membership))
+        .where(Member.is_active.is_(True))
+    )
     members = result.scalars().all()
-    return [
+    active_members = [
         MemberBasic(
             id=str(m.id),
+            auth_id=m.auth_id,
             first_name=m.first_name,
             last_name=m.last_name,
             email=m.email,
             phone=m.profile.phone if m.profile else None,
+            **_membership_fields(m),
         )
         for m in members
     ]
+    await db.commit()
+    return active_members
 
 
 @router.get("/search", response_model=List[MemberSearchResult])

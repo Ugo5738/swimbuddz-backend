@@ -4,14 +4,15 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from libs.auth.dependencies import require_admin, require_service_role
-from libs.auth.models import AuthUser
-from libs.common.logging import get_logger
-from libs.common.datetime_utils import utc_now
-from libs.db.session import get_async_db
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from libs.auth.dependencies import require_admin, require_service_role
+from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
+from libs.common.logging import get_logger
+from libs.common.service_client import get_members_bulk
+from libs.db.session import get_async_db
 from services.communications_service.models import Notification, NotificationPreferences
 from services.communications_service.schemas import (
     NotificationDispatchRequest,
@@ -196,6 +197,17 @@ async def dispatch_notification(
     member's preferences allow it.
     """
     created_count = 0
+    member_details_by_id: dict[str, dict] = {}
+    if "email" in payload.channels and payload.email_template:
+        member_details = await get_members_bulk(
+            [str(member_id) for member_id in payload.member_ids],
+            calling_service="communications",
+        )
+        member_details_by_id = {
+            str(member.get("id")): member
+            for member in member_details
+            if member.get("id")
+        }
 
     for member_id in payload.member_ids:
         # 1. Always create in-app notification
@@ -216,11 +228,15 @@ async def dispatch_notification(
         # 2. Send email if requested and member preferences allow
         if "email" in payload.channels and payload.email_template:
             try:
-                prefs_query = select(NotificationPreferences).where(
-                    NotificationPreferences.member_id == member_id
-                )
-                prefs_result = await db.execute(prefs_query)
-                prefs = prefs_result.scalar_one_or_none()
+                member_detail = member_details_by_id.get(str(member_id)) or {}
+                auth_id = member_detail.get("auth_id")
+                prefs = None
+                if auth_id:
+                    prefs_query = select(NotificationPreferences).where(
+                        NotificationPreferences.member_auth_id == auth_id
+                    )
+                    prefs_result = await db.execute(prefs_query)
+                    prefs = prefs_result.scalar_one_or_none()
 
                 # Check preference — default to True if no prefs row exists
                 pref_field = CATEGORY_TO_EMAIL_PREF.get(payload.category)

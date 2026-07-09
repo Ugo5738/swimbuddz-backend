@@ -27529,6 +27529,69 @@
         }
       }
     },
+    "/api/v1/internal/transport/sessions/{session_id}/ride-configs": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Attach Ride Configs Internal",
+        "description": "Attach ride areas to a session from another backend service.\n\nThis mirrors the admin route's replace strategy, but authenticates via\nservice-role so sessions_service can materialise template ride configs\nwithout an interactive admin token.",
+        "operationId": "attach_ride_configs_internal_internal_transport_sessions__session_id__ride_configs_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InternalSessionRideConfigCreate"
+                },
+                "title": "Configs In"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalSessionRideConfigAttachResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/score/cohort-complexity": {
       "post": {
         "tags": [
@@ -46532,6 +46595,17 @@
             "type": "string",
             "title": "Id"
           },
+          "auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Id"
+          },
           "first_name": {
             "type": "string",
             "title": "First Name"
@@ -52038,6 +52112,31 @@
             ],
             "title": "Phone"
           },
+          "primary_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Tier"
+          },
+          "active_tiers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Tiers"
+          },
           "community_paid_until": {
             "anyOf": [
               {
@@ -52048,6 +52147,28 @@
               }
             ],
             "title": "Community Paid Until"
+          },
+          "club_paid_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Paid Until"
+          },
+          "academy_paid_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Academy Paid Until"
           },
           "profile_photo_url": {
             "anyOf": [
@@ -57704,6 +57825,17 @@
             ],
             "title": "Cohort Id"
           },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
+          },
           "capacity": {
             "type": "integer",
             "title": "Capacity"
@@ -58599,6 +58731,18 @@
             "$ref": "#/components/schemas/SessionType",
             "default": "community"
           },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
+          },
           "pool_fee": {
             "type": "number",
             "title": "Pool Fee",
@@ -58714,6 +58858,18 @@
           "session_type": {
             "$ref": "#/components/schemas/SessionType",
             "default": "community"
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
           },
           "pool_fee": {
             "type": "number",
@@ -58863,6 +59019,28 @@
               }
             ],
             "title": "Location Name"
+          },
+          "session_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
           },
           "pool_fee": {
             "anyOf": [
@@ -76510,6 +76688,55 @@
         ],
         "title": "BatchRideConfigsResponse",
         "description": "Map of session_id (str) -> list of slim ride configs."
+      },
+      "InternalSessionRideConfigAttachResponse": {
+        "properties": {
+          "created": {
+            "type": "integer",
+            "title": "Created"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created"
+        ],
+        "title": "InternalSessionRideConfigAttachResponse"
+      },
+      "InternalSessionRideConfigCreate": {
+        "properties": {
+          "ride_area_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ride Area Id"
+          },
+          "cost": {
+            "type": "number",
+            "title": "Cost",
+            "default": 0.0
+          },
+          "capacity": {
+            "type": "integer",
+            "title": "Capacity",
+            "default": 4
+          },
+          "departure_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Departure Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ride_area_id"
+        ],
+        "title": "InternalSessionRideConfigCreate"
       },
       "MemberTransportSummary": {
         "properties": {

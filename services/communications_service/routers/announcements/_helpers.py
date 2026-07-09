@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
-from libs.common.logging import get_logger
 from libs.common.datetime_utils import utc_now
+from libs.common.logging import get_logger
 from services.communications_service.models import (
     Announcement,
     AnnouncementAudience,
@@ -158,15 +158,15 @@ async def _send_announcement_emails(
     if not members:
         return
 
-    member_ids = [m.get("id") for m in members if m.get("id")]
+    member_auth_ids = [m.get("auth_id") for m in members if m.get("auth_id")]
     pref_map: dict[str, NotificationPreferences] = {}
-    if member_ids:
+    if member_auth_ids:
         prefs_result = await db.execute(
             select(NotificationPreferences).where(
-                NotificationPreferences.member_id.in_(member_ids)
+                NotificationPreferences.member_auth_id.in_(member_auth_ids)
             )
         )
-        pref_map = {str(p.member_id): p for p in prefs_result.scalars().all()}
+        pref_map = {p.member_auth_id: p for p in prefs_result.scalars().all()}
 
     subject = f"SwimBuddz Update: {announcement.title}"
     body = announcement.body
@@ -176,10 +176,10 @@ async def _send_announcement_emails(
     sent_count = 0
     for member in members:
         email = member.get("email")
-        member_id = str(member.get("id")) if member.get("id") else None
+        auth_id = str(member.get("auth_id")) if member.get("auth_id") else None
         if not email:
             continue
-        pref = pref_map.get(member_id) if member_id else None
+        pref = pref_map.get(auth_id) if auth_id else None
         if not _pref_allows_email(announcement.category, pref):
             continue
         success = await send_message_email(

@@ -8,12 +8,13 @@ from datetime import date, datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import extract, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.members_service.models import Member, MemberProfile
-from sqlalchemy import extract, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ._helpers import _ADMIN_REMINDER_ROLES, _LAGOS_TZ, _age_on
 from ._schemas import AdminMember, BirthdayMember
@@ -54,6 +55,7 @@ async def get_birthdays_today(
     return [
         BirthdayMember(
             id=str(member.id),
+            auth_id=member.auth_id,
             first_name=member.first_name,
             last_name=member.last_name,
             email=member.email,

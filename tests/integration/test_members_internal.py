@@ -7,6 +7,7 @@ that the entire microservice architecture depends on.
 """
 
 import pytest
+
 from tests.factories import CoachBankAccountFactory, CoachProfileFactory, MemberFactory
 
 
@@ -207,9 +208,20 @@ async def test_get_coach_readiness_data(members_client, db_session):
 @pytest.mark.integration
 async def test_get_active_members(members_client, db_session):
     """Active members endpoint returns all active members."""
+    from datetime import timedelta
+
+    from libs.common.datetime_utils import utc_now
+    from services.members_service.models import MemberMembership
+
     active = MemberFactory.create(is_active=True)
     inactive = MemberFactory.create(is_active=False)
-    db_session.add_all([active, inactive])
+    membership = MemberMembership(
+        member_id=active.id,
+        primary_tier="community",
+        active_tiers=["community"],
+        club_paid_until=utc_now() + timedelta(days=30),
+    )
+    db_session.add_all([active, inactive, membership])
     await db_session.commit()
 
     response = await members_client.get("/internal/members/active")
@@ -218,5 +230,9 @@ async def test_get_active_members(members_client, db_session):
     data = response.json()
     returned_ids = {item["id"] for item in data}
     assert str(active.id) in returned_ids
+    active_row = next(item for item in data if item["id"] == str(active.id))
+    assert active_row["auth_id"] == active.auth_id
+    assert active_row["primary_tier"] == "club"
+    assert set(active_row["active_tiers"]) == {"club", "community"}
     # inactive may or may not be in returned — depends on seeded data
     # but the active one should definitely be there
