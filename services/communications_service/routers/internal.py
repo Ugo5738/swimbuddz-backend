@@ -48,7 +48,8 @@ async def handle_session_published(
     """Trigger publish notifications for a session.
 
     Called by sessions_service after a session transitions from draft → scheduled.
-    Schedules reminders and sends the immediate announcement email + in-app notification.
+    Schedules reminders immediately. Booking prompts are sent at the daily
+    booking window, except short-notice sessions which prompt immediately.
     """
     session_uuid = UUID(body.session_id)
 
@@ -57,10 +58,11 @@ async def handle_session_published(
         is_short_notice=body.is_short_notice,
     )
 
-    await send_session_announcement(
-        session_id=session_uuid,
-        short_notice_message=body.short_notice_message,
-    )
+    if body.is_short_notice:
+        await send_session_announcement(
+            session_id=session_uuid,
+            short_notice_message=body.short_notice_message,
+        )
 
     return {"ok": True}
 

@@ -21193,7 +21193,7 @@
           "internal"
         ],
         "summary": "Handle Session Published",
-        "description": "Trigger publish notifications for a session.\n\nCalled by sessions_service after a session transitions from draft \u2192 scheduled.\nSchedules reminders and sends the immediate announcement email + in-app notification.",
+        "description": "Trigger publish notifications for a session.\n\nCalled by sessions_service after a session transitions from draft \u2192 scheduled.\nSchedules reminders immediately. Booking prompts are sent at the daily\nbooking window, except short-notice sessions which prompt immediately.",
         "operationId": "handle_session_published_internal_communications_session_published_post",
         "requestBody": {
           "content": {
