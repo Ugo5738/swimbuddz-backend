@@ -1,7 +1,7 @@
 """
 Session notification email templates.
 
-Templates for session announcements, reminders, and updates.
+Templates for session booking prompts, reminders, and updates.
 """
 
 from libs.common.config import get_settings
@@ -22,6 +22,7 @@ settings = get_settings()
 async def send_session_announcement_email(
     to_email: str,
     member_name: str,
+    session_id: str,
     session_title: str,
     session_type: str,
     session_date: str,
@@ -34,11 +35,12 @@ async def send_session_announcement_email(
     currency: str = "NGN",
 ) -> bool:
     """
-    Send session announcement email when a new session is published.
+    Send a booking prompt when a session is available to book.
 
     Args:
         to_email: Recipient email address.
         member_name: Recipient's first name.
+        session_id: UUID of the session being booked.
         session_title: Title of the session.
         session_type: Type of session (community, club, event).
         session_date: Formatted date string.
@@ -63,15 +65,17 @@ async def send_session_announcement_email(
         "cohort_class": "Academy Class",
     }
     type_label = type_labels.get(session_type.lower(), "Session")
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    booking_url = f"{frontend_url}/sessions/{session_id}/book"
 
     # Short notice banner
     short_notice_html = ""
+    short_notice_text = (
+        short_notice_message or "This session was scheduled on short notice."
+    )
     if is_short_notice:
-        notice_msg = (
-            short_notice_message or "This session was scheduled on short notice."
-        )
         short_notice_html = info_box(
-            f"⚠️ <strong>Short Notice</strong><br/>{notice_msg}",
+            f"⚠️ <strong>Short Notice</strong><br/>{short_notice_text}",
             bg_color="#fef3c7",
             border_color="#f59e0b",
         )
@@ -81,7 +85,7 @@ async def send_session_announcement_email(
     # Plain text body
     body = f"""Hi {member_name},
 
-A new {type_label.lower()} has been scheduled!
+A new {type_label.lower()} is available to book.
 
 {session_title}
 📅 {session_date}
@@ -90,9 +94,16 @@ A new {type_label.lower()} has been scheduled!
 {f"🗺️ {session_address}" if session_address else ""}
 💳 {fee_text}
 
-{"⚠️ " + short_notice_message if is_short_notice else ""}
+{f"⚠️ {short_notice_text}" if is_short_notice else ""}
 
-View session details and register on the SwimBuddz app.
+What to bring:
+✓ Swimwear and swim cap
+✓ Goggles
+✓ Towel
+✓ Water bottle
+
+Book your spot here:
+{booking_url}
 
 — The SwimBuddz Team
 """
@@ -110,16 +121,27 @@ View session details and register on the SwimBuddz app.
     else:
         details["💳 Fee"] = "Free"
 
-    frontend_url = settings.FRONTEND_URL
+    checklist_html = """
+    <div style="background: #fefce8; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <h4 style="margin: 0 0 10px 0; color: #854d0e;">🎒 What to Bring</h4>
+        <ul style="margin: 0; padding-left: 20px; color: #713f12;">
+            <li>Swimwear and swim cap</li>
+            <li>Goggles</li>
+            <li>Towel</li>
+            <li>Water bottle</li>
+        </ul>
+    </div>
+    """
 
     body_html = (
         f"<p>Hi {member_name},</p>"
-        f"<p>A new <strong>{type_label.lower()}</strong> has been scheduled!</p>"
+        f"<p>A new <strong>{type_label.lower()}</strong> is available to book.</p>"
         + short_notice_html
         + f"<h3>🏊‍♂️ {session_title}</h3>"
         + detail_box(details)
-        + cta_button("View Session", f"{frontend_url}/sessions")
-        + sign_off("Hope to see you there! 🌊")
+        + checklist_html
+        + cta_button("Book Session", booking_url)
+        + sign_off("Book early so your spot is held. 🌊")
     )
 
     html_body = wrap_html(
@@ -136,6 +158,7 @@ View session details and register on the SwimBuddz app.
 async def send_session_reminder_email(
     to_email: str,
     member_name: str,
+    session_id: str,
     session_title: str,
     session_date: str,
     session_time: str,
@@ -151,6 +174,7 @@ async def send_session_reminder_email(
     Args:
         to_email: Recipient email address.
         member_name: Recipient's first name.
+        session_id: UUID of the booked session.
         session_title: Title of the session.
         session_date: Formatted date string.
         session_time: Formatted time string.
@@ -172,6 +196,8 @@ async def send_session_reminder_email(
     subject = f"Reminder: {session_title} - {title_suffix}"
 
     # Plain text body
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    booking_url = f"{frontend_url}/sessions/{session_id}/book"
     body = f"""Hi {member_name},
 
 {intro_message}
@@ -190,6 +216,9 @@ What to bring:
 
 See you there! 🏊‍♂️
 
+View your booking:
+{booking_url}
+
 — The SwimBuddz Team
 """
 
@@ -201,8 +230,6 @@ See you there! 🏊‍♂️
     }
     if session_address:
         details["🗺️ Address"] = session_address
-
-    frontend_url = settings.FRONTEND_URL
 
     checklist_html = """
     <div style="background: #fefce8; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -222,7 +249,7 @@ See you there! 🏊‍♂️
         + f"<h3>🏊‍♂️ {session_title}</h3>"
         + detail_box(details)
         + checklist_html
-        + cta_button("View Session", f"{frontend_url}/sessions")
+        + cta_button("View Booking", booking_url)
         + sign_off("See you in the water! 🌊")
     )
 

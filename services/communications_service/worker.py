@@ -5,6 +5,7 @@ Run with: arq services.communications_service.worker.WorkerSettings
 """
 
 from arq import cron
+
 from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
 
@@ -28,6 +29,14 @@ async def task_send_weekly_session_digest(ctx: dict):
 
     logger.info("Running: send_weekly_session_digest")
     await send_weekly_session_digest()
+
+
+async def task_send_session_booking_prompts(ctx: dict):
+    """Send daily booking prompts for upcoming unbooked sessions."""
+    from services.communications_service.tasks import send_session_booking_prompts
+
+    logger.info("Running: send_session_booking_prompts")
+    await send_session_booking_prompts()
 
 
 async def task_publish_scheduled_content(ctx: dict):
@@ -67,6 +76,7 @@ class WorkerSettings:
     functions = [
         task_process_pending_notifications,
         task_send_weekly_session_digest,
+        task_send_session_booking_prompts,
         task_publish_scheduled_content,
         task_generate_content_images,
         task_send_daily_birthday_celebrations,
@@ -84,6 +94,15 @@ class WorkerSettings:
             task_send_weekly_session_digest,
             weekday=6,  # Sunday
             hour=7,
+            minute=0,
+            run_at_startup=False,
+        ),
+        # Daily booking prompts (09:00 WAT / 08:00 UTC).
+        # Sends only to eligible members who have not booked the session yet,
+        # with per-member duplicate caps in session_notification_logs.
+        cron(
+            task_send_session_booking_prompts,
+            hour=8,
             minute=0,
             run_at_startup=False,
         ),

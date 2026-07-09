@@ -12,6 +12,7 @@ from services.communications_service.tasks.session_notifications import (
     process_pending_notifications,
     schedule_session_notifications,
     send_session_announcement,
+    send_session_booking_prompts,
     send_weekly_session_digest,
 )
 
@@ -23,5 +24,6 @@ __all__ = [
     "schedule_session_notifications",
     "send_daily_birthday_celebrations",
     "send_session_announcement",
+    "send_session_booking_prompts",
     "send_weekly_session_digest",
 ]
