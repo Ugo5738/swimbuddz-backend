@@ -297,7 +297,7 @@ async def generate_sessions(
     # committed. See docs/design/VOLUNTEER_OPPORTUNITY_CONTEXT_DESIGN.md.
     for entry in created_sessions:
         try:
-            await materialise_opportunities_from_session_template(
+            materialise_result = await materialise_opportunities_from_session_template(
                 calling_service="sessions",
                 session_id=entry["_session_id"],
                 session_template_id=str(template.id),
@@ -306,7 +306,9 @@ async def generate_sessions(
                 end_time=entry["_local_end_time"],
                 location_name=entry["_location_name"],
             )
-            volunteer_opportunities_created += int(result.get("created_count") or 0)
+            volunteer_opportunities_created += int(
+                materialise_result.get("created_count") or 0
+            )
         except Exception as exc:
             logger.error(
                 "Failed to materialise volunteer opportunities for session %s (template %s): %s",

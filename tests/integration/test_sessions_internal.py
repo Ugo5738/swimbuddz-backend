@@ -1,5 +1,6 @@
 """Integration tests for sessions_service internal endpoints."""
 
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -14,7 +15,8 @@ from tests.factories import MemberFactory, SessionCoachFactory, SessionFactory
 @pytest.mark.integration
 async def test_get_session_by_id(sessions_client, db_session):
     """Internal session lookup returns correct session data."""
-    session = SessionFactory.create()
+    pool_id = uuid.uuid4()
+    session = SessionFactory.create(pool_id=pool_id)
     db_session.add(session)
     await db_session.commit()
 
@@ -27,6 +29,7 @@ async def test_get_session_by_id(sessions_client, db_session):
     assert data["session_type"] == "club"
     assert data["status"] == "scheduled"
     assert data["capacity"] == 20
+    assert data["pool_id"] == str(pool_id)
 
 
 @pytest.mark.asyncio

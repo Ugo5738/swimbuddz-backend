@@ -27,6 +27,8 @@ Usage:
     )
 """
 
+from libs.common.config import get_settings
+
 # ─── Color presets ────────────────────────────────────────────────────
 GRADIENT_CYAN = "linear-gradient(135deg, #0891b2 0%, #0284c7 100%)"
 GRADIENT_GREEN = "linear-gradient(135deg, #10b981 0%, #059669 100%)"
@@ -59,6 +61,9 @@ def wrap_html(
         f'<span style="display:none;font-size:1px;color:#f8fafc;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{preheader}</span>'
         if preheader
         else ""
+    )
+    logo_url = (
+        f"{get_settings().FRONTEND_URL.rstrip('/')}/email/swimbuddz-icon-white.png"
     )
 
     return f"""\
@@ -240,7 +245,8 @@ def wrap_html(
             <!-- Header -->
             <div class="email-header">
                 <div class="logo">
-                    <img src="https://swimbuddz.com/logo-white.png" alt="SwimBuddz" style="height: 36px;" />
+                    <img src="{logo_url}" alt="" width="37" height="32" style="height: 32px; width: 37px; vertical-align: middle; display: inline-block;" />
+                    <span style="display: inline-block; vertical-align: middle; margin-left: 10px; font-size: 22px; line-height: 32px; font-weight: 700; color: #ffffff;">SwimBuddz</span>
                 </div>
                 <h1>{title}</h1>
                 {subtitle_html}

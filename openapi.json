@@ -57781,6 +57781,17 @@
             "type": "string",
             "title": "Ends At"
           },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
           "location_name": {
             "anyOf": [
               {
