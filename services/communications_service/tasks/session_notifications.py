@@ -8,7 +8,7 @@ Handles:
 - Cancelling notifications when sessions are cancelled
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -38,6 +38,7 @@ from services.communications_service.models import (
 from services.communications_service.templates.session_notifications import (
     send_session_announcement_email,
     send_session_cancelled_email,
+    send_session_prospect_invite_email,
     send_session_reminder_email,
 )
 
@@ -98,12 +99,13 @@ async def _get_active_members() -> list[dict]:
     return members_resp.json()
 
 
-async def _sent_booking_prompt_recently(
+async def _sent_session_notification_recently(
     db: AsyncSession,
     *,
     session_id: UUID,
     member_id: UUID,
     now: datetime,
+    notification_type: SessionNotificationType,
 ) -> bool:
     sent_times = (
         (
@@ -112,8 +114,7 @@ async def _sent_booking_prompt_recently(
                 .where(
                     SessionNotificationLog.session_id == session_id,
                     SessionNotificationLog.member_id == member_id,
-                    SessionNotificationLog.notification_type
-                    == SessionNotificationType.SESSION_PUBLISHED,
+                    SessionNotificationLog.notification_type == notification_type,
                 )
                 .order_by(SessionNotificationLog.sent_at.desc())
             )
@@ -126,6 +127,57 @@ async def _sent_booking_prompt_recently(
 
     today = _local_date(now)
     return any(_local_date(sent_at) == today for sent_at in sent_times)
+
+
+def _parse_paid_until(value: object) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _has_active_paid_until(member: dict, field: str, now: datetime) -> bool:
+    paid_until = _parse_paid_until(member.get(field))
+    return paid_until is not None and paid_until > now
+
+
+def _has_any_paid_entitlement(member: dict, now: datetime) -> bool:
+    return any(
+        _has_active_paid_until(member, field, now)
+        for field in (
+            "community_paid_until",
+            "club_paid_until",
+            "academy_paid_until",
+        )
+    )
+
+
+def _has_paid_session_access(member: dict, session_type: str, now: datetime) -> bool:
+    """Return whether a member should get a direct booking prompt."""
+    if session_type == "community":
+        return _has_any_paid_entitlement(member, now)
+    if session_type == "club":
+        return _has_active_paid_until(
+            member, "club_paid_until", now
+        ) or _has_active_paid_until(member, "academy_paid_until", now)
+    if session_type in {"academy", "cohort_class"}:
+        # Cohort access is scoped by enrollment in _get_session_announcement_members.
+        return True
+    return _has_any_paid_entitlement(member, now)
+
+
+def _is_unpaid_community_prospect(member: dict, now: datetime) -> bool:
+    return "community" in _member_tiers(member) and not _has_any_paid_entitlement(
+        member, now
+    )
 
 
 async def schedule_session_notifications(
@@ -299,6 +351,7 @@ async def send_session_booking_prompts() -> None:
                     db,
                     session=session,
                     active_members=all_members,
+                    send_prospect_invites=True,
                 )
 
             await db.commit()
@@ -322,6 +375,7 @@ async def _send_booking_prompt_for_session(
     session: dict,
     active_members: list[dict],
     short_notice_message: str = "",
+    send_prospect_invites: bool = False,
 ) -> int:
     session_id = UUID(session["id"])
     now = utc_now()
@@ -359,7 +413,10 @@ async def _send_booking_prompt_for_session(
     session_time = local_start.strftime("%I:%M %p")
 
     sent_member_ids: list[str] = []
+    prospect_member_ids: list[str] = []
     sent_count = 0
+    prospect_sent_count = 0
+    session_type = str(session["session_type"])
     for member in accessible_members:
         member_id = member.get("id")
         if not member_id or member_id in booked_ids:
@@ -367,11 +424,60 @@ async def _send_booking_prompt_for_session(
         pref = prefs_map.get(member.get("auth_id"))
         if not _should_send_session_announcement(session, pref):
             continue
-        if await _sent_booking_prompt_recently(
+        if not _has_paid_session_access(member, session_type, now):
+            if (
+                send_prospect_invites
+                and session_type == "community"
+                and _is_unpaid_community_prospect(member, now)
+            ):
+                if await _sent_session_notification_recently(
+                    db,
+                    session_id=session_id,
+                    member_id=UUID(member_id),
+                    now=now,
+                    notification_type=SessionNotificationType.SPOTS_AVAILABLE,
+                ):
+                    continue
+                try:
+                    success = await send_session_prospect_invite_email(
+                        to_email=member["email"],
+                        member_name=member["first_name"],
+                        session_id=str(session_id),
+                        session_title=session["title"],
+                        session_date=session_date,
+                        session_time=session_time,
+                        session_location=session.get("location_name")
+                        or session.get("location")
+                        or "TBD",
+                        session_address=session.get("location_address") or "",
+                        pool_fee=_session_fee_amount(session),
+                    )
+
+                    if success:
+                        db.add(
+                            SessionNotificationLog(
+                                session_id=session_id,
+                                member_id=UUID(member_id),
+                                notification_type=SessionNotificationType.SPOTS_AVAILABLE,
+                                channel="email",
+                                delivery_status="sent",
+                            )
+                        )
+                        prospect_member_ids.append(member_id)
+                        prospect_sent_count += 1
+                except Exception as e:
+                    logger.error(
+                        "Failed to send prospect session invite to %s: %s",
+                        member["email"],
+                        e,
+                    )
+            continue
+        if await _sent_session_notification_recently(
             db,
             session_id=session_id,
             member_id=UUID(member_id),
             now=now,
+            notification_type=SessionNotificationType.SESSION_PUBLISHED,
         ):
             continue
 
@@ -425,6 +531,29 @@ async def _send_booking_prompt_for_session(
                 "session_type": session["session_type"],
             },
             calling_service="communications",
+        )
+
+    if prospect_member_ids:
+        location_name = session.get("location_name") or session.get("location") or "TBD"
+        await dispatch_notification(
+            type="community_session_prospect_invite",
+            category="sessions",
+            member_ids=prospect_member_ids,
+            title=f"Try SwimBuddz: {session['title']}",
+            body=f"{session_date} at {session_time} — {location_name}",
+            action_url="/checkout?purpose=community",
+            icon="calendar",
+            metadata={
+                "session_id": str(session_id),
+                "session_type": session["session_type"],
+                "audience": "prospect",
+            },
+            calling_service="communications",
+        )
+        logger.info(
+            "Sent %s prospect invite email(s) for community session %s",
+            prospect_sent_count,
+            session_id,
         )
 
     return sent_count

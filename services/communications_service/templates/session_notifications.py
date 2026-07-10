@@ -155,6 +155,97 @@ Book your spot here:
     return await send_email(to_email, subject, body, html_body)
 
 
+async def send_session_prospect_invite_email(
+    to_email: str,
+    member_name: str,
+    session_id: str,
+    session_title: str,
+    session_date: str,
+    session_time: str,
+    session_location: str,
+    session_address: str = "",
+    pool_fee: float = 0,
+    currency: str = "NGN",
+) -> bool:
+    """Invite an unpaid signup to activate membership before booking a Community swim."""
+    fee_display = (
+        f"₦{pool_fee:,.0f}" if currency == "NGN" else f"{currency} {pool_fee:,.2f}"
+    )
+    fee_text = f"Pool fee: {fee_display}" if pool_fee > 0 else "Pool fee: Free"
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    membership_url = f"{frontend_url}/checkout?purpose=community"
+    booking_url = f"{frontend_url}/sessions/{session_id}/book"
+
+    subject = f"Want to try SwimBuddz? Community swim on {session_date}"
+
+    body = f"""Hi {member_name},
+
+We have a Community swim coming up and thought you might want to get a feel for SwimBuddz.
+
+{session_title}
+📅 {session_date}
+⏰ {session_time}
+📍 {session_location}
+{f"🗺️ {session_address}" if session_address else ""}
+💳 {fee_text}
+
+Booking is reserved for active SwimBuddz members. Community membership is the entry tier and gives you access to Community swims, open meetups, updates, and the broader SwimBuddz network.
+
+Activate your Community membership:
+{membership_url}
+
+After activation, you can book this session here:
+{booking_url}
+
+If you are new and want to ask about a first-timer visit before paying, reply to this email and we will confirm what is possible for that session.
+
+— The SwimBuddz Team
+"""
+
+    details = {
+        "📅 Date": session_date,
+        "⏰ Time": session_time,
+        "📍 Location": session_location,
+        "💳 Pool fee": fee_display if pool_fee > 0 else "Free",
+    }
+    if session_address:
+        details["🗺️ Address"] = session_address
+
+    body_html = (
+        f"<p>Hi {member_name},</p>"
+        "<p>We have a <strong>Community swim</strong> coming up and thought you "
+        "might want to get a feel for SwimBuddz.</p>"
+        + f"<h3>🏊‍♂️ {session_title}</h3>"
+        + detail_box(details)
+        + info_box(
+            "Booking is reserved for active SwimBuddz members. Community "
+            "membership is the entry tier and unlocks Community swims, open "
+            "meetups, updates, and the broader SwimBuddz network.",
+            bg_color="#ecfeff",
+            border_color="#0891b2",
+        )
+        + cta_button("Activate Community Membership", membership_url)
+        + (
+            f'<p style="font-size: 14px; color: #64748b;">After activation, '
+            f'you can book this session here: <a href="{booking_url}">{booking_url}</a></p>'
+        )
+        + sign_off(
+            "If you want to ask about a first-timer visit before paying, reply "
+            "to this email and we will confirm what is possible for that session."
+        )
+    )
+
+    html_body = wrap_html(
+        title="Come Try a Community Swim",
+        subtitle=session_title,
+        body_html=body_html,
+        header_gradient=GRADIENT_CYAN,
+        preheader=f"Community swim on {session_date}",
+    )
+
+    return await send_email(to_email, subject, body, html_body)
+
+
 async def send_session_reminder_email(
     to_email: str,
     member_name: str,
