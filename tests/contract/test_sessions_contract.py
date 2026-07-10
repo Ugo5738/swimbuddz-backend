@@ -29,6 +29,7 @@ async def test_session_by_id_contract(sessions_client, db_session):
         "status",
         "starts_at",
         "ends_at",
+        "pool_id",
         "capacity",
     ]
     for field in required_fields:

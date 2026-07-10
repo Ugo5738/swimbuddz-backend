@@ -4,6 +4,8 @@ Session notification email templates.
 Templates for session booking prompts, reminders, and updates.
 """
 
+from html import escape
+
 from libs.common.config import get_settings
 from libs.common.emails.core import send_email
 from services.communications_service.templates.base import (
@@ -17,6 +19,50 @@ from services.communications_service.templates.base import (
 )
 
 settings = get_settings()
+
+
+def _weather_text(weather_summary: dict | None) -> str:
+    if not weather_summary:
+        return ""
+
+    parts = [str(weather_summary.get("condition_text") or "")]
+    if weather_summary.get("temperature_text"):
+        parts.append(str(weather_summary["temperature_text"]))
+    if weather_summary.get("rain_chance_text"):
+        parts.append(str(weather_summary["rain_chance_text"]))
+    if weather_summary.get("rainfall_text"):
+        parts.append(str(weather_summary["rainfall_text"]))
+
+    summary = " · ".join(part for part in parts if part)
+    explanation = str(weather_summary.get("explanation") or "").strip()
+    explanation_line = f"\n{explanation}" if explanation else ""
+    return f"\nWeather:\n{summary}{explanation_line}\n"
+
+
+def _weather_html(weather_summary: dict | None) -> str:
+    if not weather_summary:
+        return ""
+
+    parts = [str(weather_summary.get("condition_text") or "")]
+    if weather_summary.get("temperature_text"):
+        parts.append(str(weather_summary["temperature_text"]))
+    if weather_summary.get("rain_chance_text"):
+        parts.append(str(weather_summary["rain_chance_text"]))
+    if weather_summary.get("rainfall_text"):
+        parts.append(str(weather_summary["rainfall_text"]))
+
+    summary = " · ".join(escape(part) for part in parts if part)
+    explanation = escape(str(weather_summary.get("explanation") or "").strip())
+    explanation_html = (
+        f'<br/><span style="font-size: 13px; color: #475569;">{explanation}</span>'
+        if explanation
+        else ""
+    )
+    return info_box(
+        f"<strong>Weather</strong><br/>{summary}{explanation_html}",
+        bg_color="#f0f9ff",
+        border_color="#0284c7",
+    )
 
 
 async def send_session_announcement_email(
@@ -33,6 +79,7 @@ async def send_session_announcement_email(
     is_short_notice: bool = False,
     short_notice_message: str = "",
     currency: str = "NGN",
+    weather_summary: dict | None = None,
 ) -> bool:
     """
     Send a booking prompt when a session is available to book.
@@ -81,6 +128,8 @@ async def send_session_announcement_email(
         )
 
     subject = f"New {type_label}: {session_title} on {session_date}"
+    weather_text = _weather_text(weather_summary)
+    weather_html = _weather_html(weather_summary)
 
     # Plain text body
     body = f"""Hi {member_name},
@@ -93,6 +142,7 @@ A new {type_label.lower()} is available to book.
 📍 {session_location}
 {f"🗺️ {session_address}" if session_address else ""}
 💳 {fee_text}
+{weather_text}
 
 {f"⚠️ {short_notice_text}" if is_short_notice else ""}
 
@@ -139,13 +189,14 @@ Book your spot here:
         + short_notice_html
         + f"<h3>🏊‍♂️ {session_title}</h3>"
         + detail_box(details)
+        + weather_html
         + checklist_html
         + cta_button("Book Session", booking_url)
         + sign_off("Book early so your spot is held. 🌊")
     )
 
     html_body = wrap_html(
-        title=f"🆕 New {type_label}",
+        title=f"New {type_label}",
         subtitle=session_title,
         body_html=body_html,
         header_gradient=GRADIENT_CYAN,
@@ -166,21 +217,24 @@ async def send_session_prospect_invite_email(
     session_address: str = "",
     pool_fee: float = 0,
     currency: str = "NGN",
+    weather_summary: dict | None = None,
 ) -> bool:
-    """Invite an unpaid signup to activate membership before booking a Community swim."""
+    """Invite an unpaid signup to choose a SwimBuddz path before booking."""
     fee_display = (
         f"₦{pool_fee:,.0f}" if currency == "NGN" else f"{currency} {pool_fee:,.2f}"
     )
     fee_text = f"Pool fee: {fee_display}" if pool_fee > 0 else "Pool fee: Free"
     frontend_url = settings.FRONTEND_URL.rstrip("/")
-    membership_url = f"{frontend_url}/checkout?purpose=community"
+    activation_url = f"{frontend_url}/account/billing?required=community"
     booking_url = f"{frontend_url}/sessions/{session_id}/book"
+    weather_text = _weather_text(weather_summary)
+    weather_html = _weather_html(weather_summary)
 
-    subject = f"Want to try SwimBuddz? Community swim on {session_date}"
+    subject = f"Choose your SwimBuddz path - Community swim on {session_date}"
 
     body = f"""Hi {member_name},
 
-We have a Community swim coming up and thought you might want to get a feel for SwimBuddz.
+We have a Community swim coming up, and it is a good moment to choose how you want to join SwimBuddz.
 
 {session_title}
 📅 {session_date}
@@ -188,13 +242,17 @@ We have a Community swim coming up and thought you might want to get a feel for 
 📍 {session_location}
 {f"🗺️ {session_address}" if session_address else ""}
 💳 {fee_text}
+{weather_text}
 
-Booking is reserved for active SwimBuddz members. Community membership is the entry tier and gives you access to Community swims, open meetups, updates, and the broader SwimBuddz network.
+Choose the path that fits you:
+- Community: open swims, events, and the broader SwimBuddz network.
+- Club: weekly structured training with a crew.
+- Academy: cohort-based programs for learning or improving your swimming.
 
-Activate your Community membership:
-{membership_url}
+Choose and activate your membership here:
+{activation_url}
 
-After activation, you can book this session here:
+Booking is reserved for active SwimBuddz members. After activation, you can book this session here:
 {booking_url}
 
 If you are new and want to ask about a first-timer visit before paying, reply to this email and we will confirm what is possible for that session.
@@ -214,17 +272,19 @@ If you are new and want to ask about a first-timer visit before paying, reply to
     body_html = (
         f"<p>Hi {member_name},</p>"
         "<p>We have a <strong>Community swim</strong> coming up and thought you "
-        "might want to get a feel for SwimBuddz.</p>"
+        "might want to choose how you want to join SwimBuddz.</p>"
         + f"<h3>🏊‍♂️ {session_title}</h3>"
         + detail_box(details)
+        + weather_html
         + info_box(
-            "Booking is reserved for active SwimBuddz members. Community "
-            "membership is the entry tier and unlocks Community swims, open "
-            "meetups, updates, and the broader SwimBuddz network.",
+            "<strong>Choose your path</strong><br/>"
+            "Community: open swims, events, and the broader network.<br/>"
+            "Club: weekly structured training with a crew.<br/>"
+            "Academy: cohort-based programs for learning or improving.",
             bg_color="#ecfeff",
             border_color="#0891b2",
         )
-        + cta_button("Activate Community Membership", membership_url)
+        + cta_button("Choose and Activate Membership", activation_url)
         + (
             f'<p style="font-size: 14px; color: #64748b;">After activation, '
             f'you can book this session here: <a href="{booking_url}">{booking_url}</a></p>'
@@ -236,7 +296,7 @@ If you are new and want to ask about a first-timer visit before paying, reply to
     )
 
     html_body = wrap_html(
-        title="Come Try a Community Swim",
+        title="Choose Your SwimBuddz Path",
         subtitle=session_title,
         body_html=body_html,
         header_gradient=GRADIENT_CYAN,
@@ -258,6 +318,7 @@ async def send_session_reminder_email(
     reminder_type: str = "24h",
     pool_fee: float = 0,
     currency: str = "NGN",
+    weather_summary: dict | None = None,
 ) -> bool:
     """
     Send session reminder email (24h, 3h, or 1h before).
@@ -289,6 +350,8 @@ async def send_session_reminder_email(
     # Plain text body
     frontend_url = settings.FRONTEND_URL.rstrip("/")
     booking_url = f"{frontend_url}/sessions/{session_id}/book"
+    weather_text = _weather_text(weather_summary)
+    weather_html = _weather_html(weather_summary)
     body = f"""Hi {member_name},
 
 {intro_message}
@@ -298,6 +361,7 @@ async def send_session_reminder_email(
 ⏰ {session_time}
 📍 {session_location}
 {f"🗺️ {session_address}" if session_address else ""}
+{weather_text}
 
 What to bring:
 ✓ Swimwear and swim cap
@@ -339,6 +403,7 @@ View your booking:
         f"<p>{intro_message}</p>"
         + f"<h3>🏊‍♂️ {session_title}</h3>"
         + detail_box(details)
+        + weather_html
         + checklist_html
         + cta_button("View Booking", booking_url)
         + sign_off("See you in the water! 🌊")

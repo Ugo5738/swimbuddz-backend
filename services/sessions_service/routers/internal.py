@@ -48,6 +48,7 @@ class SessionBasic(BaseModel):
     status: str
     starts_at: str
     ends_at: str
+    pool_id: Optional[str] = None
     location_name: Optional[str] = None
     location_address: Optional[str] = None
     location: Optional[str] = None
@@ -135,6 +136,7 @@ async def get_scheduled_sessions(
             status=s.status.value,
             starts_at=s.starts_at.isoformat(),
             ends_at=s.ends_at.isoformat(),
+            pool_id=str(s.pool_id) if s.pool_id else None,
             location_name=s.location_name,
             location_address=s.location_address,
             location=s.location.value if s.location else None,
@@ -435,6 +437,7 @@ async def get_session_by_id(
         status=session.status.value,
         starts_at=session.starts_at.isoformat(),
         ends_at=session.ends_at.isoformat(),
+        pool_id=str(session.pool_id) if session.pool_id else None,
         location_name=session.location_name,
         location_address=session.location_address,
         location=session.location.value if session.location else None,
@@ -583,6 +586,7 @@ async def get_sessions_for_cohort_internal(
             status=s.status.value,
             starts_at=s.starts_at.isoformat(),
             ends_at=s.ends_at.isoformat(),
+            pool_id=str(s.pool_id) if s.pool_id else None,
             location_name=s.location_name,
             location_address=s.location_address,
             location=s.location.value if s.location else None,

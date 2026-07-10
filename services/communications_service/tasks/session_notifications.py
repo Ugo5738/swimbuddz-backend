@@ -50,6 +50,38 @@ BOOKING_PROMPT_WINDOW_DAYS = 7
 BOOKING_PROMPT_MAX_SENDS_PER_SESSION = 3
 BOOKING_PROMPT_SESSION_TYPES = {"community", "club", "cohort_class"}
 BOOKING_PROMPT_TZ = ZoneInfo("Africa/Lagos")
+WEATHER_FORECAST_HORIZON_DAYS = 14
+
+WMO_LABELS = {
+    0: "Clear",
+    1: "Mostly clear",
+    2: "Partly cloudy",
+    3: "Overcast",
+    45: "Fog",
+    48: "Fog",
+    51: "Light drizzle",
+    53: "Drizzle",
+    55: "Heavy drizzle",
+    56: "Freezing drizzle",
+    57: "Freezing drizzle",
+    61: "Light rain",
+    63: "Rain",
+    65: "Heavy rain",
+    66: "Freezing rain",
+    67: "Freezing rain",
+    71: "Light snow",
+    73: "Snow",
+    75: "Heavy snow",
+    77: "Snow grains",
+    80: "Light showers",
+    81: "Showers",
+    82: "Heavy showers",
+    85: "Snow showers",
+    86: "Snow showers",
+    95: "Thunderstorm",
+    96: "Thunderstorm",
+    99: "Thunderstorm",
+}
 
 
 async def _get_session_data(session_id: UUID) -> Optional[dict]:
@@ -59,6 +91,10 @@ async def _get_session_data(session_id: UUID) -> Optional[dict]:
 
 def _parse_session_start(session: dict) -> datetime:
     return datetime.fromisoformat(session["starts_at"])
+
+
+def _parse_session_end(session: dict) -> datetime:
+    return datetime.fromisoformat(session["ends_at"])
 
 
 def _session_fee_amount(session: dict) -> float:
@@ -78,6 +114,170 @@ def _local_date(value: datetime) -> date:
     if value.tzinfo is None:
         value = value.replace(tzinfo=BOOKING_PROMPT_TZ)
     return value.astimezone(BOOKING_PROMPT_TZ).date()
+
+
+def _session_timezone(session: dict) -> ZoneInfo:
+    try:
+        return ZoneInfo(session.get("timezone") or "Africa/Lagos")
+    except Exception:
+        return BOOKING_PROMPT_TZ
+
+
+def _weather_num(values: object, index: int) -> float | None:
+    if not isinstance(values, list) or index >= len(values):
+        return None
+    value = values[index]
+    return value if isinstance(value, (int, float)) else None
+
+
+def _condition_label(code: int) -> str:
+    return WMO_LABELS.get(code, "Cloudy")
+
+
+def _weather_kind(code: int, max_prob: int) -> str:
+    if code >= 95:
+        return "storm"
+    if code >= 51 or max_prob >= 60:
+        return "rain"
+    if code >= 45 or max_prob >= 30:
+        return "cloudy"
+    if code >= 1:
+        return "partly"
+    return "clear"
+
+
+def _weather_explanation(kind: str, max_prob: int, total_mm: float) -> str:
+    if kind == "storm":
+        return "Thunderstorm possible - sessions pause if there is lightning."
+    if max_prob < 30:
+        return "Looks dry for your session."
+    if total_mm >= 5:
+        return "Steady rain likely during the session."
+    if kind == "rain" or total_mm >= 1:
+        return "Light rain likely - warm and swimmable."
+    return "Cloudy with a slight chance of drizzle."
+
+
+def _format_mm(value: float) -> str:
+    if value == int(value):
+        return str(int(value))
+    return f"{value:.1f}"
+
+
+def _summarize_session_weather(
+    forecast: dict,
+    *,
+    starts_at: datetime,
+    ends_at: datetime,
+) -> dict | None:
+    """Summarize cached hourly forecast data for the session's own hours."""
+    hourly = forecast.get("hourly") if isinstance(forecast, dict) else None
+    if not isinstance(hourly, dict):
+        return None
+
+    times = hourly.get("time")
+    if not isinstance(times, list):
+        return None
+
+    date_prefix = starts_at.strftime("%Y-%m-%d")
+    start_hour = starts_at.hour
+    end_hour = ends_at.hour
+    if ends_at.date() != starts_at.date() or end_hour < start_hour:
+        end_hour = 23
+
+    indices: list[int] = []
+    for i, value in enumerate(times):
+        if not isinstance(value, str) or not value.startswith(date_prefix):
+            continue
+        try:
+            hour = int(value[11:13])
+        except ValueError:
+            continue
+        if start_hour <= hour <= end_hour:
+            indices.append(i)
+
+    if not indices:
+        return None
+
+    max_prob = 0
+    total_precip = 0.0
+    temp_high: float | None = None
+    peak_idx = indices[0]
+    peak_prob = -1
+
+    for i in indices:
+        prob = int(_weather_num(hourly.get("precipitation_probability"), i) or 0)
+        if prob > max_prob:
+            max_prob = prob
+        if prob > peak_prob:
+            peak_prob = prob
+            peak_idx = i
+
+        total_precip += _weather_num(hourly.get("precipitation"), i) or 0
+
+        temp = _weather_num(hourly.get("temperature_2m"), i)
+        if temp is not None:
+            temp_high = temp if temp_high is None else max(temp_high, temp)
+
+    code = int(_weather_num(hourly.get("weather_code"), peak_idx) or 0)
+    total_mm = round(total_precip, 1)
+    kind = _weather_kind(code, max_prob)
+    return {
+        "condition_text": _condition_label(code),
+        "temperature_text": f"{round(temp_high)}°C" if temp_high is not None else "",
+        "rain_chance_text": f"{max_prob}% chance of rain",
+        "rainfall_text": f"~{_format_mm(total_mm)}mm during session",
+        "explanation": _weather_explanation(kind, max_prob, total_mm),
+    }
+
+
+async def _get_session_weather_summary(session: dict) -> dict | None:
+    """Fetch and summarize weather for a session, without blocking email delivery."""
+    pool_id = session.get("pool_id")
+    if not pool_id:
+        return None
+
+    local_tz = _session_timezone(session)
+    now = utc_now()
+    starts_at = _parse_session_start(session).astimezone(local_tz)
+    days_until = (starts_at.date() - now.astimezone(local_tz).date()).days
+    if days_until < 0 or days_until > WEATHER_FORECAST_HORIZON_DAYS:
+        return None
+
+    ends_at = _parse_session_end(session).astimezone(local_tz)
+    date_param = starts_at.strftime("%Y-%m-%d")
+    settings = get_settings()
+    try:
+        resp = await internal_get(
+            service_url=settings.POOLS_SERVICE_URL,
+            path=f"/weather/pools/{pool_id}",
+            calling_service="communications",
+            params={"date": date_param},
+            timeout=5.0,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to fetch weather for session %s: %s",
+            session.get("id"),
+            exc,
+        )
+        return None
+
+    if resp.status_code == 404:
+        return None
+    if resp.status_code != 200:
+        logger.warning(
+            "Weather lookup for session %s returned %s",
+            session.get("id"),
+            resp.status_code,
+        )
+        return None
+
+    return _summarize_session_weather(
+        resp.json(),
+        starts_at=starts_at,
+        ends_at=ends_at,
+    )
 
 
 def _is_booking_prompt_session(session: dict) -> bool:
@@ -407,10 +607,11 @@ async def _send_booking_prompt_for_session(
         return 0
     prefs_map = await _get_notification_preferences_by_auth(db, accessible_members)
 
-    local_tz = ZoneInfo(session.get("timezone", "Africa/Lagos"))
+    local_tz = _session_timezone(session)
     local_start = session_start.astimezone(local_tz)
     session_date = local_start.strftime("%A, %B %d, %Y")
     session_time = local_start.strftime("%I:%M %p")
+    weather_summary = await _get_session_weather_summary(session)
 
     sent_member_ids: list[str] = []
     prospect_member_ids: list[str] = []
@@ -451,6 +652,7 @@ async def _send_booking_prompt_for_session(
                         or "TBD",
                         session_address=session.get("location_address") or "",
                         pool_fee=_session_fee_amount(session),
+                        weather_summary=weather_summary,
                     )
 
                     if success:
@@ -497,6 +699,7 @@ async def _send_booking_prompt_for_session(
                 pool_fee=_session_fee_amount(session),
                 is_short_notice=is_short_notice,
                 short_notice_message=short_notice_message,
+                weather_summary=weather_summary,
             )
 
             if success:
@@ -539,9 +742,9 @@ async def _send_booking_prompt_for_session(
             type="community_session_prospect_invite",
             category="sessions",
             member_ids=prospect_member_ids,
-            title=f"Try SwimBuddz: {session['title']}",
+            title=f"Choose your SwimBuddz path: {session['title']}",
             body=f"{session_date} at {session_time} — {location_name}",
-            action_url="/checkout?purpose=community",
+            action_url="/account/billing?required=community",
             icon="calendar",
             metadata={
                 "session_id": str(session_id),
@@ -663,10 +866,11 @@ async def _process_single_notification(
     reminder_type = notification.notification_type.value.replace("reminder_", "")
 
     # Format session details in the session's local timezone
-    local_tz = ZoneInfo(session.get("timezone", "Africa/Lagos"))
+    local_tz = _session_timezone(session)
     local_start = session_start.astimezone(local_tz)
     session_date = local_start.strftime("%A, %B %d, %Y")
     session_time = local_start.strftime("%I:%M %p")
+    weather_summary = await _get_session_weather_summary(session)
 
     sent_count = 0
     for member in members:
@@ -701,6 +905,7 @@ async def _process_single_notification(
                 session_address=session.get("location_address") or "",
                 reminder_type=reminder_type,
                 pool_fee=_session_fee_amount(session),
+                weather_summary=weather_summary,
             )
 
             if success:
