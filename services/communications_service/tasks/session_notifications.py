@@ -360,6 +360,17 @@ def _has_any_paid_entitlement(member: dict, now: datetime) -> bool:
     )
 
 
+def _default_booking_prompt_tier(member: dict, now: datetime) -> str:
+    """Return the member's default session-prompt tier without inherited access."""
+    if _has_active_paid_until(member, "academy_paid_until", now):
+        return "academy"
+    if _has_active_paid_until(member, "club_paid_until", now):
+        return "club"
+    if _has_active_paid_until(member, "community_paid_until", now):
+        return "community"
+    return "prospect"
+
+
 def _has_paid_session_access(member: dict, session_type: str, now: datetime) -> bool:
     """Return whether a member should get a direct booking prompt."""
     if session_type == "community":
@@ -1146,6 +1157,7 @@ async def _get_session_announcement_members(
 ) -> list[dict]:
     """Return members allowed to receive a new-session booking prompt."""
     session_type = session.get("session_type")
+    now = utc_now()
 
     if session_type == "cohort_class":
         cohort_id = session.get("cohort_id")
@@ -1175,19 +1187,33 @@ async def _get_session_announcement_members(
                 session.get("id"),
             )
             return []
-        return await get_members_bulk(
+        pod_members = await get_members_bulk(
             pod.get("active_member_ids") or [],
             calling_service="communications",
         )
+        return [
+            m for m in pod_members if _default_booking_prompt_tier(m, now) == "club"
+        ]
 
     if session_type == "club":
-        return [m for m in active_members if "club" in _member_tiers(m)]
+        return [
+            m for m in active_members if _default_booking_prompt_tier(m, now) == "club"
+        ]
 
     if session_type == "academy":
-        return [m for m in active_members if "academy" in _member_tiers(m)]
+        return [
+            m
+            for m in active_members
+            if _default_booking_prompt_tier(m, now) == "academy"
+        ]
 
     if session_type == "community":
-        return [m for m in active_members if "community" in _member_tiers(m)]
+        return [
+            m
+            for m in active_members
+            if _default_booking_prompt_tier(m, now) == "community"
+            or _is_unpaid_community_prospect(m, now)
+        ]
 
     # Events keep the previous broad active-member behavior, with preferences
     # applied below.

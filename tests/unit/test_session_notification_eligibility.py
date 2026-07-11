@@ -1,11 +1,14 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from services.communications_service.tasks.session_notifications import (
+    _default_booking_prompt_tier,
+    _get_session_announcement_members,
     _has_paid_session_access,
     _is_unpaid_community_prospect,
     _summarize_session_weather,
 )
-
 
 NOW = datetime(2026, 7, 10, 8, 0, tzinfo=timezone.utc)
 
@@ -36,7 +39,7 @@ def test_paid_community_member_can_get_community_booking_prompt():
     assert not _is_unpaid_community_prospect(member, NOW)
 
 
-def test_paid_club_or_academy_member_can_get_club_booking_prompt():
+def test_paid_club_or_academy_member_has_club_booking_access():
     club_member = _member(
         active_tiers=["club", "community"],
         primary_tier="club",
@@ -50,6 +53,98 @@ def test_paid_club_or_academy_member_can_get_club_booking_prompt():
 
     assert _has_paid_session_access(club_member, "club", NOW)
     assert _has_paid_session_access(academy_member, "club", NOW)
+
+
+def test_default_booking_prompt_tier_uses_highest_paid_membership():
+    future = (NOW + timedelta(days=30)).isoformat()
+
+    assert (
+        _default_booking_prompt_tier(
+            _member(
+                active_tiers=["club", "community"],
+                primary_tier="club",
+                club_paid_until=future,
+                community_paid_until=future,
+            ),
+            NOW,
+        )
+        == "club"
+    )
+    assert (
+        _default_booking_prompt_tier(
+            _member(
+                active_tiers=["academy", "club", "community"],
+                primary_tier="academy",
+                academy_paid_until=future,
+                club_paid_until=future,
+                community_paid_until=future,
+            ),
+            NOW,
+        )
+        == "academy"
+    )
+
+
+@pytest.mark.asyncio
+async def test_community_prompt_targets_default_community_and_prospects_only():
+    future = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    members = [
+        _member(id="community", community_paid_until=future),
+        _member(id="prospect"),
+        _member(
+            id="club",
+            active_tiers=["club", "community"],
+            primary_tier="club",
+            club_paid_until=future,
+            community_paid_until=future,
+        ),
+        _member(
+            id="academy",
+            active_tiers=["academy", "club", "community"],
+            primary_tier="academy",
+            academy_paid_until=future,
+            club_paid_until=future,
+            community_paid_until=future,
+        ),
+    ]
+
+    recipients = await _get_session_announcement_members(
+        session={"session_type": "community"},
+        active_members=members,
+    )
+
+    assert {m["id"] for m in recipients} == {"community", "prospect"}
+
+
+@pytest.mark.asyncio
+async def test_club_prompt_targets_default_club_members_only():
+    future = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    members = [
+        _member(id="community", community_paid_until=future),
+        _member(
+            id="club",
+            active_tiers=["club", "community"],
+            primary_tier="club",
+            club_paid_until=future,
+            community_paid_until=future,
+        ),
+        _member(
+            id="academy",
+            active_tiers=["academy", "club", "community"],
+            primary_tier="academy",
+            academy_paid_until=future,
+            club_paid_until=future,
+            community_paid_until=future,
+        ),
+        _member(id="prospect"),
+    ]
+
+    recipients = await _get_session_announcement_members(
+        session={"session_type": "club"},
+        active_members=members,
+    )
+
+    assert {m["id"] for m in recipients} == {"club"}
 
 
 def test_expired_paid_until_does_not_grant_booking_prompt():
