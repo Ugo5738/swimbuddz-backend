@@ -19,10 +19,15 @@ from services.communications_service.models import (
 )
 from services.communications_service.schemas import (
     CommentCreate,
+    ContentAIDraftCreate,
     ContentCommentResponse,
     ContentPostCreate,
     ContentPostResponse,
     ContentPostUpdate,
+)
+from services.communications_service.services.content_ai import (
+    ContentAIDraftError,
+    generate_content_draft,
 )
 from services.communications_service.tasks.content_publishing import (
     send_content_post_publish_emails,
@@ -169,6 +174,43 @@ async def list_content_posts(
         posts_with_counts.append(ContentPostResponse.model_validate(post_dict))
 
     return posts_with_counts
+
+
+@content_router.post("/ai-drafts", response_model=ContentPostResponse, status_code=201)
+async def create_ai_content_draft(
+    draft_data: ContentAIDraftCreate,
+    created_by: uuid.UUID = Query(..., description="Admin member ID creating the post"),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Generate and save an unpublished content post draft for admin review."""
+    try:
+        generated = await generate_content_draft(
+            title=draft_data.title,
+            category=draft_data.category,
+            tier_access=draft_data.tier_access,
+            brief=draft_data.brief,
+        )
+    except ContentAIDraftError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    post = ContentPost(
+        title=draft_data.title,
+        summary=generated.summary,
+        body=generated.body,
+        category=draft_data.category,
+        tier_access=draft_data.tier_access,
+        created_by=created_by,
+        is_published=False,
+        published_at=None,
+        scheduled_for=None,
+        email_on_publish=False,
+    )
+
+    db.add(post)
+    await db.commit()
+    await db.refresh(post)
+
+    return await _content_post_response(db, post)
 
 
 @content_router.get("/{post_id}", response_model=ContentPostResponse)

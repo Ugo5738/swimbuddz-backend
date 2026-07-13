@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from services.communications_service.models import (
     AnnouncementAudience,
@@ -139,6 +139,15 @@ class ContentPostCreate(ContentPostBase):
 
     is_published: bool = False
     scheduled_for: Optional[datetime] = None
+
+
+class ContentAIDraftCreate(BaseModel):
+    """Schema for generating a content post draft with AI."""
+
+    title: str = Field(..., min_length=4, max_length=180)
+    brief: Optional[str] = Field(None, max_length=2000)
+    category: str = "swimming_tips"
+    tier_access: str = "community"
 
 
 class ContentPostUpdate(BaseModel):
