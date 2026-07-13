@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
@@ -6,6 +7,7 @@ from sqlalchemy import select
 
 import services.communications_service.tasks.content_publishing as content_publishing
 from services.communications_service.models import ContentPost, ContentPostEmailLog
+from services.communications_service.routers.content import _content_post_response
 from services.communications_service.tasks.content_publishing import (
     publish_scheduled_content,
     send_content_post_publish_emails,
@@ -74,6 +76,39 @@ async def test_content_publish_email_is_idempotent(db_session, monkeypatch):
     assert len(logs) == 1
     assert logs[0].member_id.hex == member_id.replace("-", "")
     assert logs[0].delivery_status == "sent"
+
+
+@pytest.mark.asyncio
+async def test_content_response_includes_email_reporting_stats(db_session):
+    sent_at = datetime(2026, 7, 13, 9, 0, tzinfo=timezone.utc)
+    post = ContentPostFactory.create(is_published=True, email_on_publish=True)
+    db_session.add(post)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            ContentPostEmailLog(
+                post_id=post.id,
+                member_id=uuid.uuid4(),
+                channel="email",
+                delivery_status="sent",
+                sent_at=sent_at,
+            ),
+            ContentPostEmailLog(
+                post_id=post.id,
+                member_id=uuid.uuid4(),
+                channel="email",
+                delivery_status="failed",
+                error_message="provider error",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await _content_post_response(db_session, post)
+
+    assert response.email_sent_count == 1
+    assert response.email_failed_count == 1
+    assert response.last_email_sent_at == sent_at
 
 
 @pytest.mark.asyncio

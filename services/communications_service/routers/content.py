@@ -9,10 +9,14 @@ from libs.common.member_utils import resolve_members_basic
 from libs.common.datetime_utils import utc_now
 from libs.common.service_client import emit_rewards_event, get_member_by_id
 from libs.db.session import get_async_db
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.communications_service.models import ContentComment, ContentPost
+from services.communications_service.models import (
+    ContentComment,
+    ContentPost,
+    ContentPostEmailLog,
+)
 from services.communications_service.schemas import (
     CommentCreate,
     ContentCommentResponse,
@@ -29,6 +33,57 @@ content_router = APIRouter(prefix="/content", tags=["content"])
 # ============================================================================
 # CONTENT POST ENDPOINTS
 # ============================================================================
+
+
+async def _content_email_stats(
+    db: AsyncSession,
+    post_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, dict]:
+    if not post_ids:
+        return {}
+
+    result = await db.execute(
+        select(ContentPostEmailLog).where(ContentPostEmailLog.post_id.in_(post_ids))
+    )
+    stats: dict[uuid.UUID, dict] = {
+        post_id: {
+            "email_sent_count": 0,
+            "email_failed_count": 0,
+            "last_email_sent_at": None,
+        }
+        for post_id in post_ids
+    }
+    for log in result.scalars().all():
+        post_stats = stats.setdefault(
+            log.post_id,
+            {
+                "email_sent_count": 0,
+                "email_failed_count": 0,
+                "last_email_sent_at": None,
+            },
+        )
+        if log.delivery_status == "sent":
+            post_stats["email_sent_count"] += 1
+            if log.sent_at and (
+                post_stats["last_email_sent_at"] is None
+                or log.sent_at > post_stats["last_email_sent_at"]
+            ):
+                post_stats["last_email_sent_at"] = log.sent_at
+        elif log.delivery_status == "failed":
+            post_stats["email_failed_count"] += 1
+    return stats
+
+
+def _with_email_stats(post_dict: dict, stats: dict | None) -> dict:
+    post_dict.update(
+        stats
+        or {
+            "email_sent_count": 0,
+            "email_failed_count": 0,
+            "last_email_sent_at": None,
+        }
+    )
+    return post_dict
 
 
 async def _emit_content_published_reward(post: ContentPost) -> None:
@@ -65,6 +120,8 @@ async def _content_post_response(
     post_dict["featured_image_url"] = await resolve_media_url(
         post.featured_image_media_id
     )
+    email_stats = await _content_email_stats(db, [post.id])
+    _with_email_stats(post_dict, email_stats.get(post.id))
     return ContentPostResponse.model_validate(post_dict)
 
 
@@ -87,10 +144,12 @@ async def list_content_posts(
 
     result = await db.execute(query)
     posts = result.scalars().all()
+    post_ids = [p.id for p in posts]
 
     # Resolve featured image URLs
     media_ids = [p.featured_image_media_id for p in posts if p.featured_image_media_id]
     url_map = await resolve_media_urls(media_ids) if media_ids else {}
+    email_stats = await _content_email_stats(db, post_ids)
 
     # Get comment counts for each post
     posts_with_counts = []
@@ -106,6 +165,7 @@ async def list_content_posts(
         # Add resolved URL
         if post.featured_image_media_id:
             post_dict["featured_image_url"] = url_map.get(post.featured_image_media_id)
+        _with_email_stats(post_dict, email_stats.get(post.id))
         posts_with_counts.append(ContentPostResponse.model_validate(post_dict))
 
     return posts_with_counts
@@ -137,6 +197,8 @@ async def get_content_post(
     post_dict["featured_image_url"] = await resolve_media_url(
         post.featured_image_media_id
     )
+    email_stats = await _content_email_stats(db, [post.id])
+    _with_email_stats(post_dict, email_stats.get(post.id))
 
     return ContentPostResponse.model_validate(post_dict)
 
@@ -175,6 +237,8 @@ async def create_content_post(
     post_dict["featured_image_url"] = await resolve_media_url(
         post.featured_image_media_id
     )
+    email_stats = await _content_email_stats(db, [post.id])
+    _with_email_stats(post_dict, email_stats.get(post.id))
 
     return ContentPostResponse.model_validate(post_dict)
 
@@ -279,21 +343,7 @@ async def unpublish_content_post(
     await db.commit()
     await db.refresh(post)
 
-    # Get comment count
-    comment_query = select(func.count(ContentComment.id)).where(
-        ContentComment.post_id == post.id
-    )
-    comment_result = await db.execute(comment_query)
-    comment_count = comment_result.scalar_one()
-
-    # Resolve featured image URL
-    post_dict = post.__dict__.copy()
-    post_dict["comment_count"] = comment_count
-    post_dict["featured_image_url"] = await resolve_media_url(
-        post.featured_image_media_id
-    )
-
-    return ContentPostResponse.model_validate(post_dict)
+    return await _content_post_response(db, post)
 
 
 @content_router.delete("/{post_id}", status_code=204)
@@ -309,8 +359,11 @@ async def delete_content_post(
     if not post:
         raise HTTPException(status_code=404, detail="Content post not found")
 
-    # Delete associated comments first
-    await db.execute(select(ContentComment).where(ContentComment.post_id == post_id))
+    # Delete associated records first; comments/logs are service-local soft links.
+    await db.execute(delete(ContentComment).where(ContentComment.post_id == post_id))
+    await db.execute(
+        delete(ContentPostEmailLog).where(ContentPostEmailLog.post_id == post_id)
+    )
     await db.delete(post)
     await db.commit()
 

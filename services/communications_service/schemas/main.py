@@ -167,6 +167,9 @@ class ContentPostResponse(ContentPostBase):
     updated_at: datetime
     comment_count: Optional[int] = 0
     featured_image_url: Optional[str] = None  # Resolved from media_id
+    email_sent_count: int = 0
+    email_failed_count: int = 0
+    last_email_sent_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
