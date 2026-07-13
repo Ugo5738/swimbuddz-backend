@@ -13,7 +13,11 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+
+from services.members_service.services.membership_status import (
+    build_membership_status_summary,
+)
 
 # ============================================================================
 # SUB-TABLE RESPONSE SCHEMAS
@@ -105,6 +109,20 @@ class MemberAvailabilityResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MemberTierStatusResponse(BaseModel):
+    """Normalized status for one membership tier."""
+
+    tier: str
+    status: str
+    label: str
+    paid_until: Optional[datetime] = None
+    requested: bool = False
+    declared_active: bool = False
+    direct_paid: bool = False
+    inherited: bool = False
+    inherited_from: Optional[str] = None
+
+
 class MemberMembershipResponse(BaseModel):
     """Membership tiers, billing, and gamification."""
 
@@ -121,6 +139,13 @@ class MemberMembershipResponse(BaseModel):
     club_paid_until: Optional[datetime] = None
     academy_paid_until: Optional[datetime] = None
     pending_payment_reference: Optional[str] = None
+
+    # Normalized display/access summary
+    paid_tier: str = "prospect"
+    paid_tiers: list[str] = Field(default_factory=list)
+    display_label: str = "Prospect"
+    payment_pending: bool = False
+    tier_statuses: dict[str, MemberTierStatusResponse] = Field(default_factory=dict)
 
     # Club Gamification
     club_badges_earned: Optional[list[str]] = None
@@ -145,6 +170,27 @@ class MemberMembershipResponse(BaseModel):
     updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def populate_membership_status(self):
+        summary = build_membership_status_summary(
+            primary_tier=self.primary_tier,
+            active_tiers=self.active_tiers,
+            requested_tiers=self.requested_tiers,
+            community_paid_until=self.community_paid_until,
+            club_paid_until=self.club_paid_until,
+            academy_paid_until=self.academy_paid_until,
+            pending_payment_reference=self.pending_payment_reference,
+        )
+        self.paid_tier = summary["paid_tier"]
+        self.paid_tiers = summary["paid_tiers"]
+        self.display_label = summary["display_label"]
+        self.payment_pending = summary["payment_pending"]
+        self.tier_statuses = {
+            tier: MemberTierStatusResponse(**status)
+            for tier, status in summary["tier_statuses"].items()
+        }
+        return self
 
 
 class MemberPreferencesResponse(BaseModel):

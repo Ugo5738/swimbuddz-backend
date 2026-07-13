@@ -19,6 +19,14 @@ from libs.common.config import get_settings
 from libs.common.currency import KOBO_PER_NAIRA, bubbles_to_naira
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
+from libs.common.service_client import (
+    check_cohort_enrollment,
+    get_member_by_auth_id,
+    get_member_membership,
+    get_pod_by_id,
+    get_session_by_id,
+)
+from libs.common.session_access import denial_message, evaluate_session_access
 from libs.db.session import get_async_db
 from services.payments_service.models import Payment, PaymentPurpose, PaymentStatus
 from services.payments_service.schemas import (
@@ -43,6 +51,125 @@ from ._helpers import (
 from ._paystack import _initialize_paystack, _paystack_enabled
 
 router = APIRouter()
+
+
+async def _validate_session_bundle_access(
+    *, member_auth_id: str, session_ids: list
+) -> None:
+    """Reject SESSION_BUNDLE checkout before money moves if access is invalid."""
+    try:
+        member = await get_member_by_auth_id(member_auth_id, calling_service="payments")
+    except httpx.HTTPError as e:
+        logger.warning(
+            "Could not resolve member for session bundle auth_id=%s: %s",
+            member_auth_id,
+            e,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not verify your member profile. Please try again.",
+        )
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member profile not found. Complete registration first.",
+        )
+
+    member_id = str(member["id"])
+    try:
+        membership = await get_member_membership(member_id, calling_service="payments")
+    except httpx.HTTPError as e:
+        logger.warning(
+            "Could not resolve membership for session bundle member=%s: %s",
+            member_id,
+            e,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not verify your membership. Please try again.",
+        )
+
+    member_payload = {
+        "id": member_id,
+        "member_id": member_id,
+        **(membership or {}),
+    }
+    now = utc_now()
+
+    for session_id in session_ids:
+        try:
+            session = await get_session_by_id(
+                str(session_id), calling_service="payments"
+            )
+        except httpx.HTTPError as e:
+            logger.warning(
+                "Could not resolve bundle session=%s member=%s: %s",
+                session_id,
+                member_id,
+                e,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not verify selected sessions. Please try again.",
+            )
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="One or more selected sessions could not be found.",
+            )
+
+        cohort_enrollment = None
+        if session.get("cohort_id"):
+            try:
+                cohort_enrollment = await check_cohort_enrollment(
+                    str(session["cohort_id"]),
+                    member_id,
+                    calling_service="payments",
+                )
+            except httpx.HTTPError as e:
+                logger.warning(
+                    "Could not verify cohort access for session=%s member=%s: %s",
+                    session_id,
+                    member_id,
+                    e,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Could not verify cohort enrollment. Please try again.",
+                )
+
+        pod_member_ids = None
+        if session.get("pod_id"):
+            try:
+                pod = await get_pod_by_id(
+                    str(session["pod_id"]), calling_service="payments"
+                )
+            except httpx.HTTPError as e:
+                logger.warning(
+                    "Could not verify pod access for session=%s member=%s: %s",
+                    session_id,
+                    member_id,
+                    e,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Could not verify club pod access. Please try again.",
+                )
+            pod_member_ids = (pod or {}).get("active_member_ids") or []
+
+        access = evaluate_session_access(
+            member_payload,
+            session,
+            now=now,
+            cohort_enrollment=cohort_enrollment,
+            pod_member_ids=pod_member_ids,
+        )
+        if not access.bookable:
+            title = session.get("title") or "Selected session"
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"{title}: {denial_message(access.reason)}",
+            )
 
 
 @router.post(
@@ -396,6 +523,10 @@ async def create_payment_intent(
                     "pickup_location_id": str(ride_cfg.pickup_location_id),
                     "num_seats": int(ride_cfg.num_seats),
                 }
+        await _validate_session_bundle_access(
+            member_auth_id=current_user.user_id,
+            session_ids=payload.session_ids,
+        )
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "session_ids": [str(sid) for sid in payload.session_ids],

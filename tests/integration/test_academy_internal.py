@@ -205,6 +205,8 @@ async def test_get_cohort_enrolled_students(academy_client, db_session):
     member_ids = [item["member_id"] for item in data]
     assert str(m1.id) in member_ids
     assert str(m2.id) not in member_ids
+    enrolled = next(item for item in data if item["member_id"] == str(m1.id))
+    assert enrolled["access_suspended"] is False
 
 
 @pytest.mark.asyncio

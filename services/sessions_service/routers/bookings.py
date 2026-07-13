@@ -36,8 +36,8 @@ from libs.auth.models import AuthUser
 from libs.common.currency import kobo_to_bubbles
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
+from libs.common.session_access import denial_message
 from libs.common.service_client import (
-    check_cohort_enrollment,
     credit_member_wallet,
     debit_member_wallet,
     get_member_by_auth_id,
@@ -64,6 +64,9 @@ from services.sessions_service.schemas import (
     SessionBookingResponse,
     TrialGuestCreate,
     UnpaidBookingResponse,
+)
+from services.sessions_service.services.session_access import (
+    evaluate_member_session_access,
 )
 
 logger = get_logger(__name__)
@@ -333,39 +336,6 @@ async def book_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     member_id, member_auth_id = await _resolve_member_for_user(current_user)
-
-    # Cohort sessions are auto-rostered from academy enrollments. Block
-    # ad-hoc self-bookings from members who aren't enrolled in the session's
-    # cohort — otherwise they end up paying for and "attending" cohorts
-    # they aren't part of. Admin walk-in still bypasses this check so
-    # coaches can admit legitimate drop-ins.
-    if session.cohort_id is not None:
-        try:
-            check = await check_cohort_enrollment(
-                cohort_id=str(session.cohort_id),
-                member_id=str(member_id),
-                calling_service="sessions",
-            )
-        except httpx.HTTPError as e:
-            logger.warning(
-                "check_cohort_enrollment failed for session=%s member=%s: %s",
-                session_id,
-                member_id,
-                e,
-            )
-            raise HTTPException(
-                status_code=503,
-                detail="Could not verify cohort enrollment. Please try again.",
-            )
-        if not check or not check.get("enrolled"):
-            raise HTTPException(
-                status_code=403,
-                detail=(
-                    "This session is restricted to members enrolled in its "
-                    "academy cohort. Enroll in the cohort first to book."
-                ),
-            )
-
     now = utc_now()
 
     # At most one booking row per (session, member) exists — enforced by the
@@ -384,6 +354,17 @@ async def book_session(
     # guests untouched) before any validation or capacity lock runs.
     if existing is not None and existing.status == SessionBookingStatus.CONFIRMED:
         return existing
+
+    access = await evaluate_member_session_access(
+        session=session,
+        member_id=member_id,
+        now=now,
+    )
+    if not access.bookable:
+        raise HTTPException(
+            status_code=403,
+            detail=denial_message(access.reason),
+        )
 
     # Server-authoritative head count + fee: the member's own slot plus any
     # named guests (D1/D3); fee is pool_fee × heads (D8) — the client-sent

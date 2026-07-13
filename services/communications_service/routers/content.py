@@ -6,8 +6,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.common.member_utils import resolve_members_basic
-from libs.common.service_client import emit_rewards_event
 from libs.common.datetime_utils import utc_now
+from libs.common.service_client import emit_rewards_event, get_member_by_id
 from libs.db.session import get_async_db
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,12 +20,52 @@ from services.communications_service.schemas import (
     ContentPostResponse,
     ContentPostUpdate,
 )
+from services.communications_service.tasks.content_publishing import (
+    send_content_post_publish_emails,
+)
 
 content_router = APIRouter(prefix="/content", tags=["content"])
 
 # ============================================================================
 # CONTENT POST ENDPOINTS
 # ============================================================================
+
+
+async def _emit_content_published_reward(post: ContentPost) -> None:
+    member = await get_member_by_id(
+        str(post.created_by), calling_service="communications"
+    )
+    if member and member.get("auth_id"):
+        await emit_rewards_event(
+            event_type="content.published",
+            member_auth_id=member["auth_id"],
+            member_id=str(post.created_by),
+            service_source="communications",
+            event_data={
+                "post_title": post.title,
+                "category": post.category,
+            },
+            idempotency_key=f"content-published-{post.id}",
+            calling_service="communications",
+        )
+
+
+async def _content_post_response(
+    db: AsyncSession,
+    post: ContentPost,
+) -> ContentPostResponse:
+    comment_query = select(func.count(ContentComment.id)).where(
+        ContentComment.post_id == post.id
+    )
+    comment_result = await db.execute(comment_query)
+    comment_count = comment_result.scalar_one()
+
+    post_dict = post.__dict__.copy()
+    post_dict["comment_count"] = comment_count
+    post_dict["featured_image_url"] = await resolve_media_url(
+        post.featured_image_media_id
+    )
+    return ContentPostResponse.model_validate(post_dict)
 
 
 @content_router.get("/", response_model=List[ContentPostResponse])
@@ -109,8 +149,11 @@ async def create_content_post(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Create a new content post (admin only)."""
+    post_payload = post_data.model_dump(exclude={"is_published"})
+    if post_data.is_published:
+        post_payload["scheduled_for"] = None
     post = ContentPost(
-        **post_data.model_dump(exclude={"is_published"}),
+        **post_payload,
         created_by=created_by,
         is_published=post_data.is_published,
         published_at=utc_now() if post_data.is_published else None,
@@ -122,24 +165,9 @@ async def create_content_post(
 
     # Best-effort: emit reward event if created as published
     if post_data.is_published:
-        from libs.common.service_client import get_member_by_id
-
-        member = await get_member_by_id(
-            str(created_by), calling_service="communications"
-        )
-        if member and member.get("auth_id"):
-            await emit_rewards_event(
-                event_type="content.published",
-                member_auth_id=member["auth_id"],
-                member_id=str(created_by),
-                service_source="communications",
-                event_data={
-                    "post_title": post.title,
-                    "category": post.category,
-                },
-                idempotency_key=f"content-published-{post.id}",
-                calling_service="communications",
-            )
+        await _emit_content_published_reward(post)
+        await send_content_post_publish_emails(db, post)
+        await db.refresh(post)
 
     # Resolve featured image URL
     post_dict = post.__dict__.copy()
@@ -168,14 +196,12 @@ async def update_content_post(
     # Update only provided fields
     update_data = post_data.model_dump(exclude_unset=True)
 
-    # If publishing for the first time, set published_at
+    # If publishing, clear any pending schedule and set published_at if needed.
     was_unpublished = not post.is_published
-    if (
-        "is_published" in update_data
-        and update_data["is_published"]
-        and not post.published_at
-    ):
-        post.published_at = utc_now()
+    if "is_published" in update_data and update_data["is_published"]:
+        if not post.published_at:
+            post.published_at = utc_now()
+        update_data["scheduled_for"] = None
 
     for field, value in update_data.items():
         setattr(post, field, value)
@@ -185,40 +211,11 @@ async def update_content_post(
 
     # Best-effort: emit reward event if just published via PATCH
     if was_unpublished and post.is_published:
-        from libs.common.service_client import get_member_by_id
+        await _emit_content_published_reward(post)
+        await send_content_post_publish_emails(db, post)
+        await db.refresh(post)
 
-        member = await get_member_by_id(
-            str(post.created_by), calling_service="communications"
-        )
-        if member and member.get("auth_id"):
-            await emit_rewards_event(
-                event_type="content.published",
-                member_auth_id=member["auth_id"],
-                member_id=str(post.created_by),
-                service_source="communications",
-                event_data={
-                    "post_title": post.title,
-                    "category": post.category,
-                },
-                idempotency_key=f"content-published-{post.id}",
-                calling_service="communications",
-            )
-
-    # Get comment count
-    comment_query = select(func.count(ContentComment.id)).where(
-        ContentComment.post_id == post.id
-    )
-    comment_result = await db.execute(comment_query)
-    comment_count = comment_result.scalar_one()
-
-    # Resolve featured image URL
-    post_dict = post.__dict__.copy()
-    post_dict["comment_count"] = comment_count
-    post_dict["featured_image_url"] = await resolve_media_url(
-        post.featured_image_media_id
-    )
-
-    return ContentPostResponse.model_validate(post_dict)
+    return await _content_post_response(db, post)
 
 
 @content_router.post("/{post_id}/publish", response_model=ContentPostResponse)
@@ -245,45 +242,17 @@ async def publish_content_post(
 
     post.is_published = True
     post.published_at = utc_now()
+    post.scheduled_for = None
 
     await db.commit()
     await db.refresh(post)
 
     # Best-effort: emit content published reward event for the author
-    from libs.common.service_client import get_member_by_id
+    await _emit_content_published_reward(post)
+    await send_content_post_publish_emails(db, post)
+    await db.refresh(post)
 
-    member = await get_member_by_id(
-        str(post.created_by), calling_service="communications"
-    )
-    if member and member.get("auth_id"):
-        await emit_rewards_event(
-            event_type="content.published",
-            member_auth_id=member["auth_id"],
-            member_id=str(post.created_by),
-            service_source="communications",
-            event_data={
-                "post_title": post.title,
-                "category": post.category,
-            },
-            idempotency_key=f"content-published-{post.id}",
-            calling_service="communications",
-        )
-
-    # Get comment count
-    comment_query = select(func.count(ContentComment.id)).where(
-        ContentComment.post_id == post.id
-    )
-    comment_result = await db.execute(comment_query)
-    comment_count = comment_result.scalar_one()
-
-    # Resolve featured image URL
-    post_dict = post.__dict__.copy()
-    post_dict["comment_count"] = comment_count
-    post_dict["featured_image_url"] = await resolve_media_url(
-        post.featured_image_media_id
-    )
-
-    return ContentPostResponse.model_validate(post_dict)
+    return await _content_post_response(db, post)
 
 
 @content_router.post("/{post_id}/unpublish", response_model=ContentPostResponse)

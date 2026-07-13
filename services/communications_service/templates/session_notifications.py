@@ -578,9 +578,10 @@ async def send_weekly_session_digest_email(
     member_name: str,
     week_label: str,
     sessions: list[dict],
+    articles: list[dict] | None = None,
 ) -> bool:
     """
-    Send weekly digest of upcoming sessions.
+    Send weekly digest of upcoming sessions and newly published articles.
 
     Args:
         to_email: Recipient email address.
@@ -589,25 +590,29 @@ async def send_weekly_session_digest_email(
         sessions: List of session dicts with keys:
             - title, date, time, location, type
     """
-    if not sessions:
-        # No sessions to report, skip sending
+    articles = articles or []
+    if not sessions and not articles:
+        # No updates to report, skip sending
         return True
 
-    subject = f"This Week's Sessions - {week_label}"
+    subject = f"This Week at SwimBuddz - {week_label}"
 
     # Plain text
     session_list = "\n".join(
         f"• {s['title']} - {s['date']} at {s['time']} ({s['location']})"
         for s in sessions
     )
+    article_list = "\n".join(f"• {a['title']} - {a['url']}" for a in articles)
+    session_section = f"Upcoming sessions:\n{session_list}\n\n" if session_list else ""
+    article_section = f"New articles:\n{article_list}\n\n" if article_list else ""
 
     body = f"""Hi {member_name},
 
-Here are this week's swimming sessions:
+Here are this week's SwimBuddz updates:
 
-{session_list}
+{session_section}{article_section}
 
-View the full schedule and register on the SwimBuddz app.
+View the full schedule and latest articles on the SwimBuddz app.
 
 — The SwimBuddz Team
 """
@@ -632,22 +637,42 @@ View the full schedule and register on the SwimBuddz app.
         </div>
         """
 
+    article_cards = ""
+    for article in articles:
+        article_cards += f"""
+        <div style="background: #f8fafc; border-left: 4px solid #0891b2;
+                    border-radius: 0 8px 8px 0; padding: 16px 20px; margin: 12px 0;">
+            <strong style="color: #1e293b;">{article["title"]}</strong><br/>
+            <span style="font-size: 14px; color: #64748b;">
+                {article.get("summary") or article.get("category") or "New article"}
+            </span><br/>
+            <a href="{article["url"]}" style="font-size: 14px; color: #0891b2; font-weight: 600;">
+                Read article
+            </a>
+        </div>
+        """
+
     frontend_url = settings.FRONTEND_URL
+    sessions_section = (
+        "<h3>Upcoming Sessions</h3>" + session_cards if session_cards else ""
+    )
+    articles_section = "<h3>New Articles</h3>" + article_cards if article_cards else ""
 
     body_html = (
         f"<p>Hi {member_name},</p>"
-        f"<p>Here's what's happening this week at SwimBuddz:</p>"
-        + session_cards
+        f"<p>Here's what's happening at SwimBuddz:</p>"
+        + sessions_section
+        + articles_section
         + cta_button("View Full Schedule", f"{frontend_url}/sessions")
         + sign_off("See you in the water! 🌊")
     )
 
     html_body = wrap_html(
-        title="📅 Weekly Session Digest",
+        title="📅 Weekly SwimBuddz Digest",
         subtitle=week_label,
         body_html=body_html,
         header_gradient=GRADIENT_CYAN,
-        preheader=f"This week's swimming sessions - {week_label}",
+        preheader=f"This week's SwimBuddz updates - {week_label}",
     )
 
     return await send_email(to_email, subject, body, html_body)

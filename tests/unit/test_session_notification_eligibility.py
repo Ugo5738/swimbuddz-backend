@@ -1,7 +1,10 @@
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
+import services.communications_service.tasks.session_notifications as notifications
 from services.communications_service.tasks.session_notifications import (
     _default_booking_prompt_tier,
     _get_session_announcement_members,
@@ -203,3 +206,109 @@ def test_summarize_session_weather_returns_none_without_matching_hours():
         )
         is None
     )
+
+
+@pytest.mark.asyncio
+async def test_weekly_digest_excludes_suspended_cohort_enrollment(monkeypatch):
+    fixed_now = datetime(2026, 7, 12, 7, 0, tzinfo=timezone.utc)
+    session_id = "11111111-1111-1111-1111-111111111111"
+    cohort_id = "22222222-2222-2222-2222-222222222222"
+    active_member_id = "33333333-3333-3333-3333-333333333333"
+    suspended_member_id = "44444444-4444-4444-4444-444444444444"
+
+    sessions = [
+        {
+            "id": session_id,
+            "title": "Academy Week 4",
+            "session_type": "cohort_class",
+            "status": "scheduled",
+            "cohort_id": cohort_id,
+            "starts_at": (fixed_now + timedelta(days=2)).isoformat(),
+            "ends_at": (fixed_now + timedelta(days=2, hours=1)).isoformat(),
+            "timezone": "Africa/Lagos",
+            "location_name": "Sunfit Pool",
+        }
+    ]
+    members = [
+        {
+            "id": active_member_id,
+            "auth_id": "auth-active",
+            "email": "active@example.com",
+            "first_name": "Ada",
+            "primary_tier": "academy",
+            "active_tiers": ["academy", "club", "community"],
+        },
+        {
+            "id": suspended_member_id,
+            "auth_id": "auth-suspended",
+            "email": "suspended@example.com",
+            "first_name": "Bola",
+            "primary_tier": "academy",
+            "active_tiers": ["academy", "club", "community"],
+        },
+    ]
+    enrollments = [
+        {
+            "enrollment_id": "enroll-active",
+            "member_id": active_member_id,
+            "status": "enrolled",
+            "access_suspended": False,
+        },
+        {
+            "enrollment_id": "enroll-suspended",
+            "member_id": suspended_member_id,
+            "status": "enrolled",
+            "access_suspended": True,
+        },
+    ]
+
+    class Response:
+        def __init__(self, payload):
+            self.status_code = 200
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    async def fake_internal_get(*, path, **kwargs):
+        if path == "/internal/sessions/scheduled":
+            return Response(sessions)
+        if path == "/internal/members/active":
+            return Response(members)
+        if path.endswith(f"/cohorts/{cohort_id}/enrolled-students"):
+            return Response(enrollments)
+        raise AssertionError(f"Unexpected internal_get path: {path}")
+
+    class EmptyResult:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return []
+
+    fake_db = SimpleNamespace(
+        execute=AsyncMock(return_value=EmptyResult()), close=AsyncMock()
+    )
+
+    async def fake_get_async_db():
+        yield fake_db
+
+    send_email = AsyncMock(return_value=True)
+    monkeypatch.setattr(notifications, "utc_now", lambda: fixed_now)
+    monkeypatch.setattr(notifications, "internal_get", fake_internal_get)
+    monkeypatch.setattr(notifications, "get_async_db", fake_get_async_db)
+    monkeypatch.setattr(
+        notifications,
+        "_get_notification_preferences_by_auth",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "services.communications_service.templates.session_notifications."
+        "send_weekly_session_digest_email",
+        send_email,
+    )
+
+    await notifications.send_weekly_session_digest()
+
+    send_email.assert_awaited_once()
+    assert send_email.await_args.kwargs["to_email"] == "active@example.com"

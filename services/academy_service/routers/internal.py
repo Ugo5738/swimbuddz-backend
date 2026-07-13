@@ -263,6 +263,7 @@ async def get_cohort_enrolled_students_internal(
             "enrollment_id": str(e.id),
             "member_id": str(e.member_id),
             "status": e.status.value if e.status else None,
+            "access_suspended": e.access_suspended or False,
         }
         for e in enrollments
     ]

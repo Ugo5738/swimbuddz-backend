@@ -65,7 +65,7 @@ async def test_enrolled_students_contract(academy_client, db_session):
 
     assert isinstance(data, list)
     assert len(data) >= 1
-    required_fields = ["enrollment_id", "member_id", "status"]
+    required_fields = ["enrollment_id", "member_id", "status", "access_suspended"]
     for field in required_fields:
         assert field in data[0], (
             f"Missing contract field '{field}' in enrolled-students response. "

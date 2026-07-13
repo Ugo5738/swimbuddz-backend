@@ -17,7 +17,13 @@ from libs.auth.dependencies import (
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
-from libs.common.service_client import cancel_opportunities_for_context, internal_post
+from libs.common.logging import get_logger
+from libs.common.session_access import denial_message
+from libs.common.service_client import (
+    cancel_opportunities_for_context,
+    get_member_by_auth_id,
+    internal_post,
+)
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     Session,
@@ -33,9 +39,92 @@ from services.sessions_service.schemas import (
 from services.sessions_service.services.notifications import (
     trigger_session_published_notifications,
 )
+from services.sessions_service.services.session_access import (
+    evaluate_session_access_for_member,
+    get_member_session_access_payload,
+)
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 settings = get_settings()
+logger = get_logger(__name__)
+
+
+def _session_payload(session: Session, access=None) -> dict:
+    payload = SessionResponse.model_validate(session).model_dump(mode="json")
+    if access is not None:
+        payload["access"] = {
+            "required_tier": access.required_tier,
+            "visible": access.visible,
+            "bookable": access.bookable,
+            "digest_eligible": access.digest_eligible,
+            "prompt_eligible": access.prompt_eligible,
+            "sign_in_allowed": access.sign_in_allowed,
+            "reason": access.reason,
+            "message": denial_message(access.reason) if access.reason else None,
+        }
+    return payload
+
+
+async def _access_member_payload_for_user(current_user: Optional[AuthUser]) -> dict | None:
+    if current_user is None or is_admin_or_service(current_user):
+        return None
+
+    try:
+        member = await get_member_by_auth_id(
+            current_user.user_id,
+            calling_service="sessions",
+        )
+        if not member or not member.get("id"):
+            return None
+        return await get_member_session_access_payload(
+            member_id=uuid.UUID(str(member["id"])),
+            calling_service="sessions",
+        )
+    except (httpx.HTTPError, HTTPException, ValueError) as exc:
+        logger.warning(
+            "Could not decorate sessions with access for user=%s: %s",
+            current_user.user_id,
+            exc,
+        )
+        return None
+
+
+async def _decorate_sessions_for_user(
+    sessions: list[Session],
+    current_user: Optional[AuthUser],
+) -> list[dict] | list[Session]:
+    member_payload = await _access_member_payload_for_user(current_user)
+    if member_payload is None:
+        return sessions
+
+    now = utc_now()
+    decorated: list[dict] = []
+    for session in sessions:
+        access = await evaluate_session_access_for_member(
+            session=session,
+            member_payload=member_payload,
+            now=now,
+            calling_service="sessions",
+        )
+        decorated.append(_session_payload(session, access))
+    return decorated
+
+
+async def _decorate_session_for_user(
+    session: Session,
+    current_user: Optional[AuthUser],
+) -> dict | Session:
+    member_payload = await _access_member_payload_for_user(current_user)
+    if member_payload is None:
+        return session
+
+    access = await evaluate_session_access_for_member(
+        session=session,
+        member_payload=member_payload,
+        now=utc_now(),
+        calling_service="sessions",
+    )
+    return _session_payload(session, access)
 
 
 @router.get("/", response_model=List[SessionResponse])
@@ -73,7 +162,8 @@ async def list_sessions(
         query = query.where(Session.cohort_id == cohort_id)
 
     result = await db.execute(query)
-    return result.scalars().all()
+    sessions = list(result.scalars().all())
+    return await _decorate_sessions_for_user(sessions, current_user)
 
 
 @router.get("/stats")
@@ -182,6 +272,7 @@ async def list_my_coach_sessions(
 @router.get("/{session_id}", response_model=SessionResponse)
 async def get_session(
     session_id: uuid.UUID,
+    current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
@@ -196,7 +287,7 @@ async def get_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found",
         )
-    return session
+    return await _decorate_session_for_user(session, current_user)
 
 
 @router.post("/", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)

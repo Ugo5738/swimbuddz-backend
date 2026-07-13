@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Index, String, Text, text
+from sqlalchemy import Boolean, DateTime, Index, String, Text, UniqueConstraint, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -188,6 +188,7 @@ class ContentPost(Base):
     scheduled_for: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    email_on_publish: Mapped[bool] = mapped_column(Boolean, default=False)
     tier_access: Mapped[str] = mapped_column(
         String, default="community"
     )  # community/club/academy
@@ -202,6 +203,45 @@ class ContentPost(Base):
 
     def __repr__(self):
         return f"<ContentPost {self.title}>"
+
+
+class ContentPostEmailLog(Base):
+    """Idempotency log for article publish emails."""
+
+    __tablename__ = "content_post_email_logs"
+    __table_args__ = (
+        UniqueConstraint(
+            "post_id",
+            "member_id",
+            "channel",
+            name="uq_content_post_email_logs_post_member_channel",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    channel: Mapped[str] = mapped_column(String, nullable=False, default="email")
+    sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    delivery_status: Mapped[str] = mapped_column(String, default="sent")
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    def __repr__(self):
+        return f"<ContentPostEmailLog post={self.post_id} member={self.member_id}>"
 
 
 class ContentComment(Base):

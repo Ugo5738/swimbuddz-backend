@@ -131,12 +131,14 @@ class ContentPostBase(BaseModel):
     category: str  # swimming_tips/safety/breathing/technique/news/education/getting_started/community_culture/health_recovery
     featured_image_media_id: Optional[uuid.UUID] = None
     tier_access: str = "community"  # community/club/academy
+    email_on_publish: bool = False
 
 
 class ContentPostCreate(ContentPostBase):
     """Schema for creating a content post."""
 
     is_published: bool = False
+    scheduled_for: Optional[datetime] = None
 
 
 class ContentPostUpdate(BaseModel):
@@ -150,6 +152,7 @@ class ContentPostUpdate(BaseModel):
     tier_access: Optional[str] = None
     is_published: Optional[bool] = None
     scheduled_for: Optional[datetime] = None
+    email_on_publish: Optional[bool] = None
 
 
 class ContentPostResponse(ContentPostBase):

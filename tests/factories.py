@@ -504,6 +504,7 @@ class ContentPostFactory:
             "body": "# Test Post\n\nThis is a test content post.",
             "category": "swimming_tips",
             "is_published": True,
+            "email_on_publish": False,
             "tier_access": "community",
             "published_at": _now(),
             "created_by": created_by or _uuid(),

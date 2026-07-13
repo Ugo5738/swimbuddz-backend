@@ -8,7 +8,7 @@ Handles:
 - Cancelling notifications when sessions are cancelled
 """
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from typing import Optional
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -27,8 +27,22 @@ from libs.common.service_client import (
     get_session_by_id,
     internal_get,
 )
+from libs.common.session_access import (
+    default_booking_prompt_tier as shared_default_booking_prompt_tier,
+)
+from libs.common.session_access import evaluate_session_access, member_declared_tiers
+from libs.common.session_access import (
+    has_any_paid_entitlement as shared_has_any_paid_entitlement,
+)
+from libs.common.session_access import (
+    has_paid_session_access as shared_has_paid_session_access,
+)
+from libs.common.session_access import (
+    is_unpaid_community_prospect as shared_is_unpaid_community_prospect,
+)
 from libs.db.session import get_async_db
 from services.communications_service.models import (
+    ContentPost,
     NotificationPreferences,
     ScheduledNotification,
     ScheduledNotificationStatus,
@@ -40,6 +54,9 @@ from services.communications_service.templates.session_notifications import (
     send_session_cancelled_email,
     send_session_prospect_invite_email,
     send_session_reminder_email,
+)
+from services.communications_service.tasks.content_publishing import (
+    _member_can_read_post,
 )
 
 logger = get_logger(__name__)
@@ -329,66 +346,22 @@ async def _sent_session_notification_recently(
     return any(_local_date(sent_at) == today for sent_at in sent_times)
 
 
-def _parse_paid_until(value: object) -> datetime | None:
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        parsed = value
-    else:
-        try:
-            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed
-
-
-def _has_active_paid_until(member: dict, field: str, now: datetime) -> bool:
-    paid_until = _parse_paid_until(member.get(field))
-    return paid_until is not None and paid_until > now
-
-
 def _has_any_paid_entitlement(member: dict, now: datetime) -> bool:
-    return any(
-        _has_active_paid_until(member, field, now)
-        for field in (
-            "community_paid_until",
-            "club_paid_until",
-            "academy_paid_until",
-        )
-    )
+    return shared_has_any_paid_entitlement(member, now)
 
 
 def _default_booking_prompt_tier(member: dict, now: datetime) -> str:
     """Return the member's default session-prompt tier without inherited access."""
-    if _has_active_paid_until(member, "academy_paid_until", now):
-        return "academy"
-    if _has_active_paid_until(member, "club_paid_until", now):
-        return "club"
-    if _has_active_paid_until(member, "community_paid_until", now):
-        return "community"
-    return "prospect"
+    return shared_default_booking_prompt_tier(member, now)
 
 
 def _has_paid_session_access(member: dict, session_type: str, now: datetime) -> bool:
     """Return whether a member should get a direct booking prompt."""
-    if session_type == "community":
-        return _has_any_paid_entitlement(member, now)
-    if session_type == "club":
-        return _has_active_paid_until(
-            member, "club_paid_until", now
-        ) or _has_active_paid_until(member, "academy_paid_until", now)
-    if session_type in {"academy", "cohort_class"}:
-        # Cohort access is scoped by enrollment in _get_session_announcement_members.
-        return True
-    return _has_any_paid_entitlement(member, now)
+    return shared_has_paid_session_access(member, session_type, now)
 
 
 def _is_unpaid_community_prospect(member: dict, now: datetime) -> bool:
-    return "community" in _member_tiers(member) and not _has_any_paid_entitlement(
-        member, now
-    )
+    return shared_is_unpaid_community_prospect(member, now)
 
 
 async def schedule_session_notifications(
@@ -1134,20 +1107,7 @@ async def _get_session_attendees_and_coaches(
 
 def _member_tiers(member: dict) -> set[str]:
     """Return normalized access tiers from an internal member payload."""
-    tiers = {
-        str(t).lower() for t in (member.get("active_tiers") or []) if t is not None
-    }
-    primary = member.get("primary_tier")
-    if primary:
-        tiers.add(str(primary).lower())
-
-    if "academy" in tiers:
-        tiers.update({"club", "community"})
-    if "club" in tiers:
-        tiers.add("community")
-    if not tiers:
-        tiers.add("community")
-    return tiers
+    return member_declared_tiers(member)
 
 
 async def _get_session_announcement_members(
@@ -1326,25 +1286,7 @@ async def send_weekly_session_digest() -> None:
             sessions = sessions_resp.json()
 
             if not sessions:
-                logger.info("No sessions this week for digest")
-                return
-
-            # Format sessions for email (convert to local timezone)
-            sessions_list = []
-            for s in sessions:
-                tz = ZoneInfo(s.get("timezone", "Africa/Lagos"))
-                local_dt = datetime.fromisoformat(s["starts_at"]).astimezone(tz)
-                sessions_list.append(
-                    {
-                        "title": s["title"],
-                        "type": s["session_type"],
-                        "date": local_dt.strftime("%A, %B %d"),
-                        "time": local_dt.strftime("%I:%M %p"),
-                        "location": s.get("location_name")
-                        or s.get("location")
-                        or "TBD",
-                    }
-                )
+                logger.info("No sessions this week for digest; checking articles")
 
             week_label = (
                 f"{week_start.strftime('%B %d')} - {week_end.strftime('%d, %Y')}"
@@ -1362,23 +1304,159 @@ async def send_weekly_session_digest() -> None:
             all_members = members_resp.json()
 
             prefs_map = await _get_notification_preferences_by_auth(db, all_members)
+            articles_result = await db.execute(
+                select(ContentPost)
+                .where(
+                    ContentPost.is_published.is_(True),
+                    ContentPost.published_at.isnot(None),
+                    ContentPost.published_at >= (now - timedelta(days=7)),
+                    ContentPost.published_at <= now,
+                )
+                .order_by(ContentPost.published_at.desc())
+                .limit(5)
+            )
+            recent_articles = articles_result.scalars().all()
+
+            if not sessions and not recent_articles:
+                logger.info("No sessions or articles for weekly digest")
+                return
+
+            cohort_enrollments_by_session: dict[str, dict[str, dict]] = {}
+            pod_member_ids_by_session: dict[str, set[str]] = {}
+            for s in sessions:
+                session_id = str(s.get("id"))
+                session_type = str(s.get("session_type") or "").lower()
+                if session_type == "cohort_class":
+                    cohort_id = s.get("cohort_id")
+                    if not cohort_id:
+                        cohort_enrollments_by_session[session_id] = {}
+                        continue
+                    enrolled_resp = await internal_get(
+                        service_url=settings.ACADEMY_SERVICE_URL,
+                        path=(
+                            f"/internal/academy/cohorts/{cohort_id}"
+                            "/enrolled-students"
+                        ),
+                        calling_service="communications",
+                    )
+                    if enrolled_resp.status_code == 200:
+                        cohort_enrollments_by_session[session_id] = {
+                            str(row["member_id"]): {
+                                "enrolled": True,
+                                "status": row.get("status"),
+                                "access_suspended": bool(row.get("access_suspended")),
+                            }
+                            for row in enrolled_resp.json()
+                            if row.get("member_id")
+                        }
+                    else:
+                        logger.error(
+                            "Failed to get enrolled students for digest session %s",
+                            session_id,
+                        )
+                        cohort_enrollments_by_session[session_id] = {}
+
+                if session_type == "club" and s.get("pod_id"):
+                    try:
+                        pod = await get_pod_by_id(
+                            s["pod_id"], calling_service="communications"
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "Failed to get pod %s for digest session %s: %s",
+                            s.get("pod_id"),
+                            session_id,
+                            exc,
+                        )
+                        pod = None
+                    pod_member_ids_by_session[session_id] = {
+                        str(mid) for mid in ((pod or {}).get("active_member_ids") or [])
+                    }
 
             eligible_members = []
             for m in all_members:
                 pref = prefs_map.get(m.get("auth_id"))
-                # Default: opted-in (None means yes)
-                if pref and pref.weekly_session_digest is False:
+                wants_session_digest = not (
+                    pref and pref.weekly_session_digest is False
+                )
+                wants_content_digest = not (pref and pref.weekly_digest is False)
+                if not wants_session_digest and not wants_content_digest:
                     continue
                 eligible_members.append(m)
 
             sent_count = 0
             for member in eligible_members:
+                member_sessions = []
+                member_articles = []
+                member_id = str(member.get("id"))
+                pref = prefs_map.get(member.get("auth_id"))
+                wants_session_digest = not (
+                    pref and pref.weekly_session_digest is False
+                )
+                wants_content_digest = not (pref and pref.weekly_digest is False)
+                if wants_session_digest:
+                    for s in sessions:
+                        session_id = str(s.get("id"))
+                        cohort_enrollment = None
+                        if session_id in cohort_enrollments_by_session:
+                            cohort_enrollment = cohort_enrollments_by_session[
+                                session_id
+                            ].get(
+                                member_id,
+                                {
+                                    "enrolled": False,
+                                    "access_suspended": False,
+                                },
+                            )
+                        pod_member_ids = pod_member_ids_by_session.get(session_id)
+                        access = evaluate_session_access(
+                            member,
+                            s,
+                            now=now,
+                            cohort_enrollment=cohort_enrollment,
+                            pod_member_ids=pod_member_ids,
+                        )
+                        if not access.digest_eligible:
+                            continue
+
+                        tz = ZoneInfo(s.get("timezone", "Africa/Lagos"))
+                        local_dt = datetime.fromisoformat(s["starts_at"]).astimezone(tz)
+                        member_sessions.append(
+                            {
+                                "title": s["title"],
+                                "type": s["session_type"],
+                                "date": local_dt.strftime("%A, %B %d"),
+                                "time": local_dt.strftime("%I:%M %p"),
+                                "location": s.get("location_name")
+                                or s.get("location")
+                                or "TBD",
+                            }
+                        )
+
+                if wants_content_digest:
+                    frontend_url = settings.FRONTEND_URL.rstrip("/")
+                    for article in recent_articles:
+                        if not _member_can_read_post(member, article):
+                            continue
+                        member_articles.append(
+                            {
+                                "title": article.title,
+                                "summary": article.summary,
+                                "category": article.category,
+                                "url": f"{frontend_url}/community/tips/{article.id}",
+                            }
+                        )
+
+                if not member_sessions and not member_articles:
+                    continue
+
                 try:
                     success = await send_weekly_session_digest_email(
                         to_email=member["email"],
                         member_name=member["first_name"],
                         week_label=week_label,
-                        sessions=sessions_list,
+                        sessions=member_sessions,
+                        articles=member_articles,
                     )
                     if success:
                         sent_count += 1

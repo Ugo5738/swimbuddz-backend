@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy import func, select
 
 BOOKINGS = "services.sessions_service.routers.bookings"
+SESSION_ACCESS = "services.sessions_service.services.session_access"
 SIGN_IN = "services.attendance_service.routers.member.sign_in"
 
 
@@ -47,10 +48,24 @@ async def _make_community_session(
 
 def _patch_member_wallet():
     """Patch the member-lookup + wallet-debit the book endpoint imports."""
+    member_id = uuid.uuid4()
     return (
         patch(
             f"{BOOKINGS}.get_member_by_auth_id",
-            AsyncMock(return_value={"id": str(uuid.uuid4()), "auth_id": "auth-x"}),
+            AsyncMock(return_value={"id": str(member_id), "auth_id": "auth-x"}),
+        ),
+        patch(
+            f"{SESSION_ACCESS}.get_member_membership",
+            AsyncMock(
+                return_value={
+                    "member_id": str(member_id),
+                    "primary_tier": "community",
+                    "active_tiers": ["community"],
+                    "community_paid_until": "2035-01-01T00:00:00+00:00",
+                    "club_paid_until": None,
+                    "academy_paid_until": None,
+                }
+            ),
         ),
         patch(
             f"{BOOKINGS}.debit_member_wallet",
@@ -64,8 +79,8 @@ async def test_book_with_guests_persists_and_computes_fee(sessions_client, db_se
     from services.sessions_service.models import BookingGuest
 
     session = await _make_community_session(db_session, pool_fee=3500)
-    p_member, p_wallet = _patch_member_wallet()
-    with p_member, p_wallet:
+    p_member, p_membership, p_wallet = _patch_member_wallet()
+    with p_member, p_membership, p_wallet:
         resp = await sessions_client.post(
             f"/sessions/{session.id}/book",
             json={
@@ -97,8 +112,8 @@ async def test_book_with_guests_persists_and_computes_fee(sessions_client, db_se
 @pytest.mark.asyncio
 async def test_capacity_rejects_overfill_by_heads(sessions_client, db_session):
     session = await _make_community_session(db_session, pool_fee=0, capacity=2)
-    p_member, p_wallet = _patch_member_wallet()
-    with p_member, p_wallet:
+    p_member, p_membership, p_wallet = _patch_member_wallet()
+    with p_member, p_membership, p_wallet:
         # member + 2 guests = 3 heads > capacity 2 → 409
         resp = await sessions_client.post(
             f"/sessions/{session.id}/book",
@@ -114,8 +129,8 @@ async def test_capacity_rejects_overfill_by_heads(sessions_client, db_session):
 @pytest.mark.asyncio
 async def test_minor_guest_without_guardian_rejected(sessions_client, db_session):
     session = await _make_community_session(db_session)
-    p_member, p_wallet = _patch_member_wallet()
-    with p_member, p_wallet:
+    p_member, p_membership, p_wallet = _patch_member_wallet()
+    with p_member, p_membership, p_wallet:
         resp = await sessions_client.post(
             f"/sessions/{session.id}/book",
             json={
@@ -197,8 +212,8 @@ async def test_block_booking_placeholders_then_named(sessions_client, db_session
     from services.sessions_service.models import BookingGuest
 
     session = await _make_community_session(db_session, pool_fee=0, capacity=10)
-    p_member, p_wallet = _patch_member_wallet()
-    with p_member, p_wallet:
+    p_member, p_membership, p_wallet = _patch_member_wallet()
+    with p_member, p_membership, p_wallet:
         resp = await sessions_client.post(
             f"/sessions/{session.id}/book",
             json={

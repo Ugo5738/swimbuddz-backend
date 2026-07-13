@@ -26,8 +26,10 @@ from services.sessions_service.models import (
 from tests.factories import SessionFactory
 
 _BOOKINGS = "services.sessions_service.routers.bookings"
+_SESSION_ACCESS = "services.sessions_service.services.session_access"
 _DEBIT = f"{_BOOKINGS}.debit_member_wallet"
 _RESOLVE_MEMBER = f"{_BOOKINGS}.get_member_by_auth_id"
+_MEMBERSHIP = f"{_SESSION_ACCESS}.get_member_membership"
 
 POOL_FEE_KOBO = 350_000  # ₦3,500
 
@@ -61,6 +63,20 @@ def _member_mock(member_id):
     return AsyncMock(return_value={"id": str(member_id), "auth_id": str(uuid.uuid4())})
 
 
+def _club_membership_mock(member_id):
+    """Mock active club membership for default club SessionFactory rows."""
+    return AsyncMock(
+        return_value={
+            "member_id": str(member_id),
+            "primary_tier": "club",
+            "active_tiers": ["club", "community"],
+            "community_paid_until": "2035-01-01T00:00:00+00:00",
+            "club_paid_until": "2035-01-01T00:00:00+00:00",
+            "academy_paid_until": None,
+        }
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_rebook_existing_pending_with_bubbles_confirms_and_debits(
@@ -77,7 +93,11 @@ async def test_rebook_existing_pending_with_bubbles_confirms_and_debits(
     )
 
     debit = AsyncMock(return_value={"transaction_id": str(uuid.uuid4())})
-    with patch(_RESOLVE_MEMBER, _member_mock(member_id)), patch(_DEBIT, debit):
+    with (
+        patch(_RESOLVE_MEMBER, _member_mock(member_id)),
+        patch(_MEMBERSHIP, _club_membership_mock(member_id)),
+        patch(_DEBIT, debit),
+    ):
         resp = await sessions_client.post(
             f"/sessions/{session.id}/book",
             json={
@@ -117,7 +137,11 @@ async def test_rebook_confirmed_is_idempotent_and_never_recharges(
     )
 
     debit = AsyncMock(return_value={"transaction_id": str(uuid.uuid4())})
-    with patch(_RESOLVE_MEMBER, _member_mock(member_id)), patch(_DEBIT, debit):
+    with (
+        patch(_RESOLVE_MEMBER, _member_mock(member_id)),
+        patch(_MEMBERSHIP, _club_membership_mock(member_id)),
+        patch(_DEBIT, debit),
+    ):
         resp = await sessions_client.post(
             f"/sessions/{session.id}/book",
             json={
@@ -147,7 +171,11 @@ async def test_rebook_expired_revives_instead_of_409(sessions_client, db_session
     )
 
     debit = AsyncMock(return_value={"transaction_id": str(uuid.uuid4())})
-    with patch(_RESOLVE_MEMBER, _member_mock(member_id)), patch(_DEBIT, debit):
+    with (
+        patch(_RESOLVE_MEMBER, _member_mock(member_id)),
+        patch(_MEMBERSHIP, _club_membership_mock(member_id)),
+        patch(_DEBIT, debit),
+    ):
         resp = await sessions_client.post(
             f"/sessions/{session.id}/book",
             json={
@@ -174,7 +202,11 @@ async def test_new_paystack_booking_creates_pending_without_debit(
     session = await _session(db_session)
 
     debit = AsyncMock(return_value={"transaction_id": str(uuid.uuid4())})
-    with patch(_RESOLVE_MEMBER, _member_mock(member_id)), patch(_DEBIT, debit):
+    with (
+        patch(_RESOLVE_MEMBER, _member_mock(member_id)),
+        patch(_MEMBERSHIP, _club_membership_mock(member_id)),
+        patch(_DEBIT, debit),
+    ):
         resp = await sessions_client.post(
             f"/sessions/{session.id}/book",
             json={

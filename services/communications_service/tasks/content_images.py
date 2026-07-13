@@ -21,7 +21,7 @@ from services.communications_service.models import ContentPost
 logger = get_logger(__name__)
 
 SEED_PATH = (
-    Path(__file__).resolve().parents[2] / "scripts" / "seed-data" / "content_posts.json"
+    Path(__file__).resolve().parents[3] / "scripts" / "seed-data" / "content_posts.json"
 )
 
 
