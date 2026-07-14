@@ -21,6 +21,13 @@ class WalletTier(str, enum.Enum):
     VIP = "vip"
 
 
+class WalletHoldStatus(str, enum.Enum):
+    HELD = "held"
+    CAPTURED = "captured"
+    RELEASED = "released"
+    EXPIRED = "expired"
+
+
 class TransactionType(str, enum.Enum):
     TOPUP = "topup"
     PURCHASE = "purchase"

@@ -1,9 +1,4 @@
-"""Unit tests for the legacy Bubbles wallet debit helper.
-
-New mixed-tender intents are rejected until wallet holds exist. This helper is
-retained for already-created payments and must fail fulfillment closed if the
-wallet portion cannot be collected.
-"""
+"""Unit tests for wallet-hold capture and legacy Bubble debit fallback."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -49,6 +44,32 @@ async def test_debit_bubbles_posts_expected_payload_and_records_txn():
     # Returns the txn id and records it on the payment metadata for audit.
     assert txn_id == "txn-abc"
     assert payment.payment_metadata["wallet_transaction_id"] == "txn-abc"
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_new_payment_captures_wallet_hold_and_records_transaction():
+    response = httpx.Response(
+        status_code=200,
+        json={
+            "id": "hold-1",
+            "status": "captured",
+            "wallet_transaction_id": "txn-captured",
+        },
+        request=httpx.Request(
+            "POST", "http://wallet/internal/wallet/holds/hold-1/capture"
+        ),
+    )
+    client = _client_returning(response)
+    payment = _payment({"bubbles_to_apply": 5, "wallet_hold_id": "hold-1"})
+
+    txn_id = await _debit_bubbles(client, payment, reference_type="session_booking")
+
+    url = client.post.await_args.args[0]
+    assert url.endswith("/internal/wallet/holds/hold-1/capture")
+    assert "json" not in client.post.await_args.kwargs
+    assert txn_id == "txn-captured"
+    assert payment.payment_metadata["wallet_hold_status"] == "captured"
 
 
 @pytest.mark.asyncio

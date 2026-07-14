@@ -104,6 +104,7 @@ async def apply_session_booking(payment: Payment) -> None:
                     "session_ride_config_id": ride_config_id,
                     "pickup_location_id": pickup_location_id,
                     "num_seats": int(meta.get("num_seats") or 1),
+                    "passengers": meta.get("passengers"),
                 },
                 params={"member_id": str(member_id)},
                 headers=headers,

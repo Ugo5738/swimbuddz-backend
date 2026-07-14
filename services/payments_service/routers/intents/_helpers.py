@@ -160,19 +160,19 @@ _BUBBLES_DEBIT_LABELS = {
     "session_booking": "Session booking payment",
     "session_bundle": "Session bundle payment",
     "ride_share": "Ride share payment",
+    "store_order": "Store order payment",
 }
 
 
 async def _debit_bubbles(
     client: httpx.AsyncClient, payment: Payment, *, reference_type: str
 ) -> str | None:
-    """Debit the wallet for the Bubbles portion of a legacy payment.
+    """Capture the reserved Bubbles portion, with legacy debit fallback.
 
-    The intent already reduced the Paystack charge by the Bubbles value (see
-    intent_creation ``bubbles_purposes``); now that Paystack has cleared the
-    remainder, debit the wallet for the Bubbles. Shared by every entitlement
-    handler whose purpose is in ``bubbles_purposes`` (session_fee,
-    session_booking, session_bundle, ride_share).
+    New intents reserve Bubbles before provider initialization and store a
+    ``wallet_hold_id``. Capturing that hold is atomic and idempotent. Payments
+    created before holds existed retain the direct-debit fallback so historical
+    retries remain recoverable.
 
     Idempotent on ``f"{reference_type}_{payment.reference}"`` so retries don't
     double-debit. A debit failure is recorded and fails fulfillment closed;
@@ -191,6 +191,31 @@ async def _debit_bubbles(
         return None
 
     headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+    wallet_hold_id = meta.get("wallet_hold_id")
+    if wallet_hold_id:
+        resp = await client.post(
+            f"{settings.WALLET_SERVICE_URL}/internal/wallet/holds/"
+            f"{wallet_hold_id}/capture",
+            headers=headers,
+        )
+        if resp.status_code >= 400:
+            payment.payment_metadata = {
+                **meta,
+                "bubbles_capture_failed": True,
+                "bubbles_capture_error": f"{resp.status_code}: {resp.text[:200]}",
+            }
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Could not capture the reserved Bubbles for this payment",
+            )
+        txn_id = resp.json().get("wallet_transaction_id")
+        payment.payment_metadata = {
+            **meta,
+            "wallet_transaction_id": txn_id,
+            "wallet_hold_status": resp.json().get("status"),
+        }
+        return txn_id
+
     label = _BUBBLES_DEBIT_LABELS.get(reference_type, "Partial Bubbles payment")
     resp = await client.post(
         f"{settings.WALLET_SERVICE_URL}/internal/wallet/debit",
@@ -236,6 +261,32 @@ async def _debit_bubbles(
         bubbles_to_apply,
     )
     return txn_id
+
+
+async def _release_bubbles_hold(payment: Payment) -> None:
+    """Best-effort release for a payment that failed before settlement."""
+    hold_id = (payment.payment_metadata or {}).get("wallet_hold_id")
+    if not hold_id:
+        return
+    headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{settings.WALLET_SERVICE_URL}/internal/wallet/holds/"
+                f"{hold_id}/release",
+                headers=headers,
+            )
+        if response.status_code not in {200, 409}:
+            logger.error(
+                "Failed to release wallet hold %s for %s: %s",
+                hold_id,
+                payment.reference,
+                response.text,
+            )
+    except httpx.HTTPError:
+        logger.exception(
+            "Wallet hold release request failed for payment %s", payment.reference
+        )
 
 
 def _next_retry_time(attempts: int) -> datetime:

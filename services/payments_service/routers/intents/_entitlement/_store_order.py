@@ -16,6 +16,8 @@ from services.payments_service.models import (
     Payment,
 )
 
+from .._helpers import _debit_bubbles
+
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -30,8 +32,14 @@ async def apply_store_order(payment: Payment) -> None:
         )
     headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
     async with httpx.AsyncClient(timeout=30) as client:
+        wallet_transaction_id = await _debit_bubbles(
+            client, payment, reference_type="store_order"
+        )
         resp = await client.post(
             f"{settings.STORE_SERVICE_URL}/store/admin/orders/{order_id}/mark-paid",
+            params={"wallet_transaction_id": wallet_transaction_id}
+            if wallet_transaction_id
+            else None,
             headers=headers,
         )
         if resp.status_code >= 400:

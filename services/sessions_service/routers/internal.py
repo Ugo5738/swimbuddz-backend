@@ -75,7 +75,7 @@ class SessionBasic(BaseModel):
     pod_id: Optional[str] = None
     capacity: int
     # pool_fee is returned in KOBO (integer) for service-to-service use.
-    # Consuming services use kobo_to_bubbles_for_charge(pool_fee) for wallet debits.
+    # Wallet-only consumers require pool_fee to be exactly divisible by one Bubble.
     pool_fee: Optional[int] = None
     week_number: Optional[int] = None
     lesson_title: Optional[str] = None

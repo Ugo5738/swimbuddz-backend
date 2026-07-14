@@ -61,7 +61,14 @@ async def get_my_wallet(
 ):
     """Get current user's wallet (Bubble balance, status, tier)."""
     wallet = await get_wallet_by_auth_id(db, current_user.user_id)
-    return wallet
+    from services.wallet_service.services.hold_ops import active_held_amount
+
+    held = await active_held_amount(db, wallet.id)
+    return {
+        **WalletResponse.model_validate(wallet).model_dump(),
+        "available_balance": max(wallet.balance - held, 0),
+        "held_balance": held,
+    }
 
 
 @router.post(

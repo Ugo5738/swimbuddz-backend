@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_coach
 from libs.auth.models import AuthUser
-from libs.common.currency import kobo_to_bubbles_for_charge
+from libs.common.currency import kobo_to_bubbles_exact
 from libs.common.service_client import debit_member_wallet, get_session_by_id
 from libs.common.service_client.sessions import get_confirmed_booking_for_session_member
 from libs.db.session import get_async_db
@@ -94,7 +94,16 @@ async def sign_in_to_session(
     ):
         pool_fee_kobo = session_data.get("pool_fee") or 0
         if pool_fee_kobo > 0:
-            fee_bubbles = kobo_to_bubbles_for_charge(pool_fee_kobo)
+            try:
+                fee_bubbles = kobo_to_bubbles_exact(pool_fee_kobo)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "This fee cannot be paid entirely with whole Bubbles. "
+                        "Use the booking checkout instead."
+                    ),
+                ) from exc
             idempotency_key = f"session-fee-{session_id}-{current_member.id}"
             try:
                 result_txn = await debit_member_wallet(

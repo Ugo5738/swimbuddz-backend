@@ -96,6 +96,7 @@ async def apply_session_bundle(payment: Payment) -> None:
                         "session_ride_config_id": ride_cfg.get("ride_config_id"),
                         "pickup_location_id": ride_cfg.get("pickup_location_id"),
                         "num_seats": int(ride_cfg.get("num_seats") or 1),
+                        "passengers": ride_cfg.get("passengers"),
                     },
                     params={"member_id": str(member_id)},
                     headers=headers,

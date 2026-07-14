@@ -33,7 +33,10 @@ MAX_FULFILLMENT_RETRIES = 8
 BASE_FULFILLMENT_RETRY_MINUTES = 2
 
 from ._entitlement import _mark_paid_and_apply
-from ._helpers import _clear_pending_tier_payment_for_payment
+from ._helpers import (
+    _clear_pending_tier_payment_for_payment,
+    _release_bubbles_hold,
+)
 from ._paystack import _to_kobo, _verify_paystack_transaction
 
 router = APIRouter()
@@ -102,6 +105,7 @@ async def verify_my_paystack_payment(
             db.add(payment)
             await db.commit()
             await db.refresh(payment)
+            await _release_bubbles_hold(payment)
             await _clear_pending_tier_payment_for_payment(payment)
 
         # User-friendly error messages based on Paystack status

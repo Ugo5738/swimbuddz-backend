@@ -42,6 +42,10 @@ def _payment():
             "ride_config_id": str(uuid.uuid4()),
             "pickup_location_id": str(uuid.uuid4()),
             "num_seats": 2,
+            "passengers": [
+                {"passenger_type": "member", "full_name": "Ada"},
+                {"passenger_type": "observer", "full_name": "Tola"},
+            ],
         },
     )
 
@@ -73,6 +77,7 @@ async def test_session_booking_confirms_owner_and_fulfills_quoted_ride(monkeypat
         f"/transport/sessions/{payment.payment_metadata['session_id']}/bookings"
     )
     assert ride_kwargs["json"]["num_seats"] == 2
+    assert ride_kwargs["json"]["passengers"][1]["passenger_type"] == "observer"
 
 
 @pytest.mark.asyncio

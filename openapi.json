@@ -26241,6 +26241,148 @@
         ]
       }
     },
+    "/api/v1/internal/wallet/holds": {
+      "post": {
+        "tags": [
+          "internal-wallet"
+        ],
+        "summary": "Internal Create Hold",
+        "operationId": "internal_create_hold_internal_wallet_holds_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WalletHoldCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletHoldResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/wallet/holds/{hold_id}/capture": {
+      "post": {
+        "tags": [
+          "internal-wallet"
+        ],
+        "summary": "Internal Capture Hold",
+        "operationId": "internal_capture_hold_internal_wallet_holds__hold_id__capture_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "hold_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Hold Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletHoldResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/wallet/holds/{hold_id}/release": {
+      "post": {
+        "tags": [
+          "internal-wallet"
+        ],
+        "summary": "Internal Release Hold",
+        "operationId": "internal_release_hold_internal_wallet_holds__hold_id__release_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "hold_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Hold Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletHoldResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/wallet/confirm-topup": {
       "post": {
         "tags": [
@@ -37190,6 +37332,22 @@
               "type": "string",
               "format": "uuid",
               "title": "Order Id"
+            }
+          },
+          {
+            "name": "wallet_transaction_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wallet Transaction Id"
             }
           }
         ],
@@ -67653,6 +67811,21 @@
             "title": "Num Seats",
             "default": 1
           },
+          "passengers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RidePassengerManifestEntry"
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passengers"
+          },
           "session_ids": {
             "anyOf": [
               {
@@ -70046,6 +70219,36 @@
         "title": "RefundQueueResponse",
         "description": "Outstanding refund obligations across all payments."
       },
+      "RidePassengerManifestEntry": {
+        "properties": {
+          "passenger_type": {
+            "type": "string",
+            "enum": [
+              "member",
+              "session_guest",
+              "observer"
+            ],
+            "title": "Passenger Type"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "passenger_type"
+        ],
+        "title": "RidePassengerManifestEntry"
+      },
       "SessionAttendanceStatus": {
         "type": "string",
         "enum": [
@@ -70075,6 +70278,21 @@
             "minimum": 1.0,
             "title": "Num Seats",
             "default": 1
+          },
+          "passengers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RidePassengerManifestEntry"
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passengers"
           }
         },
         "type": "object",
@@ -74899,6 +75117,22 @@
             "type": "integer",
             "title": "Balance"
           },
+          "available_balance": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Balance"
+          },
+          "held_balance": {
+            "type": "integer",
+            "title": "Held Balance",
+            "default": 0
+          },
           "lifetime_bubbles_purchased": {
             "type": "integer",
             "title": "Lifetime Bubbles Purchased"
@@ -75226,6 +75460,22 @@
             "type": "integer",
             "title": "Current Balance"
           },
+          "ledger_balance": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Balance"
+          },
+          "held_balance": {
+            "type": "integer",
+            "title": "Held Balance",
+            "default": 0
+          },
           "required_amount": {
             "type": "integer",
             "title": "Required Amount"
@@ -75258,6 +75508,14 @@
             "type": "integer",
             "title": "Balance"
           },
+          "available_balance": {
+            "type": "integer",
+            "title": "Available Balance"
+          },
+          "held_balance": {
+            "type": "integer",
+            "title": "Held Balance"
+          },
           "status": {
             "$ref": "#/components/schemas/WalletStatus"
           }
@@ -75267,6 +75525,8 @@
           "wallet_id",
           "member_auth_id",
           "balance",
+          "available_balance",
+          "held_balance",
           "status"
         ],
         "title": "BalanceResponse"
@@ -77965,6 +78225,213 @@
         "title": "WalletEcosystemStatsResponse",
         "description": "Aggregate wallet ecosystem stats over a date window.\n\nConsumed by ``reporting_service.tasks.flywheel._fetch_wallet_ecosystem_aggregates``."
       },
+      "WalletHoldCreateRequest": {
+        "properties": {
+          "member_auth_id": {
+            "type": "string",
+            "title": "Member Auth Id"
+          },
+          "amount": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Idempotency Key"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Description"
+          },
+          "service_source": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Service Source"
+          },
+          "reference_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Type"
+          },
+          "reference_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Id"
+          },
+          "expires_in_seconds": {
+            "type": "integer",
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "title": "Expires In Seconds",
+            "default": 1800
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_auth_id",
+          "amount",
+          "idempotency_key",
+          "description",
+          "service_source"
+        ],
+        "title": "WalletHoldCreateRequest"
+      },
+      "WalletHoldResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "wallet_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Wallet Id"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "title": "Member Auth Id"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "title": "Idempotency Key"
+          },
+          "amount": {
+            "type": "integer",
+            "title": "Amount"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WalletHoldStatus"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "service_source": {
+            "type": "string",
+            "title": "Service Source"
+          },
+          "reference_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Type"
+          },
+          "reference_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Id"
+          },
+          "wallet_transaction_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wallet Transaction Id"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "released_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "available_balance": {
+            "type": "integer",
+            "title": "Available Balance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "wallet_id",
+          "member_auth_id",
+          "idempotency_key",
+          "amount",
+          "status",
+          "description",
+          "service_source",
+          "expires_at",
+          "created_at",
+          "updated_at",
+          "available_balance"
+        ],
+        "title": "WalletHoldResponse"
+      },
+      "WalletHoldStatus": {
+        "type": "string",
+        "enum": [
+          "held",
+          "captured",
+          "released",
+          "expired"
+        ],
+        "title": "WalletHoldStatus"
+      },
       "WalletResponse": {
         "properties": {
           "id": {
@@ -77984,6 +78451,22 @@
           "balance": {
             "type": "integer",
             "title": "Balance"
+          },
+          "available_balance": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Balance"
+          },
+          "held_balance": {
+            "type": "integer",
+            "title": "Held Balance",
+            "default": 0
           },
           "lifetime_bubbles_purchased": {
             "type": "integer",
@@ -78628,10 +79111,25 @@
           },
           "num_seats": {
             "type": "integer",
+            "maximum": 20.0,
             "minimum": 1.0,
             "title": "Num Seats",
-            "description": "Number of seats to book (1+)",
+            "description": "Number of seats to book (1-20)",
             "default": 1
+          },
+          "passengers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RidePassengerInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passengers"
           }
         },
         "type": "object",
@@ -78684,6 +79182,13 @@
             "type": "integer",
             "title": "Num Seats"
           },
+          "passengers": {
+            "items": {
+              "$ref": "#/components/schemas/RidePassengerResponse"
+            },
+            "type": "array",
+            "title": "Passengers"
+          },
           "cost": {
             "type": "number",
             "title": "Cost"
@@ -78710,11 +79215,80 @@
           "ride_area_name",
           "assigned_ride_number",
           "num_seats",
+          "passengers",
           "cost",
           "created_at",
           "updated_at"
         ],
         "title": "RideBookingResponse"
+      },
+      "RidePassengerInput": {
+        "properties": {
+          "passenger_type": {
+            "$ref": "#/components/schemas/RidePassengerType"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "passenger_type"
+        ],
+        "title": "RidePassengerInput"
+      },
+      "RidePassengerResponse": {
+        "properties": {
+          "passenger_type": {
+            "$ref": "#/components/schemas/RidePassengerType"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          }
+        },
+        "type": "object",
+        "required": [
+          "passenger_type",
+          "id",
+          "position"
+        ],
+        "title": "RidePassengerResponse"
+      },
+      "RidePassengerType": {
+        "type": "string",
+        "enum": [
+          "member",
+          "session_guest",
+          "observer"
+        ],
+        "title": "RidePassengerType"
       },
       "RouteInfoCreate": {
         "properties": {
@@ -90106,6 +90680,17 @@
               }
             ],
             "title": "Wallet Transaction Id"
+          },
+          "wallet_hold_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wallet Hold Id"
           },
           "paid_at": {
             "anyOf": [

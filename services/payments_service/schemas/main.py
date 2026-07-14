@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from services.payments_service.models import PaymentPurpose, PaymentStatus
 from services.payments_service.schemas.enums import (
@@ -11,12 +11,36 @@ from services.payments_service.schemas.enums import (
 )
 
 
+class RidePassengerManifestEntry(BaseModel):
+    passenger_type: Literal["member", "session_guest", "observer"]
+    full_name: Optional[str] = Field(default=None, max_length=160)
+
+
+def _validate_passenger_manifest(
+    passengers: Optional[List[RidePassengerManifestEntry]], num_seats: int
+) -> None:
+    if passengers is None:
+        return
+    if len(passengers) != num_seats:
+        raise ValueError("Passenger manifest must contain one entry per seat")
+    if sum(item.passenger_type == "member" for item in passengers) > 1:
+        raise ValueError("Passenger manifest can contain at most one booking member")
+
+
 class SessionRideConfig(BaseModel):
     """Per-session ride selection for a SESSION_BUNDLE payment."""
 
     ride_config_id: uuid.UUID
     pickup_location_id: uuid.UUID
     num_seats: int = Field(default=1, ge=1, le=20)
+    passengers: Optional[List[RidePassengerManifestEntry]] = Field(
+        default=None, max_length=20
+    )
+
+    @model_validator(mode="after")
+    def manifest_matches_seats(self):
+        _validate_passenger_manifest(self.passengers, self.num_seats)
+        return self
 
 
 class CreatePaymentIntentRequest(BaseModel):
@@ -46,6 +70,14 @@ class CreatePaymentIntentRequest(BaseModel):
     )
     direct_amount: Optional[float] = None  # Direct amount for session fees
     num_seats: int = Field(default=1, ge=1, le=20)  # Seats for ride share booking
+    passengers: Optional[List[RidePassengerManifestEntry]] = Field(
+        default=None, max_length=20
+    )
+
+    @model_validator(mode="after")
+    def passenger_manifest_matches_seats(self):
+        _validate_passenger_manifest(self.passengers, self.num_seats)
+        return self
 
     # SESSION_BUNDLE — book multiple sessions in one payment intent
     session_ids: Optional[List[uuid.UUID]] = Field(
@@ -55,8 +87,8 @@ class CreatePaymentIntentRequest(BaseModel):
     # Keys are session IDs (as strings), values are SessionRideConfig.
     session_ride_configs: Optional[Dict[str, "SessionRideConfig"]] = None
 
-    # Reserved for full-wallet settlement once payment intents support atomic
-    # wallet holds. Mixed Bubbles + provider payments are currently rejected.
+    # Whole Bubbles to reserve before provider initialization. Any remainder is
+    # charged through the external provider without rounding the Bubble value.
     bubbles_to_apply: Optional[int] = Field(default=None, ge=0)
 
     # Member-initiated mid-cohort payment override (ACADEMY_COHORT only).

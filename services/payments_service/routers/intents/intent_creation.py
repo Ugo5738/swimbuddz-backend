@@ -18,16 +18,20 @@ from libs.auth.dependencies import _service_role_jwt, get_current_user
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.currency import (
+    KOBO_PER_BUBBLE,
     KOBO_PER_NAIRA,
+    bubbles_to_naira,
     kobo_to_naira,
     naira_to_kobo,
 )
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import (
+    create_wallet_hold,
     get_member_by_auth_id,
     internal_get,
     internal_post,
+    release_wallet_hold,
 )
 from libs.db.session import get_async_db
 from services.payments_service.models import Payment, PaymentPurpose, PaymentStatus
@@ -815,6 +819,11 @@ async def create_payment_intent(
             "order_id": str(payload.order_id),
             "order_number": order_data.get("order_number"),
         }
+        if payload.bubbles_to_apply:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Store Bubbles must be selected through store checkout",
+            )
 
     # Session fee payment (pool fee + ride share)
     elif payload.purpose == PaymentPurpose.SESSION_FEE:
@@ -870,6 +879,11 @@ async def create_payment_intent(
             ),
             "attendance_status": attendance_status.value,
             "num_seats": int(ride_line["num_seats"]) if ride_line else 1,
+            "passengers": (
+                [passenger.model_dump() for passenger in payload.passengers]
+                if ride_line and payload.passengers is not None
+                else None
+            ),
             "bubbles_to_apply": payload.bubbles_to_apply or 0,
             "server_price": {
                 "pool_total_kobo": int(session_quote["pool_fee"]),
@@ -938,6 +952,11 @@ async def create_payment_intent(
                 str(ride_line["pickup_location_id"]) if ride_line else None
             ),
             "num_seats": int(ride_line["num_seats"]) if ride_line else 1,
+            "passengers": (
+                [passenger.model_dump() for passenger in payload.passengers]
+                if ride_line and payload.passengers is not None
+                else None
+            ),
             "bubbles_to_apply": payload.bubbles_to_apply or 0,
             "server_price": {
                 "pool_total_kobo": int(booking_quote["fee_amount_kobo"]),
@@ -990,6 +1009,11 @@ async def create_payment_intent(
                     "ride_config_id": str(ride_cfg.ride_config_id),
                     "pickup_location_id": str(ride_cfg.pickup_location_id),
                     "num_seats": int(ride_cfg.num_seats),
+                    "passengers": (
+                        [passenger.model_dump() for passenger in ride_cfg.passengers]
+                        if ride_cfg.passengers is not None
+                        else None
+                    ),
                 }
         bundle_quote = await _reserve_and_quote_session_bundle(
             member_auth_id=current_user.user_id,
@@ -1019,6 +1043,9 @@ async def create_payment_intent(
                 "ride_config_id": str(line["ride_config_id"]),
                 "pickup_location_id": str(line["pickup_location_id"]),
                 "num_seats": int(line["num_seats"]),
+                "passengers": ride_configs_meta.get(str(line["session_id"]), {}).get(
+                    "passengers"
+                ),
             }
             for line in ride_quote["lines"]
         }
@@ -1090,6 +1117,11 @@ async def create_payment_intent(
             "ride_config_id": str(ride_line["ride_config_id"]),
             "pickup_location_id": str(ride_line["pickup_location_id"]),
             "num_seats": int(ride_line["num_seats"]),
+            "passengers": (
+                [passenger.model_dump() for passenger in payload.passengers]
+                if payload.passengers is not None
+                else None
+            ),
             "server_price": {
                 "ride_total_kobo": authoritative_total_kobo,
                 "total_kobo": authoritative_total_kobo,
@@ -1144,9 +1176,6 @@ async def create_payment_intent(
                 "discount_applies_to_component": applies_to_component,
             }
 
-    # Mixed Bubbles + external-provider settlement is disabled until the wallet
-    # service supports atomic holds. Debiting after Paystack clears can
-    # undercharge when the wallet balance changes during checkout.
     bubbles_purposes = {
         PaymentPurpose.SESSION_FEE,
         PaymentPurpose.SESSION_BOOKING,
@@ -1154,15 +1183,76 @@ async def create_payment_intent(
         PaymentPurpose.RIDE_SHARE,
     }
     bubbles_to_apply_val = payload.bubbles_to_apply or 0
-    if bubbles_to_apply_val > 0 and payload.purpose in bubbles_purposes:
-        await release_active_bundle_reservation()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Mixed Bubbles and card payments are temporarily unavailable. "
-                "Use full Bubbles in the booking flow or pay the full amount by card."
-            ),
-        )
+    wallet_hold_id: str | None = None
+
+    async def release_active_wallet_hold() -> None:
+        nonlocal wallet_hold_id
+        if wallet_hold_id is None:
+            return
+        try:
+            await release_wallet_hold(wallet_hold_id, calling_service="payments")
+        except httpx.HTTPError:
+            logger.exception("Failed to release wallet hold %s", wallet_hold_id)
+        wallet_hold_id = None
+
+    if bubbles_to_apply_val > 0:
+        if payload.purpose not in bubbles_purposes:
+            await release_active_bundle_reservation()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Bubbles cannot be applied to this payment type",
+            )
+        if payload.payment_method != "paystack":
+            await release_active_bundle_reservation()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Bubbles can only be combined with online payment",
+            )
+
+        amount_kobo = naira_to_kobo(amount)
+        maximum_bubbles = amount_kobo // KOBO_PER_BUBBLE
+        if bubbles_to_apply_val > maximum_bubbles:
+            await release_active_bundle_reservation()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"At most {maximum_bubbles} whole Bubbles can be applied "
+                    "to this payment"
+                ),
+            )
+        try:
+            hold = await create_wallet_hold(
+                current_user.user_id,
+                amount=bubbles_to_apply_val,
+                idempotency_key=f"payment-intent:{payment_id}:bubbles",
+                description=f"Payment {payload.purpose.value}",
+                calling_service="payments",
+                reference_type=payload.purpose.value,
+                reference_id=str(payment_id),
+                expires_in_seconds=1800,
+            )
+        except httpx.HTTPStatusError as exc:
+            await release_active_bundle_reservation()
+            upstream_status = exc.response.status_code
+            detail = _service_error_detail(
+                exc.response, "Could not reserve the selected Bubbles"
+            )
+            raise HTTPException(
+                status_code=(
+                    upstream_status
+                    if upstream_status in {400, 402, 404, 409}
+                    else status.HTTP_503_SERVICE_UNAVAILABLE
+                ),
+                detail=detail,
+            ) from exc
+        wallet_hold_id = str(hold["id"])
+        amount = kobo_to_naira(amount_kobo - (bubbles_to_apply_val * KOBO_PER_BUBBLE))
+        payment_metadata = {
+            **payment_metadata,
+            "bubbles_to_apply": bubbles_to_apply_val,
+            "bubbles_value_ngn": bubbles_to_naira(bubbles_to_apply_val),
+            "wallet_hold_id": wallet_hold_id,
+        }
 
     payment = Payment(
         id=payment_id,
@@ -1182,6 +1272,7 @@ async def create_payment_intent(
         await db.commit()
     except Exception:
         await db.rollback()
+        await release_active_wallet_hold()
         await release_active_bundle_reservation()
         raise
     await db.refresh(payment)
@@ -1197,6 +1288,7 @@ async def create_payment_intent(
             and (bubbles_to_apply_val > 0 or original_amount <= 0)
         )
         if not internally_settleable:
+            await release_active_wallet_hold()
             await release_active_bundle_reservation()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1223,6 +1315,7 @@ async def create_payment_intent(
                 "bubbles_to_apply": bubbles_to_apply_val,
             },
         )
+        wallet_hold_id = None
 
     # Only initialize Paystack for online payments
     if (
@@ -1234,6 +1327,7 @@ async def create_payment_intent(
             payment.status = PaymentStatus.FAILED
             db.add(payment)
             await db.commit()
+            await release_active_wallet_hold()
             await release_active_bundle_reservation()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1256,6 +1350,7 @@ async def create_payment_intent(
             }
             db.add(payment)
             await db.commit()
+            await release_active_wallet_hold()
             await release_active_bundle_reservation()
             raise
         checkout_url = authorization_url
@@ -1273,14 +1368,14 @@ async def create_payment_intent(
         await db.refresh(payment)
 
     if (
-        bundle_reservation_active
-        and payment.status == PaymentStatus.PENDING
+        payment.status == PaymentStatus.PENDING
         and payload.payment_method == "paystack"
         and not _paystack_enabled()
     ):
         payment.status = PaymentStatus.FAILED
         db.add(payment)
         await db.commit()
+        await release_active_wallet_hold()
         await release_active_bundle_reservation()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

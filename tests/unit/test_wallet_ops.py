@@ -5,15 +5,23 @@ No HTTP layer involved — pure business logic validation.
 """
 
 import uuid
+from datetime import timedelta
 
 import pytest
 from fastapi import HTTPException
+from libs.common.datetime_utils import utc_now
 from services.wallet_service.models import (
     TransactionDirection,
     TransactionStatus,
     TransactionType,
     Wallet,
     WalletStatus,
+    WalletHoldStatus,
+)
+from services.wallet_service.services.hold_ops import (
+    capture_wallet_hold,
+    create_wallet_hold,
+    release_wallet_hold,
 )
 from services.wallet_service.services.wallet_ops import (
     check_balance,
@@ -136,7 +144,112 @@ async def test_debit_wallet_insufficient_balance(db_session):
         )
 
     assert exc_info.value.status_code == 400
-    assert "Not enough Bubbles" in exc_info.value.detail
+    assert "Not enough available Bubbles" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_hold_reduces_available_balance_and_blocks_direct_debit(db_session):
+    wallet = await _make_active_wallet(db_session, balance=100)
+    hold, available = await create_wallet_hold(
+        db_session,
+        member_auth_id=wallet.member_auth_id,
+        amount=60,
+        idempotency_key=f"hold-{uuid.uuid4()}",
+        description="Mixed checkout",
+        service_source="test",
+    )
+
+    assert hold.status == WalletHoldStatus.HELD
+    assert available == 40
+    sufficient, current_balance, _ = await check_balance(
+        db_session, wallet.member_auth_id, 50
+    )
+    assert sufficient is False
+    assert current_balance == 40
+
+    with pytest.raises(HTTPException) as exc_info:
+        await debit_wallet(
+            db_session,
+            member_auth_id=wallet.member_auth_id,
+            amount=50,
+            idempotency_key=f"debit-{uuid.uuid4()}",
+            transaction_type=TransactionType.PURCHASE,
+            description="Competing spend",
+            service_source="test",
+        )
+    assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_hold_capture_and_release_are_idempotent(db_session):
+    wallet = await _make_active_wallet(db_session, balance=100)
+    captured_hold, _ = await create_wallet_hold(
+        db_session,
+        member_auth_id=wallet.member_auth_id,
+        amount=30,
+        idempotency_key=f"hold-{uuid.uuid4()}",
+        description="Capture checkout",
+        service_source="test",
+    )
+
+    first_capture, available = await capture_wallet_hold(db_session, captured_hold.id)
+    replay_capture, replay_available = await capture_wallet_hold(
+        db_session, captured_hold.id
+    )
+    assert first_capture.status == WalletHoldStatus.CAPTURED
+    assert replay_capture.wallet_transaction_id == first_capture.wallet_transaction_id
+    assert available == replay_available == 70
+
+    released_hold, _ = await create_wallet_hold(
+        db_session,
+        member_auth_id=wallet.member_auth_id,
+        amount=20,
+        idempotency_key=f"hold-{uuid.uuid4()}",
+        description="Release checkout",
+        service_source="test",
+    )
+    first_release, available = await release_wallet_hold(db_session, released_hold.id)
+    replay_release, replay_available = await release_wallet_hold(
+        db_session, released_hold.id
+    )
+    assert first_release.status == WalletHoldStatus.RELEASED
+    assert replay_release.status == WalletHoldStatus.RELEASED
+    assert available == replay_available == 70
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_expired_hold_reacquires_only_unreserved_balance(db_session):
+    wallet = await _make_active_wallet(db_session, balance=100)
+    expired_hold, _ = await create_wallet_hold(
+        db_session,
+        member_auth_id=wallet.member_auth_id,
+        amount=60,
+        idempotency_key=f"hold-{uuid.uuid4()}",
+        description="Slow provider checkout",
+        service_source="test",
+    )
+    expired_hold.expires_at = utc_now() - timedelta(seconds=1)
+    await db_session.commit()
+
+    competing_hold, _ = await create_wallet_hold(
+        db_session,
+        member_auth_id=wallet.member_auth_id,
+        amount=50,
+        idempotency_key=f"hold-{uuid.uuid4()}",
+        description="New checkout",
+        service_source="test",
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await capture_wallet_hold(db_session, expired_hold.id)
+    assert exc_info.value.status_code == 409
+
+    await release_wallet_hold(db_session, competing_hold.id)
+    captured, available = await capture_wallet_hold(db_session, expired_hold.id)
+    assert captured.status == WalletHoldStatus.CAPTURED
+    assert available == 40
 
 
 @pytest.mark.asyncio

@@ -38,28 +38,41 @@ These rules apply to every SwimBuddz checkout and entitlement flow.
 
 ## Bubbles and External Providers
 
-Mixed Bubbles plus Paystack settlement is disabled until `wallet_service`
-supports atomic holds with capture and release. Subtracting Bubbles from the
-Paystack amount and debiting the wallet only after the callback creates an
-underpayment race when the wallet balance changes.
+Mixed Bubbles plus Paystack settlement uses a wallet hold. The hold is created
+before provider initialization, reduces the member's available balance, and is
+captured only after provider success. Terminal provider or initialization
+failure releases it; abandonment is bounded by the hold expiry.
 
-Current supported behavior:
-
-- A single session or ride may be paid fully with Bubbles through the direct
-  booking flow, which uses an idempotent server-side wallet debit.
-- Direct wallet charges convert kobo with `kobo_to_bubbles_for_charge`, rounding
-  a legacy non-whole-Bubble price up so a purchase can never be under-collected.
-  Product prices should still be configured in whole-Bubble increments.
+- One Bubble always represents exactly NGN 100. Neither checkout nor a direct
+  wallet charge may round that exchange rate.
+- Mixed checkout applies at most `floor(amount / NGN 100)` whole Bubbles and
+  charges the exact remainder through Paystack. For example, NGN 150 is one
+  Bubble plus NGN 50, never two Bubbles.
+- A wallet-only direct charge is allowed only when the amount is exactly
+  representable in whole Bubbles. Otherwise the member must use mixed or card
+  checkout.
+- Session, session-bundle, ride-share, and store mixed payments use the same
+  hold/capture/release contract.
+- Ordinary wallet debits and balance checks use available balance (ledger
+  balance minus live holds), so another purchase cannot spend reserved funds.
+- If a provider confirms payment after the hold TTL, capture may reacquire the
+  amount under the wallet lock only when unreserved funds still cover it.
+  Otherwise fulfillment fails closed for reconciliation or refund.
 - Refund conversion remains the explicitly named floor conversion. Changing
   historical refund rounding is a separate product and accounting decision.
-- A payment intent charges the full provider amount and rejects
-  `bubbles_to_apply` for session and ride purposes.
-- Session bundles are provider-only until wallet holds are implemented.
-- Store checkout still permits mixed Bubbles and Paystack. It must be migrated
-  to wallet hold/capture/release before that path can claim the same atomic
-  settlement guarantee as session checkout.
 - Historical mixed-tender payments retain idempotent wallet collection, but a
   failed wallet debit blocks entitlement rather than silently undercharging.
+
+## Transport Passenger Manifests
+
+- Seat capacity is based on the transport passenger manifest, not session
+  attendance or swimming guest count.
+- Each occupied seat is classified as `member`, `session_guest`, or `observer`;
+  a passenger name is optional.
+- The manifest must contain exactly one entry per reserved seat and no more
+  than one `member` entry for the booking owner.
+- Legacy callers that provide only `num_seats` are normalized to one member and
+  anonymous observers, preserving existing bookings while callers migrate.
 
 ## Idempotency and Audit
 

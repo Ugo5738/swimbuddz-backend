@@ -8,14 +8,14 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from libs.auth.dependencies import get_current_user, is_admin_or_service
 from libs.auth.models import AuthUser
-from libs.common.currency import kobo_to_bubbles_for_charge
+from libs.common.currency import kobo_to_bubbles_exact
 from libs.common.service_client import debit_member_wallet
 from libs.common.service_client.sessions import (
     get_confirmed_booking_for_session_member,
 )
 from libs.db.session import get_async_db
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.transport_service.models import (
@@ -23,6 +23,8 @@ from services.transport_service.models import (
     PickupLocation,
     RideArea,
     RideBooking,
+    RidePassenger,
+    RidePassengerType,
     SessionRideConfig,
 )
 from services.transport_service.routers._helpers import (
@@ -38,11 +40,44 @@ from services.transport_service.services.chat_sync import (
 router = APIRouter(prefix="/transport", tags=["transport"])
 
 
+class RidePassengerInput(BaseModel):
+    passenger_type: RidePassengerType
+    full_name: Optional[str] = Field(default=None, max_length=160)
+
+    @field_validator("full_name")
+    @classmethod
+    def normalize_name(cls, value: Optional[str]) -> Optional[str]:
+        normalized = (value or "").strip()
+        return normalized or None
+
+
+class RidePassengerResponse(RidePassengerInput):
+    id: uuid.UUID
+    position: int
+
+
 class RideBookingCreate(BaseModel):
     session_ride_config_id: uuid.UUID
     pickup_location_id: uuid.UUID
     pay_with_bubbles: bool = False  # If True, debit wallet for the ride cost
-    num_seats: int = Field(default=1, ge=1, description="Number of seats to book (1+)")
+    num_seats: int = Field(
+        default=1, ge=1, le=20, description="Number of seats to book (1-20)"
+    )
+    passengers: Optional[List[RidePassengerInput]] = None
+
+    @model_validator(mode="after")
+    def manifest_matches_seat_count(self):
+        if self.passengers is None:
+            return self
+        if len(self.passengers) != self.num_seats:
+            raise ValueError("Passenger manifest must contain one entry per seat")
+        member_count = sum(
+            passenger.passenger_type == RidePassengerType.MEMBER
+            for passenger in self.passengers
+        )
+        if member_count > 1:
+            raise ValueError("A ride booking can contain at most one booking member")
+        return self
 
 
 class RideBookingResponse(BaseModel):
@@ -55,6 +90,7 @@ class RideBookingResponse(BaseModel):
     ride_area_name: str  # Populated
     assigned_ride_number: int
     num_seats: int
+    passengers: List[RidePassengerResponse]
     cost: float  # Total cost for all seats — naira (kobo converted on read)
     created_at: datetime
     updated_at: datetime
@@ -79,6 +115,15 @@ def _build_response(
         ride_area_name=area.name if area else "Unknown Area",
         assigned_ride_number=booking.assigned_ride_number,
         num_seats=booking.num_seats,
+        passengers=[
+            RidePassengerResponse(
+                id=passenger.id,
+                passenger_type=passenger.passenger_type,
+                full_name=passenger.full_name,
+                position=passenger.position,
+            )
+            for passenger in booking.passengers
+        ],
         cost=(cfg.cost * booking.num_seats / 100.0) if cfg else 0.0,  # kobo → naira
         created_at=booking.created_at,
         updated_at=booking.updated_at,
@@ -106,6 +151,37 @@ async def _get_booking_details(
     return cfg, area, location
 
 
+def _passenger_manifest(booking_in: RideBookingCreate) -> List[RidePassengerInput]:
+    if booking_in.passengers is not None:
+        return booking_in.passengers
+    return [
+        RidePassengerInput(passenger_type=RidePassengerType.MEMBER),
+        *[
+            RidePassengerInput(passenger_type=RidePassengerType.OBSERVER)
+            for _ in range(booking_in.num_seats - 1)
+        ],
+    ]
+
+
+async def _replace_passengers(
+    db: AsyncSession,
+    booking: RideBooking,
+    manifest: List[RidePassengerInput],
+) -> None:
+    await db.execute(
+        delete(RidePassenger).where(RidePassenger.ride_booking_id == booking.id)
+    )
+    for position, passenger in enumerate(manifest, start=1):
+        db.add(
+            RidePassenger(
+                ride_booking_id=booking.id,
+                passenger_type=passenger.passenger_type,
+                full_name=passenger.full_name,
+                position=position,
+            )
+        )
+
+
 @router.post("/sessions/{session_id}/bookings", response_model=RideBookingResponse)
 async def create_ride_booking(
     session_id: uuid.UUID,
@@ -128,6 +204,7 @@ async def create_ride_booking(
     """
     current_member = await get_member_or_override(member_id, current_user, db)
     resolved_member_id = current_member.id
+    manifest = _passenger_manifest(booking_in)
 
     # Check existing booking
     query = select(RideBooking).where(
@@ -197,19 +274,40 @@ async def create_ride_booking(
     )
 
     if existing:
-        # Update existing booking (no re-charge) — allows changing location
-        existing.session_ride_config_id = booking_in.session_ride_config_id
+        # Passenger details and pickup point can be corrected without changing
+        # the paid seat/configuration entitlement. Seat or priced-route changes
+        # require cancellation and a fresh checkout.
+        if existing.num_seats != booking_in.num_seats:
+            raise HTTPException(
+                status_code=409,
+                detail="Seat count cannot be changed after booking. Cancel and rebook.",
+            )
+        if existing.session_ride_config_id != booking_in.session_ride_config_id:
+            raise HTTPException(
+                status_code=409,
+                detail="Ride route cannot be changed after booking. Cancel and rebook.",
+            )
         existing.pickup_location_id = booking_in.pickup_location_id
-        existing.num_seats = booking_in.num_seats
+        await _replace_passengers(db, existing, manifest)
         await db.commit()
         await db.refresh(existing)
+        await db.refresh(existing, attribute_names=["passengers"])
         booking = existing
     else:
         # Debit wallet for new bookings when requested and ride has a cost
         if booking_in.pay_with_bubbles and cfg_for_cost.cost > 0:
-            fee_bubbles = kobo_to_bubbles_for_charge(
-                cfg_for_cost.cost * booking_in.num_seats
-            )
+            try:
+                fee_bubbles = kobo_to_bubbles_exact(
+                    cfg_for_cost.cost * booking_in.num_seats
+                )
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "This ride cannot be paid entirely with whole Bubbles. "
+                        "Use mixed Bubbles and card payment instead."
+                    ),
+                ) from exc
             idempotency_key = f"ride-{session_id}-{resolved_member_id}"
             try:
                 await debit_member_wallet(
@@ -243,8 +341,11 @@ async def create_ride_booking(
             num_seats=booking_in.num_seats,
         )
         db.add(booking)
+        await db.flush()
+        await _replace_passengers(db, booking, manifest)
         await db.commit()
         await db.refresh(booking)
+        await db.refresh(booking, attribute_names=["passengers"])
 
     cfg, area, location = await _get_booking_details(db, booking)
 

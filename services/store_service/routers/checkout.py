@@ -1,5 +1,8 @@
 """Store checkout router: Paystack payment initialization and verification."""
 
+import uuid
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,14 +13,16 @@ from libs.auth.models import AuthUser
 from libs.common.currency import bubbles_to_naira
 from libs.common.logging import get_logger
 from libs.common.service_client import (
-    dispatch_notification,
-    emit_rewards_event,
-    get_member_by_auth_id,
+    create_wallet_hold,
     initialize_store_payment,
+    release_wallet_hold,
     verify_store_payment,
 )
 from libs.db.session import get_async_db
 from services.store_service.models import Order, OrderItem, OrderStatus
+from services.store_service.routers.admin_inventory._helpers import (
+    _release_order_inventory,
+)
 from services.store_service.schemas import PaymentInitRequest, PaymentInitResponse
 
 # Paystack redirects back here after payment — the verify page reads ?reference=…
@@ -187,7 +192,23 @@ async def initialize_payment(
             verification = await verify_store_payment(
                 order.payment_reference, calling_service="store"
             )
-            if verification.get("status") == "pending":
+        except Exception as exc:
+            logger.warning(
+                "Could not determine status of existing payment %s",
+                order.payment_reference,
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "The existing payment could not be reconciled yet. "
+                    "Please retry shortly; a second charge was not created."
+                ),
+            ) from exc
+
+        existing_status = verification.get("status")
+        if existing_status == "pending":
+            try:
                 # Re-initialize Paystack (reference exists but user may need a new URL)
                 payment_data = await initialize_store_payment(
                     str(order.id),
@@ -196,6 +217,9 @@ async def initialize_payment(
                     member_email=order.customer_email,
                     order_number=order.order_number,
                     callback_url=_STORE_PAYMENT_CALLBACK,
+                    reference=order.payment_reference,
+                    bubbles_to_apply=order.bubbles_applied or 0,
+                    wallet_hold_id=order.wallet_hold_id,
                     calling_service="store",
                 )
                 return PaymentInitResponse(
@@ -203,11 +227,75 @@ async def initialize_payment(
                     authorization_url=payment_data["authorization_url"],
                     access_code=payment_data["access_code"],
                 )
-        except Exception:
-            logger.warning(
-                "Failed to verify existing reference %s, re-initializing",
-                order.payment_reference,
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Could not resume the existing payment. Please retry shortly.",
+                ) from exc
+        if existing_status == "completed":
+            await db.refresh(order)
+            detail = (
+                "This order has already been paid."
+                if order.status == OrderStatus.PAID
+                else "Payment is confirmed and order fulfillment is still processing."
             )
+            raise HTTPException(status_code=409, detail=detail)
+        if existing_status != "failed":
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "The existing payment status is not final. "
+                    "Please retry shortly; a second charge was not created."
+                ),
+            )
+
+        # Only a provider-confirmed terminal failure may open a fresh payment.
+        if order.wallet_hold_id:
+            try:
+                await release_wallet_hold(order.wallet_hold_id, calling_service="store")
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "The failed payment is still being released. "
+                        "Please retry shortly."
+                    ),
+                ) from exc
+        order.wallet_hold_id = None
+        order.payment_reference = None
+        await db.commit()
+
+    payment_reference = f"store-order-{order.id}-{uuid.uuid4().hex[:12]}"
+    if order.bubbles_applied and not order.wallet_transaction_id:
+        try:
+            hold = await create_wallet_hold(
+                current_user.user_id,
+                amount=order.bubbles_applied,
+                idempotency_key=f"{payment_reference}:bubbles",
+                description=f"Store order {order.order_number}",
+                calling_service="store",
+                reference_type="store_order",
+                reference_id=str(order.id),
+                expires_in_seconds=1800,
+            )
+        except httpx.HTTPStatusError as exc:
+            detail = "Could not reserve the selected Bubbles"
+            try:
+                detail = exc.response.json().get("detail") or detail
+            except ValueError:
+                pass
+            raise HTTPException(
+                status_code=(
+                    exc.response.status_code
+                    if exc.response.status_code in {400, 402, 404, 409}
+                    else 503
+                ),
+                detail=detail,
+            ) from exc
+        order.wallet_hold_id = str(hold["id"])
+
+    order.payment_reference = payment_reference
+    await db.commit()
 
     # Initialize Paystack payment via payments_service
     try:
@@ -218,20 +306,29 @@ async def initialize_payment(
             member_email=order.customer_email,
             order_number=order.order_number,
             callback_url=_STORE_PAYMENT_CALLBACK,
+            reference=payment_reference,
+            bubbles_to_apply=order.bubbles_applied or 0,
+            wallet_hold_id=order.wallet_hold_id,
             calling_service="store",
         )
     except Exception as e:
         logger.error(
             "Failed to initialize Paystack for order %s: %s", order.order_number, e
         )
+        if order.wallet_hold_id:
+            try:
+                await release_wallet_hold(order.wallet_hold_id, calling_service="store")
+            except Exception:
+                logger.exception(
+                    "Failed to release wallet hold for order %s", order.order_number
+                )
+        order.wallet_hold_id = None
+        order.payment_reference = None
+        await db.commit()
         raise HTTPException(
             status_code=502,
             detail="Could not initialize payment. Please try again.",
         )
-
-    # Store the reference on the order for reconciliation
-    order.payment_reference = payment_data["reference"]
-    await db.commit()
 
     return PaymentInitResponse(
         payment_reference=payment_data["reference"],
@@ -306,59 +403,26 @@ async def verify_payment(
 
     payment_status = verification.get("status", "unknown")
 
-    if payment_status == "completed" and order.status == OrderStatus.PENDING_PAYMENT:
-        # Mark as paid (webhook may also do this — idempotent in mark_order_paid)
-        order.status = OrderStatus.PAID
-        from datetime import datetime
-
-        order.paid_at = datetime.utcnow()
-        await db.commit()
-
-        # Emit purchase event
-        await emit_rewards_event(
-            event_type="store.purchase_completed",
-            member_auth_id=current_user.user_id,
-            service_source="store",
-            event_data={
-                "order_number": order.order_number,
-                "total_ngn": float(order.total_ngn),
-                "items_count": len(order.items),
-            },
-            idempotency_key=f"store-purchase-{order.id}",
-            calling_service="store",
-        )
-
-        # NOTE: Confirmation email is sent by the Paystack webhook
-        # (mark_order_paid in admin_inventory.py) to avoid duplicate emails
-        # when both verify and webhook fire for the same order.
-
-        # Notify admins of the new order
-        await _notify_admins_new_order(order, db)
-
-        # Dispatch in-app notification to buyer
-        member = await get_member_by_auth_id(
-            current_user.user_id, calling_service="store"
-        )
-        if member:
-            await dispatch_notification(
-                type="order_confirmed",
-                category="store",
-                member_ids=[str(member["id"])],
-                title="Order Confirmed",
-                body=f"Your order #{order.order_number} has been confirmed and is being processed.",
-                action_url=f"/account/orders/{order.order_number}",
-                icon="shopping-bag",
-                metadata={
-                    "order_id": str(order.id),
-                    "order_number": order.order_number,
-                    "amount": float(order.total_ngn),
-                },
-                calling_service="store",
-            )
-
+    # Internal verification applies the payment entitlement before returning.
+    # Refresh so this request does not repeat mark-paid side effects.
+    await db.refresh(order)
+    if order.status == OrderStatus.PAID:
         return _verify_response("success", "Payment confirmed")
-    elif payment_status == "failed":
+
+    if payment_status == "completed":
+        return _verify_response(
+            "pending", "Payment confirmed. Order fulfillment is still processing."
+        )
+    if payment_status == "failed":
         order.status = OrderStatus.PAYMENT_FAILED
+        await _release_order_inventory(db, order, "system")
+        if order.wallet_hold_id:
+            try:
+                await release_wallet_hold(order.wallet_hold_id, calling_service="store")
+            except Exception:
+                logger.exception(
+                    "Failed to release wallet hold for order %s", order.order_number
+                )
         await db.commit()
         return _verify_response("failed", "Payment failed. Please try again.")
     else:

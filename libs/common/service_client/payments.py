@@ -82,6 +82,9 @@ async def initialize_store_payment(
     member_email: str,
     order_number: str,
     callback_url: str | None = None,
+    reference: str | None = None,
+    bubbles_to_apply: int = 0,
+    wallet_hold_id: str | None = None,
     calling_service: str,
 ) -> dict:
     """Initialize a Paystack transaction for a store order via payments_service.
@@ -90,7 +93,7 @@ async def initialize_store_payment(
     Raises httpx errors on failure.
     """
     settings = get_settings()
-    reference = f"store-order-{order_id}"
+    payment_reference = reference or f"store-order-{order_id}"
     resp = await internal_post(
         service_url=settings.PAYMENTS_SERVICE_URL,
         path="/internal/payments/initialize",
@@ -99,13 +102,15 @@ async def initialize_store_payment(
             "purpose": "store_order",
             "amount": amount_ngn,
             "currency": "NGN",
-            "reference": reference,
+            "reference": payment_reference,
             "member_auth_id": member_auth_id,
             "callback_url": callback_url,
             "metadata": {
                 "payer_email": member_email,
                 "order_id": order_id,
                 "order_number": order_number,
+                "bubbles_to_apply": bubbles_to_apply,
+                "wallet_hold_id": wallet_hold_id,
             },
         },
     )

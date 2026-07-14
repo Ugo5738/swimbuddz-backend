@@ -59,6 +59,14 @@ def _install_paystack_stubs(
         "services.payments_service.routers.intents.intent_creation._set_pending_tier_payment_for_payment",
         AsyncMock(return_value=None),
     )
+    monkeypatch.setattr(
+        "services.payments_service.routers.intents.intent_creation.create_wallet_hold",
+        AsyncMock(return_value={"id": str(uuid.uuid4()), "status": "held"}),
+    )
+    monkeypatch.setattr(
+        "services.payments_service.routers.intents.intent_creation.release_wallet_hold",
+        AsyncMock(return_value={"status": "released"}),
+    )
 
 
 def _override_current_user_email(payments_app, email="member@test.com"):
@@ -840,7 +848,7 @@ async def test_session_fee_requires_backend_sign_in_access(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_session_fee_rejects_mixed_bubbles(payments_client, monkeypatch):
+async def test_session_fee_reserves_mixed_bubbles(payments_client, monkeypatch):
     from services.payments_service.app.main import app as payments_app
 
     _override_current_user_email(payments_app)
@@ -857,13 +865,13 @@ async def test_session_fee_rejects_mixed_bubbles(payments_client, monkeypatch):
             "bubbles_to_apply": 5,
         },
     )
-    assert response.status_code == 409, response.text
-    assert "Mixed Bubbles and card payments" in response.json()["detail"]
+    assert response.status_code == 201, response.text
+    assert response.json()["amount"] == 1500.0
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_session_fee_rejects_any_payment_intent_bubbles(
+async def test_session_fee_rejects_more_bubbles_than_the_server_total(
     payments_client, monkeypatch
 ):
     from services.payments_service.app.main import app as payments_app
@@ -882,13 +890,13 @@ async def test_session_fee_rejects_any_payment_intent_bubbles(
             "bubbles_to_apply": 50,
         },
     )
-    assert response.status_code == 409
-    assert "Mixed Bubbles and card payments" in response.json()["detail"]
+    assert response.status_code == 400
+    assert "At most 10 whole Bubbles" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_session_booking_rejects_mixed_bubbles(payments_client, monkeypatch):
+async def test_session_booking_reserves_mixed_bubbles(payments_client, monkeypatch):
     from services.payments_service.app.main import app as payments_app
 
     _override_current_user_email(payments_app)
@@ -912,13 +920,13 @@ async def test_session_booking_rejects_mixed_bubbles(payments_client, monkeypatc
             "payment_metadata": {"booking_id": booking_id},
         },
     )
-    assert response.status_code == 409, response.text
-    assert "Mixed Bubbles and card payments" in response.json()["detail"]
+    assert response.status_code == 201, response.text
+    assert response.json()["amount"] == 1500.0
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_session_booking_does_not_persist_rejected_mixed_payment(
+async def test_session_booking_persists_wallet_hold_metadata(
     payments_client, db_session, monkeypatch
 ):
     from services.payments_service.app.main import app as payments_app
@@ -945,14 +953,18 @@ async def test_session_booking_does_not_persist_rejected_mixed_payment(
             "payment_metadata": {"booking_id": booking_id},
         },
     )
-    assert response.status_code == 409, response.text
+    assert response.status_code == 201, response.text
     assert not db_session.new
     from sqlalchemy import func, select
 
     count = (
         await db_session.execute(select(func.count()).select_from(Payment))
     ).scalar_one()
-    assert count == 0
+    assert count == 1
+    payment = (await db_session.execute(select(Payment))).scalar_one()
+    assert payment.amount == 2900.0
+    assert payment.payment_metadata["bubbles_to_apply"] == 6
+    assert payment.payment_metadata["wallet_hold_id"]
 
 
 @pytest.mark.asyncio

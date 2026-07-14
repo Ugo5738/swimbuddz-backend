@@ -10,7 +10,7 @@ from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.currency import (
     kobo_to_bubbles,
-    kobo_to_bubbles_for_charge,
+    kobo_to_bubbles_exact,
     naira_to_kobo,
 )
 from libs.common.service_client import (
@@ -582,7 +582,16 @@ async def create_or_update_rsvp(
     # Debit wallet when the member commits to a paid "going" and hasn't paid yet.
     wallet_txn_id = None
     if should_charge:
-        fee_bubbles = kobo_to_bubbles_for_charge(total_charge_kobo)
+        try:
+            fee_bubbles = kobo_to_bubbles_exact(total_charge_kobo)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This event cannot be paid entirely with whole Bubbles. "
+                    "Use card payment instead."
+                ),
+            ) from exc
         idempotency_key = f"event-{event_id}-{member_id}"
         try:
             result_txn = await debit_member_wallet(

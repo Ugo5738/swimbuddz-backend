@@ -33,7 +33,7 @@ from libs.auth.dependencies import (
     require_coach,
 )
 from libs.auth.models import AuthUser
-from libs.common.currency import kobo_to_bubbles, kobo_to_bubbles_for_charge
+from libs.common.currency import kobo_to_bubbles, kobo_to_bubbles_exact
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.session_access import denial_message
@@ -123,9 +123,19 @@ async def _debit_booking_fee(
     if fee_amount_kobo <= 0:
         return None
     try:
+        fee_bubbles = kobo_to_bubbles_exact(fee_amount_kobo)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This fee cannot be paid entirely with whole Bubbles. "
+                "Use mixed Bubbles and card payment instead."
+            ),
+        ) from exc
+    try:
         result_txn = await debit_member_wallet(
             member_auth_id,
-            amount=kobo_to_bubbles_for_charge(fee_amount_kobo),
+            amount=fee_bubbles,
             idempotency_key=(
                 f"booking-fee-{session_id}-{member_id}-{int(booked_at.timestamp())}"
             ),

@@ -31,6 +31,7 @@ async def apply_ride_share(payment: Payment) -> None:
     ride_config_id = (payment.payment_metadata or {}).get("ride_config_id")
     pickup_location_id = (payment.payment_metadata or {}).get("pickup_location_id")
     num_seats = (payment.payment_metadata or {}).get("num_seats", 1)
+    passengers = (payment.payment_metadata or {}).get("passengers")
 
     if not session_id or not ride_config_id or not pickup_location_id:
         raise HTTPException(
@@ -65,6 +66,7 @@ async def apply_ride_share(payment: Payment) -> None:
                 "session_ride_config_id": ride_config_id,
                 "pickup_location_id": pickup_location_id,
                 "num_seats": num_seats,
+                "passengers": passengers,
             },
             params={"member_id": str(member_id)},
             headers=headers,

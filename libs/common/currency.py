@@ -39,11 +39,18 @@ def kobo_to_bubbles(kobo: int) -> int:
     return kobo // KOBO_PER_BUBBLE
 
 
-def kobo_to_bubbles_for_charge(kobo: int) -> int:
-    """Convert a positive charge to whole Bubbles without under-collecting."""
+def kobo_to_bubbles_exact(kobo: int) -> int:
+    """Convert an exactly representable kobo charge to whole Bubbles.
+
+    Mixed-tender flows should apply whole Bubbles and charge the remaining
+    kobo externally. A wallet-only flow must never round the member's charge.
+    """
     if kobo <= 0:
         return 0
-    return (kobo + KOBO_PER_BUBBLE - 1) // KOBO_PER_BUBBLE
+    bubbles, remainder = divmod(kobo, KOBO_PER_BUBBLE)
+    if remainder:
+        raise ValueError("Charge is not exactly representable in whole Bubbles")
+    return bubbles
 
 
 def bubbles_to_kobo(bubbles: int) -> int:

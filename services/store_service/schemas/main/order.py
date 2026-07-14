@@ -85,6 +85,7 @@ class OrderResponse(BaseModel):
     payment_reference: Optional[str]
     bubbles_applied: Optional[int] = None  # Bubbles debited from wallet (if any)
     wallet_transaction_id: Optional[str] = None
+    wallet_hold_id: Optional[str] = None
     paid_at: Optional[datetime]
     fulfilled_at: Optional[datetime]
     cancelled_at: Optional[datetime]

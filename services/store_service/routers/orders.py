@@ -3,7 +3,6 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,12 +10,14 @@ from sqlalchemy.orm import selectinload
 
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
-from libs.common.currency import bubbles_to_naira, naira_to_bubbles
+from libs.common.currency import bubbles_to_naira
+from libs.common.logging import get_logger
 from libs.common.service_client import (
-    check_wallet_balance,
-    debit_member_wallet,
+    capture_wallet_hold,
+    create_wallet_hold,
     emit_rewards_event,
     get_member_by_auth_id,
+    release_wallet_hold,
 )
 from libs.db.session import get_async_db
 from services.store_service.models import (
@@ -47,6 +48,7 @@ from services.store_service.schemas import (
 )
 
 router = APIRouter(tags=["store"])
+logger = get_logger(__name__)
 
 # Constants
 DELIVERY_FEE_NGN = Decimal("2000")  # Flat delivery fee for now
@@ -197,7 +199,6 @@ async def start_checkout(
     # Bubbles wallet payment (partial or full)
     bubbles_applied: int | None = None
     bubbles_amount_ngn = Decimal("0")
-    wallet_txn_id: str | None = None
     paystack_amount = amount_after_credit  # Amount that must go to Paystack
 
     if (
@@ -207,34 +208,15 @@ async def start_checkout(
     ):
         bubbles_requested = request.bubbles_to_apply
 
-        # Convert Bubbles to NGN and cap at amount_after_credit
+        # One Bubble is exactly NGN 100. The remainder stays as a card charge.
         bubbles_ngn_value = Decimal(str(bubbles_to_naira(bubbles_requested)))
         if bubbles_ngn_value > amount_after_credit:
-            # Cap: member asked for more Bubbles than the remaining total
-            # Only debit enough to cover the bill
-            bubbles_requested = naira_to_bubbles(float(amount_after_credit))
-            if bubbles_requested == 0:
-                bubbles_requested = 1  # Minimum 1 Bubble if any credit remains
-            bubbles_ngn_value = min(
-                Decimal(str(bubbles_to_naira(bubbles_requested))),
-                amount_after_credit,
-            )
-
-        # Pre-flight: check balance (non-destructive)
-        balance_check = await check_wallet_balance(
-            current_user.user_id,
-            required_amount=bubbles_requested,
-            calling_service="store",
-        )
-        if not balance_check or not balance_check.get("sufficient"):
-            current_balance = (
-                balance_check.get("current_balance", 0) if balance_check else 0
-            )
+            maximum_bubbles = int(amount_after_credit // Decimal("100"))
             raise HTTPException(
-                status_code=402,
+                status_code=400,
                 detail=(
-                    f"Insufficient Bubbles. Need {bubbles_requested} 🫧, "
-                    f"have {current_balance} 🫧."
+                    f"At most {maximum_bubbles} whole Bubbles can be applied "
+                    "to this order"
                 ),
             )
 
@@ -267,40 +249,39 @@ async def start_checkout(
             request.delivery_address.model_dump() if request.delivery_address else None
         ),
         customer_notes=request.customer_notes,
+        bubbles_applied=bubbles_applied,
     )
     db.add(order)
     await db.flush()  # Get order ID
 
-    # Debit Bubbles after we have the order ID (use it as idempotency scope)
-    if bubbles_applied and bubbles_applied > 0:
+    # A wallet-only order has no external provider step. Reserve first, commit
+    # the order, then capture the same hold after all order rows exist.
+    full_wallet_payment = bool(bubbles_applied and paystack_amount == 0)
+    if full_wallet_payment:
         try:
-            result_txn = await debit_member_wallet(
+            hold = await create_wallet_hold(
                 current_user.user_id,
                 amount=bubbles_applied,
-                idempotency_key=f"order-{order.id}",
+                idempotency_key=f"store-order:{order.id}:bubbles",
                 description=f"Store order {order.order_number} ({bubbles_applied} 🫧)",
                 calling_service="store",
-                transaction_type="purchase",
                 reference_type="order",
                 reference_id=str(order.id),
+                expires_in_seconds=1800,
             )
-            wallet_txn_id = result_txn.get("transaction_id")
-            order.bubbles_applied = bubbles_applied
-            order.wallet_transaction_id = wallet_txn_id
+            order.wallet_hold_id = str(hold["id"])
+        except Exception as exc:
+            await db.rollback()
+            if hasattr(exc, "response") and exc.response.status_code == 402:
+                raise HTTPException(
+                    status_code=402,
+                    detail="Insufficient available Bubbles. Please top up your wallet.",
+                ) from exc
+            raise
 
-            # If Bubbles covered the entire amount, mark as PAID
-            if paystack_amount <= 0:
-                order.status = OrderStatus.PAID
-                order.paid_at = datetime.utcnow()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 400:
-                detail = e.response.json().get("detail", "")
-                if "Insufficient" in detail:
-                    raise HTTPException(
-                        status_code=402,
-                        detail="Insufficient Bubbles. Please top up your wallet.",
-                    )
-            raise HTTPException(status_code=502, detail="Payment service error.")
+    if amount_after_credit <= 0:
+        order.status = OrderStatus.PAID
+        order.paid_at = datetime.utcnow()
 
     # Create order items
     for item in cart.items:
@@ -329,7 +310,34 @@ async def start_checkout(
 
     # Mark cart as converted
     cart.status = CartStatus.CONVERTED
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        if order.wallet_hold_id:
+            try:
+                await release_wallet_hold(order.wallet_hold_id, calling_service="store")
+            except Exception:
+                logger.exception(
+                    "Failed to release wallet hold after order commit failure"
+                )
+        raise
+
+    if full_wallet_payment and order.wallet_hold_id:
+        try:
+            captured = await capture_wallet_hold(
+                order.wallet_hold_id, calling_service="store"
+            )
+        except Exception:
+            # A retry of capture is safe and resolves the common case where the
+            # first response was lost after the wallet committed.
+            captured = await capture_wallet_hold(
+                order.wallet_hold_id, calling_service="store"
+            )
+        order.wallet_transaction_id = captured.get("wallet_transaction_id")
+        order.status = OrderStatus.PAID
+        order.paid_at = datetime.utcnow()
+        await db.commit()
 
     # Best-effort: check if this is the member's first store purchase
     first_order_check = await db.execute(

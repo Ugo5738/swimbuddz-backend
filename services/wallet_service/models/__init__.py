@@ -31,6 +31,7 @@ from services.wallet_service.models.enums import (  # noqa: F401
     TransactionType,
     WalletStatus,
     WalletTier,
+    WalletHoldStatus,
 )
 
 # Phase 4 — Family wallet stub
@@ -57,6 +58,7 @@ from services.wallet_service.models.ledger_failure import (  # noqa: F401
 )
 from services.wallet_service.models.topup import WalletTopup  # noqa: F401
 from services.wallet_service.models.transaction import WalletTransaction  # noqa: F401
+from services.wallet_service.models.hold import WalletHold  # noqa: F401
 
 # Phase 1 — Core wallet models
 from services.wallet_service.models.wallet import Wallet  # noqa: F401
@@ -77,9 +79,11 @@ __all__ = [
     "TransactionType",
     "WalletStatus",
     "WalletTier",
+    "WalletHoldStatus",
     # Phase 1
     "Wallet",
     "WalletTransaction",
+    "WalletHold",
     "WalletTopup",
     "WalletLedgerPostFailure",
     "PromotionalBubbleGrant",

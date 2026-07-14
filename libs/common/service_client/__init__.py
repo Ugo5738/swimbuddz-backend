@@ -75,12 +75,15 @@ from .volunteer import (
 )
 from .wallet import (
     check_wallet_balance,
+    capture_wallet_hold,
+    create_wallet_hold,
     credit_member_wallet,
     debit_member_wallet,
     emit_rewards_event,
     get_wallet_balance,
     grant_challenge_reward_bubbles,
     grant_pool_submission_reward,
+    release_wallet_hold,
 )
 
 __all__ = [
@@ -135,6 +138,9 @@ __all__ = [
     "debit_member_wallet",
     "credit_member_wallet",
     "check_wallet_balance",
+    "create_wallet_hold",
+    "capture_wallet_hold",
+    "release_wallet_hold",
     "emit_rewards_event",
     # Volunteer
     "grant_challenge_volunteer_hours",

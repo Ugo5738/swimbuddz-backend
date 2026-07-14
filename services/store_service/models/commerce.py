@@ -211,6 +211,9 @@ class Order(Base):
     wallet_transaction_id: Mapped[Optional[str]] = mapped_column(
         String(100), index=True, nullable=True
     )
+    wallet_hold_id: Mapped[Optional[str]] = mapped_column(
+        String(100), index=True, nullable=True
+    )
 
     # Fulfillment
     fulfillment_type: Mapped[FulfillmentType] = mapped_column(
