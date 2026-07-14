@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -130,7 +130,8 @@ class ContentPostBase(BaseModel):
     body: str  # Markdown content
     category: str  # swimming_tips/safety/breathing/technique/news/education/getting_started/community_culture/health_recovery
     featured_image_media_id: Optional[uuid.UUID] = None
-    tier_access: str = "community"  # community/club/academy
+    featured_image_prompt: Optional[str] = Field(None, max_length=1200)
+    tier_access: Literal["community", "club", "academy"] = "community"
     email_on_publish: bool = False
 
 
@@ -147,7 +148,7 @@ class ContentAIDraftCreate(BaseModel):
     title: str = Field(..., min_length=4, max_length=180)
     brief: Optional[str] = Field(None, max_length=2000)
     category: str = "swimming_tips"
-    tier_access: str = "community"
+    tier_access: Literal["community", "club", "academy"] = "community"
 
 
 class ContentPostUpdate(BaseModel):
@@ -158,7 +159,8 @@ class ContentPostUpdate(BaseModel):
     body: Optional[str] = None
     category: Optional[str] = None
     featured_image_media_id: Optional[uuid.UUID] = None
-    tier_access: Optional[str] = None
+    featured_image_prompt: Optional[str] = Field(None, max_length=1200)
+    tier_access: Optional[Literal["community", "club", "academy"]] = None
     is_published: Optional[bool] = None
     scheduled_for: Optional[datetime] = None
     email_on_publish: Optional[bool] = None
@@ -176,9 +178,19 @@ class ContentPostResponse(ContentPostBase):
     updated_at: datetime
     comment_count: Optional[int] = 0
     featured_image_url: Optional[str] = None  # Resolved from media_id
+    ai_request_id: Optional[uuid.UUID] = None
+    ai_context_version: Optional[str] = None
+    ai_model_used: Optional[str] = None
     email_sent_count: int = 0
     email_failed_count: int = 0
+    email_in_progress_count: int = 0
+    email_unknown_count: int = 0
+    email_attempt_count: int = 0
     last_email_sent_at: Optional[datetime] = None
+    email_recipient_snapshot_at: Optional[datetime] = None
+    email_dispatch_last_attempt_at: Optional[datetime] = None
+    email_dispatch_completed_at: Optional[datetime] = None
+    email_dispatch_last_error: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -332,6 +344,7 @@ class NotificationPreferencesBase(BaseModel):
     email_payment_receipts: bool = True
     email_coach_messages: bool = True
     email_marketing: bool = False
+    email_content_updates: bool = True
     email_birthday: bool = True
 
     # Push notification preferences
@@ -363,6 +376,7 @@ class NotificationPreferencesUpdate(BaseModel):
     email_payment_receipts: Optional[bool] = None
     email_coach_messages: Optional[bool] = None
     email_marketing: Optional[bool] = None
+    email_content_updates: Optional[bool] = None
     email_birthday: Optional[bool] = None
     push_announcements: Optional[bool] = None
     push_session_reminders: Optional[bool] = None

@@ -70,4 +70,10 @@ Read it here:
         preheader=summary_text,
     )
 
-    return await send_email(to_email, subject, body, html_body)
+    return await send_email(
+        to_email,
+        subject,
+        body,
+        html_body,
+        raise_on_unknown=True,
+    )

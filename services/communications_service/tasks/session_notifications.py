@@ -1135,8 +1135,28 @@ async def _get_session_announcement_members(
                 session.get("id"),
             )
             return []
-        member_ids = [row["member_id"] for row in resp.json() if row.get("member_id")]
-        return await get_members_bulk(member_ids, calling_service="communications")
+        enrollment_by_member = {
+            str(row["member_id"]): {
+                "enrolled": True,
+                "status": row.get("status"),
+                "access_suspended": bool(row.get("access_suspended")),
+            }
+            for row in resp.json()
+            if row.get("member_id")
+        }
+        cohort_members = await get_members_bulk(
+            list(enrollment_by_member), calling_service="communications"
+        )
+        return [
+            member
+            for member in cohort_members
+            if evaluate_session_access(
+                member,
+                session,
+                now=now,
+                cohort_enrollment=enrollment_by_member.get(str(member.get("id"))),
+            ).prompt_eligible
+        ]
 
     if session_type == "club" and session.get("pod_id"):
         pod = await get_pod_by_id(session["pod_id"], calling_service="communications")
@@ -1151,33 +1171,32 @@ async def _get_session_announcement_members(
             pod.get("active_member_ids") or [],
             calling_service="communications",
         )
+        pod_member_ids = {
+            str(member_id) for member_id in (pod.get("active_member_ids") or [])
+        }
         return [
-            m for m in pod_members if _default_booking_prompt_tier(m, now) == "club"
+            member
+            for member in pod_members
+            if evaluate_session_access(
+                member,
+                session,
+                now=now,
+                pod_member_ids=pod_member_ids,
+            ).prompt_eligible
         ]
 
-    if session_type == "club":
+    if session_type in {"club", "community", "event"}:
         return [
-            m for m in active_members if _default_booking_prompt_tier(m, now) == "club"
+            member
+            for member in active_members
+            if evaluate_session_access(member, session, now=now).prompt_eligible
+            or (
+                session_type == "community"
+                and _is_unpaid_community_prospect(member, now)
+            )
         ]
 
-    if session_type == "academy":
-        return [
-            m
-            for m in active_members
-            if _default_booking_prompt_tier(m, now) == "academy"
-        ]
-
-    if session_type == "community":
-        return [
-            m
-            for m in active_members
-            if _default_booking_prompt_tier(m, now) == "community"
-            or _is_unpaid_community_prospect(m, now)
-        ]
-
-    # Events keep the previous broad active-member behavior, with preferences
-    # applied below.
-    return active_members
+    return []
 
 
 async def _get_notification_preferences_by_auth(
@@ -1266,8 +1285,16 @@ async def send_weekly_session_digest() -> None:
     async for db in get_async_db():
         try:
             now = utc_now()
-            week_start = now
-            week_end = now + timedelta(days=7)
+            local_now = now.astimezone(BOOKING_PROMPT_TZ)
+            days_until_monday = (7 - local_now.weekday()) % 7 or 7
+            week_start_local = datetime.combine(
+                local_now.date() + timedelta(days=days_until_monday),
+                datetime.min.time(),
+                tzinfo=BOOKING_PROMPT_TZ,
+            )
+            week_end_local = week_start_local + timedelta(days=7)
+            week_start = week_start_local.astimezone(ZoneInfo("UTC"))
+            week_end = week_end_local.astimezone(ZoneInfo("UTC"))
 
             # Get upcoming sessions for the week via sessions-service
             settings = get_settings()
@@ -1289,7 +1316,8 @@ async def send_weekly_session_digest() -> None:
                 logger.info("No sessions this week for digest; checking articles")
 
             week_label = (
-                f"{week_start.strftime('%B %d')} - {week_end.strftime('%d, %Y')}"
+                f"{week_start_local.strftime('%B %d')} - "
+                f"{(week_end_local - timedelta(days=1)).strftime('%d, %Y')}"
             )
 
             # Get active members from members-service
@@ -1376,9 +1404,7 @@ async def send_weekly_session_digest() -> None:
             eligible_members = []
             for m in all_members:
                 pref = prefs_map.get(m.get("auth_id"))
-                wants_session_digest = not (
-                    pref and pref.weekly_session_digest is False
-                )
+                wants_session_digest = bool(pref and pref.weekly_session_digest)
                 wants_content_digest = not (pref and pref.weekly_digest is False)
                 if not wants_session_digest and not wants_content_digest:
                     continue
@@ -1390,9 +1416,7 @@ async def send_weekly_session_digest() -> None:
                 member_articles = []
                 member_id = str(member.get("id"))
                 pref = prefs_map.get(member.get("auth_id"))
-                wants_session_digest = not (
-                    pref and pref.weekly_session_digest is False
-                )
+                wants_session_digest = bool(pref and pref.weekly_session_digest)
                 wants_content_digest = not (pref and pref.weekly_digest is False)
                 if wants_session_digest:
                     for s in sessions:

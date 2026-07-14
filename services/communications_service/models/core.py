@@ -2,7 +2,16 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Index, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -180,6 +189,14 @@ class ContentPost(Base):
     featured_image_media_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )  # FK to media_service.media_items
+    featured_image_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ai_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    ai_context_version: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True
+    )
+    ai_model_used: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     published_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -189,6 +206,18 @@ class ContentPost(Base):
         DateTime(timezone=True), nullable=True
     )
     email_on_publish: Mapped[bool] = mapped_column(Boolean, default=False)
+    email_recipient_snapshot_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    email_dispatch_last_attempt_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    email_dispatch_completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    email_dispatch_last_error: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )
     tier_access: Mapped[str] = mapped_column(
         String, default="community"
     )  # community/club/academy
@@ -227,12 +256,20 @@ class ContentPostEmailLog(Base):
     member_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
     )
+    recipient_email: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    recipient_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     channel: Mapped[str] = mapped_column(String, nullable=False, default="email")
     sent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     delivery_status: Mapped[str] = mapped_column(String, default="sent")
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_attempt_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
@@ -357,6 +394,9 @@ class NotificationPreferences(Base):
     email_payment_receipts: Mapped[bool] = mapped_column(Boolean, default=True)
     email_coach_messages: Mapped[bool] = mapped_column(Boolean, default=True)
     email_marketing: Mapped[bool] = mapped_column(Boolean, default=False)
+    email_content_updates: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
     email_birthday: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
     )

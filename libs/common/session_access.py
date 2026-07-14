@@ -9,7 +9,7 @@ while giving every surface the same access rules.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Mapping
 
 from libs.common.datetime_utils import utc_now
@@ -20,6 +20,9 @@ ACADEMY = "academy"
 COHORT_CLASS = "cohort_class"
 EVENT = "event"
 SCHEDULED = "scheduled"
+SIGN_IN_WINDOW_BEFORE = timedelta(minutes=30)
+SIGN_IN_WINDOW_AFTER = timedelta(minutes=60)
+SIGN_IN_STATUSES = {SCHEDULED, "in_progress", "completed"}
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,7 @@ class SessionAccessDecision:
     digest_eligible: bool
     prompt_eligible: bool
     sign_in_allowed: bool
+    sign_in_eligible: bool = False
     reason: str | None = None
 
 
@@ -194,6 +198,12 @@ def evaluate_session_access(
     not_ended = ends_at is None or ends_at > now
     available_for_new_booking = is_scheduled and not_started
     available_for_digest = is_scheduled and not_ended
+    status_allows_sign_in = status in SIGN_IN_STATUSES
+    available_for_sign_in = (
+        status_allows_sign_in
+        and (starts_at is None or now >= starts_at - SIGN_IN_WINDOW_BEFORE)
+        and (ends_at is None or now <= ends_at + SIGN_IN_WINDOW_AFTER)
+    )
 
     if confirmed_booking:
         return SessionAccessDecision(
@@ -202,7 +212,9 @@ def evaluate_session_access(
             bookable=False,
             digest_eligible=available_for_digest,
             prompt_eligible=False,
-            sign_in_allowed=True,
+            sign_in_allowed=available_for_sign_in,
+            sign_in_eligible=status_allows_sign_in,
+            reason=None if available_for_sign_in else "session_unavailable",
         )
 
     allowed = False
@@ -256,7 +268,8 @@ def evaluate_session_access(
         bookable=allowed and available_for_new_booking,
         digest_eligible=allowed and available_for_digest,
         prompt_eligible=prompt_eligible,
-        sign_in_allowed=allowed,
+        sign_in_allowed=allowed and available_for_sign_in,
+        sign_in_eligible=allowed and status_allows_sign_in,
         reason=None if allowed and available_for_new_booking else reason,
     )
 

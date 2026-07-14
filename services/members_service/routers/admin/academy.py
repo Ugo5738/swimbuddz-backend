@@ -1,6 +1,6 @@
-"""Academy-tier admin activate/expire endpoints."""
+"""Academy-tier activation and source-of-truth projection endpoints."""
 
-from datetime import timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -9,16 +9,72 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
+from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.members_service.models import Member, MemberMembership
 from services.members_service.routers._helpers import member_eager_load_options
-from services.members_service.schemas import ActivateAcademyRequest, MemberResponse
+from services.members_service.schemas import (
+    ActivateAcademyRequest,
+    MemberResponse,
+    ProjectAcademyRequest,
+)
 from services.members_service.services.member_service import (
     academy_bundle_expiry,
     normalize_member_tiers,
 )
 
+from ._shared import _claim_entitlement_application
+
+logger = get_logger(__name__)
 router = APIRouter()
+
+
+def _as_aware(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+async def _load_member_for_update(
+    db: AsyncSession,
+    *,
+    auth_id: str,
+) -> Member:
+    result = await db.execute(
+        select(Member)
+        .where(Member.auth_id == auth_id)
+        .options(*member_eager_load_options())
+        .with_for_update()
+    )
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found",
+        )
+    return member
+
+
+def _normalize_stored_tiers(member: Member) -> None:
+    membership = member.membership
+    if not membership:
+        return
+    primary_tier, active_tiers, _ = normalize_member_tiers(
+        current_tier=membership.primary_tier,
+        current_tiers=membership.active_tiers,
+        community_paid_until=membership.community_paid_until,
+        club_paid_until=membership.club_paid_until,
+        academy_paid_until=membership.academy_paid_until,
+    )
+    membership.primary_tier = primary_tier
+    membership.active_tiers = active_tiers
+
+
+async def _response_member(db: AsyncSession, member_id) -> Member:
+    result = await db.execute(
+        select(Member)
+        .where(Member.id == member_id)
+        .options(*member_eager_load_options())
+    )
+    return result.scalar_one()
 
 
 @router.post("/by-auth/{auth_id}/academy/expire", response_model=MemberResponse)
@@ -27,55 +83,19 @@ async def admin_expire_academy_membership_by_auth(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Set academy_paid_until to NOW, effectively expiring academy access.
+    """Expire Academy access immediately.
 
-    Used by academy_service after a member's withdrawal when they have no
-    remaining ENROLLED cohorts. Subsequent reads via /members/me or the
-    internal membership endpoint will strip "academy" from active_tiers
-    via normalize_member_tiers since the date is no longer in the future.
+    Kept for operational compatibility. Academy's normal lifecycle uses the
+    exact ``/academy/project`` endpoint so another active cohort is preserved.
     """
-    query = (
-        select(Member)
-        .where(Member.auth_id == auth_id)
-        .options(*member_eager_load_options())
-    )
-    result = await db.execute(query)
-    member = result.scalar_one_or_none()
-    if not member:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Member not found"
-        )
-
+    member = await _load_member_for_update(db, auth_id=auth_id)
     if not member.membership:
-        # Nothing to expire — return member unchanged.
         return member
 
-    now = utc_now()
-    member.membership.academy_paid_until = now
-
-    # Recompute active_tiers + primary_tier from the new state
-    new_primary, new_tiers, changed = normalize_member_tiers(
-        current_tier=member.membership.primary_tier,
-        current_tiers=member.membership.active_tiers,
-        community_paid_until=member.membership.community_paid_until,
-        club_paid_until=member.membership.club_paid_until,
-        academy_paid_until=member.membership.academy_paid_until,
-    )
-    if changed:
-        member.membership.primary_tier = new_primary
-        member.membership.active_tiers = new_tiers
-
-    db.add(member)
+    member.membership.academy_paid_until = utc_now()
+    _normalize_stored_tiers(member)
     await db.commit()
-    await db.refresh(member)
-
-    query = (
-        select(Member)
-        .where(Member.id == member.id)
-        .options(*member_eager_load_options())
-    )
-    result = await db.execute(query)
-    return result.scalar_one()
+    return await _response_member(db, member.id)
 
 
 @router.post("/by-auth/{auth_id}/academy/activate", response_model=MemberResponse)
@@ -85,47 +105,34 @@ async def admin_activate_academy_membership_by_auth(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Set (or extend) the academy tier for a member until cohort_end_date.
+    """Apply a paid Academy entitlement once and preserve later cohorts.
 
-    A member may be enrolled in multiple simultaneous cohorts ending at different
-    dates. This endpoint always keeps academy_paid_until at the *latest* cohort
-    end date seen, so access is never prematurely revoked.
-    Called by payments_service after a successful academy cohort payment.
+    The idempotency key protects both the Academy end date and the Community
+    and Club periods bundled with the first Academy payment. Retrying the same
+    payment therefore cannot keep moving those lower-tier expiries forward.
     """
-    query = (
-        select(Member)
-        .where(Member.auth_id == auth_id)
-        .options(*member_eager_load_options())
+    member = await _load_member_for_update(db, auth_id=auth_id)
+    should_apply = await _claim_entitlement_application(
+        db,
+        member=member,
+        idempotency_key=payload.idempotency_key,
+        tier="academy",
+        action="activate",
+        source_reference=payload.source_reference,
     )
-    result = await db.execute(query)
-    member = result.scalar_one_or_none()
-
-    if not member:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Member not found"
-        )
+    if not should_apply:
+        await db.commit()
+        return await _response_member(db, member.id)
 
     if not member.membership:
         member.membership = MemberMembership(member_id=member.id)
         db.add(member.membership)
 
-    # Ensure the end date is timezone-aware
-    new_end = payload.cohort_end_date
-    if new_end.tzinfo is None:
-        new_end = new_end.replace(tzinfo=timezone.utc)
-
-    # Keep the later of the current value and the supplied cohort end date,
-    # so multiple overlapping enrollments don't truncate each other.
+    new_end = _as_aware(payload.cohort_end_date)
     current_until = member.membership.academy_paid_until
     if current_until is None or new_end > current_until:
         member.membership.academy_paid_until = new_end
 
-    # Academy enrollment bundles Community (1 year) and Club (3 months) access,
-    # whether paid in full or by installment (docs/club/PRICING_STRATEGY.md). The
-    # billing UI keys its "Activate Community/Club" upsell off these *_paid_until
-    # dates, and normalize_member_tiers strips any tier whose date is not in the
-    # future — so without setting them a paid academy member is wrongly shown as
-    # Community-inactive and prompted to pay again.
     (
         member.membership.community_paid_until,
         member.membership.club_paid_until,
@@ -134,29 +141,42 @@ async def admin_activate_academy_membership_by_auth(
         member.membership.community_paid_until,
         member.membership.club_paid_until,
     )
+    _normalize_stored_tiers(member)
 
-    # Update active_tiers to include academy (and implied club + community)
-    tier_priority = {"academy": 3, "club": 2, "community": 1}
-    updated_tiers = set(member.membership.active_tiers or [])
-    updated_tiers.update({"academy", "club", "community"})
-    sorted_tiers = sorted(
-        [t for t in updated_tiers if t in tier_priority],
-        key=lambda t: tier_priority[t],
-        reverse=True,
-    )
-    member.membership.active_tiers = sorted_tiers
-
-    current_priority = tier_priority.get(member.membership.primary_tier or "", 0)
-    if tier_priority.get("academy", 0) > current_priority:
-        member.membership.primary_tier = "academy"
-
-    db.add(member)
     await db.commit()
+    return await _response_member(db, member.id)
 
-    query = (
-        select(Member)
-        .where(Member.id == member.id)
-        .options(*member_eager_load_options())
+
+@router.post("/by-auth/{auth_id}/academy/project", response_model=MemberResponse)
+async def admin_project_academy_membership_by_auth(
+    auth_id: str,
+    payload: ProjectAcademyRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Replace Academy access with academy_service's authoritative projection.
+
+    This mutation is naturally idempotent and intentionally does not alter the
+    separately earned Community or Club periods. It may shorten Academy access
+    after a withdrawal, unlike the paid activation endpoint.
+    """
+    member = await _load_member_for_update(db, auth_id=auth_id)
+    if not member.membership:
+        if payload.paid_until is None:
+            return member
+        member.membership = MemberMembership(member_id=member.id)
+        db.add(member.membership)
+
+    member.membership.academy_paid_until = (
+        _as_aware(payload.paid_until) if payload.paid_until else None
     )
-    result = await db.execute(query)
-    return result.scalar_one()
+    _normalize_stored_tiers(member)
+    logger.info(
+        "Academy projection applied: member=%s paid_until=%s source=%s",
+        member.id,
+        payload.paid_until,
+        payload.source_reference,
+    )
+
+    await db.commit()
+    return await _response_member(db, member.id)

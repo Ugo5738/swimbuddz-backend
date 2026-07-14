@@ -73,6 +73,7 @@ def build_membership_status_summary(
     club_paid_until: Optional[datetime],
     academy_paid_until: Optional[datetime],
     pending_payment_reference: Optional[str] = None,
+    pending_tier_payments: Optional[dict[str, str]] = None,
     now: Optional[datetime] = None,
 ) -> dict[str, Any]:
     """Build canonical display/access status fields for one membership row."""
@@ -104,7 +105,11 @@ def build_membership_status_summary(
     if direct_paid["community"]:
         paid_tiers.add("community")
 
-    has_pending_payment = bool(pending_payment_reference)
+    # ``pending_payment_reference`` is retained only for legacy checkout
+    # resumption. Display state is driven by the tier-scoped map so unrelated
+    # session/transport payments cannot change membership labels.
+    pending_tiers = _normalize_tiers((pending_tier_payments or {}).keys())
+    has_pending_payment = bool(pending_tiers)
     tier_statuses: dict[str, dict[str, Any]] = {}
     for tier in TIERS:
         declared = tier in declared_tiers
@@ -114,7 +119,7 @@ def build_membership_status_summary(
 
         if tier in paid_tiers:
             status = "active"
-        elif has_pending_payment and (is_requested or declared):
+        elif tier in pending_tiers:
             status = "payment_pending"
         elif is_requested:
             status = "requested"
@@ -140,11 +145,13 @@ def build_membership_status_summary(
     sorted_paid_tiers = _sort_tiers(paid_tiers)
     paid_tier = sorted_paid_tiers[0] if sorted_paid_tiers else "prospect"
     display_label = _display_label(paid_tier, tier_statuses)
+    display_detail = _display_detail(paid_tier, tier_statuses)
 
     return {
         "paid_tier": paid_tier,
         "paid_tiers": sorted_paid_tiers,
         "display_label": display_label,
+        "display_detail": display_detail,
         "payment_pending": has_pending_payment,
         "tier_statuses": tier_statuses,
     }
@@ -165,3 +172,24 @@ def _display_label(paid_tier: str, tier_statuses: dict[str, dict[str, Any]]) -> 
             return f"{TIER_LABELS[tier]} ({DISPLAY_SUFFIXES[status]})"
 
     return "Prospect"
+
+
+def _display_detail(
+    paid_tier: str, tier_statuses: dict[str, dict[str, Any]]
+) -> Optional[str]:
+    """Describe the most important non-active lifecycle beside a paid tier."""
+
+    if paid_tier == "prospect":
+        return None
+
+    for status in ("payment_pending", "requested", "expired", "approved_unpaid"):
+        tiers = {
+            tier
+            for tier, tier_status in tier_statuses.items()
+            if tier_status["status"] == status
+        }
+        if tiers:
+            tier = _sort_tiers(tiers)[0]
+            return f"{TIER_LABELS[tier]}: {STATUS_LABELS[status]}"
+
+    return None

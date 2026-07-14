@@ -78,6 +78,7 @@ class Settings(BaseSettings):
 
     # AI Service
     AI_DEFAULT_MODEL: str = "gpt-4o-mini"
+    AI_IMAGE_MODEL: str = "dall-e-3"
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     GEMINI_API_KEY: str = ""  # Google AI Studio key — for the video coach (Gemini)

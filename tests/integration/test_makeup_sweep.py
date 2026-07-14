@@ -13,7 +13,7 @@ import services.sessions_service.tasks as tasks_mod
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
 
-async def test_sweep_runs_clean(monkeypatch):
+async def test_sweep_runs_clean(monkeypatch, test_engine):
     async def _none(member_id, *, session_ids=None, calling_service):
         return []
 

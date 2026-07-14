@@ -39,6 +39,13 @@ def kobo_to_bubbles(kobo: int) -> int:
     return kobo // KOBO_PER_BUBBLE
 
 
+def kobo_to_bubbles_for_charge(kobo: int) -> int:
+    """Convert a positive charge to whole Bubbles without under-collecting."""
+    if kobo <= 0:
+        return 0
+    return (kobo + KOBO_PER_BUBBLE - 1) // KOBO_PER_BUBBLE
+
+
 def bubbles_to_kobo(bubbles: int) -> int:
     """Convert Bubbles to kobo. 1 Bubble = 10,000 kobo."""
     return bubbles * KOBO_PER_BUBBLE

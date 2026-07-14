@@ -139,11 +139,13 @@ class MemberMembershipResponse(BaseModel):
     club_paid_until: Optional[datetime] = None
     academy_paid_until: Optional[datetime] = None
     pending_payment_reference: Optional[str] = None
+    pending_tier_payments: dict[str, str] = Field(default_factory=dict)
 
     # Normalized display/access summary
     paid_tier: str = "prospect"
     paid_tiers: list[str] = Field(default_factory=list)
     display_label: str = "Prospect"
+    display_detail: Optional[str] = None
     payment_pending: bool = False
     tier_statuses: dict[str, MemberTierStatusResponse] = Field(default_factory=dict)
 
@@ -181,10 +183,12 @@ class MemberMembershipResponse(BaseModel):
             club_paid_until=self.club_paid_until,
             academy_paid_until=self.academy_paid_until,
             pending_payment_reference=self.pending_payment_reference,
+            pending_tier_payments=self.pending_tier_payments,
         )
         self.paid_tier = summary["paid_tier"]
         self.paid_tiers = summary["paid_tiers"]
         self.display_label = summary["display_label"]
+        self.display_detail = summary["display_detail"]
         self.payment_pending = summary["payment_pending"]
         self.tier_statuses = {
             tier: MemberTierStatusResponse(**status)
@@ -595,12 +599,16 @@ class ActivateCommunityRequest(BaseModel):
     """Request to activate community membership."""
 
     years: int = Field(default=1, ge=1, le=5)
+    idempotency_key: Optional[str] = Field(default=None, max_length=200)
+    source_reference: Optional[str] = Field(default=None, max_length=160)
 
 
 class ExtendCommunityRequest(BaseModel):
     """Request to extend community membership by months."""
 
     months: int = Field(default=1, ge=1, le=24)
+    idempotency_key: Optional[str] = Field(default=None, max_length=200)
+    source_reference: Optional[str] = Field(default=None, max_length=160)
 
 
 class ExtendClubRequest(BaseModel):
@@ -625,12 +633,16 @@ class ExtendClubRequest(BaseModel):
         max_length=200,
         description="Audit note describing why the extension was granted.",
     )
+    idempotency_key: Optional[str] = Field(default=None, max_length=200)
+    source_reference: Optional[str] = Field(default=None, max_length=160)
 
 
 class ActivateClubRequest(BaseModel):
     """Request to activate club membership."""
 
     months: int = Field(default=1, ge=1, le=12)
+    idempotency_key: Optional[str] = Field(default=None, max_length=200)
+    source_reference: Optional[str] = Field(default=None, max_length=160)
     skip_community_check: bool = Field(
         default=False,
         description="Skip community active check (for bundle activations where community was just activated)",
@@ -649,6 +661,26 @@ class ActivateAcademyRequest(BaseModel):
     cohort_end_date: datetime = Field(
         description="ISO datetime of the cohort end date (timezone-aware)"
     )
+    idempotency_key: Optional[str] = Field(default=None, max_length=200)
+    source_reference: Optional[str] = Field(default=None, max_length=160)
+
+
+class ProjectAcademyRequest(BaseModel):
+    """Replace the Academy tier projection with Academy's current truth.
+
+    Unlike activation, projection does not grant the bundled Community or Club
+    periods. It is used by academy_service after withdrawals, cohort changes,
+    and during reconciliation to repair derived member state.
+    """
+
+    paid_until: Optional[datetime] = Field(
+        default=None,
+        description=(
+            "Latest end date across active Academy enrollments, or null when "
+            "the member has no active Academy enrollment."
+        ),
+    )
+    source_reference: Optional[str] = Field(default=None, max_length=160)
 
 
 class PendingMemberResponse(MemberResponse):

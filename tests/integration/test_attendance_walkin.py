@@ -11,12 +11,14 @@ affect the names already bound via ``from ... import ...``.
 """
 
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
 
 import services.attendance_service.routers.member.sign_in as signin_mod
 from services.attendance_service.models import AttendanceRecord, AttendanceStatus
+from services.attendance_service.schemas import AttendanceCreate
 from tests.factories import MemberFactory
 
 
@@ -117,3 +119,46 @@ async def test_public_signin_enforces_tier_check_without_booking(
     )
 
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_authenticated_signin_links_booking_and_skips_tier_check(
+    db_session, monkeypatch
+):
+    """The authenticated path preserves the same confirmed-booking override."""
+    member = MemberFactory.create()
+    db_session.add(member)
+    await db_session.commit()
+
+    session_id = uuid.uuid4()
+    booking_id = uuid.uuid4()
+
+    async def fake_get_session(*args, **kwargs):
+        return _session_payload(session_id)
+
+    async def fake_get_booking(*args, **kwargs):
+        return {"id": str(booking_id)}
+
+    async def must_not_run(*args, **kwargs):
+        raise AssertionError(
+            "validate_session_access must be skipped when a confirmed booking exists"
+        )
+
+    monkeypatch.setattr(signin_mod, "get_session_by_id", fake_get_session)
+    monkeypatch.setattr(
+        signin_mod, "get_confirmed_booking_for_session_member", fake_get_booking
+    )
+    monkeypatch.setattr(signin_mod, "validate_session_access", must_not_run)
+    monkeypatch.setattr(
+        signin_mod, "_check_attendance_milestones", AsyncMock(return_value=None)
+    )
+
+    attendance = await signin_mod.sign_in_to_session(
+        session_id=session_id,
+        attendance_in=AttendanceCreate(),
+        current_member=member,
+        db=db_session,
+    )
+
+    assert attendance.booking_id == booking_id

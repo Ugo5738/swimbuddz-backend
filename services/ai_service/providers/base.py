@@ -76,6 +76,27 @@ class AIProviderResponse:
         return json.loads(text)
 
 
+class AIImageProviderResponse:
+    """Standardized response from an image-generation provider."""
+
+    def __init__(
+        self,
+        *,
+        image_url: str,
+        model: str,
+        provider: str,
+        latency_ms: int = 0,
+        cost_usd: float = 0.0,
+        raw_response: Optional[dict] = None,
+    ):
+        self.image_url = image_url
+        self.model = model
+        self.provider = provider
+        self.latency_ms = latency_ms
+        self.cost_usd = cost_usd
+        self.raw_response = raw_response
+
+
 async def call_llm(
     system_prompt: str,
     user_prompt: str,
@@ -129,6 +150,8 @@ async def call_llm(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    if response_format is not None:
+        kwargs["response_format"] = response_format
 
     # Langfuse callback if available
     langfuse_trace_id = None
@@ -172,9 +195,70 @@ async def call_llm(
         raise
 
 
+async def call_image_generation(
+    *,
+    prompt: str,
+    model: Optional[str] = None,
+    size: str = "1792x1024",
+    quality: str = "standard",
+    trace_name: Optional[str] = None,
+) -> AIImageProviderResponse:
+    """Generate one image through the AI service's provider boundary."""
+    import litellm
+
+    settings = get_settings()
+    model = model or getattr(settings, "AI_IMAGE_MODEL", "dall-e-3")
+    provider = _provider_from_model(model)
+    kwargs = {
+        "model": model,
+        "prompt": prompt,
+        "size": size,
+        "quality": quality,
+        "n": 1,
+    }
+
+    try:
+        langfuse_url = getattr(settings, "LANGFUSE_HOST", "")
+        if langfuse_url:
+            kwargs["metadata"] = {"trace_name": trace_name or "swimbuddz_image"}
+            litellm.success_callback = ["langfuse"]
+            litellm.failure_callback = ["langfuse"]
+    except Exception:
+        pass
+
+    start = time.monotonic()
+    try:
+        response = await litellm.aimage_generation(**kwargs)
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        data = response.get("data") if isinstance(response, dict) else response.data
+        if not data:
+            raise RuntimeError("Image provider returned no image data")
+        first = data[0]
+        image_url = first.get("url") if isinstance(first, dict) else first.url
+        if not image_url:
+            raise RuntimeError("Image provider returned no image URL")
+        return AIImageProviderResponse(
+            image_url=image_url,
+            model=model,
+            provider=provider,
+            latency_ms=elapsed_ms,
+            raw_response=(
+                response.model_dump() if hasattr(response, "model_dump") else None
+            ),
+        )
+    except Exception as exc:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        logger.error(
+            "Image generation failed: %s",
+            exc,
+            extra={"model": model, "latency_ms": elapsed_ms},
+        )
+        raise
+
+
 def _provider_from_model(model: str) -> str:
     """Best-effort provider label from a LiteLLM model string."""
-    if "gpt" in model or "o1" in model or "o3" in model:
+    if "gpt" in model or "o1" in model or "o3" in model or "dall-e" in model:
         return "openai"
     if "claude" in model:
         return "anthropic"

@@ -35,7 +35,7 @@ from libs.auth.dependencies import (
     require_service_role,
 )
 
-from tests.conftest import make_admin_user
+from tests.conftest import make_admin_user, make_member_user
 from tests.factories import MemberFactory
 
 # Chat-sync calls live in the bookings router's namespace (patch where
@@ -51,11 +51,12 @@ def _silence_chat_sync():
     )
 
 
-async def _setup_member(db_session):
+async def _setup_member(db_session, *, admin: bool = True):
     """Seed a Member with a known auth_id and point the transport app's
     auth deps at it. Returns the seeded Member."""
     unique = uuid.uuid4().hex[:8]
-    user = make_admin_user(user_id=str(uuid.uuid4()), email=f"rider-{unique}@test.com")
+    user_factory = make_admin_user if admin else make_member_user
+    user = user_factory(user_id=str(uuid.uuid4()), email=f"rider-{unique}@test.com")
     member = MemberFactory.create(auth_id=user.user_id, email=user.email)
     db_session.add(member)
     await db_session.commit()
@@ -154,6 +155,63 @@ async def test_book_unknown_config_404(transport_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+async def test_member_must_book_session_before_booking_ride(
+    transport_client, db_session, monkeypatch
+):
+    import services.transport_service.routers.bookings as bookings_router
+
+    await _setup_member(db_session, admin=False)
+    cfg, pickup = await _seed_ride(db_session, cost=0, capacity=4)
+    lookup = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        bookings_router,
+        "get_confirmed_booking_for_session_member",
+        lookup,
+    )
+
+    response = await transport_client.post(
+        f"/transport/sessions/{cfg.session_id}/bookings",
+        json={
+            "session_ride_config_id": str(cfg.id),
+            "pickup_location_id": str(pickup.id),
+        },
+    )
+
+    assert response.status_code == 403, response.text
+    assert "Book this session" in response.json()["detail"]
+    lookup.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_member_with_confirmed_session_booking_can_book_ride(
+    transport_client, db_session, monkeypatch
+):
+    import services.transport_service.routers.bookings as bookings_router
+
+    await _setup_member(db_session, admin=False)
+    cfg, pickup = await _seed_ride(db_session, cost=0, capacity=4)
+    monkeypatch.setattr(
+        bookings_router,
+        "get_confirmed_booking_for_session_member",
+        AsyncMock(return_value={"id": str(uuid.uuid4()), "status": "confirmed"}),
+    )
+
+    e, r = _silence_chat_sync()
+    with e, r:
+        response = await transport_client.post(
+            f"/transport/sessions/{cfg.session_id}/bookings",
+            json={
+                "session_ride_config_id": str(cfg.id),
+                "pickup_location_id": str(pickup.id),
+            },
+        )
+
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 async def test_book_free_ride_happy_path(transport_client, db_session):
     await _setup_member(db_session)
     cfg, pickup = await _seed_ride(db_session, cost=0, capacity=4)
@@ -197,6 +255,59 @@ async def test_multi_seat_cost_is_kobo_times_seats(transport_client, db_session)
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+async def test_internal_bundle_ride_quote_uses_database_cost(
+    transport_client, db_session
+):
+    cfg, pickup = await _seed_ride(db_session, cost=175000, capacity=4)
+
+    response = await transport_client.post(
+        "/internal/transport/ride-quotes",
+        json={
+            "member_id": str(uuid.uuid4()),
+            "selections": [
+                {
+                    "session_id": str(cfg.session_id),
+                    "ride_config_id": str(cfg.id),
+                    "pickup_location_id": str(pickup.id),
+                    "num_seats": 2,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["total_kobo"] == 350000
+    assert response.json()["lines"][0]["unit_amount_kobo"] == 175000
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_internal_bundle_ride_quote_rejects_cross_session_config(
+    transport_client, db_session
+):
+    cfg, pickup = await _seed_ride(db_session, cost=175000, capacity=4)
+
+    response = await transport_client.post(
+        "/internal/transport/ride-quotes",
+        json={
+            "member_id": str(uuid.uuid4()),
+            "selections": [
+                {
+                    "session_id": str(uuid.uuid4()),
+                    "ride_config_id": str(cfg.id),
+                    "pickup_location_id": str(pickup.id),
+                    "num_seats": 1,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "does not belong" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 async def test_rebooking_updates_not_duplicates(transport_client, db_session):
     """Same member re-POSTs with a different pickup: one row, updated,
     no second charge (the update branch never debits)."""
@@ -229,10 +340,12 @@ async def test_rebooking_updates_not_duplicates(transport_client, db_session):
             json={
                 "session_ride_config_id": str(cfg_id),
                 "pickup_location_id": str(pickup2.id),
+                "num_seats": 3,
             },
         )
     assert second.status_code == 200, second.text
     assert second.json()["pickup_location_id"] == str(pickup2.id)
+    assert second.json()["num_seats"] == 3
 
     count = (
         await db_session.execute(

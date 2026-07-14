@@ -290,15 +290,23 @@ async def test_mark_paid_updates_non_installment_enrollment(academy_client, db_s
     assert create_response.status_code in (200, 201), create_response.text
     enrollment_id = create_response.json()["id"]
 
-    with patch(
-        "services.academy_service.routers.enrollments.admin_payments.get_member_by_id",
-        new_callable=AsyncMock,
-        return_value={
-            "id": str(member.id),
-            "first_name": "Test",
-            "last_name": "User",
-            "email": member.email,
-        },
+    with (
+        patch(
+            "services.academy_service.routers.enrollments.admin_payments.get_member_by_id",
+            new_callable=AsyncMock,
+            return_value={
+                "id": str(member.id),
+                "auth_id": member.auth_id,
+                "first_name": "Test",
+                "last_name": "User",
+                "email": member.email,
+            },
+        ),
+        patch(
+            "services.academy_service.routers.enrollments.admin_payments.internal_post",
+            new_callable=AsyncMock,
+            return_value=_FakeResponse(),
+        ) as activate_membership,
     ):
         first_payment = await academy_client.post(
             f"/academy/admin/enrollments/{enrollment_id}/mark-paid",
@@ -319,6 +327,11 @@ async def test_mark_paid_updates_non_installment_enrollment(academy_client, db_s
         assert second_data["paid_installments_count"] == 0
         assert second_data["total_installments"] == 0
         assert second_data["payment_status"] == "paid"
+        assert activate_membership.await_count == 2
+        assert (
+            activate_membership.await_args_list[0].kwargs["json"]["idempotency_key"]
+            == activate_membership.await_args_list[1].kwargs["json"]["idempotency_key"]
+        )
 
 
 # ---------------------------------------------------------------------------

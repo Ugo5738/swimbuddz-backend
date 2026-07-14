@@ -369,8 +369,8 @@ async def grant_graduation_rewards(
       extension), and
     * ``academy.perfect_attendance`` when they attended every completed session.
 
-    Every grant is independently guarded and idempotent (reward events carry an
-    idempotency key; ``/club/extend`` never shrinks), so re-running is safe and
+    Every grant is independently guarded and idempotent (reward events and the
+    ``/club/extend`` mutation carry stable keys), so re-running is safe and
     one failed grant never blocks the others — or other graduates.
     ``completed_session_ids`` is fetched once per cohort by the caller.
     """
@@ -403,8 +403,7 @@ async def grant_graduation_rewards(
         )
 
     # Free post-academy club bridge per PRICING_STRATEGY.md, anchored to the
-    # cohort end date. /club/extend is idempotent (don't shrink), so re-running
-    # on later daily passes is safe.
+    # cohort end date. The stable application key makes later daily passes safe.
     try:
         _settings = get_settings()
         await internal_post(
@@ -415,6 +414,8 @@ async def grant_graduation_rewards(
                 "months": _settings.POST_ACADEMY_FREE_CLUB_MONTHS,
                 "from_date": (cohort.end_date.isoformat() if cohort.end_date else None),
                 "reason": f"Free post-academy club bridge (cohort {cohort.id})",
+                "idempotency_key": f"academy:{enrollment.id}:club-bridge",
+                "source_reference": str(enrollment.id),
             },
         )
     except Exception:

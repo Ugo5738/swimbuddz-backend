@@ -11,6 +11,9 @@ from services.academy_service.tasks.enrollment import (
     send_enrollment_reminders,
     transition_cohort_statuses,
 )
+from services.academy_service.tasks.membership import (
+    reconcile_academy_membership_projections,
+)
 from services.academy_service.tasks.reporting import (
     check_and_issue_certificates,
     check_attendance_and_notify,
@@ -28,4 +31,5 @@ __all__ = [
     "send_weekly_progress_reports",
     "check_attendance_and_notify",
     "reconcile_chat_memberships",
+    "reconcile_academy_membership_projections",
 ]

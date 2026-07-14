@@ -7,6 +7,7 @@ method) initializes the Paystack checkout and returns the
 authorization URL.
 """
 
+import uuid
 from datetime import datetime
 
 import httpx
@@ -16,17 +17,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import _service_role_jwt, get_current_user
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
-from libs.common.currency import KOBO_PER_NAIRA, bubbles_to_naira
+from libs.common.currency import (
+    KOBO_PER_NAIRA,
+    kobo_to_naira,
+    naira_to_kobo,
+)
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import (
-    check_cohort_enrollment,
     get_member_by_auth_id,
-    get_member_membership,
-    get_pod_by_id,
-    get_session_by_id,
+    internal_get,
+    internal_post,
 )
-from libs.common.session_access import denial_message, evaluate_session_access
 from libs.db.session import get_async_db
 from services.payments_service.models import Payment, PaymentPurpose, PaymentStatus
 from services.payments_service.schemas import (
@@ -46,130 +48,509 @@ from ._entitlement import _mark_paid_and_apply
 from ._helpers import (
     _require_attendance_status,
     _resolve_club_amount,
-    _update_pending_payment_reference,
+    _set_pending_tier_payment_for_payment,
 )
 from ._paystack import _initialize_paystack, _paystack_enabled
 
 router = APIRouter()
 
 
-async def _validate_session_bundle_access(
-    *, member_auth_id: str, session_ids: list
-) -> None:
-    """Reject SESSION_BUNDLE checkout before money moves if access is invalid."""
+def _service_error_detail(response: httpx.Response, fallback: str) -> str:
     try:
-        member = await get_member_by_auth_id(member_auth_id, calling_service="payments")
-    except httpx.HTTPError as e:
-        logger.warning(
-            "Could not resolve member for session bundle auth_id=%s: %s",
+        payload = response.json()
+        detail = payload.get("detail") if isinstance(payload, dict) else None
+        return str(detail or fallback)
+    except ValueError:
+        return fallback
+
+
+async def _member_for_payment_quote(member_auth_id: str) -> dict:
+    try:
+        member = await get_member_by_auth_id(
             member_auth_id,
-            e,
+            calling_service="payments",
         )
+    except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Could not verify your member profile. Please try again.",
-        )
-    if not member:
+        ) from exc
+    if not member or not member.get("id"):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Member profile not found. Complete registration first.",
         )
+    return member
 
-    member_id = str(member["id"])
-    try:
-        membership = await get_member_membership(member_id, calling_service="payments")
-    except httpx.HTTPError as e:
-        logger.warning(
-            "Could not resolve membership for session bundle member=%s: %s",
-            member_id,
-            e,
+
+async def _quote_ride_selection(
+    *,
+    member_id: str,
+    session_id: uuid.UUID,
+    ride_config_id: uuid.UUID | None,
+    pickup_location_id: uuid.UUID | None,
+    num_seats: int,
+) -> dict:
+    """Return one server-priced ride line, or an empty quote when unselected."""
+    if ride_config_id is None and pickup_location_id is None:
+        return {"total_kobo": 0, "lines": []}
+    if ride_config_id is None or pickup_location_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ride_config_id and pickup_location_id must be provided together",
         )
+
+    try:
+        response = await internal_post(
+            service_url=settings.TRANSPORT_SERVICE_URL,
+            path="/internal/transport/ride-quotes",
+            calling_service="payments",
+            json={
+                "member_id": member_id,
+                "selections": [
+                    {
+                        "session_id": str(session_id),
+                        "ride_config_id": str(ride_config_id),
+                        "pickup_location_id": str(pickup_location_id),
+                        "num_seats": num_seats,
+                    }
+                ],
+            },
+            timeout=30.0,
+        )
+    except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not verify your membership. Please try again.",
+            detail="Could not price the selected ride. Please try again.",
+        ) from exc
+    if response.status_code >= 400:
+        response_status = (
+            response.status_code
+            if response.status_code < 500
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+        raise HTTPException(
+            status_code=response_status,
+            detail=_service_error_detail(response, "Could not price the selected ride"),
         )
 
-    member_payload = {
-        "id": member_id,
-        "member_id": member_id,
-        **(membership or {}),
-    }
-    now = utc_now()
+    try:
+        quote = response.json()
+        total_kobo = int(quote["total_kobo"])
+        lines = quote["lines"]
+        if len(lines) != 1:
+            raise ValueError("ride quote must contain one line")
+        line = lines[0]
+        if (
+            str(line["session_id"]) != str(session_id)
+            or str(line["ride_config_id"]) != str(ride_config_id)
+            or str(line["pickup_location_id"]) != str(pickup_location_id)
+            or int(line["num_seats"]) != num_seats
+            or int(line["amount_kobo"]) != total_kobo
+        ):
+            raise ValueError("ride quote does not match the requested selection")
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.error("Transport service returned an invalid ride quote: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not validate the selected-ride price",
+        ) from exc
+    return {"total_kobo": total_kobo, "lines": lines}
 
-    for session_id in session_ids:
+
+async def _get_internal_session_quote(session_id: uuid.UUID) -> dict:
+    try:
+        response = await internal_get(
+            service_url=settings.SESSIONS_SERVICE_URL,
+            path=f"/internal/sessions/{session_id}",
+            calling_service="payments",
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not price the selected session. Please try again.",
+        ) from exc
+    if response.status_code >= 400:
+        response_status = (
+            response.status_code
+            if response.status_code < 500
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+        raise HTTPException(
+            status_code=response_status,
+            detail=_service_error_detail(
+                response, "Could not price the selected session"
+            ),
+        )
+    try:
+        session = response.json()
+        session["pool_fee"] = int(session.get("pool_fee") or 0)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not validate the selected-session price",
+        ) from exc
+    return session
+
+
+async def _get_internal_session_access(
+    *,
+    session_id: uuid.UUID,
+    member_auth_id: str,
+) -> dict:
+    """Fetch and validate one backend-owned member/session access decision."""
+    try:
+        response = await internal_get(
+            service_url=settings.SESSIONS_SERVICE_URL,
+            path=f"/internal/sessions/{session_id}/access",
+            calling_service="payments",
+            params={"member_auth_id": member_auth_id},
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not verify session access. Please try again.",
+        ) from exc
+    if response.status_code >= 400:
+        response_status = (
+            response.status_code
+            if response.status_code < 500
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+        raise HTTPException(
+            status_code=response_status,
+            detail=_service_error_detail(response, "Could not verify session access"),
+        )
+
+    try:
+        access = response.json()
+        uuid.UUID(str(access["member_id"]))
+        for field in (
+            "confirmed_booking",
+            "visible",
+            "bookable",
+            "digest_eligible",
+            "prompt_eligible",
+            "sign_in_allowed",
+            "sign_in_eligible",
+        ):
+            if not isinstance(access[field], bool):
+                raise TypeError(f"{field} must be a boolean")
+        if access.get("confirmed_booking_id") is not None:
+            uuid.UUID(str(access["confirmed_booking_id"]))
+        if access["confirmed_booking"] != bool(access.get("confirmed_booking_id")):
+            raise ValueError("confirmed booking fields are inconsistent")
+        if not isinstance(access["required_tier"], str):
+            raise TypeError("required_tier must be a string")
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.error("Sessions service returned an invalid access decision: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not validate session access",
+        ) from exc
+    return access
+
+
+def _validate_bundle_reservation_quote(
+    reservation: dict,
+    *,
+    payment_intent_id: uuid.UUID,
+    session_ids: list[uuid.UUID],
+) -> None:
+    expected_session_ids = {str(session_id) for session_id in session_ids}
+    try:
+        uuid.UUID(str(reservation["member_id"]))
+        if str(uuid.UUID(str(reservation["payment_intent_id"]))) != str(
+            payment_intent_id
+        ):
+            raise ValueError("payment intent does not match")
+        pool_total_kobo = int(reservation["pool_total_kobo"])
+        lines = reservation["lines"]
+        if pool_total_kobo < 0 or not isinstance(lines, list):
+            raise ValueError("invalid reservation total or lines")
+
+        returned_session_ids: list[str] = []
+        booking_ids: list[str] = []
+        line_total = 0
+        for line in lines:
+            session_id = str(uuid.UUID(str(line["session_id"])))
+            booking_id = str(uuid.UUID(str(line["booking_id"])))
+            amount_kobo = int(line["amount_kobo"])
+            if amount_kobo < 0:
+                raise ValueError("reservation line amount cannot be negative")
+            returned_session_ids.append(session_id)
+            booking_ids.append(booking_id)
+            line_total += amount_kobo
+
+        if (
+            len(lines) != len(session_ids)
+            or len(set(returned_session_ids)) != len(returned_session_ids)
+            or set(returned_session_ids) != expected_session_ids
+            or len(set(booking_ids)) != len(booking_ids)
+            or line_total != pool_total_kobo
+        ):
+            raise ValueError("reservation lines do not match the requested bundle")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"invalid session reservation quote: {exc}") from exc
+
+
+def _validate_bundle_ride_quote(
+    ride_quote: dict, *, ride_configs: dict[str, dict]
+) -> None:
+    try:
+        total_kobo = int(ride_quote["total_kobo"])
+        lines = ride_quote["lines"]
+        if total_kobo < 0 or not isinstance(lines, list):
+            raise ValueError("invalid ride total or lines")
+        if len(lines) != len(ride_configs):
+            raise ValueError("ride line count does not match selections")
+
+        returned_session_ids: list[str] = []
+        line_total = 0
+        for line in lines:
+            session_id = str(uuid.UUID(str(line["session_id"])))
+            expected = ride_configs.get(session_id)
+            if expected is None:
+                raise ValueError("ride line belongs to an unselected session")
+            amount_kobo = int(line["amount_kobo"])
+            unit_amount_kobo = int(line["unit_amount_kobo"])
+            num_seats = int(line["num_seats"])
+            if amount_kobo < 0 or unit_amount_kobo < 0 or num_seats < 1:
+                raise ValueError("ride line contains an invalid amount")
+            if (
+                str(uuid.UUID(str(line["ride_config_id"])))
+                != str(expected["ride_config_id"])
+                or str(uuid.UUID(str(line["pickup_location_id"])))
+                != str(expected["pickup_location_id"])
+                or num_seats != int(expected["num_seats"])
+                or amount_kobo != unit_amount_kobo * num_seats
+            ):
+                raise ValueError("ride line does not match the requested selection")
+            returned_session_ids.append(session_id)
+            line_total += amount_kobo
+
+        if (
+            len(set(returned_session_ids)) != len(returned_session_ids)
+            or set(returned_session_ids) != set(ride_configs)
+            or line_total != total_kobo
+        ):
+            raise ValueError("ride lines do not match the requested selections")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"invalid bundle ride quote: {exc}") from exc
+
+
+async def _get_session_booking_quote(
+    *,
+    booking_id: uuid.UUID,
+    member_auth_id: str,
+) -> dict:
+    try:
+        response = await internal_get(
+            service_url=settings.SESSIONS_SERVICE_URL,
+            path=f"/internal/sessions/bookings/{booking_id}",
+            calling_service="payments",
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not verify the session booking. Please try again.",
+        ) from exc
+    if response.status_code >= 400:
+        response_status = (
+            response.status_code
+            if response.status_code < 500
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+        raise HTTPException(
+            status_code=response_status,
+            detail=_service_error_detail(
+                response, "Could not verify the session booking"
+            ),
+        )
+    try:
+        booking = response.json()
+        booking["fee_amount_kobo"] = int(booking.get("fee_amount_kobo") or 0)
+        booking_member_auth_id = str(booking["member_auth_id"])
+        uuid.UUID(str(booking["member_id"]))
+        uuid.UUID(str(booking["session_id"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Sessions service returned an invalid booking quote",
+        ) from exc
+    if booking_member_auth_id != member_auth_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This booking belongs to another member",
+        )
+    if str(booking.get("status") or "").lower() not in {"pending", "confirmed"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This booking is no longer payable",
+        )
+    if booking.get("wallet_transaction_id"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This booking has already been paid from the wallet",
+        )
+    if booking.get("payment_intent_id"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A payment is already linked to this booking",
+        )
+    return booking
+
+
+async def _release_session_bundle_reservation(
+    *, member_auth_id: str, payment_intent_id: uuid.UUID
+) -> None:
+    try:
+        response = await internal_post(
+            service_url=settings.SESSIONS_SERVICE_URL,
+            path="/internal/sessions/bookings/bundle/release",
+            calling_service="payments",
+            json={
+                "member_auth_id": member_auth_id,
+                "payment_intent_id": str(payment_intent_id),
+            },
+        )
+        if response.status_code >= 400:
+            logger.error(
+                "Bundle reservation release failed payment_intent_id=%s: %s %s",
+                payment_intent_id,
+                response.status_code,
+                response.text,
+            )
+    except httpx.HTTPError:
+        logger.exception(
+            "Could not release bundle reservation payment_intent_id=%s",
+            payment_intent_id,
+        )
+
+
+async def _reserve_and_quote_session_bundle(
+    *,
+    member_auth_id: str,
+    payment_intent_id: uuid.UUID,
+    session_ids: list[uuid.UUID],
+    ride_configs: dict[str, dict],
+) -> dict:
+    """Reserve session capacity and obtain server-authoritative bundle pricing."""
+    try:
+        reservation_response = await internal_post(
+            service_url=settings.SESSIONS_SERVICE_URL,
+            path="/internal/sessions/bookings/bundle/reserve",
+            calling_service="payments",
+            json={
+                "member_auth_id": member_auth_id,
+                "payment_intent_id": str(payment_intent_id),
+                "session_ids": [str(session_id) for session_id in session_ids],
+            },
+            timeout=30.0,
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("Session bundle reservation failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not reserve selected sessions. Please try again.",
+        ) from exc
+
+    if reservation_response.status_code >= 400:
+        response_status = (
+            reservation_response.status_code
+            if reservation_response.status_code < 500
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+        raise HTTPException(
+            status_code=response_status,
+            detail=_service_error_detail(
+                reservation_response, "Could not reserve selected sessions"
+            ),
+        )
+    try:
+        reservation = reservation_response.json()
+        _validate_bundle_reservation_quote(
+            reservation,
+            payment_intent_id=payment_intent_id,
+            session_ids=session_ids,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        await _release_session_bundle_reservation(
+            member_auth_id=member_auth_id,
+            payment_intent_id=payment_intent_id,
+        )
+        logger.error("Sessions service returned an invalid bundle quote: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not validate the selected-session price",
+        ) from exc
+
+    ride_quote = {"total_kobo": 0, "lines": []}
+    if ride_configs:
+        selections = [
+            {
+                "session_id": session_id,
+                **selection,
+            }
+            for session_id, selection in ride_configs.items()
+        ]
         try:
-            session = await get_session_by_id(
-                str(session_id), calling_service="payments"
+            ride_response = await internal_post(
+                service_url=settings.TRANSPORT_SERVICE_URL,
+                path="/internal/transport/ride-quotes",
+                calling_service="payments",
+                json={
+                    "member_id": reservation["member_id"],
+                    "selections": selections,
+                },
+                timeout=30.0,
             )
-        except httpx.HTTPError as e:
-            logger.warning(
-                "Could not resolve bundle session=%s member=%s: %s",
-                session_id,
-                member_id,
-                e,
+        except httpx.HTTPError as exc:
+            await _release_session_bundle_reservation(
+                member_auth_id=member_auth_id,
+                payment_intent_id=payment_intent_id,
             )
+            logger.warning("Session bundle ride quote failed: %s", exc)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Could not verify selected sessions. Please try again.",
+                detail="Could not price selected rides. Please try again.",
+            ) from exc
+        if ride_response.status_code >= 400:
+            await _release_session_bundle_reservation(
+                member_auth_id=member_auth_id,
+                payment_intent_id=payment_intent_id,
             )
-        if not session:
+            response_status = (
+                ride_response.status_code
+                if ride_response.status_code < 500
+                else status.HTTP_503_SERVICE_UNAVAILABLE
+            )
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="One or more selected sessions could not be found.",
+                status_code=response_status,
+                detail=_service_error_detail(
+                    ride_response, "Could not price selected rides"
+                ),
             )
-
-        cohort_enrollment = None
-        if session.get("cohort_id"):
-            try:
-                cohort_enrollment = await check_cohort_enrollment(
-                    str(session["cohort_id"]),
-                    member_id,
-                    calling_service="payments",
-                )
-            except httpx.HTTPError as e:
-                logger.warning(
-                    "Could not verify cohort access for session=%s member=%s: %s",
-                    session_id,
-                    member_id,
-                    e,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Could not verify cohort enrollment. Please try again.",
-                )
-
-        pod_member_ids = None
-        if session.get("pod_id"):
-            try:
-                pod = await get_pod_by_id(
-                    str(session["pod_id"]), calling_service="payments"
-                )
-            except httpx.HTTPError as e:
-                logger.warning(
-                    "Could not verify pod access for session=%s member=%s: %s",
-                    session_id,
-                    member_id,
-                    e,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Could not verify club pod access. Please try again.",
-                )
-            pod_member_ids = (pod or {}).get("active_member_ids") or []
-
-        access = evaluate_session_access(
-            member_payload,
-            session,
-            now=now,
-            cohort_enrollment=cohort_enrollment,
-            pod_member_ids=pod_member_ids,
-        )
-        if not access.bookable:
-            title = session.get("title") or "Selected session"
+        try:
+            ride_quote = ride_response.json()
+            _validate_bundle_ride_quote(ride_quote, ride_configs=ride_configs)
+        except (KeyError, TypeError, ValueError) as exc:
+            await _release_session_bundle_reservation(
+                member_auth_id=member_auth_id,
+                payment_intent_id=payment_intent_id,
+            )
+            logger.error("Transport service returned an invalid bundle quote: %s", exc)
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"{title}: {denial_message(access.reason)}",
-            )
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Could not validate the selected-ride price",
+            ) from exc
+
+    return {
+        "reservation": reservation,
+        "ride_quote": ride_quote,
+        "total_kobo": int(reservation["pool_total_kobo"])
+        + int(ride_quote["total_kobo"]),
+    }
 
 
 @router.post(
@@ -185,6 +566,19 @@ async def create_payment_intent(
     """
     Create a payment intent (records a pending payment) and (if configured) initializes Paystack checkout.
     """
+    payment_id = uuid.uuid4()
+    bundle_reservation_active = False
+
+    async def release_active_bundle_reservation() -> None:
+        nonlocal bundle_reservation_active
+        if not bundle_reservation_active:
+            return
+        await _release_session_bundle_reservation(
+            member_auth_id=current_user.user_id,
+            payment_intent_id=payment_id,
+        )
+        bundle_reservation_active = False
+
     # Community activation - ₦20,000/year
     if payload.purpose == PaymentPurpose.COMMUNITY:
         amount = float(
@@ -429,36 +823,67 @@ async def create_payment_intent(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="session_id is required for SESSION_FEE payments",
             )
-        if not payload.direct_amount or payload.direct_amount <= 0:
+        member = await _member_for_payment_quote(current_user.user_id)
+        access = await _get_internal_session_access(
+            session_id=payload.session_id,
+            member_auth_id=current_user.user_id,
+        )
+        if not access["sign_in_allowed"]:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="direct_amount is required and must be greater than zero for SESSION_FEE payments",
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    access.get("message")
+                    or "Session sign-in is not currently available."
+                ),
             )
-        amount = float(payload.direct_amount)
+        session_quote = await _get_internal_session_quote(payload.session_id)
+        ride_quote = await _quote_ride_selection(
+            member_id=str(member["id"]),
+            session_id=payload.session_id,
+            ride_config_id=payload.ride_config_id,
+            pickup_location_id=payload.pickup_location_id,
+            num_seats=payload.num_seats,
+        )
+        authoritative_total_kobo = int(session_quote["pool_fee"]) + int(
+            ride_quote["total_kobo"]
+        )
+        if (
+            payload.direct_amount is not None
+            and naira_to_kobo(payload.direct_amount) != authoritative_total_kobo
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The session price changed. Refresh before paying.",
+            )
+        amount = kobo_to_naira(authoritative_total_kobo)
         attendance_status = _require_attendance_status(
             payload.attendance_status,
             source="attendance_status",
         )
+        ride_line = ride_quote["lines"][0] if ride_quote["lines"] else None
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "session_id": str(payload.session_id),
-            "ride_config_id": (
-                str(payload.ride_config_id) if payload.ride_config_id else None
-            ),
+            "ride_config_id": (str(ride_line["ride_config_id"]) if ride_line else None),
             "pickup_location_id": (
-                str(payload.pickup_location_id) if payload.pickup_location_id else None
+                str(ride_line["pickup_location_id"]) if ride_line else None
             ),
             "attendance_status": attendance_status.value,
-            "num_seats": payload.num_seats or 1,
+            "num_seats": int(ride_line["num_seats"]) if ride_line else 1,
             "bubbles_to_apply": payload.bubbles_to_apply or 0,
+            "server_price": {
+                "pool_total_kobo": int(session_quote["pool_fee"]),
+                "ride_total_kobo": int(ride_quote["total_kobo"]),
+                "total_kobo": authoritative_total_kobo,
+            },
         }
 
     # Session booking — A1 Phase 3.3 Paystack pre-booking. The PENDING
     # SessionBooking was already created by sessions_service; this intent
     # just carries booking_id so the entitlement handler can confirm it.
     elif payload.purpose == PaymentPurpose.SESSION_BOOKING:
-        booking_id = (payload.payment_metadata or {}).get("booking_id")
-        if not booking_id:
+        raw_booking_id = (payload.payment_metadata or {}).get("booking_id")
+        if not raw_booking_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
@@ -466,24 +891,68 @@ async def create_payment_intent(
                     "SESSION_BOOKING payments"
                 ),
             )
-        if not payload.direct_amount or payload.direct_amount <= 0:
+        try:
+            booking_id = uuid.UUID(str(raw_booking_id))
+        except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "direct_amount is required and must be > 0 for "
-                    "SESSION_BOOKING payments"
-                ),
+                detail="payment_metadata.booking_id must be a valid UUID",
+            ) from exc
+        booking_quote = await _get_session_booking_quote(
+            booking_id=booking_id,
+            member_auth_id=current_user.user_id,
+        )
+        booking_session_id = uuid.UUID(str(booking_quote["session_id"]))
+        if payload.session_id is not None and payload.session_id != booking_session_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The booking does not belong to the selected session",
             )
-        amount = float(payload.direct_amount)
+        ride_quote = await _quote_ride_selection(
+            member_id=str(booking_quote["member_id"]),
+            session_id=booking_session_id,
+            ride_config_id=payload.ride_config_id,
+            pickup_location_id=payload.pickup_location_id,
+            num_seats=payload.num_seats,
+        )
+        authoritative_total_kobo = int(booking_quote["fee_amount_kobo"]) + int(
+            ride_quote["total_kobo"]
+        )
+        if (
+            payload.direct_amount is not None
+            and naira_to_kobo(payload.direct_amount) != authoritative_total_kobo
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The booking price changed. Refresh before paying.",
+            )
+        amount = kobo_to_naira(authoritative_total_kobo)
+        ride_line = ride_quote["lines"][0] if ride_quote["lines"] else None
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "booking_id": str(booking_id),
-            "session_id": (str(payload.session_id) if payload.session_id else None),
+            "session_id": str(booking_session_id),
+            "member_id": str(booking_quote["member_id"]),
+            "ride_config_id": (str(ride_line["ride_config_id"]) if ride_line else None),
+            "pickup_location_id": (
+                str(ride_line["pickup_location_id"]) if ride_line else None
+            ),
+            "num_seats": int(ride_line["num_seats"]) if ride_line else 1,
             "bubbles_to_apply": payload.bubbles_to_apply or 0,
+            "server_price": {
+                "pool_total_kobo": int(booking_quote["fee_amount_kobo"]),
+                "ride_total_kobo": int(ride_quote["total_kobo"]),
+                "total_kobo": authoritative_total_kobo,
+            },
         }
 
     # Session bundle — book multiple sessions in one payment intent
     elif payload.purpose == PaymentPurpose.SESSION_BUNDLE:
+        if payload.payment_method != "paystack":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Session bundles must be settled during online checkout",
+            )
         if not payload.session_ids or len(payload.session_ids) == 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -501,12 +970,11 @@ async def create_payment_intent(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Duplicate session_ids in bundle",
             )
-        if not payload.direct_amount or payload.direct_amount <= 0:
+        if payload.direct_amount is not None and payload.direct_amount < 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="direct_amount is required and must be greater than zero for SESSION_BUNDLE payments",
+                detail="direct_amount cannot be negative for SESSION_BUNDLE payments",
             )
-        amount = float(payload.direct_amount)
         # Validate per-session ride configs (if provided) — every key must be
         # one of the session_ids in the bundle.
         ride_configs_meta: dict = {}
@@ -523,15 +991,51 @@ async def create_payment_intent(
                     "pickup_location_id": str(ride_cfg.pickup_location_id),
                     "num_seats": int(ride_cfg.num_seats),
                 }
-        await _validate_session_bundle_access(
+        bundle_quote = await _reserve_and_quote_session_bundle(
             member_auth_id=current_user.user_id,
+            payment_intent_id=payment_id,
             session_ids=payload.session_ids,
+            ride_configs=ride_configs_meta,
         )
+        bundle_reservation_active = True
+        authoritative_total_kobo = int(bundle_quote["total_kobo"])
+        if (
+            payload.direct_amount is not None
+            and naira_to_kobo(payload.direct_amount) != authoritative_total_kobo
+        ):
+            await release_active_bundle_reservation()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "The bundle price changed. Refresh the selected sessions "
+                    "before paying."
+                ),
+            )
+        amount = kobo_to_naira(authoritative_total_kobo)
+        reservation = bundle_quote["reservation"]
+        ride_quote = bundle_quote["ride_quote"]
+        quoted_ride_configs = {
+            str(line["session_id"]): {
+                "ride_config_id": str(line["ride_config_id"]),
+                "pickup_location_id": str(line["pickup_location_id"]),
+                "num_seats": int(line["num_seats"]),
+            }
+            for line in ride_quote["lines"]
+        }
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "session_ids": [str(sid) for sid in payload.session_ids],
             "session_count": len(payload.session_ids),
-            "session_ride_configs": ride_configs_meta if ride_configs_meta else None,
+            "booking_ids": [str(line["booking_id"]) for line in reservation["lines"]],
+            "member_id": str(reservation["member_id"]),
+            "session_ride_configs": quoted_ride_configs or None,
+            "bundle_price": {
+                "pool_total_kobo": int(reservation["pool_total_kobo"]),
+                "ride_total_kobo": int(ride_quote["total_kobo"]),
+                "total_kobo": authoritative_total_kobo,
+                "session_lines": reservation["lines"],
+                "ride_lines": ride_quote["lines"],
+            },
         }
 
     # Standalone ride share payment (after session already booked)
@@ -551,19 +1055,45 @@ async def create_payment_intent(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="pickup_location_id is required for RIDE_SHARE payments",
             )
-        if not payload.direct_amount or payload.direct_amount <= 0:
+        access = await _get_internal_session_access(
+            session_id=payload.session_id,
+            member_auth_id=current_user.user_id,
+        )
+        if not access["confirmed_booking"]:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="direct_amount is required and must be greater than zero for RIDE_SHARE payments",
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Book this session before purchasing its ride share.",
             )
-        amount = float(payload.direct_amount)
-        num_seats = payload.num_seats or 1
+        member = await _member_for_payment_quote(current_user.user_id)
+        ride_quote = await _quote_ride_selection(
+            member_id=str(member["id"]),
+            session_id=payload.session_id,
+            ride_config_id=payload.ride_config_id,
+            pickup_location_id=payload.pickup_location_id,
+            num_seats=payload.num_seats,
+        )
+        authoritative_total_kobo = int(ride_quote["total_kobo"])
+        if (
+            payload.direct_amount is not None
+            and naira_to_kobo(payload.direct_amount) != authoritative_total_kobo
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The ride price changed. Refresh before paying.",
+            )
+        amount = kobo_to_naira(authoritative_total_kobo)
+        ride_line = ride_quote["lines"][0]
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "session_id": str(payload.session_id),
-            "ride_config_id": str(payload.ride_config_id),
-            "pickup_location_id": str(payload.pickup_location_id),
-            "num_seats": num_seats,
+            "member_id": str(member["id"]),
+            "ride_config_id": str(ride_line["ride_config_id"]),
+            "pickup_location_id": str(ride_line["pickup_location_id"]),
+            "num_seats": int(ride_line["num_seats"]),
+            "server_price": {
+                "ride_total_kobo": authoritative_total_kobo,
+                "total_kobo": authoritative_total_kobo,
+            },
         }
 
     else:
@@ -585,19 +1115,23 @@ async def create_payment_intent(
             else None
         )
 
-        (
-            amount,
-            discount_applied,
-            discount_obj,
-            applies_to_component,
-        ) = await _validate_and_apply_discount(
-            db=db,
-            discount_code=payload.discount_code,
-            purpose=payload.purpose,
-            original_amount=original_amount,
-            member_auth_id=current_user.user_id,
-            components=discount_components,
-        )
+        try:
+            (
+                amount,
+                discount_applied,
+                discount_obj,
+                applies_to_component,
+            ) = await _validate_and_apply_discount(
+                db=db,
+                discount_code=payload.discount_code,
+                purpose=payload.purpose,
+                original_amount=original_amount,
+                member_auth_id=current_user.user_id,
+                components=discount_components,
+            )
+        except Exception:
+            await release_active_bundle_reservation()
+            raise
         if discount_obj:
             discount_code_used = discount_obj.code
             payment_metadata = {
@@ -610,10 +1144,9 @@ async def create_payment_intent(
                 "discount_applies_to_component": applies_to_component,
             }
 
-    # Partial Bubbles: subtract the Bubbles value from amount AFTER discount.
-    # 1 Bubble = ₦100. Only applies to SESSION_FEE / SESSION_BOOKING /
-    # SESSION_BUNDLE / RIDE_SHARE. The wallet is debited the Bubbles portion
-    # in each purpose's entitlement handler once Paystack clears the remainder.
+    # Mixed Bubbles + external-provider settlement is disabled until the wallet
+    # service supports atomic holds. Debiting after Paystack clears can
+    # undercharge when the wallet balance changes during checkout.
     bubbles_purposes = {
         PaymentPurpose.SESSION_FEE,
         PaymentPurpose.SESSION_BOOKING,
@@ -622,20 +1155,17 @@ async def create_payment_intent(
     }
     bubbles_to_apply_val = payload.bubbles_to_apply or 0
     if bubbles_to_apply_val > 0 and payload.purpose in bubbles_purposes:
-        bubbles_value_ngn = bubbles_to_naira(bubbles_to_apply_val)
-        if bubbles_value_ngn > amount:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="bubbles_to_apply exceeds amount after discount",
-            )
-        amount = amount - bubbles_value_ngn
-        payment_metadata = {
-            **payment_metadata,
-            "bubbles_to_apply": bubbles_to_apply_val,
-            "bubbles_value_ngn": bubbles_value_ngn,
-        }
+        await release_active_bundle_reservation()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Mixed Bubbles and card payments are temporarily unavailable. "
+                "Use full Bubbles in the booking flow or pay the full amount by card."
+            ),
+        )
 
     payment = Payment(
+        id=payment_id,
         reference=Payment.generate_reference(),
         member_auth_id=current_user.user_id,
         payer_email=current_user.email,
@@ -648,31 +1178,49 @@ async def create_payment_intent(
     )
 
     db.add(payment)
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        await release_active_bundle_reservation()
+        raise
     await db.refresh(payment)
 
     checkout_url = None
 
     # Paystack (and most payment providers) cannot initialize a transaction for 0 NGN.
-    # If a discount brings the payable amount to 0, complete the payment internally and
-    # apply the entitlement immediately.
+    # A full discount, full Bubbles settlement, or genuinely free server-priced
+    # bundle is completed internally and its entitlement applied immediately.
     if payment.amount <= 0:
-        if not payload.discount_code:
+        internally_settleable = bool(payload.discount_code) or (
+            payload.purpose in bubbles_purposes
+            and (bubbles_to_apply_val > 0 or original_amount <= 0)
+        )
+        if not internally_settleable:
+            await release_active_bundle_reservation()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Amount must be greater than zero",
             )
-        discount_ref = (discount_code_used or payload.discount_code).upper().strip()
+        if payload.discount_code:
+            settlement_provider = "discount"
+            settlement_reference = f"discount:{(discount_code_used or payload.discount_code).upper().strip()}"
+        else:
+            settlement_provider = "internal"
+            settlement_reference = f"free:{payment.reference}"
+        # Once settlement starts, entitlement retry owns the reservations.
+        bundle_reservation_active = False
         payment = await _mark_paid_and_apply(
             db=db,
             payment=payment,
-            provider="discount",
-            provider_reference=f"discount:{discount_ref}",
+            provider=settlement_provider,
+            provider_reference=settlement_reference,
             paid_at=utc_now(),
             provider_payload={
                 "discount_code": discount_code_used or payload.discount_code,
                 "discount_applied": discount_applied,
                 "original_amount": original_amount,
+                "bubbles_to_apply": bubbles_to_apply_val,
             },
         )
 
@@ -683,6 +1231,10 @@ async def create_payment_intent(
         and _paystack_enabled()
     ):
         if not current_user.email:
+            payment.status = PaymentStatus.FAILED
+            db.add(payment)
+            await db.commit()
+            await release_active_bundle_reservation()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Authenticated user email is required to initialize Paystack",
@@ -692,9 +1244,20 @@ async def create_payment_intent(
         if payload.purpose == PaymentPurpose.ACADEMY_COHORT and payload.enrollment_id:
             redirect_path = f"/account/academy/enrollment-success?enrollment_id={payload.enrollment_id}"
 
-        authorization_url, access_code = await _initialize_paystack(
-            payment, current_user.email, redirect_path
-        )
+        try:
+            authorization_url, access_code = await _initialize_paystack(
+                payment, current_user.email, redirect_path
+            )
+        except Exception:
+            payment.status = PaymentStatus.FAILED
+            payment.payment_metadata = {
+                **(payment.payment_metadata or {}),
+                "checkout_initialization_failed_at": utc_now().isoformat(),
+            }
+            db.add(payment)
+            await db.commit()
+            await release_active_bundle_reservation()
+            raise
         checkout_url = authorization_url
         payment.provider = "paystack"
         payment.provider_reference = payment.reference
@@ -709,9 +1272,24 @@ async def create_payment_intent(
         await db.commit()
         await db.refresh(payment)
 
+    if (
+        bundle_reservation_active
+        and payment.status == PaymentStatus.PENDING
+        and payload.payment_method == "paystack"
+        and not _paystack_enabled()
+    ):
+        payment.status = PaymentStatus.FAILED
+        db.add(payment)
+        await db.commit()
+        await release_active_bundle_reservation()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Online payment is temporarily unavailable. Please try again later.",
+        )
+
     # Save pending payment reference to member for cross-device resumption
     if payment.status == PaymentStatus.PENDING:
-        await _update_pending_payment_reference(current_user.user_id, payment.reference)
+        await _set_pending_tier_payment_for_payment(payment)
 
     # Build extension info for response (only for CLUB payments)
     response_extension_info = {}

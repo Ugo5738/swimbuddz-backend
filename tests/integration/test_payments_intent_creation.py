@@ -15,7 +15,7 @@ while coverage is still being filled in.
 
 What's stubbed:
   - `_initialize_paystack` → fake checkout URL. We never call Paystack.
-  - `_update_pending_payment_reference` → no-op. The cross-service
+  - `_set_pending_tier_payment_for_payment` → no-op. The cross-service
     pending-ref update is best-effort and tested elsewhere.
   - `httpx.AsyncClient` for purposes that look up a cohort/order/member
     on another service. Mocked per-test with the appropriate response.
@@ -49,14 +49,14 @@ def _install_paystack_stubs(
 
     Every intent-creation test needs these — without them, the route either
     tries to hit the real Paystack API or makes a real HTTP call to
-    members-service for the pending_payment_reference update.
+    members-service for the tier-scoped pending payment update.
     """
     monkeypatch.setattr(
         "services.payments_service.routers.intents.intent_creation._initialize_paystack",
         AsyncMock(return_value=(checkout_url, "ACCESS-001")),
     )
     monkeypatch.setattr(
-        "services.payments_service.routers.intents.intent_creation._update_pending_payment_reference",
+        "services.payments_service.routers.intents.intent_creation._set_pending_tier_payment_for_payment",
         AsyncMock(return_value=None),
     )
 
@@ -119,6 +119,114 @@ def _fake_httpx_client(get_responses=None, post_responses=None):
 
     factory = MagicMock(return_value=cm)
     return factory
+
+
+def _stub_session_fee_quote(monkeypatch, *, session_id: str, pool_kobo: int):
+    from services.payments_service.routers.intents import intent_creation
+
+    monkeypatch.setattr(
+        intent_creation,
+        "_member_for_payment_quote",
+        AsyncMock(return_value={"id": str(uuid.uuid4())}),
+    )
+    monkeypatch.setattr(
+        intent_creation,
+        "_get_internal_session_quote",
+        AsyncMock(return_value={"id": session_id, "pool_fee": pool_kobo}),
+    )
+    monkeypatch.setattr(
+        intent_creation,
+        "_get_internal_session_access",
+        AsyncMock(
+            return_value={
+                "confirmed_booking": False,
+                "sign_in_allowed": True,
+                "message": None,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        intent_creation,
+        "_quote_ride_selection",
+        AsyncMock(return_value={"total_kobo": 0, "lines": []}),
+    )
+
+
+def _stub_session_booking_quote(
+    monkeypatch,
+    *,
+    session_id: str,
+    booking_id: str,
+    fee_kobo: int,
+):
+    from services.payments_service.routers.intents import intent_creation
+
+    monkeypatch.setattr(
+        intent_creation,
+        "_get_session_booking_quote",
+        AsyncMock(
+            return_value={
+                "id": booking_id,
+                "session_id": session_id,
+                "member_id": str(uuid.uuid4()),
+                "fee_amount_kobo": fee_kobo,
+                "status": "pending",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        intent_creation,
+        "_quote_ride_selection",
+        AsyncMock(return_value={"total_kobo": 0, "lines": []}),
+    )
+
+
+def _stub_ride_quote(
+    monkeypatch,
+    *,
+    session_id: str,
+    ride_config_id: str,
+    pickup_location_id: str,
+    num_seats: int,
+    total_kobo: int,
+):
+    from services.payments_service.routers.intents import intent_creation
+
+    member_id = str(uuid.uuid4())
+    monkeypatch.setattr(
+        intent_creation,
+        "_member_for_payment_quote",
+        AsyncMock(return_value={"id": member_id}),
+    )
+    monkeypatch.setattr(
+        intent_creation,
+        "_get_internal_session_access",
+        AsyncMock(
+            return_value={
+                "confirmed_booking": True,
+                "sign_in_allowed": False,
+                "message": None,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        intent_creation,
+        "_quote_ride_selection",
+        AsyncMock(
+            return_value={
+                "total_kobo": total_kobo,
+                "lines": [
+                    {
+                        "session_id": session_id,
+                        "ride_config_id": ride_config_id,
+                        "pickup_location_id": pickup_location_id,
+                        "num_seats": num_seats,
+                        "amount_kobo": total_kobo,
+                    }
+                ],
+            }
+        ),
+    )
 
 
 # ===========================================================================
@@ -634,7 +742,7 @@ async def test_store_order_rejects_zero_total(payments_client, monkeypatch):
 
 
 # ===========================================================================
-# SESSION_FEE  — direct_amount + optional Bubbles
+# SESSION_FEE  — server pricing + access preflight
 # ===========================================================================
 
 
@@ -656,140 +764,253 @@ async def test_session_fee_requires_session_id(payments_client, monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_session_fee_requires_positive_direct_amount(
-    payments_client, monkeypatch
-):
+async def test_session_fee_rejects_stale_client_amount(payments_client, monkeypatch):
     _override_current_user_email(
         __import__("services.payments_service.app.main", fromlist=["app"]).app
     )
     _install_paystack_stubs(monkeypatch)
 
+    session_id = str(uuid.uuid4())
+    _stub_session_fee_quote(monkeypatch, session_id=session_id, pool_kobo=100000)
     response = await payments_client.post(
         "/payments/intents",
         json={
             "purpose": "session_fee",
-            "session_id": str(uuid.uuid4()),
+            "session_id": session_id,
             "direct_amount": 0,
         },
     )
-    assert response.status_code == 400
-    assert "direct_amount" in response.json()["detail"]
+    assert response.status_code == 409
+    assert "price changed" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_session_fee_applies_bubbles(payments_client, monkeypatch):
-    """5 Bubbles = ₦500 off. final amount = direct_amount - bubbles_value."""
+async def test_session_fee_uses_server_total_without_client_amount(
+    payments_client, monkeypatch
+):
     from services.payments_service.app.main import app as payments_app
 
     _override_current_user_email(payments_app)
     _install_paystack_stubs(monkeypatch)
+    session_id = str(uuid.uuid4())
+    _stub_session_fee_quote(monkeypatch, session_id=session_id, pool_kobo=125000)
+
+    response = await payments_client.post(
+        "/payments/intents",
+        json={"purpose": "session_fee", "session_id": session_id},
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["amount"] == 1250.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_session_fee_requires_backend_sign_in_access(
+    payments_client, monkeypatch
+):
+    from services.payments_service.app.main import app as payments_app
+    from services.payments_service.routers.intents import intent_creation
+
+    _override_current_user_email(payments_app)
+    _install_paystack_stubs(monkeypatch)
+    session_id = str(uuid.uuid4())
+    _stub_session_fee_quote(monkeypatch, session_id=session_id, pool_kobo=125000)
+    monkeypatch.setattr(
+        intent_creation,
+        "_get_internal_session_access",
+        AsyncMock(
+            return_value={
+                "confirmed_booking": False,
+                "sign_in_allowed": False,
+                "message": "Session sign-in is not currently open.",
+            }
+        ),
+    )
+
+    response = await payments_client.post(
+        "/payments/intents",
+        json={"purpose": "session_fee", "session_id": session_id},
+    )
+
+    assert response.status_code == 403, response.text
+    assert "not currently open" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_session_fee_rejects_mixed_bubbles(payments_client, monkeypatch):
+    from services.payments_service.app.main import app as payments_app
+
+    _override_current_user_email(payments_app)
+    _install_paystack_stubs(monkeypatch)
+    session_id = str(uuid.uuid4())
+    _stub_session_fee_quote(monkeypatch, session_id=session_id, pool_kobo=200000)
 
     response = await payments_client.post(
         "/payments/intents",
         json={
             "purpose": "session_fee",
-            "session_id": str(uuid.uuid4()),
+            "session_id": session_id,
             "direct_amount": 2000.0,
             "bubbles_to_apply": 5,
         },
     )
-    assert response.status_code == 201, response.text
-    assert response.json()["amount"] == 1500.0
+    assert response.status_code == 409, response.text
+    assert "Mixed Bubbles and card payments" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_session_fee_rejects_bubbles_exceeding_amount(
+async def test_session_fee_rejects_any_payment_intent_bubbles(
     payments_client, monkeypatch
 ):
-    """50 Bubbles = ₦5000, more than the ₦1000 session fee → 400."""
     from services.payments_service.app.main import app as payments_app
 
     _override_current_user_email(payments_app)
     _install_paystack_stubs(monkeypatch)
+    session_id = str(uuid.uuid4())
+    _stub_session_fee_quote(monkeypatch, session_id=session_id, pool_kobo=100000)
 
     response = await payments_client.post(
         "/payments/intents",
         json={
             "purpose": "session_fee",
-            "session_id": str(uuid.uuid4()),
+            "session_id": session_id,
             "direct_amount": 1000.0,
             "bubbles_to_apply": 50,
         },
     )
-    assert response.status_code == 400
-    assert "bubbles_to_apply exceeds amount" in response.json()["detail"]
+    assert response.status_code == 409
+    assert "Mixed Bubbles and card payments" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_session_booking_applies_bubbles(payments_client, monkeypatch):
-    """Regression: SESSION_BOOKING must deduct Bubbles from the Paystack
-    charge just like SESSION_FEE. Previously SESSION_BOOKING was missing from
-    `bubbles_purposes`, so the member was charged the full amount while the
-    UI showed the reduced one. 5 Bubbles = ₦500 off ₦2000 → ₦1500."""
+async def test_session_booking_rejects_mixed_bubbles(payments_client, monkeypatch):
     from services.payments_service.app.main import app as payments_app
 
     _override_current_user_email(payments_app)
     _install_paystack_stubs(monkeypatch)
+    session_id = str(uuid.uuid4())
+    booking_id = str(uuid.uuid4())
+    _stub_session_booking_quote(
+        monkeypatch,
+        session_id=session_id,
+        booking_id=booking_id,
+        fee_kobo=200000,
+    )
 
     response = await payments_client.post(
         "/payments/intents",
         json={
             "purpose": "session_booking",
-            "session_id": str(uuid.uuid4()),
+            "session_id": session_id,
             "direct_amount": 2000.0,
             "bubbles_to_apply": 5,
-            "payment_metadata": {"booking_id": str(uuid.uuid4())},
+            "payment_metadata": {"booking_id": booking_id},
         },
     )
-    assert response.status_code == 201, response.text
-    body = response.json()
-    assert body["amount"] == 1500.0
+    assert response.status_code == 409, response.text
+    assert "Mixed Bubbles and card payments" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_session_booking_values_bubbles_at_100_naira(
+async def test_session_booking_does_not_persist_rejected_mixed_payment(
     payments_client, db_session, monkeypatch
 ):
-    """Regression: ₦3,500 with 6 Bubbles must charge ₦2,900, not ₦3,494."""
-    from sqlalchemy import select
-
     from services.payments_service.app.main import app as payments_app
     from services.payments_service.models import Payment
 
     _override_current_user_email(payments_app)
     _install_paystack_stubs(monkeypatch)
+    session_id = str(uuid.uuid4())
+    booking_id = str(uuid.uuid4())
+    _stub_session_booking_quote(
+        monkeypatch,
+        session_id=session_id,
+        booking_id=booking_id,
+        fee_kobo=350000,
+    )
 
     response = await payments_client.post(
         "/payments/intents",
         json={
             "purpose": "session_booking",
-            "session_id": str(uuid.uuid4()),
+            "session_id": session_id,
             "direct_amount": 3500.0,
             "bubbles_to_apply": 6,
-            "payment_metadata": {"booking_id": str(uuid.uuid4())},
+            "payment_metadata": {"booking_id": booking_id},
         },
     )
-    assert response.status_code == 201, response.text
-    body = response.json()
-    assert body["amount"] == 2900.0
+    assert response.status_code == 409, response.text
+    assert not db_session.new
+    from sqlalchemy import func, select
 
-    row = (
-        await db_session.execute(
-            select(Payment).where(Payment.reference == body["reference"])
-        )
+    count = (
+        await db_session.execute(select(func.count()).select_from(Payment))
     ).scalar_one()
-    meta = row.payment_metadata or {}
-    assert meta["bubbles_to_apply"] == 6
-    assert meta["bubbles_value_ngn"] == 600
+    assert count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_session_booking_uses_server_total_without_client_amount(
+    payments_client, monkeypatch
+):
+    from services.payments_service.app.main import app as payments_app
+
+    _override_current_user_email(payments_app)
+    _install_paystack_stubs(monkeypatch)
+    session_id = str(uuid.uuid4())
+    booking_id = str(uuid.uuid4())
+    _stub_session_booking_quote(
+        monkeypatch,
+        session_id=session_id,
+        booking_id=booking_id,
+        fee_kobo=350000,
+    )
+
+    response = await payments_client.post(
+        "/payments/intents",
+        json={
+            "purpose": "session_booking",
+            "session_id": session_id,
+            "payment_metadata": {"booking_id": booking_id},
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["amount"] == 3500.0
 
 
 # ===========================================================================
 # SESSION_BUNDLE  — multiple sessions, optional per-session ride configs
 # ===========================================================================
+
+
+def _bundle_quote(session_ids: list[str], total_kobo: int) -> dict:
+    payment_id = str(uuid.uuid4())
+    lines = [
+        {
+            "session_id": session_id,
+            "booking_id": str(uuid.uuid4()),
+            "amount_kobo": total_kobo // len(session_ids),
+        }
+        for session_id in session_ids
+    ]
+    return {
+        "reservation": {
+            "member_id": str(uuid.uuid4()),
+            "payment_intent_id": payment_id,
+            "pool_total_kobo": total_kobo,
+            "lines": lines,
+        },
+        "ride_quote": {"total_kobo": 0, "lines": []},
+        "total_kobo": total_kobo,
+    }
 
 
 @pytest.mark.asyncio
@@ -865,6 +1086,75 @@ async def test_session_bundle_rejects_ride_config_for_session_not_in_bundle(
     assert "session_ride_configs" in response.json()["detail"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_session_bundle_uses_server_total_without_client_amount(
+    payments_client, db_session, monkeypatch
+):
+    from sqlalchemy import select
+
+    from services.payments_service.app.main import app as payments_app
+    from services.payments_service.models import Payment
+    from services.payments_service.routers.intents import intent_creation
+
+    _override_current_user_email(payments_app)
+    _install_paystack_stubs(monkeypatch)
+    session_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+    monkeypatch.setattr(
+        intent_creation,
+        "_reserve_and_quote_session_bundle",
+        AsyncMock(return_value=_bundle_quote(session_ids, 700000)),
+    )
+
+    response = await payments_client.post(
+        "/payments/intents",
+        json={"purpose": "session_bundle", "session_ids": session_ids},
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["amount"] == 7000.0
+    payment = (
+        await db_session.execute(
+            select(Payment).where(Payment.reference == response.json()["reference"])
+        )
+    ).scalar_one()
+    assert payment.payment_metadata["bundle_price"]["total_kobo"] == 700000
+    assert len(payment.payment_metadata["booking_ids"]) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_session_bundle_rejects_tampered_client_total_and_releases_hold(
+    payments_client, monkeypatch
+):
+    from services.payments_service.app.main import app as payments_app
+    from services.payments_service.routers.intents import intent_creation
+
+    _override_current_user_email(payments_app)
+    _install_paystack_stubs(monkeypatch)
+    session_ids = [str(uuid.uuid4())]
+    release = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        intent_creation,
+        "_reserve_and_quote_session_bundle",
+        AsyncMock(return_value=_bundle_quote(session_ids, 350000)),
+    )
+    monkeypatch.setattr(intent_creation, "_release_session_bundle_reservation", release)
+
+    response = await payments_client.post(
+        "/payments/intents",
+        json={
+            "purpose": "session_bundle",
+            "session_ids": session_ids,
+            "direct_amount": 1.0,
+        },
+    )
+
+    assert response.status_code == 409
+    assert "price changed" in response.json()["detail"]
+    release.assert_awaited_once()
+
+
 # ===========================================================================
 # RIDE_SHARE  — single ride after a session is already booked
 # ===========================================================================
@@ -904,6 +1194,14 @@ async def test_ride_share_happy_path_persists_seats_and_ride_config(
     _install_paystack_stubs(monkeypatch)
 
     sid, rid, pid = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    _stub_ride_quote(
+        monkeypatch,
+        session_id=sid,
+        ride_config_id=rid,
+        pickup_location_id=pid,
+        num_seats=2,
+        total_kobo=150000,
+    )
     response = await payments_client.post(
         "/payments/intents",
         json={
@@ -925,6 +1223,52 @@ async def test_ride_share_happy_path_persists_seats_and_ride_config(
     assert meta["ride_config_id"] == rid
     assert meta["pickup_location_id"] == pid
     assert meta["num_seats"] == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_ride_share_requires_confirmed_session_booking(
+    payments_client, monkeypatch
+):
+    from services.payments_service.app.main import app as payments_app
+    from services.payments_service.routers.intents import intent_creation
+
+    _override_current_user_email(payments_app)
+    _install_paystack_stubs(monkeypatch)
+    sid, rid, pid = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    _stub_ride_quote(
+        monkeypatch,
+        session_id=sid,
+        ride_config_id=rid,
+        pickup_location_id=pid,
+        num_seats=1,
+        total_kobo=150000,
+    )
+    monkeypatch.setattr(
+        intent_creation,
+        "_get_internal_session_access",
+        AsyncMock(
+            return_value={
+                "confirmed_booking": False,
+                "sign_in_allowed": False,
+                "message": None,
+            }
+        ),
+    )
+
+    response = await payments_client.post(
+        "/payments/intents",
+        json={
+            "purpose": "ride_share",
+            "session_id": sid,
+            "ride_config_id": rid,
+            "pickup_location_id": pid,
+            "direct_amount": 1500.0,
+        },
+    )
+
+    assert response.status_code == 403, response.text
+    assert "Book this session" in response.json()["detail"]
 
 
 # ===========================================================================
@@ -1079,7 +1423,7 @@ async def test_payment_method_manual_transfer_does_not_initialize_paystack(
         paystack_mock,
     )
     monkeypatch.setattr(
-        "services.payments_service.routers.intents.intent_creation._update_pending_payment_reference",
+        "services.payments_service.routers.intents.intent_creation._set_pending_tier_payment_for_payment",
         AsyncMock(return_value=None),
     )
     monkeypatch.setattr(intent_creation.settings, "COMMUNITY_ANNUAL_FEE_NGN", 20000)

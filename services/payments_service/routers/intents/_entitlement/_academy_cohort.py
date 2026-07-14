@@ -19,10 +19,6 @@ from services.payments_service.models import (
     Payment,
 )
 
-from .._helpers import (
-    _update_pending_payment_reference,
-)
-
 settings = get_settings()
 logger = get_logger(__name__)
 
@@ -67,39 +63,9 @@ async def apply_academy_cohort(payment: Payment) -> None:
                 detail=f"Failed to mark enrollment as paid ({resp.status_code}): {resp.text}",
             )
 
-        # Activate the academy tier on the member using the cohort end_date from
-        # the mark-paid response. We always pass the latest cohort end date so
-        # members with multiple simultaneous enrollments keep access until their
-        # last cohort finishes (the activate endpoint keeps the later date).
-        try:
-            enrollment_data = resp.json()
-            cohort_end_date = (enrollment_data.get("cohort") or {}).get(
-                "end_date"
-            ) or enrollment_data.get("cohort_end_date")
-            if cohort_end_date and payment.member_auth_id:
-                academy_resp = await client.post(
-                    f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/academy/activate",
-                    headers=headers,
-                    json={"cohort_end_date": cohort_end_date},
-                )
-                if academy_resp.status_code >= 400:
-                    logger.warning(
-                        f"Failed to activate academy tier for {payment.member_auth_id}: "
-                        f"{academy_resp.status_code} {academy_resp.text}"
-                    )
-            else:
-                logger.warning(
-                    f"Academy cohort end_date missing in mark-paid response for "
-                    f"enrollment {enrollment_id} — academy tier not activated"
-                )
-        except Exception as e:
-            # Non-fatal: enrollment is paid; tier activation failure is logged
-            logger.error(
-                f"Failed to activate academy tier after payment {payment.reference}: {e}"
-            )
-
-    # Clear pending payment reference on success
-    await _update_pending_payment_reference(payment.member_auth_id, None)
+        # academy_service owns enrollment truth and only returns success after
+        # applying the idempotent members_service entitlement. A non-2xx above
+        # leaves this payment fulfillment retryable.
 
     # Send subsequent installment payment confirmation (not for first installment —
     # first installment confirmation is sent by the academy service's mark-paid endpoint).

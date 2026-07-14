@@ -1334,7 +1334,7 @@
           "admin-members"
         ],
         "summary": "Admin Extend Club Membership By Auth",
-        "description": "Extend club membership by N months without eligibility checks.\n\nIntended for service-to-service grants such as the free 1-month\npost-academy club access bridge (see PRICING_STRATEGY.md). Skips the\nreadiness/requested-tier gates that ``/club/activate`` enforces because\nthe caller is the system, not the member self-upgrading.\n\nThe new ``club_paid_until`` becomes ``max(current, anchor) + months`` where\n``anchor = payload.from_date or now``. Idempotent: if club_paid_until is\nalready at or past the computed target, no change is made.",
+        "description": "Extend club membership by N months without eligibility checks.\n\nIntended for service-to-service grants such as the free 1-month\npost-academy club access bridge (see PRICING_STRATEGY.md). Skips the\nreadiness/requested-tier gates that ``/club/activate`` enforces because\nthe caller is the system, not the member self-upgrading.\n\nThe new ``club_paid_until`` becomes ``max(current, anchor) + months`` where\n``anchor = payload.from_date or now``. Callers that may retry must provide\nan idempotency key.",
         "operationId": "admin_extend_club_membership_by_auth_admin_members_by_auth__auth_id__club_extend_post",
         "security": [
           {
@@ -1450,7 +1450,7 @@
           "admin-members"
         ],
         "summary": "Admin Expire Academy Membership By Auth",
-        "description": "Set academy_paid_until to NOW, effectively expiring academy access.\n\nUsed by academy_service after a member's withdrawal when they have no\nremaining ENROLLED cohorts. Subsequent reads via /members/me or the\ninternal membership endpoint will strip \"academy\" from active_tiers\nvia normalize_member_tiers since the date is no longer in the future.",
+        "description": "Expire Academy access immediately.\n\nKept for operational compatibility. Academy's normal lifecycle uses the\nexact ``/academy/project`` endpoint so another active cohort is preserved.",
         "operationId": "admin_expire_academy_membership_by_auth_admin_members_by_auth__auth_id__academy_expire_post",
         "security": [
           {
@@ -1498,7 +1498,7 @@
           "admin-members"
         ],
         "summary": "Admin Activate Academy Membership By Auth",
-        "description": "Set (or extend) the academy tier for a member until cohort_end_date.\n\nA member may be enrolled in multiple simultaneous cohorts ending at different\ndates. This endpoint always keeps academy_paid_until at the *latest* cohort\nend date seen, so access is never prematurely revoked.\nCalled by payments_service after a successful academy cohort payment.",
+        "description": "Apply a paid Academy entitlement once and preserve later cohorts.\n\nThe idempotency key protects both the Academy end date and the Community\nand Club periods bundled with the first Academy payment. Retrying the same\npayment therefore cannot keep moving those lower-tier expiries forward.",
         "operationId": "admin_activate_academy_membership_by_auth_admin_members_by_auth__auth_id__academy_activate_post",
         "security": [
           {
@@ -1522,6 +1522,64 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ActivateAcademyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/members/by-auth/{auth_id}/academy/project": {
+      "post": {
+        "tags": [
+          "admin-members"
+        ],
+        "summary": "Admin Project Academy Membership By Auth",
+        "description": "Replace Academy access with academy_service's authoritative projection.\n\nThis mutation is naturally idempotent and intentionally does not alter the\nseparately earned Community or Club periods. It may shorten Academy access\nafter a withdrawal, unlike the paid activation endpoint.",
+        "operationId": "admin_project_academy_membership_by_auth_admin_members_by_auth__auth_id__academy_project_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Auth Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectAcademyRequest"
               }
             }
           }
@@ -8497,6 +8555,11 @@
         "summary": "Get Session",
         "description": "Get details of a specific session.",
         "operationId": "get_session_sessions__session_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "session_id",
@@ -9168,6 +9231,66 @@
         }
       }
     },
+    "/api/v1/internal/sessions/{session_id}/access": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Member Session Access",
+        "description": "Return the backend-owned access decision used by payment services.",
+        "operationId": "get_member_session_access_internal_sessions__session_id__access_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "member_auth_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberSessionAccessResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/sessions/cohorts/{cohort_id}/next-session": {
       "get": {
         "tags": [
@@ -9621,6 +9744,147 @@
         }
       }
     },
+    "/api/v1/internal/sessions/bookings/bundle/reserve": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Reserve Bundle Bookings",
+        "description": "Reserve capacity and snapshot server-owned prices for a bundle payment.",
+        "operationId": "reserve_bundle_bookings_internal_sessions_bookings_bundle_reserve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BundleBookingReserveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleBookingReserveResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/sessions/bookings/bundle/confirm": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Confirm Bundle Bookings",
+        "description": "Confirm a paid bundle atomically and idempotently.\n\nExpired holds may still be confirmed after a delayed provider callback, but\nonly while every session remains upcoming and has capacity. Either every\nbooking commits or none of them does.",
+        "operationId": "confirm_bundle_bookings_internal_sessions_bookings_bundle_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BundleBookingConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleBookingConfirmResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/sessions/bookings/bundle/release": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Release Bundle Bookings",
+        "description": "Release only pending reservations owned by an abandoned bundle intent.",
+        "operationId": "release_bundle_bookings_internal_sessions_bookings_bundle_release_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BundleBookingReleaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleBookingReleaseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/internal/sessions/{session_id}/bookings/by-member/{member_id}": {
       "get": {
         "tags": [
@@ -9973,8 +10237,13 @@
           "attendance"
         ],
         "summary": "Public Sign In To Session",
-        "description": "Public sign in to a session (no auth required). Idempotent upsert.",
+        "description": "Record attendance for another member as service, admin, or coach.",
         "operationId": "public_sign_in_to_session_attendance_sessions__session_id__attendance_public_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "session_id",
@@ -19484,6 +19753,11 @@
         "summary": "List Content Posts",
         "description": "List content posts with optional filters.",
         "operationId": "list_content_posts_content__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "category",
@@ -19550,18 +19824,9 @@
         "summary": "Create Content Post",
         "description": "Create a new content post (admin only).",
         "operationId": "create_content_post_content__post",
-        "parameters": [
+        "security": [
           {
-            "name": "created_by",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Admin member ID creating the post",
-              "title": "Created By"
-            },
-            "description": "Admin member ID creating the post"
+            "HTTPBearer": []
           }
         ],
         "requestBody": {
@@ -19598,6 +19863,53 @@
         }
       }
     },
+    "/api/v1/content/ai-drafts": {
+      "post": {
+        "tags": [
+          "content"
+        ],
+        "summary": "Create Ai Content Draft",
+        "description": "Generate and save an unpublished content post draft for admin review.",
+        "operationId": "create_ai_content_draft_content_ai_drafts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentAIDraftCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentPostResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/content/{post_id}": {
       "get": {
         "tags": [
@@ -19606,6 +19918,11 @@
         "summary": "Get Content Post",
         "description": "Get a single content post by ID.",
         "operationId": "get_content_post_content__post_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "post_id",
@@ -19648,6 +19965,11 @@
         "summary": "Update Content Post",
         "description": "Update a content post (admin only).",
         "operationId": "update_content_post_content__post_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "post_id",
@@ -19700,6 +20022,11 @@
         "summary": "Delete Content Post",
         "description": "Delete a content post (admin only).",
         "operationId": "delete_content_post_content__post_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "post_id",
@@ -19737,6 +20064,11 @@
         "summary": "Publish Content Post",
         "description": "Publish a content post (admin only).\nSets is_published to True and published_at to current time.",
         "operationId": "publish_content_post_content__post_id__publish_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "post_id",
@@ -19781,6 +20113,60 @@
         "summary": "Unpublish Content Post",
         "description": "Unpublish a content post (admin only).\nSets is_published to False while preserving published_at for history.",
         "operationId": "unpublish_content_post_content__post_id__unpublish_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "post_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Post Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentPostResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/content/{post_id}/email/retry-failed": {
+      "post": {
+        "tags": [
+          "content"
+        ],
+        "summary": "Retry Failed Content Post Emails",
+        "description": "Retry only deliveries the provider explicitly reported as failed.",
+        "operationId": "retry_failed_content_post_emails_content__post_id__email_retry_failed_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "post_id",
@@ -19825,6 +20211,11 @@
         "summary": "Create Content Comment",
         "description": "Add a comment to a content post.",
         "operationId": "create_content_comment_content__post_id__comments_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "post_id",
@@ -19835,18 +20226,6 @@
               "format": "uuid",
               "title": "Post Id"
             }
-          },
-          {
-            "name": "member_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Member ID",
-              "title": "Member Id"
-            },
-            "description": "Member ID"
           }
         ],
         "requestBody": {
@@ -19889,6 +20268,11 @@
         "summary": "List Content Comments",
         "description": "List all comments for a content post.",
         "operationId": "list_content_comments_content__post_id__comments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "post_id",
@@ -27297,6 +27681,18 @@
               "title": "Member Id"
             },
             "description": "Member ID override for service-to-service calls"
+          },
+          {
+            "name": "allow_without_booking",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Explicit service-role override for a verified day-of walk-in",
+              "default": false,
+              "title": "Allow Without Booking"
+            },
+            "description": "Explicit service-role override for a verified day-of walk-in"
           }
         ],
         "requestBody": {
@@ -27450,6 +27846,53 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/transport/ride-quotes": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Quote Bundle Rides",
+        "description": "Validate bundle ride selections and calculate their authoritative total.",
+        "operationId": "quote_bundle_rides_internal_transport_ride_quotes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BundleRideQuoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleRideQuoteResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -27791,6 +28234,98 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/ai/content/drafts": {
+      "post": {
+        "tags": [
+          "ai-content"
+        ],
+        "summary": "Create Content Draft",
+        "operationId": "create_content_draft_ai_content_drafts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentDraftResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/content/images": {
+      "post": {
+        "tags": [
+          "ai-content"
+        ],
+        "summary": "Create Content Image",
+        "operationId": "create_content_image_ai_content_images_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentImageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentImageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/ai/admin/requests": {
@@ -45567,6 +46102,30 @@
             "format": "date-time",
             "title": "Cohort End Date",
             "description": "ISO datetime of the cohort end date (timezone-aware)"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "source_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Reference"
           }
         },
         "type": "object",
@@ -45584,6 +46143,30 @@
             "minimum": 1.0,
             "title": "Months",
             "default": 1
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "source_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Reference"
           },
           "skip_community_check": {
             "type": "boolean",
@@ -45604,6 +46187,30 @@
             "minimum": 1.0,
             "title": "Years",
             "default": 1
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "source_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Reference"
           }
         },
         "type": "object",
@@ -49587,55 +50194,7 @@
         "title": "CoachApplicationStatusResponse",
         "description": "Minimal status response for coaches checking their application."
       },
-      "CoachAvailabilityCalendar-Input": {
-        "properties": {
-          "version": {
-            "type": "integer",
-            "title": "Version",
-            "default": 1
-          },
-          "timezone": {
-            "type": "string",
-            "title": "Timezone",
-            "description": "IANA timezone name",
-            "default": "Africa/Lagos"
-          },
-          "recurring": {
-            "items": {
-              "$ref": "#/components/schemas/RecurringBlockInput"
-            },
-            "type": "array",
-            "title": "Recurring"
-          },
-          "blackouts": {
-            "items": {
-              "$ref": "#/components/schemas/BlackoutDateInput"
-            },
-            "type": "array",
-            "title": "Blackouts"
-          },
-          "slot_minutes": {
-            "type": "integer",
-            "maximum": 240.0,
-            "minimum": 15.0,
-            "title": "Slot Minutes",
-            "description": "Default lesson/make-up length in minutes",
-            "default": 60
-          },
-          "buffer_minutes": {
-            "type": "integer",
-            "maximum": 120.0,
-            "minimum": 0.0,
-            "title": "Buffer Minutes",
-            "description": "Gap between consecutive slots in minutes",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "title": "CoachAvailabilityCalendar",
-        "description": "Canonical shape of CoachProfile.availability_calendar (JSONB).\n\nRecurring weekly blocks + blackout dates in the coach's local timezone.\nsessions_service slices this into bookable make-up slots."
-      },
-      "CoachAvailabilityCalendar-Output": {
+      "CoachAvailabilityCalendar": {
         "properties": {
           "version": {
             "type": "integer",
@@ -49725,7 +50284,7 @@
           "availability": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CoachAvailabilityCalendar-Output"
+                "$ref": "#/components/schemas/CoachAvailabilityCalendar"
               },
               {
                 "type": "null"
@@ -49751,7 +50310,7 @@
       "CoachAvailabilityUpdate": {
         "properties": {
           "availability": {
-            "$ref": "#/components/schemas/CoachAvailabilityCalendar-Input"
+            "$ref": "#/components/schemas/CoachAvailabilityCalendar"
           },
           "min_hours_between_sessions": {
             "anyOf": [
@@ -51459,6 +52018,30 @@
             ],
             "title": "Reason",
             "description": "Audit note describing why the extension was granted."
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "source_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Reference"
           }
         },
         "type": "object",
@@ -51473,6 +52056,30 @@
             "minimum": 1.0,
             "title": "Months",
             "default": 1
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "source_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Reference"
           }
         },
         "type": "object",
@@ -54213,6 +54820,73 @@
         "title": "MemberSearchResult",
         "description": "Slim search result with auth_id for cross-service filtering."
       },
+      "MemberTierStatusResponse": {
+        "properties": {
+          "tier": {
+            "type": "string",
+            "title": "Tier"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "paid_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Until"
+          },
+          "requested": {
+            "type": "boolean",
+            "title": "Requested",
+            "default": false
+          },
+          "declared_active": {
+            "type": "boolean",
+            "title": "Declared Active",
+            "default": false
+          },
+          "direct_paid": {
+            "type": "boolean",
+            "title": "Direct Paid",
+            "default": false
+          },
+          "inherited": {
+            "type": "boolean",
+            "title": "Inherited",
+            "default": false
+          },
+          "inherited_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inherited From"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tier",
+          "status",
+          "label"
+        ],
+        "title": "MemberTierStatusResponse",
+        "description": "Normalized status for one membership tier."
+      },
       "MemberUpdate": {
         "properties": {
           "first_name": {
@@ -54339,6 +55013,33 @@
               }
             ],
             "title": "Pending Payment Reference"
+          },
+          "pending_payment_tier": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "community",
+                  "club",
+                  "academy"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Payment Tier"
+          },
+          "expected_pending_payment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Pending Payment Reference"
           }
         },
         "type": "object",
@@ -55578,6 +56279,38 @@
         "title": "ProgramCategoryEnum",
         "description": "Program categories for grade assignment."
       },
+      "ProjectAcademyRequest": {
+        "properties": {
+          "paid_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Until",
+            "description": "Latest end date across active Academy enrollments, or null when the member has no active Academy enrollment."
+          },
+          "source_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Reference"
+          }
+        },
+        "type": "object",
+        "title": "ProjectAcademyRequest",
+        "description": "Replace the Academy tier projection with Academy's current truth.\n\nUnlike activation, projection does not grant the bundled Community or Club\nperiods. It is used by academy_service after withdrawals, cohort changes,\nand during reconciliation to repair derived member state."
+      },
       "RecurringBlockInput": {
         "properties": {
           "weekday": {
@@ -56210,6 +56943,53 @@
             ],
             "title": "Pending Payment Reference"
           },
+          "pending_tier_payments": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Pending Tier Payments"
+          },
+          "paid_tier": {
+            "type": "string",
+            "title": "Paid Tier",
+            "default": "prospect"
+          },
+          "paid_tiers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Paid Tiers"
+          },
+          "display_label": {
+            "type": "string",
+            "title": "Display Label",
+            "default": "Prospect"
+          },
+          "display_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Detail"
+          },
+          "payment_pending": {
+            "type": "boolean",
+            "title": "Payment Pending",
+            "default": false
+          },
+          "tier_statuses": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MemberTierStatusResponse"
+            },
+            "type": "object",
+            "title": "Tier Statuses"
+          },
           "club_badges_earned": {
             "anyOf": [
               {
@@ -56563,6 +57343,19 @@
       },
       "BookingConfirmRequest": {
         "properties": {
+          "member_auth_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Auth Id"
+          },
           "payment_intent_id": {
             "anyOf": [
               {
@@ -56841,6 +57634,197 @@
         ],
         "title": "BulkBookingResponse",
         "description": "Result of a bulk-create call."
+      },
+      "BundleBookingConfirmRequest": {
+        "properties": {
+          "member_auth_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Member Auth Id"
+          },
+          "payment_intent_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Payment Intent Id"
+          },
+          "booking_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Booking Ids"
+          },
+          "wallet_transaction_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wallet Transaction Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_auth_id",
+          "payment_intent_id",
+          "booking_ids"
+        ],
+        "title": "BundleBookingConfirmRequest",
+        "description": "Atomically confirm every reservation owned by one bundle payment."
+      },
+      "BundleBookingConfirmResponse": {
+        "properties": {
+          "confirmed": {
+            "type": "integer",
+            "title": "Confirmed"
+          },
+          "bookings": {
+            "items": {
+              "$ref": "#/components/schemas/SessionBookingResponse"
+            },
+            "type": "array",
+            "title": "Bookings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "confirmed",
+          "bookings"
+        ],
+        "title": "BundleBookingConfirmResponse"
+      },
+      "BundleBookingLineResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "booking_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Booking Id"
+          },
+          "amount_kobo": {
+            "type": "integer",
+            "title": "Amount Kobo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "booking_id",
+          "amount_kobo"
+        ],
+        "title": "BundleBookingLineResponse"
+      },
+      "BundleBookingReleaseRequest": {
+        "properties": {
+          "member_auth_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Member Auth Id"
+          },
+          "payment_intent_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Payment Intent Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_auth_id",
+          "payment_intent_id"
+        ],
+        "title": "BundleBookingReleaseRequest"
+      },
+      "BundleBookingReleaseResponse": {
+        "properties": {
+          "released": {
+            "type": "integer",
+            "title": "Released"
+          }
+        },
+        "type": "object",
+        "required": [
+          "released"
+        ],
+        "title": "BundleBookingReleaseResponse"
+      },
+      "BundleBookingReserveRequest": {
+        "properties": {
+          "member_auth_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Member Auth Id"
+          },
+          "payment_intent_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Payment Intent Id"
+          },
+          "session_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Session Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_auth_id",
+          "payment_intent_id",
+          "session_ids"
+        ],
+        "title": "BundleBookingReserveRequest",
+        "description": "Reserve one member seat in each session before bundle checkout."
+      },
+      "BundleBookingReserveResponse": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "payment_intent_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Payment Intent Id"
+          },
+          "pool_total_kobo": {
+            "type": "integer",
+            "title": "Pool Total Kobo"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/BundleBookingLineResponse"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "payment_intent_id",
+          "pool_total_kobo",
+          "lines"
+        ],
+        "title": "BundleBookingReserveResponse"
       },
       "BundleCartResponse": {
         "properties": {
@@ -57605,6 +58589,95 @@
         "title": "MakeupStatus",
         "description": "Lifecycle of a MakeupBooking (individual-learner make-up / reschedule)."
       },
+      "MemberSessionAccessResponse": {
+        "properties": {
+          "required_tier": {
+            "type": "string",
+            "title": "Required Tier"
+          },
+          "visible": {
+            "type": "boolean",
+            "title": "Visible"
+          },
+          "bookable": {
+            "type": "boolean",
+            "title": "Bookable"
+          },
+          "digest_eligible": {
+            "type": "boolean",
+            "title": "Digest Eligible"
+          },
+          "prompt_eligible": {
+            "type": "boolean",
+            "title": "Prompt Eligible"
+          },
+          "sign_in_allowed": {
+            "type": "boolean",
+            "title": "Sign In Allowed"
+          },
+          "sign_in_eligible": {
+            "type": "boolean",
+            "title": "Sign In Eligible"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "confirmed_booking": {
+            "type": "boolean",
+            "title": "Confirmed Booking"
+          },
+          "confirmed_booking_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Booking Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "required_tier",
+          "visible",
+          "bookable",
+          "digest_eligible",
+          "prompt_eligible",
+          "sign_in_allowed",
+          "sign_in_eligible",
+          "member_id",
+          "confirmed_booking"
+        ],
+        "title": "MemberSessionAccessResponse",
+        "description": "Authoritative access decision for one member/session pair."
+      },
       "MemberSessionCommitment": {
         "properties": {
           "booking_id": {
@@ -57754,6 +58827,71 @@
         "type": "object",
         "title": "RunningLateRequest",
         "description": "Member toggles their \"I'll be late\" flag on a booking.\n\nThe flag is stored as a sentinel prefix in ``booking.notes`` to avoid\nrequiring a schema migration. Set ``running_late=False`` to clear it."
+      },
+      "SessionAccessResponse": {
+        "properties": {
+          "required_tier": {
+            "type": "string",
+            "title": "Required Tier"
+          },
+          "visible": {
+            "type": "boolean",
+            "title": "Visible"
+          },
+          "bookable": {
+            "type": "boolean",
+            "title": "Bookable"
+          },
+          "digest_eligible": {
+            "type": "boolean",
+            "title": "Digest Eligible"
+          },
+          "prompt_eligible": {
+            "type": "boolean",
+            "title": "Prompt Eligible"
+          },
+          "sign_in_allowed": {
+            "type": "boolean",
+            "title": "Sign In Allowed"
+          },
+          "sign_in_eligible": {
+            "type": "boolean",
+            "title": "Sign In Eligible"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "required_tier",
+          "visible",
+          "bookable",
+          "digest_eligible",
+          "prompt_eligible",
+          "sign_in_allowed",
+          "sign_in_eligible"
+        ],
+        "title": "SessionAccessResponse"
       },
       "SessionBasic": {
         "properties": {
@@ -58662,6 +59800,16 @@
             "type": "boolean",
             "title": "Is Recurring Instance",
             "default": false
+          },
+          "access": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionAccessResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -70053,6 +71201,49 @@
         "title": "CommentCreate",
         "description": "Schema for creating a comment."
       },
+      "ContentAIDraftCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 4,
+            "title": "Title"
+          },
+          "brief": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brief"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "default": "swimming_tips"
+          },
+          "tier_access": {
+            "type": "string",
+            "enum": [
+              "community",
+              "club",
+              "academy"
+            ],
+            "title": "Tier Access",
+            "default": "community"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "ContentAIDraftCreate",
+        "description": "Schema for generating a content post draft with AI."
+      },
       "ContentCommentResponse": {
         "properties": {
           "id": {
@@ -70145,15 +71336,49 @@
             ],
             "title": "Featured Image Media Id"
           },
+          "featured_image_prompt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Featured Image Prompt"
+          },
           "tier_access": {
             "type": "string",
+            "enum": [
+              "community",
+              "club",
+              "academy"
+            ],
             "title": "Tier Access",
             "default": "community"
+          },
+          "email_on_publish": {
+            "type": "boolean",
+            "title": "Email On Publish",
+            "default": false
           },
           "is_published": {
             "type": "boolean",
             "title": "Is Published",
             "default": false
+          },
+          "scheduled_for": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled For"
           }
         },
         "type": "object",
@@ -70202,10 +71427,32 @@
             ],
             "title": "Featured Image Media Id"
           },
+          "featured_image_prompt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Featured Image Prompt"
+          },
           "tier_access": {
             "type": "string",
+            "enum": [
+              "community",
+              "club",
+              "academy"
+            ],
             "title": "Tier Access",
             "default": "community"
+          },
+          "email_on_publish": {
+            "type": "boolean",
+            "title": "Email On Publish",
+            "default": false
           },
           "id": {
             "type": "string",
@@ -70277,6 +71524,124 @@
               }
             ],
             "title": "Featured Image Url"
+          },
+          "ai_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Request Id"
+          },
+          "ai_context_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Context Version"
+          },
+          "ai_model_used": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model Used"
+          },
+          "email_sent_count": {
+            "type": "integer",
+            "title": "Email Sent Count",
+            "default": 0
+          },
+          "email_failed_count": {
+            "type": "integer",
+            "title": "Email Failed Count",
+            "default": 0
+          },
+          "email_in_progress_count": {
+            "type": "integer",
+            "title": "Email In Progress Count",
+            "default": 0
+          },
+          "email_unknown_count": {
+            "type": "integer",
+            "title": "Email Unknown Count",
+            "default": 0
+          },
+          "email_attempt_count": {
+            "type": "integer",
+            "title": "Email Attempt Count",
+            "default": 0
+          },
+          "last_email_sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Email Sent At"
+          },
+          "email_recipient_snapshot_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Recipient Snapshot At"
+          },
+          "email_dispatch_last_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Dispatch Last Attempt At"
+          },
+          "email_dispatch_completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Dispatch Completed At"
+          },
+          "email_dispatch_last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Dispatch Last Error"
           },
           "status": {
             "type": "string",
@@ -70358,10 +71723,27 @@
             ],
             "title": "Featured Image Media Id"
           },
+          "featured_image_prompt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Featured Image Prompt"
+          },
           "tier_access": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "enum": [
+                  "community",
+                  "club",
+                  "academy"
+                ]
               },
               {
                 "type": "null"
@@ -70391,6 +71773,17 @@
               }
             ],
             "title": "Scheduled For"
+          },
+          "email_on_publish": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email On Publish"
           }
         },
         "type": "object",
@@ -70749,6 +72142,11 @@
             "title": "Email Marketing",
             "default": false
           },
+          "email_content_updates": {
+            "type": "boolean",
+            "title": "Email Content Updates",
+            "default": true
+          },
           "email_birthday": {
             "type": "boolean",
             "title": "Email Birthday",
@@ -70906,6 +72304,17 @@
               }
             ],
             "title": "Email Marketing"
+          },
+          "email_content_updates": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Content Updates"
           },
           "email_birthday": {
             "anyOf": [
@@ -76700,6 +78109,124 @@
         "title": "BatchRideConfigsResponse",
         "description": "Map of session_id (str) -> list of slim ride configs."
       },
+      "BundleRideQuoteLine": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "ride_config_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ride Config Id"
+          },
+          "pickup_location_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pickup Location Id"
+          },
+          "num_seats": {
+            "type": "integer",
+            "title": "Num Seats"
+          },
+          "unit_amount_kobo": {
+            "type": "integer",
+            "title": "Unit Amount Kobo"
+          },
+          "amount_kobo": {
+            "type": "integer",
+            "title": "Amount Kobo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "ride_config_id",
+          "pickup_location_id",
+          "num_seats",
+          "unit_amount_kobo",
+          "amount_kobo"
+        ],
+        "title": "BundleRideQuoteLine"
+      },
+      "BundleRideQuoteRequest": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "selections": {
+            "items": {
+              "$ref": "#/components/schemas/BundleRideQuoteSelection"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Selections"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "selections"
+        ],
+        "title": "BundleRideQuoteRequest"
+      },
+      "BundleRideQuoteResponse": {
+        "properties": {
+          "total_kobo": {
+            "type": "integer",
+            "title": "Total Kobo"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/BundleRideQuoteLine"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_kobo",
+          "lines"
+        ],
+        "title": "BundleRideQuoteResponse"
+      },
+      "BundleRideQuoteSelection": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "ride_config_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ride Config Id"
+          },
+          "pickup_location_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pickup Location Id"
+          },
+          "num_seats": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Num Seats",
+            "default": 1
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "ride_config_id",
+          "pickup_location_id"
+        ],
+        "title": "BundleRideQuoteSelection"
+      },
       "InternalSessionRideConfigAttachResponse": {
         "properties": {
           "created": {
@@ -78804,6 +80331,176 @@
         ],
         "title": "CohortComplexityScoringResponse",
         "description": "AI-suggested cohort complexity scores."
+      },
+      "ContentDraftRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 4,
+            "title": "Title"
+          },
+          "brief": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brief"
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 2,
+            "title": "Category",
+            "default": "swimming_tips"
+          },
+          "tier_access": {
+            "type": "string",
+            "enum": [
+              "community",
+              "club",
+              "academy"
+            ],
+            "title": "Tier Access",
+            "default": "community"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "ContentDraftRequest"
+      },
+      "ContentDraftResponse": {
+        "properties": {
+          "summary": {
+            "type": "string",
+            "maxLength": 320,
+            "minLength": 20,
+            "title": "Summary"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ContentDraftSection"
+            },
+            "type": "array",
+            "maxItems": 7,
+            "minItems": 1,
+            "title": "Sections"
+          },
+          "closing": {
+            "type": "string",
+            "maxLength": 900,
+            "title": "Closing",
+            "default": ""
+          },
+          "featured_image_prompt": {
+            "type": "string",
+            "maxLength": 1200,
+            "minLength": 20,
+            "title": "Featured Image Prompt"
+          },
+          "ai_request_id": {
+            "type": "string",
+            "title": "Ai Request Id"
+          },
+          "model_used": {
+            "type": "string",
+            "title": "Model Used"
+          },
+          "context_version": {
+            "type": "string",
+            "title": "Context Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary",
+          "sections",
+          "featured_image_prompt",
+          "ai_request_id",
+          "model_used",
+          "context_version"
+        ],
+        "title": "ContentDraftResponse"
+      },
+      "ContentDraftSection": {
+        "properties": {
+          "heading": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Heading",
+            "default": ""
+          },
+          "paragraphs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Paragraphs"
+          },
+          "bullets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Bullets"
+          }
+        },
+        "type": "object",
+        "title": "ContentDraftSection"
+      },
+      "ContentImageRequest": {
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "maxLength": 1600,
+            "minLength": 20,
+            "title": "Prompt"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt",
+          "title"
+        ],
+        "title": "ContentImageRequest"
+      },
+      "ContentImageResponse": {
+        "properties": {
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "ai_request_id": {
+            "type": "string",
+            "title": "Ai Request Id"
+          },
+          "model_used": {
+            "type": "string",
+            "title": "Model Used"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_url",
+          "ai_request_id",
+          "model_used"
+        ],
+        "title": "ContentImageResponse"
       },
       "DrillSuggestion": {
         "properties": {

@@ -51,6 +51,11 @@ SwimBuddz Communications Service manages announcements, content posts, and commu
 - Category tagging
 - Featured content
 - SEO-friendly slugs
+- Human-reviewed AI drafts generated through `ai_service`
+
+Communications owns draft persistence, editor formatting, review, scheduling,
+publishing, and email. It must not call a generative provider directly or hold
+provider credentials. See `docs/architecture/AI_SERVICE_OWNERSHIP.md`.
 
 ### Access Control
 - Community tier: General content only

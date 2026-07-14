@@ -27,6 +27,8 @@ from libs.common.service_client import (
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     Session,
+    SessionBooking,
+    SessionBookingStatus,
     SessionCoach,
     SessionStatus,
     SessionType,
@@ -59,13 +61,16 @@ def _session_payload(session: Session, access=None) -> dict:
             "digest_eligible": access.digest_eligible,
             "prompt_eligible": access.prompt_eligible,
             "sign_in_allowed": access.sign_in_allowed,
+            "sign_in_eligible": access.sign_in_eligible,
             "reason": access.reason,
             "message": denial_message(access.reason) if access.reason else None,
         }
     return payload
 
 
-async def _access_member_payload_for_user(current_user: Optional[AuthUser]) -> dict | None:
+async def _access_member_payload_for_user(
+    current_user: Optional[AuthUser],
+) -> dict | None:
     if current_user is None or is_admin_or_service(current_user):
         return None
 
@@ -74,30 +79,65 @@ async def _access_member_payload_for_user(current_user: Optional[AuthUser]) -> d
             current_user.user_id,
             calling_service="sessions",
         )
-        if not member or not member.get("id"):
-            return None
-        return await get_member_session_access_payload(
-            member_id=uuid.UUID(str(member["id"])),
-            calling_service="sessions",
-        )
-    except (httpx.HTTPError, HTTPException, ValueError) as exc:
+    except httpx.HTTPError as exc:
         logger.warning(
-            "Could not decorate sessions with access for user=%s: %s",
+            "Could not resolve member for session access user=%s: %s",
             current_user.user_id,
             exc,
         )
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not verify your session access. Please try again.",
+        )
+
+    if not member or not member.get("id"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Complete your member profile before accessing sessions.",
+        )
+
+    try:
+        member_id = uuid.UUID(str(member["id"]))
+    except ValueError:
+        logger.error(
+            "Members service returned invalid member id for user=%s",
+            current_user.user_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not verify your session access. Please try again.",
+        )
+
+    return await get_member_session_access_payload(
+        member_id=member_id,
+        calling_service="sessions",
+    )
 
 
 async def _decorate_sessions_for_user(
     sessions: list[Session],
     current_user: Optional[AuthUser],
+    db: AsyncSession,
 ) -> list[dict] | list[Session]:
     member_payload = await _access_member_payload_for_user(current_user)
     if member_payload is None:
         return sessions
 
     now = utc_now()
+    confirmed_session_ids = set(
+        (
+            await db.execute(
+                select(SessionBooking.session_id).where(
+                    SessionBooking.member_id
+                    == uuid.UUID(str(member_payload["member_id"])),
+                    SessionBooking.session_id.in_([session.id for session in sessions]),
+                    SessionBooking.status == SessionBookingStatus.CONFIRMED,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
     decorated: list[dict] = []
     for session in sessions:
         access = await evaluate_session_access_for_member(
@@ -105,6 +145,7 @@ async def _decorate_sessions_for_user(
             member_payload=member_payload,
             now=now,
             calling_service="sessions",
+            confirmed_booking=session.id in confirmed_session_ids,
         )
         decorated.append(_session_payload(session, access))
     return decorated
@@ -113,16 +154,27 @@ async def _decorate_sessions_for_user(
 async def _decorate_session_for_user(
     session: Session,
     current_user: Optional[AuthUser],
+    db: AsyncSession,
 ) -> dict | Session:
     member_payload = await _access_member_payload_for_user(current_user)
     if member_payload is None:
         return session
 
+    confirmed_booking = (
+        await db.execute(
+            select(SessionBooking.id).where(
+                SessionBooking.member_id == uuid.UUID(str(member_payload["member_id"])),
+                SessionBooking.session_id == session.id,
+                SessionBooking.status == SessionBookingStatus.CONFIRMED,
+            )
+        )
+    ).scalar_one_or_none()
     access = await evaluate_session_access_for_member(
         session=session,
         member_payload=member_payload,
         now=utc_now(),
         calling_service="sessions",
+        confirmed_booking=confirmed_booking is not None,
     )
     return _session_payload(session, access)
 
@@ -163,7 +215,7 @@ async def list_sessions(
 
     result = await db.execute(query)
     sessions = list(result.scalars().all())
-    return await _decorate_sessions_for_user(sessions, current_user)
+    return await _decorate_sessions_for_user(sessions, current_user, db)
 
 
 @router.get("/stats")
@@ -287,7 +339,14 @@ async def get_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found",
         )
-    return await _decorate_session_for_user(session, current_user)
+    if session.status == SessionStatus.DRAFT and not (
+        current_user and is_admin_or_service(current_user)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found",
+        )
+    return await _decorate_session_for_user(session, current_user, db)
 
 
 @router.post("/", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)

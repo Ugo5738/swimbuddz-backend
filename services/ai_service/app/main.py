@@ -7,6 +7,7 @@ from services.ai_service.routers.admin_analyze import (
     admin_router as strokelab_admin_router,
 )
 from services.ai_service.routers.analyze import router as analyze_router
+from services.ai_service.routers.content import router as content_router
 from services.ai_service.routers.founding_members import (
     internal_router as founding_internal_router,
 )
@@ -29,6 +30,7 @@ def create_app() -> FastAPI:
 
     # Include scoring + service endpoints
     app.include_router(router, prefix="/ai")
+    app.include_router(content_router, prefix="/ai")
 
     # Include admin endpoints
     app.include_router(admin_router, prefix="/ai")

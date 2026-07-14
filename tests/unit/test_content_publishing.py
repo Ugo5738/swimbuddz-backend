@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import select
 
 import services.communications_service.tasks.content_publishing as content_publishing
+from libs.common.emails.core import EmailDeliveryUnknownError
 from services.communications_service.models import ContentPost, ContentPostEmailLog
 from services.communications_service.routers.content import _content_post_response
 from services.communications_service.tasks.content_publishing import (
@@ -16,8 +17,8 @@ from tests.factories import ContentPostFactory
 
 
 class Response:
-    def __init__(self, payload):
-        self.status_code = 200
+    def __init__(self, payload, status_code=200):
+        self.status_code = status_code
         self._payload = payload
 
     def json(self):
@@ -76,6 +77,154 @@ async def test_content_publish_email_is_idempotent(db_session, monkeypatch):
     assert len(logs) == 1
     assert logs[0].member_id.hex == member_id.replace("-", "")
     assert logs[0].delivery_status == "sent"
+    assert logs[0].attempt_count == 1
+
+
+@pytest.mark.asyncio
+async def test_content_publish_email_retries_known_provider_failure(
+    db_session, monkeypatch
+):
+    member_id = "11111111-1111-1111-1111-111111111111"
+    post = ContentPostFactory.create(
+        is_published=True,
+        email_on_publish=True,
+        tier_access="community",
+    )
+    db_session.add(post)
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        content_publishing,
+        "internal_get",
+        AsyncMock(
+            return_value=Response(
+                [
+                    {
+                        "id": member_id,
+                        "auth_id": "auth-member",
+                        "first_name": "Ada",
+                        "email": "ada@example.com",
+                    }
+                ]
+            )
+        ),
+    )
+    send_email = AsyncMock(side_effect=[False, True])
+    monkeypatch.setattr(
+        content_publishing,
+        "send_content_post_published_email",
+        send_email,
+    )
+
+    assert await send_content_post_publish_emails(db_session, post) == 0
+    assert await send_content_post_publish_emails(db_session, post) == 1
+
+    log = (
+        await db_session.execute(
+            select(ContentPostEmailLog).where(ContentPostEmailLog.post_id == post.id)
+        )
+    ).scalar_one()
+    assert log.delivery_status == "sent"
+    assert log.attempt_count == 2
+
+
+@pytest.mark.asyncio
+async def test_content_publish_email_does_not_auto_retry_unknown_outcome(
+    db_session, monkeypatch
+):
+    member_id = "11111111-1111-1111-1111-111111111111"
+    post = ContentPostFactory.create(
+        is_published=True,
+        email_on_publish=True,
+        tier_access="community",
+    )
+    db_session.add(post)
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        content_publishing,
+        "internal_get",
+        AsyncMock(
+            return_value=Response(
+                [
+                    {
+                        "id": member_id,
+                        "auth_id": "auth-member",
+                        "first_name": "Ada",
+                        "email": "ada@example.com",
+                    }
+                ]
+            )
+        ),
+    )
+    send_email = AsyncMock(side_effect=EmailDeliveryUnknownError("provider timed out"))
+    monkeypatch.setattr(
+        content_publishing,
+        "send_content_post_published_email",
+        send_email,
+    )
+
+    assert await send_content_post_publish_emails(db_session, post) == 0
+    assert await send_content_post_publish_emails(db_session, post) == 0
+
+    send_email.assert_awaited_once()
+    log = (
+        await db_session.execute(
+            select(ContentPostEmailLog).where(ContentPostEmailLog.post_id == post.id)
+        )
+    ).scalar_one()
+    assert log.delivery_status == "unknown"
+    assert log.attempt_count == 1
+
+
+@pytest.mark.asyncio
+async def test_content_publish_email_recovers_after_member_lookup_failure(
+    db_session, monkeypatch
+):
+    member_id = "11111111-1111-1111-1111-111111111111"
+    post = ContentPostFactory.create(
+        is_published=True,
+        email_on_publish=True,
+        tier_access="community",
+    )
+    db_session.add(post)
+    await db_session.commit()
+
+    member_lookup = AsyncMock(
+        side_effect=[
+            Response({}, status_code=503),
+            Response(
+                [
+                    {
+                        "id": member_id,
+                        "auth_id": "auth-member",
+                        "first_name": "Ada",
+                        "email": "ada@example.com",
+                    }
+                ]
+            ),
+        ]
+    )
+    send_email = AsyncMock(return_value=True)
+    monkeypatch.setattr(content_publishing, "internal_get", member_lookup)
+    monkeypatch.setattr(
+        content_publishing,
+        "send_content_post_published_email",
+        send_email,
+    )
+
+    assert await send_content_post_publish_emails(db_session, post) == 0
+    await db_session.refresh(post)
+    assert post.email_recipient_snapshot_at is None
+    assert post.email_dispatch_completed_at is None
+    assert post.email_dispatch_last_error is not None
+
+    assert await send_content_post_publish_emails(db_session, post) == 1
+    await db_session.refresh(post)
+    assert post.email_recipient_snapshot_at is not None
+    assert post.email_dispatch_completed_at is not None
+    assert post.email_dispatch_last_error is None
+    send_email.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -104,11 +253,39 @@ async def test_content_response_includes_email_reporting_stats(db_session):
     )
     await db_session.commit()
 
-    response = await _content_post_response(db_session, post)
+    response = await _content_post_response(
+        db_session,
+        post,
+        include_admin_fields=True,
+    )
 
     assert response.email_sent_count == 1
     assert response.email_failed_count == 1
+    assert response.email_attempt_count == 0
     assert response.last_email_sent_at == sent_at
+
+
+@pytest.mark.asyncio
+async def test_public_content_response_redacts_editorial_and_delivery_state(db_session):
+    post = ContentPostFactory.create(
+        is_published=True,
+        email_on_publish=True,
+        featured_image_prompt="Internal image prompt",
+        ai_context_version="swimbuddz-v1",
+        email_dispatch_last_error="Provider unavailable",
+    )
+    db_session.add(post)
+    await db_session.commit()
+
+    response = await _content_post_response(db_session, post)
+
+    assert response.featured_image_prompt is None
+    assert response.ai_context_version is None
+    assert response.email_on_publish is False
+    assert response.email_recipient_snapshot_at is None
+    assert response.email_dispatch_last_attempt_at is None
+    assert response.email_dispatch_completed_at is None
+    assert response.email_dispatch_last_error is None
 
 
 @pytest.mark.asyncio

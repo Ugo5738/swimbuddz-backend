@@ -6,9 +6,10 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-import litellm
+import httpx
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
+from libs.common.service_client import internal_post
 
 logger = get_logger(__name__)
 
@@ -36,6 +37,10 @@ class GeneratedContentDraft:
 
     summary: str
     body: str
+    featured_image_prompt: str
+    ai_request_id: str
+    context_version: str
+    model_used: str
 
 
 def _clean_text(value: Any, *, max_chars: int | None = None) -> str:
@@ -48,62 +53,6 @@ def _clean_text(value: Any, *, max_chars: int | None = None) -> str:
         if text:
             text = f"{text}."
     return text
-
-
-def _extract_json_text(raw_text: str) -> str:
-    text = raw_text.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].startswith("```"):
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        return text[start : end + 1]
-    return text
-
-
-def _message_content(response: Any) -> str:
-    choices = response.get("choices") if isinstance(response, dict) else None
-    if choices is None:
-        choices = getattr(response, "choices", None)
-    if not choices:
-        return ""
-
-    choice = choices[0]
-    message = choice.get("message") if isinstance(choice, dict) else None
-    if message is None:
-        message = getattr(choice, "message", None)
-    if message is None:
-        return ""
-
-    content = message.get("content") if isinstance(message, dict) else None
-    if content is None:
-        content = getattr(message, "content", None)
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, dict) and isinstance(item.get("text"), str):
-                parts.append(item["text"])
-        return "\n".join(parts)
-    return ""
-
-
-def _parse_payload(raw_text: str) -> dict[str, Any]:
-    try:
-        payload = json.loads(_extract_json_text(raw_text))
-    except json.JSONDecodeError as exc:
-        raise ContentAIDraftError("AI draft response was not valid JSON.") from exc
-
-    if not isinstance(payload, dict):
-        raise ContentAIDraftError("AI draft response must be a JSON object.")
-    return payload
 
 
 def _block(block_id: int, block_type: str, text: str, **props: Any) -> dict[str, Any]:
@@ -203,58 +152,28 @@ def _blocks_from_payload(payload: dict[str, Any], *, title: str) -> str:
     return json.dumps(blocks, ensure_ascii=False)
 
 
-def _draft_from_ai_text(raw_text: str, *, title: str) -> GeneratedContentDraft:
-    payload = _parse_payload(raw_text)
+def _draft_from_payload(
+    payload: dict[str, Any], *, title: str
+) -> GeneratedContentDraft:
     summary = _clean_text(payload.get("summary"), max_chars=MAX_SUMMARY_CHARS)
     if not summary:
-        summary = f"A practical SwimBuddz article draft about {title}."
+        raise ContentAIDraftError("AI service returned an invalid article summary.")
+
+    image_prompt = _clean_text(payload.get("featured_image_prompt"), max_chars=1200)
+    ai_request_id = _clean_text(payload.get("ai_request_id"), max_chars=100)
+    context_version = _clean_text(payload.get("context_version"), max_chars=100)
+    model_used = _clean_text(payload.get("model_used"), max_chars=160)
+    if not all((image_prompt, ai_request_id, context_version, model_used)):
+        raise ContentAIDraftError("AI service returned an incomplete article draft.")
 
     return GeneratedContentDraft(
         summary=summary,
         body=_blocks_from_payload(payload, title=title),
+        featured_image_prompt=image_prompt,
+        ai_request_id=ai_request_id,
+        context_version=context_version,
+        model_used=model_used,
     )
-
-
-def _build_messages(
-    *,
-    title: str,
-    category: str,
-    tier_access: str,
-    brief: str | None,
-) -> list[dict[str, str]]:
-    context = (
-        "SwimBuddz is an adult swimming community in Lagos. It serves community "
-        "members, club members who want consistent practice, and academy members "
-        "who are in structured cohorts. Articles should be practical, warm, "
-        "safety-aware, and grounded in adult beginner and improver realities."
-    )
-    system = (
-        "You write SwimBuddz article drafts for admin review. Be direct, useful, "
-        "and specific to adult swimmers. Do not invent prices, schedules, "
-        "policies, medical claims, or guarantees. For health, injury, panic, or "
-        "safety topics, recommend getting qualified professional or coach support "
-        "where appropriate. Return JSON only."
-    )
-    user = (
-        f"{context}\n\n"
-        f"Title: {title}\n"
-        f"Category: {category}\n"
-        f"Tier access: {tier_access}\n"
-        f"Brief/context: {brief or 'Use the title and SwimBuddz context.'}\n\n"
-        "Return this exact JSON shape with plain text only, no markdown:\n"
-        "{\n"
-        '  "summary": "One concise list-card summary, 160-260 characters.",\n'
-        '  "sections": [\n'
-        "    {\n"
-        '      "heading": "Short section heading",\n'
-        '      "paragraphs": ["1-3 useful paragraphs"],\n'
-        '      "bullets": ["Optional short bullet points"]\n'
-        "    }\n"
-        "  ],\n"
-        '  "closing": "Optional practical closing paragraph."\n'
-        "}\n"
-    )
-    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
 async def generate_content_draft(
@@ -267,30 +186,28 @@ async def generate_content_draft(
     """Generate an unpublished, human-reviewable content post draft."""
 
     settings = get_settings()
-    model = getattr(settings, "AI_DEFAULT_MODEL", "gpt-4o-mini") or "gpt-4o-mini"
-    litellm.drop_params = True
-
     try:
-        response = await litellm.acompletion(
-            model=model,
-            messages=_build_messages(
-                title=title,
-                category=category,
-                tier_access=tier_access,
-                brief=brief,
-            ),
-            temperature=0.6,
-            max_tokens=1800,
-            response_format={"type": "json_object"},
+        response = await internal_post(
+            service_url=settings.AI_SERVICE_URL,
+            path="/ai/content/drafts",
+            calling_service="communications",
+            json={
+                "title": title,
+                "category": category,
+                "tier_access": tier_access,
+                "brief": brief,
+            },
+            timeout=45.0,
         )
-    except Exception as exc:
-        logger.warning("AI content draft generation failed: %s", exc, exc_info=True)
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("AI service draft request failed: %s", exc, exc_info=True)
         raise ContentAIDraftError(
             "AI draft generation is currently unavailable."
         ) from exc
 
-    raw_text = _message_content(response)
-    if not raw_text:
-        raise ContentAIDraftError("AI draft response was empty.")
+    if not isinstance(payload, dict):
+        raise ContentAIDraftError("AI service returned an invalid article draft.")
 
-    return _draft_from_ai_text(raw_text, title=title)
+    return _draft_from_payload(payload, title=title)

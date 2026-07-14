@@ -8,7 +8,11 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
-from libs.common.currency import kobo_to_bubbles, naira_to_kobo
+from libs.common.currency import (
+    kobo_to_bubbles,
+    kobo_to_bubbles_for_charge,
+    naira_to_kobo,
+)
 from libs.common.service_client import (
     credit_member_wallet,
     debit_member_wallet,
@@ -578,7 +582,7 @@ async def create_or_update_rsvp(
     # Debit wallet when the member commits to a paid "going" and hasn't paid yet.
     wallet_txn_id = None
     if should_charge:
-        fee_bubbles = kobo_to_bubbles(total_charge_kobo)
+        fee_bubbles = kobo_to_bubbles_for_charge(total_charge_kobo)
         idempotency_key = f"event-{event_id}-{member_id}"
         try:
             result_txn = await debit_member_wallet(

@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.109,<0.112",
     "uvicorn[standard]>=0.27,<0.30",
     "SQLAlchemy>=2.0,<3.0",
+    "greenlet>=3.0,<4.0",
     "alembic>=1.13,<2.0",
     "httpx[http2]>=0.26,<0.28",
     "pydantic>=2.6,<3.0",

@@ -35,6 +35,7 @@ from services.members_service.models import (  # noqa: F401
     MemberAvailability,
     MemberChallengeCompletion,
     MemberEmergencyContact,
+    MemberEntitlementApplication,
     MemberMembership,
     MemberPreferences,
     MemberProfile,

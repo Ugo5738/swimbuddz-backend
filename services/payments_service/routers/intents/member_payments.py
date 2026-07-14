@@ -33,6 +33,7 @@ MAX_FULFILLMENT_RETRIES = 8
 BASE_FULFILLMENT_RETRY_MINUTES = 2
 
 from ._entitlement import _mark_paid_and_apply
+from ._helpers import _clear_pending_tier_payment_for_payment
 from ._paystack import _to_kobo, _verify_paystack_transaction
 
 router = APIRouter()
@@ -89,7 +90,8 @@ async def verify_my_paystack_payment(
     data = await _verify_paystack_transaction(reference)
     tx_status = str(data.get("status") or "").lower()
     if tx_status != "success":
-        if payment.status != PaymentStatus.PAID:
+        terminal_failure = tx_status in {"abandoned", "failed", "reversed"}
+        if terminal_failure and payment.status != PaymentStatus.PAID:
             payment.status = PaymentStatus.FAILED
             payment.provider = "paystack"
             payment.provider_reference = reference
@@ -100,6 +102,7 @@ async def verify_my_paystack_payment(
             db.add(payment)
             await db.commit()
             await db.refresh(payment)
+            await _clear_pending_tier_payment_for_payment(payment)
 
         # User-friendly error messages based on Paystack status
         error_messages = {

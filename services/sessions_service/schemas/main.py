@@ -115,8 +115,17 @@ class SessionAccessResponse(BaseModel):
     digest_eligible: bool
     prompt_eligible: bool
     sign_in_allowed: bool
+    sign_in_eligible: bool
     reason: Optional[str] = None
     message: Optional[str] = None
+
+
+class MemberSessionAccessResponse(SessionAccessResponse):
+    """Authoritative access decision for one member/session pair."""
+
+    member_id: uuid.UUID
+    confirmed_booking: bool
+    confirmed_booking_id: Optional[uuid.UUID] = None
 
 
 class SessionResponse(SessionBase):

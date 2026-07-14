@@ -1,8 +1,15 @@
+x-no-generative-ai-service: &no-generative-ai-service
+  environment:
+    OPENAI_API_KEY: ""
+    ANTHROPIC_API_KEY: ""
+    GEMINI_API_KEY: ""
+
 services:
   # ==================================================================
   # DOMAIN MICROSERVICES (STAGING)
   # ==================================================================
   members-service-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-members-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_members_staging
     env_file:
@@ -13,6 +20,7 @@ services:
       - .:/app
 
   sessions-service-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-sessions-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_sessions_staging
     env_file:
@@ -23,6 +31,7 @@ services:
       - .:/app
 
   attendance-service-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-attendance-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_attendance_staging
     env_file:
@@ -33,6 +42,7 @@ services:
       - .:/app
 
   communications-service-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-communications-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_communications_staging
     env_file:
@@ -43,6 +53,7 @@ services:
       - .:/app
 
   payments-service-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-payments-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_payments_staging
     env_file:
@@ -53,6 +64,7 @@ services:
       - .:/app
 
   academy-service-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-academy-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_academy_staging
     env_file:
@@ -63,6 +75,7 @@ services:
       - .:/app
 
   media-service-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-media-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_media_staging
     env_file:
@@ -73,6 +86,7 @@ services:
       - .:/app
 
   events-service-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-events-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_events_staging
     env_file:
@@ -83,6 +97,7 @@ services:
       - .:/app
 
   transport-service-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-transport-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_transport_staging
     env_file:
@@ -93,6 +108,7 @@ services:
       - .:/app
 
   store-service-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-store-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_store_staging
     env_file:
@@ -102,7 +118,22 @@ services:
     volumes:
       - .:/app
 
+  ai-service-staging:
+    image: ${DOCKER_USERNAME}/swimbuddz-ai-service:${STAGING_TAG:-latest}
+    container_name: swimbuddz_ai_staging
+    env_file:
+      - .env.staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+    networks:
+      default:
+        aliases:
+          - ai-service
+
   reporting-service-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-reporting-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_reporting_staging
     env_file:
@@ -116,6 +147,7 @@ services:
   # API GATEWAY (STAGING)
   # ==================================================================
   gateway-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-gateway-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_gateway_staging
     env_file:
@@ -140,6 +172,8 @@ services:
       transport-service-staging:
         condition: service_started
       store-service-staging:
+        condition: service_started
+      ai-service-staging:
         condition: service_started
       reporting-service-staging:
         condition: service_started
@@ -170,6 +204,7 @@ services:
   # BACKGROUND WORKERS (STAGING)
   # ==================================================================
   academy-worker-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-academy-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_academy_worker_staging
     env_file:
@@ -186,6 +221,7 @@ services:
       - .:/app
 
   members-worker-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-members-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_members_worker_staging
     env_file:
@@ -206,6 +242,7 @@ services:
       - .:/app
 
   events-worker-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-events-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_events_worker_staging
     env_file:
@@ -223,6 +260,7 @@ services:
       - .:/app
 
   transport-worker-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-transport-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_transport_worker_staging
     env_file:
@@ -239,6 +277,7 @@ services:
       - .:/app
 
   communications-worker-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-communications-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_communications_worker_staging
     env_file:
@@ -255,6 +294,7 @@ services:
       - .:/app
 
   media-worker-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-media-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_media_worker_staging
     env_file:
@@ -271,6 +311,7 @@ services:
       - .:/app
 
   reporting-worker-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-reporting-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_reporting_worker_staging
     env_file:
@@ -287,6 +328,7 @@ services:
       - .:/app
 
   attendance-worker-staging:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-attendance-service:${STAGING_TAG:-latest}
     container_name: swimbuddz_attendance_worker_staging
     env_file:

@@ -9,7 +9,7 @@ from datetime import date as _Date
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from services.sessions_service.models.enums import (
     BookingChannel,
@@ -130,8 +130,62 @@ class SessionBookingCreate(BaseModel):
 class BookingConfirmRequest(BaseModel):
     """Transition a PENDING booking to CONFIRMED after payment cleared."""
 
+    member_auth_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
     payment_intent_id: Optional[uuid.UUID] = None
     wallet_transaction_id: Optional[uuid.UUID] = None
+
+
+class BundleBookingReserveRequest(BaseModel):
+    """Reserve one member seat in each session before bundle checkout."""
+
+    member_auth_id: str = Field(min_length=1, max_length=128)
+    payment_intent_id: uuid.UUID
+    session_ids: List[uuid.UUID] = Field(min_length=1, max_length=10)
+
+    @field_validator("session_ids")
+    @classmethod
+    def session_ids_are_unique(cls, value: List[uuid.UUID]) -> List[uuid.UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("Duplicate session_ids in bundle")
+        return value
+
+
+class BundleBookingLineResponse(BaseModel):
+    session_id: uuid.UUID
+    booking_id: uuid.UUID
+    amount_kobo: int
+
+
+class BundleBookingReserveResponse(BaseModel):
+    member_id: uuid.UUID
+    payment_intent_id: uuid.UUID
+    pool_total_kobo: int
+    lines: List[BundleBookingLineResponse]
+
+
+class BundleBookingConfirmRequest(BaseModel):
+    """Atomically confirm every reservation owned by one bundle payment."""
+
+    member_auth_id: str = Field(min_length=1, max_length=128)
+    payment_intent_id: uuid.UUID
+    booking_ids: List[uuid.UUID] = Field(min_length=1, max_length=10)
+    wallet_transaction_id: Optional[uuid.UUID] = None
+
+    @field_validator("booking_ids")
+    @classmethod
+    def booking_ids_are_unique(cls, value: List[uuid.UUID]) -> List[uuid.UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("Duplicate booking_ids in bundle")
+        return value
+
+
+class BundleBookingReleaseRequest(BaseModel):
+    member_auth_id: str = Field(min_length=1, max_length=128)
+    payment_intent_id: uuid.UUID
+
+
+class BundleBookingReleaseResponse(BaseModel):
+    released: int
 
 
 class RunningLateRequest(BaseModel):
@@ -214,6 +268,11 @@ class SessionBookingResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class BundleBookingConfirmResponse(BaseModel):
+    confirmed: int
+    bookings: List[SessionBookingResponse]
 
 
 class BulkBookingResponse(BaseModel):

@@ -121,6 +121,7 @@ from services.members_service.schemas.member import (  # noqa: F401
     MemberTierStatusResponse,
     MemberUpdate,
     PendingMemberResponse,
+    ProjectAcademyRequest,
     PendingRegistrationCreate,
     PendingRegistrationResponse,
 )

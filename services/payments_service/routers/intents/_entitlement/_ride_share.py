@@ -20,7 +20,6 @@ from services.payments_service.models import (
 
 from .._helpers import (
     _debit_bubbles,
-    _update_pending_payment_reference,
 )
 
 settings = get_settings()
@@ -153,4 +152,3 @@ async def apply_ride_share(payment: Payment) -> None:
             logger.error(f"Failed to send ride share confirmation email: {e}")
 
     # Clear pending payment reference on success
-    await _update_pending_payment_reference(payment.member_auth_id, None)

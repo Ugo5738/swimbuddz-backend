@@ -12,6 +12,10 @@ from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.payments_service.models import Payment, PaymentStatus
 from services.payments_service.routers.intents import _apply_entitlement_with_tracking
+from services.payments_service.routers.intents._helpers import (
+    _clear_pending_tier_payment_for_payment,
+    _set_pending_tier_payment_for_payment,
+)
 from services.payments_service.schemas import (
     AdminReviewRequest,
     MarkRefundDisbursedRequest,
@@ -68,6 +72,7 @@ async def submit_proof_of_payment(
 
     await db.commit()
     await db.refresh(payment)
+    await _set_pending_tier_payment_for_payment(payment)
 
     logger.info(f"Proof submitted for payment {reference}, status: PENDING_REVIEW")
     return payment
@@ -187,6 +192,7 @@ async def reject_manual_payment(
 
     await db.commit()
     await db.refresh(payment)
+    await _clear_pending_tier_payment_for_payment(payment)
 
     logger.info(f"Payment {reference} rejected by admin {current_user.email}")
 

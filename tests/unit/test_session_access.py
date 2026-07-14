@@ -193,7 +193,10 @@ def test_started_sessions_are_digest_visible_but_not_newly_bookable(starts_at):
 
 def test_confirmed_booking_preserves_sign_in_even_after_tier_expires():
     member = _member(community_paid_until=PAST)
-    session = _session()
+    session = _session(
+        starts_at=(NOW - timedelta(minutes=15)).isoformat(),
+        ends_at=(NOW + timedelta(minutes=45)).isoformat(),
+    )
     decision = evaluate_session_access(
         member,
         session,
@@ -203,3 +206,55 @@ def test_confirmed_booking_preserves_sign_in_even_after_tier_expires():
 
     assert decision.sign_in_allowed
     assert not decision.bookable
+
+
+@pytest.mark.parametrize(
+    "session",
+    [
+        _session(status="cancelled"),
+        _session(
+            starts_at=(NOW + timedelta(hours=2)).isoformat(),
+            ends_at=(NOW + timedelta(hours=3)).isoformat(),
+        ),
+        _session(
+            status="completed",
+            starts_at=(NOW - timedelta(hours=3)).isoformat(),
+            ends_at=(NOW - timedelta(hours=2)).isoformat(),
+        ),
+    ],
+)
+def test_confirmed_booking_does_not_bypass_session_sign_in_window(session):
+    decision = evaluate_session_access(
+        _member(community_paid_until=PAST),
+        session,
+        now=NOW,
+        confirmed_booking=True,
+    )
+
+    assert not decision.sign_in_allowed
+    assert decision.reason == "session_unavailable"
+
+
+def test_cancelled_session_is_not_sign_in_eligible_even_with_booking():
+    session = _session(
+        status="cancelled",
+        starts_at=(NOW - timedelta(minutes=15)).isoformat(),
+        ends_at=(NOW + timedelta(minutes=45)).isoformat(),
+    )
+
+    confirmed = evaluate_session_access(
+        _member(community_paid_until=PAST),
+        session,
+        now=NOW,
+        confirmed_booking=True,
+    )
+    unbooked = evaluate_session_access(
+        _member(community_paid_until=FUTURE),
+        session,
+        now=NOW,
+    )
+
+    assert not confirmed.sign_in_eligible
+    assert not confirmed.sign_in_allowed
+    assert not unbooked.sign_in_eligible
+    assert not unbooked.sign_in_allowed

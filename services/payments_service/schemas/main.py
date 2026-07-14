@@ -55,8 +55,8 @@ class CreatePaymentIntentRequest(BaseModel):
     # Keys are session IDs (as strings), values are SessionRideConfig.
     session_ride_configs: Optional[Dict[str, "SessionRideConfig"]] = None
 
-    # Partial Bubbles: pay some of the total with Bubbles, remainder via Paystack.
-    # 1 Bubble = ₦100. Only supported for SESSION_FEE, SESSION_BUNDLE, RIDE_SHARE.
+    # Reserved for full-wallet settlement once payment intents support atomic
+    # wallet holds. Mixed Bubbles + provider payments are currently rejected.
     bubbles_to_apply: Optional[int] = Field(default=None, ge=0)
 
     # Member-initiated mid-cohort payment override (ACADEMY_COHORT only).

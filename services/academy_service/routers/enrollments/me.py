@@ -33,7 +33,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ._helpers import _annotate_payment_with_refund, _recompute_member_academy_until
+from services.academy_service.services.membership_projection import (
+    project_member_academy_membership,
+)
+
+from ._helpers import _annotate_payment_with_refund
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -336,14 +340,25 @@ async def withdraw_my_enrollment(
                 calling_service="academy",
             )
 
-    # Recompute academy_paid_until from remaining ENROLLED cohorts
-    await _recompute_member_academy_until(
-        member_auth_id=current_user.user_id,
-        member_id=enrollment.member_id,
-        db=db,
-    )
-
     await db.commit()
+
+    # Projection is derived state in members_service. The local withdrawal is
+    # already durable before this cross-service call; the hourly reconciler
+    # retries any transient failure without rolling the withdrawal back.
+    try:
+        await project_member_academy_membership(
+            db,
+            member_auth_id=current_user.user_id,
+            member_id=enrollment.member_id,
+            source_reference=f"academy-withdrawal:{enrollment.id}",
+        )
+    except Exception:
+        logger.warning(
+            "Failed to project Academy access after withdrawal %s; "
+            "hourly reconciliation will retry",
+            enrollment.id,
+            exc_info=True,
+        )
 
     refund_naira = refund_kobo / 100
     if refund_kobo > 0:

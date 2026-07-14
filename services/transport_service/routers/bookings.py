@@ -6,10 +6,13 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from libs.auth.dependencies import get_current_user
+from libs.auth.dependencies import get_current_user, is_admin_or_service
 from libs.auth.models import AuthUser
-from libs.common.currency import kobo_to_bubbles
+from libs.common.currency import kobo_to_bubbles_for_charge
 from libs.common.service_client import debit_member_wallet
+from libs.common.service_client.sessions import (
+    get_confirmed_booking_for_session_member,
+)
 from libs.db.session import get_async_db
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
@@ -110,6 +113,10 @@ async def create_ride_booking(
     member_id: Optional[uuid.UUID] = Query(
         None, description="Member ID override for service-to-service calls"
     ),
+    allow_without_booking: bool = Query(
+        False,
+        description="Explicit service-role override for a verified day-of walk-in",
+    ),
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -138,6 +145,50 @@ async def create_ride_booking(
     cfg_for_cost = cfg_result.scalar_one_or_none()
     if not cfg_for_cost:
         raise HTTPException(status_code=404, detail="Ride config not found")
+    if cfg_for_cost.session_id != session_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Ride config does not belong to this session",
+        )
+    pickup = (
+        await db.execute(
+            select(PickupLocation).where(
+                PickupLocation.id == booking_in.pickup_location_id,
+                PickupLocation.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    if pickup is None or pickup.area_id != cfg_for_cost.ride_area_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Pickup location is not valid for this ride",
+        )
+
+    is_service = current_user.role == "service_role"
+    is_admin = is_admin_or_service(current_user) and not is_service
+    has_operator_override = is_admin or (is_service and allow_without_booking)
+    if allow_without_booking and not is_service:
+        raise HTTPException(
+            status_code=403,
+            detail="Only an internal service can authorize a walk-in ride booking",
+        )
+    if not has_operator_override:
+        try:
+            confirmed_booking = await get_confirmed_booking_for_session_member(
+                session_id=str(session_id),
+                member_id=str(resolved_member_id),
+                calling_service="transport",
+            )
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Could not verify the session booking. Please try again.",
+            ) from exc
+        if confirmed_booking is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Book this session before adding a ride share.",
+            )
 
     # Track the previous ride config for chat-channel reconciliation if the
     # member is moving between trips on the same session.
@@ -149,13 +200,16 @@ async def create_ride_booking(
         # Update existing booking (no re-charge) — allows changing location
         existing.session_ride_config_id = booking_in.session_ride_config_id
         existing.pickup_location_id = booking_in.pickup_location_id
+        existing.num_seats = booking_in.num_seats
         await db.commit()
         await db.refresh(existing)
         booking = existing
     else:
         # Debit wallet for new bookings when requested and ride has a cost
         if booking_in.pay_with_bubbles and cfg_for_cost.cost > 0:
-            fee_bubbles = kobo_to_bubbles(cfg_for_cost.cost * booking_in.num_seats)
+            fee_bubbles = kobo_to_bubbles_for_charge(
+                cfg_for_cost.cost * booking_in.num_seats
+            )
             idempotency_key = f"ride-{session_id}-{resolved_member_id}"
             try:
                 await debit_member_wallet(

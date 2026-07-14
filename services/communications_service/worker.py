@@ -48,7 +48,7 @@ async def task_publish_scheduled_content(ctx: dict):
 
 
 async def task_generate_content_images(ctx: dict):
-    """Generate featured images for content posts using DALL-E."""
+    """Generate featured images for content posts through ai_service."""
     from services.communications_service.tasks import generate_content_images
 
     logger.info("Running: generate_content_images")

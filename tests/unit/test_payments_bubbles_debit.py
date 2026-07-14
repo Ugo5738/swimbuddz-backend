@@ -1,13 +1,8 @@
-"""Unit tests for the shared partial-Bubbles wallet debit helper.
+"""Unit tests for the legacy Bubbles wallet debit helper.
 
-`_debit_bubbles` is used by every entitlement handler whose purpose is in
-intent_creation's ``bubbles_purposes`` (session_fee, session_booking,
-session_bundle, ride_share). It debits the wallet for the Bubbles portion
-after Paystack has cleared the reduced remainder.
-
-Regression context: SESSION_BOOKING / SESSION_BUNDLE / RIDE_SHARE previously
-reduced the Paystack charge but never debited the wallet, so members kept their
-Bubbles for free (and SESSION_BOOKING wasn't even reduced — full overcharge).
+New mixed-tender intents are rejected until wallet holds exist. This helper is
+retained for already-created payments and must fail fulfillment closed if the
+wallet portion cannot be collected.
 """
 
 from types import SimpleNamespace
@@ -88,9 +83,7 @@ async def test_debit_bubbles_idempotent_when_already_debited():
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-async def test_debit_bubbles_non_fatal_on_failure():
-    """A debit failure is recorded in metadata but never raises — the Paystack
-    portion was already charged, so fulfillment must not be blocked."""
+async def test_debit_bubbles_fails_closed_on_failure():
     response = httpx.Response(
         status_code=400,
         text="Insufficient balance",
@@ -99,8 +92,9 @@ async def test_debit_bubbles_non_fatal_on_failure():
     client = _client_returning(response)
     payment = _payment({"bubbles_to_apply": 5})
 
-    txn_id = await _debit_bubbles(client, payment, reference_type="session_bundle")
+    with pytest.raises(Exception) as exc:
+        await _debit_bubbles(client, payment, reference_type="session_bundle")
 
-    assert txn_id is None
+    assert getattr(exc.value, "status_code", None) == 502
     assert payment.payment_metadata["bubbles_debit_failed"] is True
     assert "wallet_transaction_id" not in payment.payment_metadata

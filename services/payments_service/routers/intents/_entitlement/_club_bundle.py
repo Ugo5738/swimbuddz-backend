@@ -11,18 +11,11 @@ from fastapi import HTTPException, status
 
 from libs.auth.dependencies import _service_role_jwt
 from libs.common.config import get_settings
-from libs.common.logging import get_logger
 from services.payments_service.models import (
     Payment,
 )
 
-from .._helpers import (
-    _send_tier_activated_email,
-    _update_pending_payment_reference,
-)
-
 settings = get_settings()
-logger = get_logger(__name__)
 
 
 async def apply_club_bundle(payment: Payment) -> None:
@@ -32,7 +25,11 @@ async def apply_club_bundle(payment: Payment) -> None:
     async with httpx.AsyncClient(timeout=30) as client:
         community_resp = await client.post(
             f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/community/activate",
-            json={"years": years},
+            json={
+                "years": years,
+                "idempotency_key": f"payment:{payment.id}:community-activate",
+                "source_reference": payment.reference,
+            },
             headers=headers,
         )
         if community_resp.status_code >= 400:
@@ -42,7 +39,12 @@ async def apply_club_bundle(payment: Payment) -> None:
             )
         club_resp = await client.post(
             f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/club/activate",
-            json={"months": months, "skip_community_check": True},
+            json={
+                "months": months,
+                "skip_community_check": True,
+                "idempotency_key": f"payment:{payment.id}:club-activate",
+                "source_reference": payment.reference,
+            },
             headers=headers,
         )
         if club_resp.status_code >= 400:
@@ -50,8 +52,3 @@ async def apply_club_bundle(payment: Payment) -> None:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Failed to apply club entitlement via members_service ({club_resp.status_code}): {club_resp.text}",
             )
-    # Clear pending payment reference on success
-    await _update_pending_payment_reference(payment.member_auth_id, None)
-    # Send club tier email (bundle pays for both community + club)
-    duration = f"{months} month{'s' if months != 1 else ''} Club + {years} year{'s' if years != 1 else ''} Community"
-    await _send_tier_activated_email(payment, tier="club", duration=duration)

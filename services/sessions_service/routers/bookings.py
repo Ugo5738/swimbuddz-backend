@@ -23,7 +23,7 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import (
@@ -33,7 +33,7 @@ from libs.auth.dependencies import (
     require_coach,
 )
 from libs.auth.models import AuthUser
-from libs.common.currency import kobo_to_bubbles
+from libs.common.currency import kobo_to_bubbles, kobo_to_bubbles_for_charge
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.session_access import denial_message
@@ -68,14 +68,13 @@ from services.sessions_service.schemas import (
 from services.sessions_service.services.session_access import (
     evaluate_member_session_access,
 )
+from services.sessions_service.services.booking_capacity import (
+    PENDING_TTL_MINUTES,
+    assert_booking_capacity,
+)
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["bookings"])
-
-# PENDING bookings expire 15 minutes after `booked_at` if not CONFIRMED.
-# A 5-min worker sweep flips expired rows to status=EXPIRED, freeing the seat.
-PENDING_TTL_MINUTES = 15
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -126,7 +125,7 @@ async def _debit_booking_fee(
     try:
         result_txn = await debit_member_wallet(
             member_auth_id,
-            amount=kobo_to_bubbles(fee_amount_kobo),
+            amount=kobo_to_bubbles_for_charge(fee_amount_kobo),
             idempotency_key=(
                 f"booking-fee-{session_id}-{member_id}-{int(booked_at.timestamp())}"
             ),
@@ -212,54 +211,6 @@ def _validate_guest_policy(
                         f"phone, and an accepted waiver are required."
                     ),
                 )
-
-
-async def _assert_capacity(
-    db: AsyncSession,
-    *,
-    session: Session,
-    member_id: uuid.UUID,
-    new_party_size: int,
-) -> None:
-    """Reject a booking that would exceed the session's head-count capacity.
-
-    Sums ``party_size`` over active bookings (CONFIRMED + unexpired PENDING),
-    excluding this member's own row so a re-book / party-size change doesn't
-    double-count their seat. A ``FOR UPDATE`` lock on the session row serialises
-    concurrent bookings so two members can't both grab the last seats. The lock
-    is held until the request commits — which, on the Bubbles path, spans the
-    wallet debit; per-session contention is low, so that's an acceptable trade.
-    """
-    await db.execute(
-        select(Session.id).where(Session.id == session.id).with_for_update()
-    )
-    now = utc_now()
-    used = (
-        await db.execute(
-            select(func.coalesce(func.sum(SessionBooking.party_size), 0)).where(
-                SessionBooking.session_id == session.id,
-                SessionBooking.member_id != member_id,
-                or_(
-                    SessionBooking.status == SessionBookingStatus.CONFIRMED,
-                    and_(
-                        SessionBooking.status == SessionBookingStatus.PENDING,
-                        or_(
-                            SessionBooking.expires_at.is_(None),
-                            SessionBooking.expires_at > now,
-                        ),
-                    ),
-                ),
-            )
-        )
-    ).scalar_one()
-    if int(used) + new_party_size > session.capacity:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"This session is full — {int(used)}/{session.capacity} seats "
-                f"taken and you need {new_party_size}."
-            ),
-        )
 
 
 async def _replace_guests(
@@ -379,7 +330,7 @@ async def book_session(
         guests=booking_in.guests,
         block_count=booking_in.block_guests,
     )
-    await _assert_capacity(
+    await assert_booking_capacity(
         db, session=session, member_id=member_id, new_party_size=party_size
     )
 
@@ -557,7 +508,7 @@ async def add_trial_guest(
 
     # Capacity for the extra head — the booking's own row is excluded, so pass
     # its new total as the would-be party size.
-    await _assert_capacity(
+    await assert_booking_capacity(
         db,
         session=session,
         member_id=booking.member_id,

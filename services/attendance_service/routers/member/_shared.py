@@ -16,10 +16,12 @@ from libs.common.service_client import (
     check_cohort_enrollment,
     get_member_by_auth_id,
     get_member_membership,
+    get_pod_by_id,
     get_session_by_id,
     internal_get,
 )
 from libs.common.datetime_utils import utc_now
+from libs.common.session_access import denial_message, evaluate_session_access
 from libs.db.session import get_async_db
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -115,104 +117,44 @@ async def get_current_member(
 async def validate_session_access(
     session_data: dict,
     member_id: str,
+    *,
+    confirmed_booking: bool = False,
 ) -> None:
-    """Enforce tier-based session access control.
+    """Build attendance-owned context and apply the shared access policy."""
+    membership = None
+    if not confirmed_booking and session_data.get("session_type") != "cohort_class":
+        membership = await get_member_membership(
+            member_id, calling_service="attendance"
+        )
+    member_payload = {
+        "id": member_id,
+        "member_id": member_id,
+        **(membership or {}),
+    }
 
-    Raises HTTPException with friendly messages if the member's membership
-    tier does not permit access to this session type.
-
-    Access rules:
-    - cohort_class: only enrolled cohort members (not suspended)
-    - club: only members with active club tier
-    - community/event: any member with an active membership
-    - one_on_one/group_booking: no tier check (future booking system)
-    """
-    from datetime import datetime
-
-    session_type = session_data.get("session_type")
-
-    if session_type == "cohort_class":
-        cohort_id = session_data.get("cohort_id")
-        if not cohort_id:
-            # Cohort session without a cohort_id — shouldn't happen, allow through
-            return
-
-        enrollment = await check_cohort_enrollment(
+    cohort_enrollment = None
+    cohort_id = session_data.get("cohort_id")
+    if cohort_id and not confirmed_booking:
+        cohort_enrollment = await check_cohort_enrollment(
             str(cohort_id), member_id, calling_service="attendance"
         )
-        if not enrollment or not enrollment.get("enrolled"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "This academy cohort follows a structured curriculum — "
-                    "members start and progress together. "
-                    "Check swimbuddz.com for the next cohort enrollment."
-                ),
-            )
-        if enrollment.get("access_suspended"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "Your access to this cohort is currently suspended. "
-                    "Please contact the SwimBuddz team for more information."
-                ),
-            )
 
-    elif session_type == "club":
-        membership = await get_member_membership(
-            member_id, calling_service="attendance"
+    pod_member_ids = None
+    pod_id = session_data.get("pod_id")
+    if pod_id and not confirmed_booking:
+        pod = await get_pod_by_id(str(pod_id), calling_service="attendance")
+        pod_member_ids = (pod or {}).get("active_member_ids") or []
+
+    decision = evaluate_session_access(
+        member_payload,
+        session_data,
+        now=utc_now(),
+        cohort_enrollment=cohort_enrollment,
+        pod_member_ids=pod_member_ids,
+        confirmed_booking=confirmed_booking,
+    )
+    if not decision.sign_in_allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=denial_message(decision.reason),
         )
-        if not membership:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "This is a club session for members training together weekly. "
-                    "Join the club to participate — visit swimbuddz.com for details."
-                ),
-            )
-        active_tiers = membership.get("active_tiers") or []
-        club_paid_until = membership.get("club_paid_until")
-
-        has_club = "club" in active_tiers
-        club_current = False
-        if club_paid_until:
-            try:
-                paid_until = datetime.fromisoformat(club_paid_until)
-                club_current = paid_until > utc_now()
-            except (ValueError, TypeError):
-                pass
-
-        if not has_club or not club_current:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "This is a club session for members training together weekly. "
-                    "Join the club to participate — plans start at ₦42,500/quarter. "
-                    "Visit swimbuddz.com or ask any club member for details!"
-                ),
-            )
-
-    elif session_type in ("community", "event"):
-        membership = await get_member_membership(
-            member_id, calling_service="attendance"
-        )
-        if not membership:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "Welcome to SwimBuddz! You need an active membership to sign "
-                    "in to sessions. Community membership starts at ₦20,000/year "
-                    "— visit swimbuddz.com to get started."
-                ),
-            )
-        active_tiers = membership.get("active_tiers") or []
-        if not active_tiers:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "Your membership isn't currently active. "
-                    "Renew at swimbuddz.com to sign in to sessions."
-                ),
-            )
-
-    # one_on_one, group_booking — no tier check (future booking system)

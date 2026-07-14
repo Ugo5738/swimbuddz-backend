@@ -54,12 +54,13 @@ async def evaluate_session_access_for_member(
     member_payload: dict,
     now: datetime,
     calling_service: str = "sessions",
+    confirmed_booking: bool = False,
 ):
     """Build session-specific context and evaluate access for one session."""
     member_id = str(member_payload["member_id"])
 
     cohort_enrollment = None
-    if session.cohort_id is not None:
+    if session.cohort_id is not None and not confirmed_booking:
         try:
             cohort_enrollment = await check_cohort_enrollment(
                 cohort_id=str(session.cohort_id),
@@ -79,7 +80,7 @@ async def evaluate_session_access_for_member(
             )
 
     pod_member_ids = None
-    if session.pod_id is not None:
+    if session.pod_id is not None and not confirmed_booking:
         try:
             pod = await get_pod_by_id(
                 str(session.pod_id), calling_service=calling_service
@@ -104,6 +105,7 @@ async def evaluate_session_access_for_member(
         now=now,
         cohort_enrollment=cohort_enrollment,
         pod_member_ids=pod_member_ids,
+        confirmed_booking=confirmed_booking,
     )
 
 

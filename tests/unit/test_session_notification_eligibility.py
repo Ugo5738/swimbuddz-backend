@@ -89,7 +89,7 @@ def test_default_booking_prompt_tier_uses_highest_paid_membership():
 
 
 @pytest.mark.asyncio
-async def test_community_prompt_targets_default_community_and_prospects_only():
+async def test_community_prompt_targets_all_paid_members_and_prospects():
     future = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
     members = [
         _member(id="community", community_paid_until=future),
@@ -116,11 +116,16 @@ async def test_community_prompt_targets_default_community_and_prospects_only():
         active_members=members,
     )
 
-    assert {m["id"] for m in recipients} == {"community", "prospect"}
+    assert {m["id"] for m in recipients} == {
+        "community",
+        "prospect",
+        "club",
+        "academy",
+    }
 
 
 @pytest.mark.asyncio
-async def test_club_prompt_targets_default_club_members_only():
+async def test_club_prompt_targets_every_member_with_inherited_club_access():
     future = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
     members = [
         _member(id="community", community_paid_until=future),
@@ -147,7 +152,43 @@ async def test_club_prompt_targets_default_club_members_only():
         active_members=members,
     )
 
-    assert {m["id"] for m in recipients} == {"club"}
+    assert {m["id"] for m in recipients} == {"club", "academy"}
+
+
+@pytest.mark.asyncio
+async def test_cohort_prompt_excludes_suspended_enrollments(monkeypatch):
+    members = [_member(id="active"), _member(id="suspended")]
+
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return [
+                {"member_id": "active", "access_suspended": False},
+                {"member_id": "suspended", "access_suspended": True},
+            ]
+
+    monkeypatch.setattr(
+        notifications,
+        "internal_get",
+        AsyncMock(return_value=Response()),
+    )
+    monkeypatch.setattr(
+        notifications,
+        "get_members_bulk",
+        AsyncMock(return_value=members),
+    )
+
+    recipients = await _get_session_announcement_members(
+        session={
+            "session_type": "cohort_class",
+            "cohort_id": "cohort-1",
+        },
+        active_members=[],
+    )
+
+    assert [member["id"] for member in recipients] == ["active"]
 
 
 def test_expired_paid_until_does_not_grant_booking_prompt():
@@ -300,7 +341,18 @@ async def test_weekly_digest_excludes_suspended_cohort_enrollment(monkeypatch):
     monkeypatch.setattr(
         notifications,
         "_get_notification_preferences_by_auth",
-        AsyncMock(return_value={}),
+        AsyncMock(
+            return_value={
+                "auth-active": SimpleNamespace(
+                    weekly_session_digest=True,
+                    weekly_digest=False,
+                ),
+                "auth-suspended": SimpleNamespace(
+                    weekly_session_digest=True,
+                    weekly_digest=False,
+                ),
+            }
+        ),
     )
     monkeypatch.setattr(
         "services.communications_service.templates.session_notifications."

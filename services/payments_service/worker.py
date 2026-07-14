@@ -21,6 +21,15 @@ async def task_retry_payment_fulfillment(ctx: dict):
     await retry_failed_entitlement_fulfillment()
 
 
+async def task_reconcile_membership_payment_state(ctx: dict):
+    from services.payments_service.tasks import (
+        reconcile_pending_membership_payment_state,
+    )
+
+    logger.info("Running: reconcile_pending_membership_payment_state")
+    await reconcile_pending_membership_payment_state()
+
+
 async def task_process_recurring_payouts(ctx: dict):
     from services.payments_service.tasks import process_recurring_payouts
 
@@ -48,6 +57,7 @@ class WorkerSettings:
 
     functions = [
         task_reconcile_pending_payments,
+        task_reconcile_membership_payment_state,
         task_retry_payment_fulfillment,
         task_process_recurring_payouts,
         task_expire_overdue_makeups,
@@ -63,6 +73,11 @@ class WorkerSettings:
         cron(
             task_retry_payment_fulfillment,
             minute={1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56},
+            run_at_startup=True,
+        ),
+        cron(
+            task_reconcile_membership_payment_state,
+            minute={2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57},
             run_at_startup=True,
         ),
         # Recurring coach payouts: daily at 02:15 UTC (~03:15 WAT). Picks up
