@@ -50352,7 +50352,55 @@
         "title": "CoachApplicationStatusResponse",
         "description": "Minimal status response for coaches checking their application."
       },
-      "CoachAvailabilityCalendar": {
+      "CoachAvailabilityCalendar-Input": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "IANA timezone name",
+            "default": "Africa/Lagos"
+          },
+          "recurring": {
+            "items": {
+              "$ref": "#/components/schemas/RecurringBlockInput"
+            },
+            "type": "array",
+            "title": "Recurring"
+          },
+          "blackouts": {
+            "items": {
+              "$ref": "#/components/schemas/BlackoutDateInput"
+            },
+            "type": "array",
+            "title": "Blackouts"
+          },
+          "slot_minutes": {
+            "type": "integer",
+            "maximum": 240.0,
+            "minimum": 15.0,
+            "title": "Slot Minutes",
+            "description": "Default lesson/make-up length in minutes",
+            "default": 60
+          },
+          "buffer_minutes": {
+            "type": "integer",
+            "maximum": 120.0,
+            "minimum": 0.0,
+            "title": "Buffer Minutes",
+            "description": "Gap between consecutive slots in minutes",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "CoachAvailabilityCalendar",
+        "description": "Canonical shape of CoachProfile.availability_calendar (JSONB).\n\nRecurring weekly blocks + blackout dates in the coach's local timezone.\nsessions_service slices this into bookable make-up slots."
+      },
+      "CoachAvailabilityCalendar-Output": {
         "properties": {
           "version": {
             "type": "integer",
@@ -50442,7 +50490,7 @@
           "availability": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CoachAvailabilityCalendar"
+                "$ref": "#/components/schemas/CoachAvailabilityCalendar-Output"
               },
               {
                 "type": "null"
@@ -50468,7 +50516,7 @@
       "CoachAvailabilityUpdate": {
         "properties": {
           "availability": {
-            "$ref": "#/components/schemas/CoachAvailabilityCalendar"
+            "$ref": "#/components/schemas/CoachAvailabilityCalendar-Input"
           },
           "min_hours_between_sessions": {
             "anyOf": [

@@ -9,10 +9,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
+
 from tests.factories import (
     CohortFactory,
     EnrollmentFactory,
-    MemberFactory,
     MilestoneFactory,
     ProgramFactory,
 )
@@ -186,7 +186,7 @@ async def test_get_cohort_not_found(academy_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_create_enrollment(academy_client, db_session):
+async def test_create_enrollment(academy_client, db_session, seed_member_row):
     """Create an enrollment in a cohort."""
     program = ProgramFactory.create()
     db_session.add(program)
@@ -198,8 +198,7 @@ async def test_create_enrollment(academy_client, db_session):
     db_session.add(cohort)
     await db_session.flush()
 
-    member = MemberFactory.create()
-    db_session.add(member)
+    member = await seed_member_row()
     await db_session.commit()
 
     payload = {
@@ -224,7 +223,7 @@ async def test_create_enrollment(academy_client, db_session):
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_create_enrollment_caps_installments_to_three_when_fee_exceeds_150k(
-    academy_client, db_session
+    academy_client, db_session, seed_member_row
 ):
     """Fees above 150k are split into max three installments within first 12 weeks."""
     program = ProgramFactory.create(duration_weeks=20, price_amount=250000)
@@ -242,8 +241,7 @@ async def test_create_enrollment_caps_installments_to_three_when_fee_exceeds_150
     db_session.add(cohort)
     await db_session.flush()
 
-    member = MemberFactory.create()
-    db_session.add(member)
+    member = await seed_member_row()
     await db_session.commit()
 
     response = await academy_client.post(
@@ -263,7 +261,9 @@ async def test_create_enrollment_caps_installments_to_three_when_fee_exceeds_150
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_mark_paid_updates_non_installment_enrollment(academy_client, db_session):
+async def test_mark_paid_updates_non_installment_enrollment(
+    academy_client, db_session, seed_member_row
+):
     """Marking paid on default admin enrollments moves payment status to paid."""
     program = ProgramFactory.create(duration_weeks=12, price_amount=150000)
     db_session.add(program)
@@ -275,8 +275,7 @@ async def test_mark_paid_updates_non_installment_enrollment(academy_client, db_s
     db_session.add(cohort)
     await db_session.flush()
 
-    member = MemberFactory.create()
-    db_session.add(member)
+    member = await seed_member_row()
     await db_session.commit()
 
     create_response = await academy_client.post(
@@ -400,7 +399,7 @@ async def test_preview_cohort_timeline_shift(academy_client, db_session):
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_apply_cohort_timeline_shift_updates_related_records(
-    academy_client, db_session
+    academy_client, db_session, seed_member_row
 ):
     """Apply shifts cohort dates, shiftable sessions, pending installments, and reminders."""
     from services.academy_service.models import (
@@ -423,9 +422,7 @@ async def test_apply_cohort_timeline_shift_updates_related_records(
     db_session.add(cohort)
     await db_session.flush()
 
-    member = MemberFactory.create()
-    db_session.add(member)
-    await db_session.flush()
+    member = await seed_member_row()
 
     enrollment = EnrollmentFactory.create(
         cohort_id=cohort.id,

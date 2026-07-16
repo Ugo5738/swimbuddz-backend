@@ -52,6 +52,11 @@ def _install_paystack_stubs(
     members-service for the tier-scoped pending payment update.
     """
     monkeypatch.setattr(
+        "services.payments_service.routers.intents.intent_creation._paystack_enabled",
+        lambda: True,
+    )
+
+    monkeypatch.setattr(
         "services.payments_service.routers.intents.intent_creation._initialize_paystack",
         AsyncMock(return_value=(checkout_url, "ACCESS-001")),
     )

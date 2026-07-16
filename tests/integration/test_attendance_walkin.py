@@ -19,7 +19,6 @@ from sqlalchemy import select
 import services.attendance_service.routers.member.sign_in as signin_mod
 from services.attendance_service.models import AttendanceRecord, AttendanceStatus
 from services.attendance_service.schemas import AttendanceCreate
-from tests.factories import MemberFactory
 
 
 def _session_payload(session_id: uuid.UUID) -> dict:
@@ -37,11 +36,10 @@ def _session_payload(session_id: uuid.UUID) -> dict:
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_public_signin_links_booking_and_skips_tier_check(
-    attendance_client, db_session, monkeypatch
+    attendance_client, db_session, monkeypatch, seed_member_row
 ):
     """A CONFIRMED booking → PRESENT row linked to the booking, tier check skipped."""
-    member = MemberFactory.create()
-    db_session.add(member)
+    member = await seed_member_row()
     await db_session.commit()
 
     session_id = uuid.uuid4()
@@ -87,13 +85,12 @@ async def test_public_signin_links_booking_and_skips_tier_check(
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_public_signin_enforces_tier_check_without_booking(
-    attendance_client, db_session, monkeypatch
+    attendance_client, db_session, monkeypatch, seed_member_row
 ):
     """No booking → the tier check still runs and its rejection is surfaced."""
     from fastapi import HTTPException
 
-    member = MemberFactory.create()
-    db_session.add(member)
+    member = await seed_member_row()
     await db_session.commit()
 
     session_id = uuid.uuid4()
@@ -124,11 +121,10 @@ async def test_public_signin_enforces_tier_check_without_booking(
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_authenticated_signin_links_booking_and_skips_tier_check(
-    db_session, monkeypatch
+    db_session, monkeypatch, seed_member_row
 ):
     """The authenticated path preserves the same confirmed-booking override."""
-    member = MemberFactory.create()
-    db_session.add(member)
+    member = await seed_member_row()
     await db_session.commit()
 
     session_id = uuid.uuid4()
