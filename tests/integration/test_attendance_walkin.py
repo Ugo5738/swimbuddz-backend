@@ -17,8 +17,10 @@ import pytest
 from sqlalchemy import select
 
 import services.attendance_service.routers.member.sign_in as signin_mod
+from libs.auth.dependencies import require_coach
 from services.attendance_service.models import AttendanceRecord, AttendanceStatus
 from services.attendance_service.schemas import AttendanceCreate
+from tests.conftest import make_member_user, override_auth_as_member
 
 
 def _session_payload(session_id: uuid.UUID) -> dict:
@@ -31,6 +33,30 @@ def _session_payload(session_id: uuid.UUID) -> dict:
         "ends_at": "2026-05-23T12:00:00+00:00",
         "pool_fee": 350000,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_public_signin_rejects_ordinary_member(attendance_client):
+    """The operator walk-in route must remain unavailable to ordinary members."""
+    from services.attendance_service.app.main import app as attendance_app
+
+    # The shared client fixture normally overrides require_coach with an admin.
+    # Remove that shortcut so this test exercises the real dependency against
+    # an authenticated member.
+    attendance_app.dependency_overrides.pop(require_coach, None)
+    with override_auth_as_member(attendance_app, make_member_user()):
+        response = await attendance_client.post(
+            f"/attendance/sessions/{uuid.uuid4()}/attendance/public",
+            json={
+                "member_id": str(uuid.uuid4()),
+                "status": "present",
+                "role": "swimmer",
+            },
+        )
+
+    assert response.status_code == 403, response.text
+    assert "coach" in response.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
