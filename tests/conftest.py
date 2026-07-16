@@ -394,12 +394,13 @@ def _service_role_override():
 
 def _wire_app(app, db_session):
     """Apply standard dependency overrides to a FastAPI app."""
+    admin_override = _admin_override()
     app.dependency_overrides[get_async_db] = _db_override(db_session)
-    app.dependency_overrides[get_current_user] = _admin_override()
-    app.dependency_overrides[get_optional_user] = _admin_override()
-    app.dependency_overrides[require_admin] = _admin_override()
-    app.dependency_overrides[require_coach] = _admin_override()
-    app.dependency_overrides[require_safeguarding_admin] = _admin_override()
+    app.dependency_overrides[get_current_user] = admin_override
+    app.dependency_overrides[get_optional_user] = admin_override
+    app.dependency_overrides[require_admin] = admin_override
+    app.dependency_overrides[require_coach] = admin_override
+    app.dependency_overrides[require_safeguarding_admin] = admin_override
     app.dependency_overrides[require_service_role] = _service_role_override()
 
 

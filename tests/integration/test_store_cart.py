@@ -333,7 +333,9 @@ async def test_mixed_checkout_creates_hold_at_payment_initialization(
     )
 
     payment_hold.assert_awaited_once()
-    assert payment_hold.await_args.args == ("test-admin-id",)
+    auth_ids = {call.args[0] for call in member_lookup.await_args_list}
+    assert len(auth_ids) == 1
+    assert payment_hold.await_args.args == (auth_ids.pop(),)
     hold_kwargs = payment_hold.await_args.kwargs
     assert hold_kwargs["amount"] == 10
     assert hold_kwargs["reference_type"] == "store_order"
