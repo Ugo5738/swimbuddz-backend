@@ -35,6 +35,10 @@ POOL_FEE_KOBO = 350_000  # ₦3,500
 
 
 async def _session(db_session, **overrides):
+    # The booking endpoint uses the server-side session fee and ignores
+    # fee_amount_kobo sent by the client.
+    overrides.setdefault("pool_fee", POOL_FEE_KOBO)
+
     session = SessionFactory.create(**overrides)  # default: non-cohort CLUB session
     db_session.add(session)
     await db_session.commit()
