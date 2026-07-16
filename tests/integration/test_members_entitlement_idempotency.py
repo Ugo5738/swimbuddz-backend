@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,6 +10,11 @@ from services.members_service.models import (
     MemberMembership,
 )
 from tests.factories import MemberFactory
+
+
+def parse_datetime(value: str) -> datetime:
+    """Parse either an ISO +00:00 timestamp or a UTC Z timestamp."""
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 @pytest.mark.asyncio
@@ -169,8 +174,10 @@ async def test_academy_projection_can_shorten_without_revoking_lower_tiers(
 
     assert response.status_code == 200, response.text
     projected = response.json()["membership"]
-    assert projected["academy_paid_until"] == shorter_end.isoformat()
-    assert projected["club_paid_until"] == membership.club_paid_until.isoformat()
-    assert projected["community_paid_until"] == (
-        membership.community_paid_until.isoformat()
+
+    assert parse_datetime(projected["academy_paid_until"]) == shorter_end
+    assert parse_datetime(projected["club_paid_until"]) == membership.club_paid_until
+    assert (
+        parse_datetime(projected["community_paid_until"])
+        == membership.community_paid_until
     )
