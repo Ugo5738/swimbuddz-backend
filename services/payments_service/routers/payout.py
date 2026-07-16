@@ -172,6 +172,39 @@ async def get_payout_summary(
         )
 
 
+@admin_router.put("/{payout_id}/recalculate", response_model=PayoutResponse)
+async def recalculate_payout(
+    payout_id: UUID,
+    _admin: AuthUser = Depends(require_admin),
+):
+    """Refresh a pending recurring payout from the latest attendance.
+
+    Manual/legacy payouts cannot be recalculated because they have no recurring
+    config and block to compute from. Approved or processed payouts are locked.
+    """
+    async with AsyncSessionLocal() as session:
+        payout = await session.get(CoachPayout, payout_id)
+        if not payout:
+            raise HTTPException(status_code=404, detail="Payout not found")
+        if payout.status != PayoutStatus.PENDING:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot recalculate payout with status: {payout.status.value}",
+            )
+
+        recomputed = await recompute_payout_amount(session, payout)
+        if not recomputed:
+            raise HTTPException(
+                status_code=400,
+                detail="Only recurring payouts can be recalculated",
+            )
+
+        await session.commit()
+        await session.refresh(payout)
+        logger.info("Recalculated pending payout %s", payout_id)
+        return _payout_to_response(payout)
+
+
 @admin_router.post("/", response_model=PayoutResponse)
 async def create_payout(
     data: PayoutCreate,

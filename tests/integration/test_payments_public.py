@@ -80,6 +80,60 @@ async def test_list_payouts_admin(payments_client, db_session):
     assert "items" in data  # Paginated response
 
 
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_recalculate_pending_recurring_payout(
+    payments_client, db_session, monkeypatch
+):
+    """Admin can refresh a pending recurring payout before approval."""
+    payout = CoachPayoutFactory.create(
+        config_id=uuid.uuid4(),
+        block_index=2,
+        academy_earnings=0,
+        total_amount=0,
+    )
+    db_session.add(payout)
+    await db_session.commit()
+
+    async def fake_recompute(_session, payout_to_update):
+        payout_to_update.academy_earnings = 2_000_000
+        payout_to_update.total_amount = 2_000_000
+        return True
+
+    monkeypatch.setattr(
+        "services.payments_service.routers.payout.recompute_payout_amount",
+        fake_recompute,
+    )
+
+    response = await payments_client.put(
+        f"/payments/admin/payouts/{payout.id}/recalculate",
+        json={},
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["status"] == "pending"
+    assert data["academy_earnings"] == 2_000_000
+    assert data["total_amount"] == 2_000_000
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_recalculate_rejects_manual_payout(payments_client, db_session):
+    """A manual payout has no block/config source to recalculate."""
+    payout = CoachPayoutFactory.create(config_id=None, block_index=None)
+    db_session.add(payout)
+    await db_session.commit()
+
+    response = await payments_client.put(
+        f"/payments/admin/payouts/{payout.id}/recalculate",
+        json={},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Only recurring payouts can be recalculated"
+
+
 # ---------------------------------------------------------------------------
 # Discount edge cases (extends existing test_payments.py)
 # ---------------------------------------------------------------------------
