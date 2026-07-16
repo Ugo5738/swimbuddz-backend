@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
+from libs.common.service_client import release_wallet_hold
 from libs.db.session import get_async_db
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -21,6 +22,9 @@ from services.store_service.models import (
     Order,
     OrderStatus,
     ProductVariant,
+)
+from services.store_service.routers.admin_inventory._helpers import (
+    _release_order_inventory,
 )
 
 router = APIRouter(tags=["admin-store"])
@@ -124,6 +128,15 @@ async def run_cleanup(
     stale_order_count = 0
     for order in stale_orders:
         order.status = OrderStatus.PAYMENT_FAILED
+        await _release_order_inventory(db, order, "system")
+        if order.wallet_hold_id and not order.wallet_transaction_id:
+            try:
+                await release_wallet_hold(order.wallet_hold_id, calling_service="store")
+            except Exception:
+                logger.exception(
+                    "Failed to release wallet hold for stale order %s",
+                    order.order_number,
+                )
         stale_order_count += 1
 
     await db.commit()

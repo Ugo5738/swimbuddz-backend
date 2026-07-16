@@ -31,6 +31,9 @@ from services.academy_service.services.chat_sync import (
     ensure_cohort_channel,
     reconcile_cohort_membership,
 )
+from services.academy_service.services.membership_projection import (
+    project_member_academy_membership,
+)
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -322,6 +325,22 @@ async def update_enrollment(
 
     await _sync_installment_state_for_enrollment(db, enrollment)
     await db.commit()
+
+    if {"status", "payment_status"}.intersection(update_data):
+        try:
+            await project_member_academy_membership(
+                db,
+                member_id=enrollment.member_id,
+                member_auth_id=enrollment.member_auth_id,
+                source_reference=f"academy-enrollment-update:{enrollment.id}",
+            )
+        except Exception:
+            logger.warning(
+                "Failed to project Academy access after enrollment update %s; "
+                "hourly reconciliation will retry",
+                enrollment.id,
+                exc_info=True,
+            )
 
     # Reload with relationships eager loaded to avoid lazy-load during response serialization
     refreshed = await db.execute(query)

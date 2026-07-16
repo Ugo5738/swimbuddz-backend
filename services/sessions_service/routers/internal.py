@@ -6,9 +6,10 @@ call them directly via Docker network.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -17,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
+from libs.common.service_client import get_member_by_auth_id
+from libs.common.session_access import denial_message
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     BookingChannel,
@@ -28,9 +31,25 @@ from services.sessions_service.models import (
 )
 from services.sessions_service.schemas import (
     BookingConfirmRequest,
+    BundleBookingConfirmRequest,
+    BundleBookingConfirmResponse,
+    BundleBookingLineResponse,
+    BundleBookingReleaseRequest,
+    BundleBookingReleaseResponse,
+    BundleBookingReserveRequest,
+    BundleBookingReserveResponse,
     BulkBookingRequest,
     BulkBookingResponse,
+    MemberSessionAccessResponse,
     SessionBookingResponse,
+)
+from services.sessions_service.services.booking_capacity import (
+    PENDING_TTL_MINUTES,
+    assert_booking_capacity,
+)
+from services.sessions_service.services.session_access import (
+    evaluate_session_access_for_member,
+    get_member_session_access_payload,
 )
 
 router = APIRouter(prefix="/internal/sessions", tags=["internal"])
@@ -56,7 +75,7 @@ class SessionBasic(BaseModel):
     pod_id: Optional[str] = None
     capacity: int
     # pool_fee is returned in KOBO (integer) for service-to-service use.
-    # Consuming services: call kobo_to_bubbles(pool_fee) to get the Bubble charge.
+    # Wallet-only consumers require pool_fee to be exactly divisible by one Bubble.
     pool_fee: Optional[int] = None
     week_number: Optional[int] = None
     lesson_title: Optional[str] = None
@@ -451,6 +470,81 @@ async def get_session_by_id(
     )
 
 
+@router.get("/{session_id}/access", response_model=MemberSessionAccessResponse)
+async def get_member_session_access(
+    session_id: uuid.UUID,
+    member_auth_id: str = Query(..., min_length=1, max_length=128),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+) -> MemberSessionAccessResponse:
+    """Return the backend-owned access decision used by payment services."""
+    session = (
+        await db.execute(select(Session).where(Session.id == session_id))
+    ).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        member = await get_member_by_auth_id(
+            member_auth_id,
+            calling_service="sessions",
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not verify the member profile. Please try again.",
+        ) from exc
+    if not member or not member.get("id"):
+        raise HTTPException(status_code=404, detail="Member profile not found")
+    try:
+        member_id = uuid.UUID(str(member["id"]))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Members service returned an invalid member profile",
+        ) from exc
+
+    booking = (
+        await db.execute(
+            select(SessionBooking).where(
+                SessionBooking.session_id == session_id,
+                SessionBooking.member_id == member_id,
+                SessionBooking.status == SessionBookingStatus.CONFIRMED,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if booking is None:
+        member_payload = await get_member_session_access_payload(
+            member_id=member_id,
+            calling_service="sessions",
+        )
+    else:
+        member_payload = {"id": str(member_id), "member_id": str(member_id)}
+
+    access = await evaluate_session_access_for_member(
+        session=session,
+        member_payload=member_payload,
+        now=utc_now(),
+        calling_service="sessions",
+        confirmed_booking=booking is not None,
+    )
+    return MemberSessionAccessResponse(
+        member_id=member_id,
+        confirmed_booking=booking is not None,
+        confirmed_booking_id=booking.id if booking else None,
+        required_tier=access.required_tier,
+        visible=access.visible,
+        bookable=access.bookable,
+        digest_eligible=access.digest_eligible,
+        prompt_eligible=access.prompt_eligible,
+        sign_in_allowed=access.sign_in_allowed,
+        sign_in_eligible=access.sign_in_eligible,
+        reason=access.reason,
+        message=denial_message(access.reason) if access.reason else None,
+    )
+
+
 @router.get("/cohorts/{cohort_id}/next-session", response_model=NextSessionResponse)
 async def get_next_session_for_cohort(
     cohort_id: uuid.UUID,
@@ -658,6 +752,334 @@ async def get_session_coach_ids(
 # ---------------------------------------------------------------------------
 
 
+@router.post(
+    "/bookings/bundle/reserve",
+    response_model=BundleBookingReserveResponse,
+)
+async def reserve_bundle_bookings(
+    payload: BundleBookingReserveRequest,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+) -> BundleBookingReserveResponse:
+    """Reserve capacity and snapshot server-owned prices for a bundle payment."""
+    member = await get_member_by_auth_id(
+        payload.member_auth_id, calling_service="sessions"
+    )
+    if not member:
+        raise HTTPException(status_code=404, detail="Member profile not found")
+    member_id = uuid.UUID(str(member["id"]))
+
+    sessions = (
+        (
+            await db.execute(
+                select(Session)
+                .where(Session.id.in_(payload.session_ids))
+                .order_by(Session.id)
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    session_map = {session.id: session for session in sessions}
+    missing = [
+        session_id
+        for session_id in payload.session_ids
+        if session_id not in session_map
+    ]
+    if missing:
+        raise HTTPException(
+            status_code=404, detail="One or more sessions were not found"
+        )
+
+    existing_rows = (
+        (
+            await db.execute(
+                select(SessionBooking).where(
+                    SessionBooking.member_id == member_id,
+                    SessionBooking.session_id.in_(payload.session_ids),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    existing_by_session = {booking.session_id: booking for booking in existing_rows}
+    now = utc_now()
+
+    for session_id in payload.session_ids:
+        existing = existing_by_session.get(session_id)
+        if existing is None:
+            continue
+        if existing.status == SessionBookingStatus.CONFIRMED:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Session {session_id} is already booked",
+            )
+        if (
+            existing.status == SessionBookingStatus.PENDING
+            and (existing.expires_at is None or existing.expires_at > now)
+            and existing.payment_intent_id != payload.payment_intent_id
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "A payment is already in progress for one or more selected "
+                    "sessions. Complete it or wait for the reservation to expire."
+                ),
+            )
+
+    member_payload = await get_member_session_access_payload(
+        member_id=member_id,
+        calling_service="sessions",
+    )
+    for session_id in payload.session_ids:
+        session = session_map[session_id]
+        access = await evaluate_session_access_for_member(
+            session=session,
+            member_payload=member_payload,
+            now=now,
+            calling_service="sessions",
+        )
+        if not access.bookable:
+            raise HTTPException(
+                status_code=403,
+                detail=f"{session.title}: {denial_message(access.reason)}",
+            )
+
+    lines: list[BundleBookingLineResponse] = []
+    for session_id in payload.session_ids:
+        session = session_map[session_id]
+        await assert_booking_capacity(
+            db,
+            session=session,
+            member_id=member_id,
+            new_party_size=1,
+        )
+        fee_kobo = int(session.pool_fee or 0)
+        booking = existing_by_session.get(session_id)
+        if booking is None:
+            booking = SessionBooking(
+                session_id=session_id,
+                member_id=member_id,
+                member_auth_id=payload.member_auth_id,
+                status=SessionBookingStatus.PENDING,
+                channel=BookingChannel.BUNDLE_CART,
+                party_size=1,
+                fee_amount_kobo=fee_kobo,
+                payment_intent_id=payload.payment_intent_id,
+                booked_at=now,
+                expires_at=now + timedelta(minutes=PENDING_TTL_MINUTES),
+            )
+            db.add(booking)
+        else:
+            booking.member_auth_id = payload.member_auth_id
+            booking.status = SessionBookingStatus.PENDING
+            booking.channel = BookingChannel.BUNDLE_CART
+            booking.party_size = 1
+            booking.fee_amount_kobo = fee_kobo
+            booking.payment_intent_id = payload.payment_intent_id
+            booking.wallet_transaction_id = None
+            booking.confirmed_at = None
+            booking.cancelled_at = None
+            booking.booked_at = now
+            booking.expires_at = now + timedelta(minutes=PENDING_TTL_MINUTES)
+        await db.flush()
+        lines.append(
+            BundleBookingLineResponse(
+                session_id=session_id,
+                booking_id=booking.id,
+                amount_kobo=fee_kobo,
+            )
+        )
+
+    await db.commit()
+    return BundleBookingReserveResponse(
+        member_id=member_id,
+        payment_intent_id=payload.payment_intent_id,
+        pool_total_kobo=sum(line.amount_kobo for line in lines),
+        lines=lines,
+    )
+
+
+@router.post(
+    "/bookings/bundle/confirm",
+    response_model=BundleBookingConfirmResponse,
+)
+async def confirm_bundle_bookings(
+    payload: BundleBookingConfirmRequest,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+) -> BundleBookingConfirmResponse:
+    """Confirm a paid bundle atomically and idempotently.
+
+    Expired holds may still be confirmed after a delayed provider callback, but
+    only while every session remains upcoming and has capacity. Either every
+    booking commits or none of them does.
+    """
+    booking_refs = (
+        await db.execute(
+            select(SessionBooking.id, SessionBooking.session_id)
+            .where(SessionBooking.id.in_(payload.booking_ids))
+            .order_by(SessionBooking.id)
+        )
+    ).all()
+    if len({row.id for row in booking_refs}) != len(payload.booking_ids):
+        raise HTTPException(
+            status_code=404, detail="One or more bookings were not found"
+        )
+
+    # Reserve takes session locks before mutating booking rows. Confirmation
+    # uses the same global order so checkout and callback traffic cannot form
+    # a sessions->bookings / bookings->sessions deadlock cycle.
+    session_ids = sorted({row.session_id for row in booking_refs})
+    sessions = (
+        (
+            await db.execute(
+                select(Session)
+                .where(Session.id.in_(session_ids))
+                .order_by(Session.id)
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    session_map = {session.id: session for session in sessions}
+    if len(session_map) != len(session_ids):
+        raise HTTPException(
+            status_code=404, detail="One or more sessions were not found"
+        )
+
+    rows = (
+        (
+            await db.execute(
+                select(SessionBooking)
+                .where(SessionBooking.id.in_(payload.booking_ids))
+                .order_by(SessionBooking.id)
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    booking_map = {booking.id: booking for booking in rows}
+    if len(booking_map) != len(payload.booking_ids):
+        raise HTTPException(
+            status_code=404, detail="One or more bookings were not found"
+        )
+
+    ordered_bookings = [booking_map[booking_id] for booking_id in payload.booking_ids]
+    for booking in ordered_bookings:
+        if booking.member_auth_id != payload.member_auth_id:
+            raise HTTPException(
+                status_code=409,
+                detail="A booking belongs to a different member",
+            )
+        if booking.payment_intent_id != payload.payment_intent_id:
+            raise HTTPException(
+                status_code=409,
+                detail="A booking belongs to a different payment intent",
+            )
+        if booking.status not in {
+            SessionBookingStatus.PENDING,
+            SessionBookingStatus.EXPIRED,
+            SessionBookingStatus.CONFIRMED,
+        }:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot confirm a booking with status={booking.status.value}",
+            )
+
+    now = utc_now()
+    for booking in ordered_bookings:
+        if booking.status == SessionBookingStatus.CONFIRMED:
+            continue
+        session = session_map[booking.session_id]
+        if session.status != SessionStatus.SCHEDULED or session.starts_at <= now:
+            raise HTTPException(
+                status_code=409,
+                detail="A paid reservation can no longer be confirmed",
+            )
+
+    needs_capacity_check = [
+        booking
+        for booking in ordered_bookings
+        if booking.status != SessionBookingStatus.CONFIRMED
+        and (
+            booking.status == SessionBookingStatus.EXPIRED
+            or (booking.expires_at is not None and booking.expires_at <= now)
+        )
+    ]
+    if needs_capacity_check:
+        for booking in needs_capacity_check:
+            session = session_map[booking.session_id]
+            if session.status != SessionStatus.SCHEDULED or session.starts_at <= now:
+                raise HTTPException(
+                    status_code=409,
+                    detail="An expired reservation can no longer be restored",
+                )
+            await assert_booking_capacity(
+                db,
+                session=session,
+                member_id=booking.member_id,
+                new_party_size=booking.party_size,
+            )
+
+    for booking in ordered_bookings:
+        if booking.status != SessionBookingStatus.CONFIRMED:
+            booking.status = SessionBookingStatus.CONFIRMED
+            booking.confirmed_at = now
+            booking.expires_at = None
+        if (
+            payload.wallet_transaction_id is not None
+            and booking.wallet_transaction_id is None
+        ):
+            booking.wallet_transaction_id = payload.wallet_transaction_id
+
+    await db.commit()
+    for booking in ordered_bookings:
+        await db.refresh(booking)
+    return BundleBookingConfirmResponse(
+        confirmed=len(ordered_bookings),
+        bookings=ordered_bookings,
+    )
+
+
+@router.post(
+    "/bookings/bundle/release",
+    response_model=BundleBookingReleaseResponse,
+)
+async def release_bundle_bookings(
+    payload: BundleBookingReleaseRequest,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+) -> BundleBookingReleaseResponse:
+    """Release only pending reservations owned by an abandoned bundle intent."""
+    rows = (
+        (
+            await db.execute(
+                select(SessionBooking)
+                .where(
+                    SessionBooking.member_auth_id == payload.member_auth_id,
+                    SessionBooking.payment_intent_id == payload.payment_intent_id,
+                    SessionBooking.status == SessionBookingStatus.PENDING,
+                )
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    now = utc_now()
+    for booking in rows:
+        booking.status = SessionBookingStatus.EXPIRED
+        booking.expires_at = now
+    if rows:
+        await db.commit()
+    return BundleBookingReleaseResponse(released=len(rows))
+
+
 @router.get(
     "/{session_id}/bookings/by-member/{member_id}",
     response_model=SessionBookingResponse,
@@ -755,11 +1177,52 @@ async def internal_confirm_booking(
     payment intent clears (so the booking gets confirmed even if the
     member closed the browser mid-checkout).
     """
-    booking = (
-        await db.execute(select(SessionBooking).where(SessionBooking.id == booking_id))
-    ).scalar_one_or_none()
-    if booking is None:
+    booking_ref = (
+        await db.execute(
+            select(SessionBooking.id, SessionBooking.session_id).where(
+                SessionBooking.id == booking_id
+            )
+        )
+    ).one_or_none()
+    if booking_ref is None:
         raise HTTPException(status_code=404, detail="Booking not found")
+
+    # Match the bundle lock order: session first, then booking. This lets an
+    # expired payment callback safely restore capacity without deadlocking a
+    # simultaneous reservation.
+    session = (
+        await db.execute(
+            select(Session)
+            .where(Session.id == booking_ref.session_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    booking = (
+        await db.execute(
+            select(SessionBooking)
+            .where(SessionBooking.id == booking_id)
+            .with_for_update()
+        )
+    ).scalar_one()
+    if (
+        confirm_in.member_auth_id is not None
+        and booking.member_auth_id != confirm_in.member_auth_id
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Booking belongs to a different member",
+        )
+    if (
+        booking.payment_intent_id is not None
+        and confirm_in.payment_intent_id is not None
+        and booking.payment_intent_id != confirm_in.payment_intent_id
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Booking belongs to a different payment intent",
+        )
     if booking.status == SessionBookingStatus.CONFIRMED:
         # Walk-in flow: admin recorded the booking as CONFIRMED at the pool,
         # member later paid via a generated Paystack link. Backfill the
@@ -783,13 +1246,27 @@ async def internal_confirm_booking(
             await db.commit()
             await db.refresh(booking)
         return booking
-    if booking.status != SessionBookingStatus.PENDING:
+    now = utc_now()
+    if session.status != SessionStatus.SCHEDULED or session.starts_at <= now:
+        raise HTTPException(
+            status_code=409,
+            detail="This paid reservation can no longer be confirmed",
+        )
+    if booking.status == SessionBookingStatus.EXPIRED:
+        await assert_booking_capacity(
+            db,
+            session=session,
+            member_id=booking.member_id,
+            new_party_size=booking.party_size,
+        )
+    elif booking.status != SessionBookingStatus.PENDING:
         raise HTTPException(
             status_code=422,
             detail=f"Cannot confirm a booking with status={booking.status.value}.",
         )
     booking.status = SessionBookingStatus.CONFIRMED
     booking.confirmed_at = utc_now()
+    booking.expires_at = None
     if confirm_in.payment_intent_id is not None:
         booking.payment_intent_id = confirm_in.payment_intent_id
     if confirm_in.wallet_transaction_id is not None:

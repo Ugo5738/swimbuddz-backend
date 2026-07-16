@@ -17,12 +17,8 @@ from libs.common.currency import bubbles_to_naira
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from services.payments_service.models import Payment
-from services.payments_service.schemas import (
-    SessionAttendanceRole,
-    SessionAttendanceStatus,
-)
 
-from .._helpers import _debit_bubbles, _update_pending_payment_reference
+from .._helpers import _debit_bubbles
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -30,10 +26,16 @@ logger = get_logger(__name__)
 
 async def apply_session_bundle(payment: Payment) -> None:
     session_ids = (payment.payment_metadata or {}).get("session_ids") or []
+    booking_ids = (payment.payment_metadata or {}).get("booking_ids") or []
     if not session_ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="session_ids missing in payment metadata",
+        )
+    if len(booking_ids) != len(session_ids):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="booking_ids missing or incomplete in payment metadata",
         )
 
     headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
@@ -54,40 +56,31 @@ async def apply_session_bundle(payment: Payment) -> None:
         # Partial Bubbles: the intent reduced the Paystack charge by the Bubbles
         # value (see intent_creation `bubbles_purposes`); debit the wallet for
         # the Bubbles portion now that Paystack cleared the remainder.
-        await _debit_bubbles(client, payment, reference_type="session_bundle")
+        wallet_transaction_id = await _debit_bubbles(
+            client, payment, reference_type="session_bundle"
+        )
 
-        # Create attendance record for each session in bundle
-        created: list[str] = []
-        failed: list[dict] = []
-        for session_id in session_ids:
-            att_resp = await client.post(
-                f"{settings.ATTENDANCE_SERVICE_URL}/attendance/sessions/{session_id}/attendance/public",
-                json={
-                    "member_id": member_id,
-                    "status": SessionAttendanceStatus.PRESENT.value,
-                    "role": SessionAttendanceRole.SWIMMER.value,
-                    "notes": f"Bundle payment ref: {payment.reference}",
-                },
-                headers=headers,
-            )
-            if att_resp.status_code >= 400:
-                failed.append({"session_id": session_id, "error": att_resp.text})
-                logger.warning(
-                    f"Bundle attendance creation failed for session {session_id}: "
-                    f"{att_resp.status_code} {att_resp.text}"
-                )
-            else:
-                created.append(session_id)
-
-        if failed and not created:
+        # Confirm all reservations in one sessions-service transaction.
+        # Attendance is only recorded at check-in; payment is not attendance.
+        booking_resp = await client.post(
+            f"{settings.SESSIONS_SERVICE_URL}/internal/sessions/bookings/bundle/confirm",
+            json={
+                "member_auth_id": payment.member_auth_id,
+                "payment_intent_id": str(payment.id),
+                "booking_ids": booking_ids,
+                "wallet_transaction_id": wallet_transaction_id,
+            },
+            headers=headers,
+        )
+        if booking_resp.status_code >= 400:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"All bundle attendance creations failed: {failed}",
+                detail=(
+                    "Bundle booking confirmation failed "
+                    f"({booking_resp.status_code}): {booking_resp.text}"
+                ),
             )
-        if failed:
-            logger.warning(
-                f"Bundle partial fulfillment: {len(created)} created, {len(failed)} failed"
-            )
+        confirmed = list(session_ids)
 
         # Create ride bookings for any sessions with ride configs in metadata.
         ride_configs = (payment.payment_metadata or {}).get(
@@ -103,6 +96,7 @@ async def apply_session_bundle(payment: Payment) -> None:
                         "session_ride_config_id": ride_cfg.get("ride_config_id"),
                         "pickup_location_id": ride_cfg.get("pickup_location_id"),
                         "num_seats": int(ride_cfg.get("num_seats") or 1),
+                        "passengers": ride_cfg.get("passengers"),
                     },
                     params={"member_id": str(member_id)},
                     headers=headers,
@@ -118,9 +112,12 @@ async def apply_session_bundle(payment: Payment) -> None:
                 else:
                     ride_created.append(session_id)
             if ride_failed:
-                logger.warning(
-                    f"Bundle ride partial fulfillment: {len(ride_created)} created, "
-                    f"{len(ride_failed)} failed"
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=(
+                        f"Bundle ride fulfillment incomplete: {len(ride_created)} "
+                        f"created, {len(ride_failed)} failed"
+                    ),
                 )
 
         # Send one confirmation email per booked session in the bundle.
@@ -151,8 +148,8 @@ async def apply_session_bundle(payment: Payment) -> None:
             if member_email:
                 email_client = get_email_client()
                 for idx, session_id in enumerate(session_ids, start=1):
-                    if session_id not in created:
-                        continue  # skip sessions whose attendance failed
+                    if session_id not in confirmed:
+                        continue
                     try:
                         session_resp = await client.get(
                             f"{settings.SESSIONS_SERVICE_URL}/sessions/{session_id}",
@@ -228,10 +225,9 @@ async def apply_session_bundle(payment: Payment) -> None:
                             inner_e,
                         )
                 logger.info(
-                    f"Bundle confirmation emails sent ({len(created)}) to {member_email}"
+                    f"Bundle confirmation emails sent ({len(confirmed)}) to {member_email}"
                 )
         except Exception as e:
             logger.error(f"Failed to send bundle confirmation emails: {e}")
 
     # Clear pending payment reference on success
-    await _update_pending_payment_reference(payment.member_auth_id, None)

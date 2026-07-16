@@ -12,15 +12,29 @@ from services.payments_service.models import (
     CohortMakeupObligation,
     MakeupStatus,
     Payment,
+    PaymentPurpose,
     PaymentStatus,
     PayoutStatus,
     RecurringPayoutConfig,
     RecurringPayoutStatus,
 )
+from services.payments_service.routers.intents._helpers import (
+    _clear_pending_tier_payment_for_payment,
+    _membership_tier_for_payment,
+    _set_pending_tier_payment_for_payment,
+)
 from services.payments_service.services.payout_calculator import compute_block_payout
-from sqlalchemy import select
+from sqlalchemy import cast, func, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 
 logger = get_logger(__name__)
+
+MEMBERSHIP_PAYMENT_PURPOSES = (
+    PaymentPurpose.COMMUNITY,
+    PaymentPurpose.CLUB,
+    PaymentPurpose.CLUB_BUNDLE,
+    PaymentPurpose.ACADEMY_COHORT,
+)
 
 
 def _parse_iso(value: str | None) -> datetime | None:
@@ -113,10 +127,85 @@ async def reconcile_pending_paystack_payments() -> None:
                 payment.payment_metadata = metadata
                 db.add(payment)
                 await db.commit()
+                await _clear_pending_tier_payment_for_payment(payment)
                 processed += 1
 
     if processed:
         logger.info("Reconciled %d pending Paystack payments", processed)
+
+
+async def reconcile_pending_membership_payment_state() -> None:
+    """Heal the tier-scoped pending-payment projection in members_service."""
+    cutoff = utc_now() - timedelta(days=30)
+    async with AsyncSessionLocal() as db:
+        active_result = await db.execute(
+            select(Payment)
+            .where(
+                Payment.purpose.in_(MEMBERSHIP_PAYMENT_PURPOSES),
+                Payment.status.in_(
+                    (PaymentStatus.PENDING, PaymentStatus.PENDING_REVIEW)
+                ),
+            )
+            .order_by(Payment.created_at.desc())
+            .limit(1000)
+        )
+        active = list(active_result.scalars().all())
+
+        terminal_result = await db.execute(
+            select(Payment)
+            .where(
+                Payment.purpose.in_(MEMBERSHIP_PAYMENT_PURPOSES),
+                Payment.status.in_(
+                    (PaymentStatus.PAID, PaymentStatus.WAIVED, PaymentStatus.FAILED)
+                ),
+                Payment.updated_at >= cutoff,
+                Payment.payment_metadata[
+                    "pending_tier_projection_cleared_at"
+                ].astext.is_(None),
+            )
+            .order_by(Payment.updated_at.desc())
+            .limit(1000)
+        )
+        terminal = list(terminal_result.scalars().all())
+
+    # One resumable reference per member/tier. Rows are newest-first, so an
+    # abandoned older checkout cannot replace a newer active checkout.
+    latest_active: dict[tuple[str, str], Payment] = {}
+    for payment in active:
+        tier = _membership_tier_for_payment(payment)
+        if tier:
+            latest_active.setdefault((payment.member_auth_id, tier), payment)
+
+    for payment in latest_active.values():
+        await _set_pending_tier_payment_for_payment(payment)
+    cleared_ids = []
+    for payment in terminal:
+        if await _clear_pending_tier_payment_for_payment(payment):
+            cleared_ids.append(payment.id)
+
+    if cleared_ids:
+        marker = {
+            "pending_tier_projection_cleared_at": utc_now().isoformat(),
+        }
+        async with AsyncSessionLocal() as db:
+            await db.execute(
+                update(Payment)
+                .where(Payment.id.in_(cleared_ids))
+                .values(
+                    payment_metadata=func.coalesce(
+                        Payment.payment_metadata,
+                        cast({}, JSONB),
+                    ).op("||")(cast(marker, JSONB))
+                )
+            )
+            await db.commit()
+
+    if latest_active or terminal:
+        logger.info(
+            "Reconciled membership payment state: %d active, %d terminal",
+            len(latest_active),
+            len(cleared_ids),
+        )
 
 
 async def retry_failed_entitlement_fulfillment() -> None:

@@ -4,6 +4,7 @@ These endpoints are called by other SwimBuddz services via service-role JWT,
 not by frontend clients directly.
 """
 
+import uuid
 from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
@@ -34,6 +35,8 @@ from services.wallet_service.schemas import (
     WalletCreateRequest,
     WalletEcosystemStatsResponse,
     WalletResponse,
+    WalletHoldCreateRequest,
+    WalletHoldResponse,
 )
 from services.wallet_service.services.promotional_service import (
     grant_promotional_bubbles,
@@ -52,6 +55,12 @@ from services.wallet_service.services.wallet_ops import (
     debit_wallet,
     get_wallet_by_auth_id,
     grant_welcome_bonus_if_eligible,
+)
+from services.wallet_service.services.hold_ops import (
+    active_held_amount,
+    capture_wallet_hold,
+    create_wallet_hold,
+    release_wallet_hold,
 )
 
 logger = get_logger(__name__)
@@ -112,10 +121,13 @@ async def internal_get_balance(
 ):
     """Check member's Bubble balance."""
     wallet = await get_wallet_by_auth_id(db, auth_id)
+    held = await active_held_amount(db, wallet.id)
     return BalanceResponse(
         wallet_id=wallet.id,
         member_auth_id=wallet.member_auth_id,
         balance=wallet.balance,
+        available_balance=max(wallet.balance - held, 0),
+        held_balance=held,
         status=wallet.status,
     )
 
@@ -127,15 +139,59 @@ async def internal_check_balance(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Verify sufficient Bubbles without deducting."""
+    wallet = await get_wallet_by_auth_id(db, body.member_auth_id)
     sufficient, balance, wallet_status = await check_balance(
         db, body.member_auth_id, body.required_amount
     )
     return BalanceCheckResponse(
         sufficient=sufficient,
         current_balance=balance,
+        ledger_balance=wallet.balance,
+        held_balance=max(wallet.balance - balance, 0),
         required_amount=body.required_amount,
         wallet_status=wallet_status,
     )
+
+
+def _hold_response(hold, available_balance: int) -> WalletHoldResponse:
+    return WalletHoldResponse(
+        **{
+            column: getattr(hold, column)
+            for column in WalletHoldResponse.model_fields
+            if column != "available_balance"
+        },
+        available_balance=available_balance,
+    )
+
+
+@router.post("/holds", response_model=WalletHoldResponse)
+async def internal_create_hold(
+    body: WalletHoldCreateRequest,
+    _service: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    hold, available = await create_wallet_hold(db, **body.model_dump())
+    return _hold_response(hold, available)
+
+
+@router.post("/holds/{hold_id}/capture", response_model=WalletHoldResponse)
+async def internal_capture_hold(
+    hold_id: uuid.UUID,
+    _service: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    hold, available = await capture_wallet_hold(db, hold_id)
+    return _hold_response(hold, available)
+
+
+@router.post("/holds/{hold_id}/release", response_model=WalletHoldResponse)
+async def internal_release_hold(
+    hold_id: uuid.UUID,
+    _service: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    hold, available = await release_wallet_hold(db, hold_id)
+    return _hold_response(hold, available)
 
 
 @router.post("/confirm-topup")

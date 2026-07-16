@@ -59,7 +59,9 @@ async def moderate_text(
         flag_threshold: Confidence score at which a label is considered
               sufficient to mark the whole result as flagged. Tune per surface.
         model: OpenAI moderation model to use.
-        api_key: Explicit API key; falls back to ``OPENAI_API_KEY`` env var.
+        api_key: Explicit API key; falls back to the dedicated
+              ``OPENAI_MODERATION_API_KEY`` and then the legacy
+              ``OPENAI_API_KEY`` environment variable.
 
     Returns:
         ModerationResult with labels populated from the provider.
@@ -68,10 +70,12 @@ async def moderate_text(
         ProviderUnavailableError: when credentials are missing or the call
             fails at the network level. Callers decide open/closed policy.
     """
-    key = api_key or os.getenv("OPENAI_API_KEY")
+    key = (
+        api_key or os.getenv("OPENAI_MODERATION_API_KEY") or os.getenv("OPENAI_API_KEY")
+    )
     if not key:
         raise ProviderUnavailableError(
-            "OPENAI_API_KEY not set; text moderation is not configured."
+            "OPENAI_MODERATION_API_KEY not set; text moderation is not configured."
         )
 
     # Import lazily so the module loads fine in environments without openai.

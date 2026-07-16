@@ -4,189 +4,146 @@ import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from libs.auth.dependencies import get_current_user, get_optional_user, require_admin
+from libs.auth.models import AuthUser
 from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.common.member_utils import resolve_members_basic
-from libs.common.service_client import emit_rewards_event
 from libs.common.datetime_utils import utc_now
+from libs.common.logging import get_logger
+from libs.common.service_client import emit_rewards_event, get_member_by_id
 from libs.db.session import get_async_db
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.communications_service.models import ContentComment, ContentPost
+from services.communications_service.models import (
+    ContentComment,
+    ContentPost,
+    ContentPostEmailLog,
+)
 from services.communications_service.schemas import (
     CommentCreate,
+    ContentAIDraftCreate,
     ContentCommentResponse,
     ContentPostCreate,
     ContentPostResponse,
     ContentPostUpdate,
 )
+from services.communications_service.services.content_ai import (
+    ContentAIDraftError,
+    generate_content_draft,
+)
+from services.communications_service.services.content_access import (
+    allowed_content_tiers,
+    require_content_read_access,
+    resolve_content_actor,
+)
+from services.communications_service.tasks.content_publishing import (
+    send_content_post_publish_emails,
+)
 
 content_router = APIRouter(prefix="/content", tags=["content"])
+logger = get_logger(__name__)
 
 # ============================================================================
 # CONTENT POST ENDPOINTS
 # ============================================================================
 
 
-@content_router.get("/", response_model=List[ContentPostResponse])
-async def list_content_posts(
-    category: Optional[str] = Query(None, description="Filter by category"),
-    published_only: bool = Query(True, description="Show only published posts"),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """List content posts with optional filters."""
-    query = select(ContentPost)
+async def _content_email_stats(
+    db: AsyncSession,
+    post_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, dict]:
+    if not post_ids:
+        return {}
 
-    if published_only:
-        query = query.where(ContentPost.is_published.is_(True))
-
-    if category:
-        query = query.where(ContentPost.category == category)
-
-    query = query.order_by(ContentPost.published_at.desc())
-
-    result = await db.execute(query)
-    posts = result.scalars().all()
-
-    # Resolve featured image URLs
-    media_ids = [p.featured_image_media_id for p in posts if p.featured_image_media_id]
-    url_map = await resolve_media_urls(media_ids) if media_ids else {}
-
-    # Get comment counts for each post
-    posts_with_counts = []
-    for post in posts:
-        comment_query = select(func.count(ContentComment.id)).where(
-            ContentComment.post_id == post.id
+    result = await db.execute(
+        select(ContentPostEmailLog).where(ContentPostEmailLog.post_id.in_(post_ids))
+    )
+    stats: dict[uuid.UUID, dict] = {
+        post_id: {
+            "email_sent_count": 0,
+            "email_failed_count": 0,
+            "email_in_progress_count": 0,
+            "email_unknown_count": 0,
+            "email_attempt_count": 0,
+            "last_email_sent_at": None,
+        }
+        for post_id in post_ids
+    }
+    for log in result.scalars().all():
+        post_stats = stats.setdefault(
+            log.post_id,
+            {
+                "email_sent_count": 0,
+                "email_failed_count": 0,
+                "email_in_progress_count": 0,
+                "email_unknown_count": 0,
+                "email_attempt_count": 0,
+                "last_email_sent_at": None,
+            },
         )
-        comment_result = await db.execute(comment_query)
-        comment_count = comment_result.scalar_one()
+        post_stats["email_attempt_count"] += log.attempt_count or 0
+        if log.delivery_status == "sent":
+            post_stats["email_sent_count"] += 1
+            if log.sent_at and (
+                post_stats["last_email_sent_at"] is None
+                or log.sent_at > post_stats["last_email_sent_at"]
+            ):
+                post_stats["last_email_sent_at"] = log.sent_at
+        elif log.delivery_status == "failed":
+            post_stats["email_failed_count"] += 1
+        elif log.delivery_status in {"pending", "sending"}:
+            post_stats["email_in_progress_count"] += 1
+        elif log.delivery_status == "unknown":
+            post_stats["email_unknown_count"] += 1
+    return stats
 
-        post_dict = post.__dict__.copy()
-        post_dict["comment_count"] = comment_count
-        # Add resolved URL
-        if post.featured_image_media_id:
-            post_dict["featured_image_url"] = url_map.get(post.featured_image_media_id)
-        posts_with_counts.append(ContentPostResponse.model_validate(post_dict))
 
-    return posts_with_counts
-
-
-@content_router.get("/{post_id}", response_model=ContentPostResponse)
-async def get_content_post(
-    post_id: uuid.UUID,
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Get a single content post by ID."""
-    query = select(ContentPost).where(ContentPost.id == post_id)
-    result = await db.execute(query)
-    post = result.scalar_one_or_none()
-
-    if not post:
-        raise HTTPException(status_code=404, detail="Content post not found")
-
-    # Get comment count
-    comment_query = select(func.count(ContentComment.id)).where(
-        ContentComment.post_id == post.id
+def _with_email_stats(post_dict: dict, stats: dict | None) -> dict:
+    post_dict.update(
+        stats
+        or {
+            "email_sent_count": 0,
+            "email_failed_count": 0,
+            "email_in_progress_count": 0,
+            "email_unknown_count": 0,
+            "email_attempt_count": 0,
+            "last_email_sent_at": None,
+            "email_recipient_snapshot_at": None,
+            "email_dispatch_last_attempt_at": None,
+            "email_dispatch_completed_at": None,
+            "email_dispatch_last_error": None,
+        }
     )
-    comment_result = await db.execute(comment_query)
-    comment_count = comment_result.scalar_one()
+    return post_dict
 
-    # Resolve featured image URL
-    post_dict = post.__dict__.copy()
-    post_dict["comment_count"] = comment_count
-    post_dict["featured_image_url"] = await resolve_media_url(
-        post.featured_image_media_id
+
+def _redact_content_admin_fields(post_dict: dict) -> dict:
+    """Remove editorial and delivery internals from non-admin responses."""
+    post_dict.update(
+        {
+            "featured_image_prompt": None,
+            "ai_request_id": None,
+            "ai_context_version": None,
+            "ai_model_used": None,
+            "email_on_publish": False,
+            "email_sent_count": 0,
+            "email_failed_count": 0,
+            "email_in_progress_count": 0,
+            "email_unknown_count": 0,
+            "email_attempt_count": 0,
+            "last_email_sent_at": None,
+            "email_recipient_snapshot_at": None,
+            "email_dispatch_last_attempt_at": None,
+            "email_dispatch_completed_at": None,
+            "email_dispatch_last_error": None,
+        }
     )
-
-    return ContentPostResponse.model_validate(post_dict)
-
-
-@content_router.post("/", response_model=ContentPostResponse, status_code=201)
-async def create_content_post(
-    post_data: ContentPostCreate,
-    # TODO: Get created_by from authentication
-    created_by: uuid.UUID = Query(..., description="Admin member ID creating the post"),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Create a new content post (admin only)."""
-    post = ContentPost(
-        **post_data.model_dump(exclude={"is_published"}),
-        created_by=created_by,
-        is_published=post_data.is_published,
-        published_at=utc_now() if post_data.is_published else None,
-    )
-
-    db.add(post)
-    await db.commit()
-    await db.refresh(post)
-
-    # Best-effort: emit reward event if created as published
-    if post_data.is_published:
-        from libs.common.service_client import get_member_by_id
-
-        member = await get_member_by_id(
-            str(created_by), calling_service="communications"
-        )
-        if member and member.get("auth_id"):
-            await emit_rewards_event(
-                event_type="content.published",
-                member_auth_id=member["auth_id"],
-                member_id=str(created_by),
-                service_source="communications",
-                event_data={
-                    "post_title": post.title,
-                    "category": post.category,
-                },
-                idempotency_key=f"content-published-{post.id}",
-                calling_service="communications",
-            )
-
-    # Resolve featured image URL
-    post_dict = post.__dict__.copy()
-    post_dict["comment_count"] = 0
-    post_dict["featured_image_url"] = await resolve_media_url(
-        post.featured_image_media_id
-    )
-
-    return ContentPostResponse.model_validate(post_dict)
+    return post_dict
 
 
-@content_router.patch("/{post_id}", response_model=ContentPostResponse)
-async def update_content_post(
-    post_id: uuid.UUID,
-    post_data: ContentPostUpdate,
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Update a content post (admin only)."""
-    query = select(ContentPost).where(ContentPost.id == post_id)
-    result = await db.execute(query)
-    post = result.scalar_one_or_none()
-
-    if not post:
-        raise HTTPException(status_code=404, detail="Content post not found")
-
-    # Update only provided fields
-    update_data = post_data.model_dump(exclude_unset=True)
-
-    # If publishing for the first time, set published_at
-    was_unpublished = not post.is_published
-    if (
-        "is_published" in update_data
-        and update_data["is_published"]
-        and not post.published_at
-    ):
-        post.published_at = utc_now()
-
-    for field, value in update_data.items():
-        setattr(post, field, value)
-
-    await db.commit()
-    await db.refresh(post)
-
-    # Best-effort: emit reward event if just published via PATCH
-    if was_unpublished and post.is_published:
-        from libs.common.service_client import get_member_by_id
-
+async def _emit_content_published_reward(post: ContentPost) -> None:
+    try:
         member = await get_member_by_id(
             str(post.created_by), calling_service="communications"
         )
@@ -203,6 +160,160 @@ async def update_content_post(
                 idempotency_key=f"content-published-{post.id}",
                 calling_service="communications",
             )
+    except Exception:
+        logger.warning(
+            "Failed to emit content.published reward for post %s",
+            post.id,
+            exc_info=True,
+        )
+
+
+async def _content_post_response(
+    db: AsyncSession,
+    post: ContentPost,
+    *,
+    include_admin_fields: bool = False,
+) -> ContentPostResponse:
+    comment_query = select(func.count(ContentComment.id)).where(
+        ContentComment.post_id == post.id
+    )
+    comment_result = await db.execute(comment_query)
+    comment_count = comment_result.scalar_one()
+
+    post_dict = post.__dict__.copy()
+    post_dict["comment_count"] = comment_count
+    post_dict["featured_image_url"] = await resolve_media_url(
+        post.featured_image_media_id
+    )
+    if include_admin_fields:
+        email_stats = await _content_email_stats(db, [post.id])
+        _with_email_stats(post_dict, email_stats.get(post.id))
+    else:
+        _redact_content_admin_fields(post_dict)
+    return ContentPostResponse.model_validate(post_dict)
+
+
+@content_router.get("/", response_model=List[ContentPostResponse])
+async def list_content_posts(
+    category: Optional[str] = Query(None, description="Filter by category"),
+    published_only: bool = Query(True, description="Show only published posts"),
+    current_user: Optional[AuthUser] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List content posts with optional filters."""
+    actor = await resolve_content_actor(current_user)
+    if not published_only and not actor.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required to list drafts",
+        )
+
+    query = select(ContentPost)
+
+    if published_only or not actor.is_admin:
+        query = query.where(ContentPost.is_published.is_(True))
+
+    if not actor.is_admin:
+        tiers = allowed_content_tiers(actor)
+        if not tiers:
+            return []
+        query = query.where(ContentPost.tier_access.in_(tiers))
+
+    if category:
+        query = query.where(ContentPost.category == category)
+
+    query = query.order_by(ContentPost.published_at.desc())
+
+    result = await db.execute(query)
+    posts = result.scalars().all()
+    post_ids = [p.id for p in posts]
+
+    # Resolve featured image URLs
+    media_ids = [p.featured_image_media_id for p in posts if p.featured_image_media_id]
+    url_map = await resolve_media_urls(media_ids) if media_ids else {}
+    email_stats = await _content_email_stats(db, post_ids) if actor.is_admin else {}
+
+    # Get comment counts for each post
+    posts_with_counts = []
+    for post in posts:
+        comment_query = select(func.count(ContentComment.id)).where(
+            ContentComment.post_id == post.id
+        )
+        comment_result = await db.execute(comment_query)
+        comment_count = comment_result.scalar_one()
+
+        post_dict = post.__dict__.copy()
+        post_dict["comment_count"] = comment_count
+        # Add resolved URL
+        if post.featured_image_media_id:
+            post_dict["featured_image_url"] = url_map.get(post.featured_image_media_id)
+        if actor.is_admin:
+            _with_email_stats(post_dict, email_stats.get(post.id))
+        else:
+            _redact_content_admin_fields(post_dict)
+        posts_with_counts.append(ContentPostResponse.model_validate(post_dict))
+
+    return posts_with_counts
+
+
+@content_router.post("/ai-drafts", response_model=ContentPostResponse, status_code=201)
+async def create_ai_content_draft(
+    draft_data: ContentAIDraftCreate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Generate and save an unpublished content post draft for admin review."""
+    actor = await resolve_content_actor(current_user, require_member=True)
+    assert actor.member_id is not None
+    try:
+        generated = await generate_content_draft(
+            title=draft_data.title,
+            category=draft_data.category,
+            tier_access=draft_data.tier_access,
+            brief=draft_data.brief,
+        )
+    except ContentAIDraftError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    post = ContentPost(
+        title=draft_data.title,
+        summary=generated.summary,
+        body=generated.body,
+        category=draft_data.category,
+        tier_access=draft_data.tier_access,
+        featured_image_prompt=generated.featured_image_prompt,
+        ai_request_id=uuid.UUID(generated.ai_request_id),
+        ai_context_version=generated.context_version,
+        ai_model_used=generated.model_used,
+        created_by=actor.member_id,
+        is_published=False,
+        published_at=None,
+        scheduled_for=None,
+        email_on_publish=False,
+    )
+
+    db.add(post)
+    await db.commit()
+    await db.refresh(post)
+
+    return await _content_post_response(db, post, include_admin_fields=True)
+
+
+@content_router.get("/{post_id}", response_model=ContentPostResponse)
+async def get_content_post(
+    post_id: uuid.UUID,
+    current_user: Optional[AuthUser] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get a single content post by ID."""
+    query = select(ContentPost).where(ContentPost.id == post_id)
+    result = await db.execute(query)
+    post = result.scalar_one_or_none()
+
+    if not post:
+        raise HTTPException(status_code=404, detail="Content post not found")
+    actor = await resolve_content_actor(current_user)
+    require_content_read_access(post, actor)
 
     # Get comment count
     comment_query = select(func.count(ContentComment.id)).where(
@@ -217,13 +328,100 @@ async def update_content_post(
     post_dict["featured_image_url"] = await resolve_media_url(
         post.featured_image_media_id
     )
+    if actor.is_admin:
+        email_stats = await _content_email_stats(db, [post.id])
+        _with_email_stats(post_dict, email_stats.get(post.id))
+    else:
+        _redact_content_admin_fields(post_dict)
 
     return ContentPostResponse.model_validate(post_dict)
+
+
+@content_router.post("/", response_model=ContentPostResponse, status_code=201)
+async def create_content_post(
+    post_data: ContentPostCreate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Create a new content post (admin only)."""
+    actor = await resolve_content_actor(current_user, require_member=True)
+    assert actor.member_id is not None
+    post_payload = post_data.model_dump(exclude={"is_published"})
+    if post_data.is_published:
+        post_payload["scheduled_for"] = None
+    post = ContentPost(
+        **post_payload,
+        created_by=actor.member_id,
+        is_published=post_data.is_published,
+        published_at=utc_now() if post_data.is_published else None,
+    )
+
+    db.add(post)
+    await db.commit()
+    await db.refresh(post)
+
+    # Best-effort: emit reward event if created as published
+    if post_data.is_published:
+        await _emit_content_published_reward(post)
+        await send_content_post_publish_emails(db, post)
+        await db.refresh(post)
+
+    # Resolve featured image URL
+    post_dict = post.__dict__.copy()
+    post_dict["comment_count"] = 0
+    post_dict["featured_image_url"] = await resolve_media_url(
+        post.featured_image_media_id
+    )
+    email_stats = await _content_email_stats(db, [post.id])
+    _with_email_stats(post_dict, email_stats.get(post.id))
+
+    return ContentPostResponse.model_validate(post_dict)
+
+
+@content_router.patch("/{post_id}", response_model=ContentPostResponse)
+async def update_content_post(
+    post_id: uuid.UUID,
+    post_data: ContentPostUpdate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Update a content post (admin only)."""
+    query = select(ContentPost).where(ContentPost.id == post_id)
+    result = await db.execute(query)
+    post = result.scalar_one_or_none()
+
+    if not post:
+        raise HTTPException(status_code=404, detail="Content post not found")
+
+    # Update only provided fields
+    update_data = post_data.model_dump(exclude_unset=True)
+
+    # If publishing, clear any pending schedule and set published_at if needed.
+    was_unpublished = not post.is_published
+    if "is_published" in update_data and update_data["is_published"]:
+        if not post.published_at:
+            post.published_at = utc_now()
+        update_data["scheduled_for"] = None
+
+    for field, value in update_data.items():
+        setattr(post, field, value)
+
+    await db.commit()
+    await db.refresh(post)
+
+    # Best-effort: emit reward event if just published via PATCH
+    if was_unpublished and post.is_published:
+        await _emit_content_published_reward(post)
+        await send_content_post_publish_emails(db, post)
+        await db.refresh(post)
+
+    return await _content_post_response(db, post, include_admin_fields=True)
 
 
 @content_router.post("/{post_id}/publish", response_model=ContentPostResponse)
 async def publish_content_post(
     post_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
@@ -245,50 +443,23 @@ async def publish_content_post(
 
     post.is_published = True
     post.published_at = utc_now()
+    post.scheduled_for = None
 
     await db.commit()
     await db.refresh(post)
 
     # Best-effort: emit content published reward event for the author
-    from libs.common.service_client import get_member_by_id
+    await _emit_content_published_reward(post)
+    await send_content_post_publish_emails(db, post)
+    await db.refresh(post)
 
-    member = await get_member_by_id(
-        str(post.created_by), calling_service="communications"
-    )
-    if member and member.get("auth_id"):
-        await emit_rewards_event(
-            event_type="content.published",
-            member_auth_id=member["auth_id"],
-            member_id=str(post.created_by),
-            service_source="communications",
-            event_data={
-                "post_title": post.title,
-                "category": post.category,
-            },
-            idempotency_key=f"content-published-{post.id}",
-            calling_service="communications",
-        )
-
-    # Get comment count
-    comment_query = select(func.count(ContentComment.id)).where(
-        ContentComment.post_id == post.id
-    )
-    comment_result = await db.execute(comment_query)
-    comment_count = comment_result.scalar_one()
-
-    # Resolve featured image URL
-    post_dict = post.__dict__.copy()
-    post_dict["comment_count"] = comment_count
-    post_dict["featured_image_url"] = await resolve_media_url(
-        post.featured_image_media_id
-    )
-
-    return ContentPostResponse.model_validate(post_dict)
+    return await _content_post_response(db, post, include_admin_fields=True)
 
 
 @content_router.post("/{post_id}/unpublish", response_model=ContentPostResponse)
 async def unpublish_content_post(
     post_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
@@ -310,26 +481,37 @@ async def unpublish_content_post(
     await db.commit()
     await db.refresh(post)
 
-    # Get comment count
-    comment_query = select(func.count(ContentComment.id)).where(
-        ContentComment.post_id == post.id
-    )
-    comment_result = await db.execute(comment_query)
-    comment_count = comment_result.scalar_one()
+    return await _content_post_response(db, post, include_admin_fields=True)
 
-    # Resolve featured image URL
-    post_dict = post.__dict__.copy()
-    post_dict["comment_count"] = comment_count
-    post_dict["featured_image_url"] = await resolve_media_url(
-        post.featured_image_media_id
-    )
 
-    return ContentPostResponse.model_validate(post_dict)
+@content_router.post(
+    "/{post_id}/email/retry-failed",
+    response_model=ContentPostResponse,
+)
+async def retry_failed_content_post_emails(
+    post_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Retry only deliveries the provider explicitly reported as failed."""
+    post = await db.get(ContentPost, post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Content post not found")
+    if not post.is_published or not post.email_on_publish:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Publish the post with email enabled before retrying delivery",
+        )
+
+    await send_content_post_publish_emails(db, post, force_failed_retry=True)
+    await db.refresh(post)
+    return await _content_post_response(db, post, include_admin_fields=True)
 
 
 @content_router.delete("/{post_id}", status_code=204)
 async def delete_content_post(
     post_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Delete a content post (admin only)."""
@@ -340,8 +522,11 @@ async def delete_content_post(
     if not post:
         raise HTTPException(status_code=404, detail="Content post not found")
 
-    # Delete associated comments first
-    await db.execute(select(ContentComment).where(ContentComment.post_id == post_id))
+    # Delete associated records first; comments/logs are service-local soft links.
+    await db.execute(delete(ContentComment).where(ContentComment.post_id == post_id))
+    await db.execute(
+        delete(ContentPostEmailLog).where(ContentPostEmailLog.post_id == post_id)
+    )
     await db.delete(post)
     await db.commit()
 
@@ -359,8 +544,7 @@ async def delete_content_post(
 async def create_content_comment(
     post_id: uuid.UUID,
     comment_data: CommentCreate,
-    # TODO: Get member_id from authentication
-    member_id: uuid.UUID = Query(..., description="Member ID"),
+    current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Add a comment to a content post."""
@@ -371,9 +555,12 @@ async def create_content_comment(
 
     if not post:
         raise HTTPException(status_code=404, detail="Content post not found")
+    actor = await resolve_content_actor(current_user, require_member=True)
+    require_content_read_access(post, actor)
+    assert actor.member_id is not None
 
     comment = ContentComment(
-        post_id=post_id, member_id=member_id, content=comment_data.content
+        post_id=post_id, member_id=actor.member_id, content=comment_data.content
     )
 
     db.add(comment)
@@ -386,9 +573,17 @@ async def create_content_comment(
 @content_router.get("/{post_id}/comments", response_model=List[ContentCommentResponse])
 async def list_content_comments(
     post_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all comments for a content post."""
+    post_result = await db.execute(select(ContentPost).where(ContentPost.id == post_id))
+    post = post_result.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Content post not found")
+    actor = await resolve_content_actor(current_user)
+    require_content_read_access(post, actor)
+
     query = (
         select(ContentComment)
         .where(ContentComment.post_id == post_id)

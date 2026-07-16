@@ -14,6 +14,7 @@ from libs.common.service_client import (
     dispatch_notification,
     emit_rewards_event,
     get_member_by_auth_id,
+    release_wallet_hold,
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -114,8 +115,15 @@ async def _apply_order_status_change(
         # Release inventory reservations for each order item
         await _release_order_inventory(db, order, current_user.user_id)
 
-        # Refund Bubbles if any were applied (covers split-payment Paystack failures too)
-        if order.bubbles_applied and order.bubbles_applied > 0:
+        # A pending hold is released. Only captured Bubbles are refunded.
+        if order.wallet_hold_id and not order.wallet_transaction_id:
+            try:
+                await release_wallet_hold(order.wallet_hold_id, calling_service="store")
+            except Exception:
+                logger.exception(
+                    "Failed to release wallet hold for order %s", order.order_number
+                )
+        elif order.bubbles_applied and order.wallet_transaction_id:
             try:
                 await credit_member_wallet(
                     order.member_auth_id,

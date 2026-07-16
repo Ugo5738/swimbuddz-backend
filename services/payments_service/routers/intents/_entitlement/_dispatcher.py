@@ -27,10 +27,12 @@ from services.payments_service.models import (
 )
 
 from .._helpers import (
+    _clear_pending_tier_payment_for_payment,
     _dispatch_payment_notification,
     _emit_membership_reward_events,
     _fulfillment_meta,
     _next_retry_time,
+    _send_membership_activation_email,
     _set_fulfillment_meta,
     _try_qualify_referral,
 )
@@ -85,6 +87,8 @@ async def _apply_entitlement_with_tracking(payment: Payment) -> None:
 
     try:
         await _apply_entitlement(payment)
+        await _clear_pending_tier_payment_for_payment(payment, required=True)
+        await _send_membership_activation_email(payment)
         payment.entitlement_applied_at = now
         payment.entitlement_error = None
         _set_fulfillment_meta(

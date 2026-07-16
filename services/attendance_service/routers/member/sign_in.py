@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_coach
 from libs.auth.models import AuthUser
-from libs.common.currency import kobo_to_bubbles
+from libs.common.currency import kobo_to_bubbles_exact
 from libs.common.service_client import debit_member_wallet, get_session_by_id
 from libs.common.service_client.sessions import get_confirmed_booking_for_session_member
 from libs.db.session import get_async_db
@@ -27,7 +27,11 @@ from services.attendance_service.schemas import (
 )
 
 from ._milestones import _check_attendance_milestones
-from ._shared import get_current_member, validate_session_access
+from ._shared import (
+    get_current_member,
+    require_admin_or_coach_for_session,
+    validate_session_access,
+)
 
 router = APIRouter()
 
@@ -51,10 +55,6 @@ async def sign_in_to_session(
     if not session_data:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Enforce tier-based access control (admins/coaches skip this check
-    # since they need to mark attendance for any session)
-    await validate_session_access(session_data, str(current_member.id))
-
     # A1 Phase 3.3: look up an existing SessionBooking in sessions_service
     # so we can link this attendance row back to it (so "no-show"
     # computations work, and so the booking lifecycle stays auditable).
@@ -66,6 +66,14 @@ async def sign_in_to_session(
         calling_service="attendance",
     )
     linked_booking_id = uuid.UUID(booking_data["id"]) if booking_data else None
+
+    # A confirmed booking preserves the access decision made at booking time,
+    # but the shared policy still enforces session status and the check-in window.
+    await validate_session_access(
+        session_data,
+        str(current_member.id),
+        confirmed_booking=linked_booking_id is not None,
+    )
 
     # Check for existing attendance
     query = select(AttendanceRecord).where(
@@ -86,7 +94,16 @@ async def sign_in_to_session(
     ):
         pool_fee_kobo = session_data.get("pool_fee") or 0
         if pool_fee_kobo > 0:
-            fee_bubbles = kobo_to_bubbles(pool_fee_kobo)
+            try:
+                fee_bubbles = kobo_to_bubbles_exact(pool_fee_kobo)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "This fee cannot be paid entirely with whole Bubbles. "
+                        "Use the booking checkout instead."
+                    ),
+                ) from exc
             idempotency_key = f"session-fee-{session_id}-{current_member.id}"
             try:
                 result_txn = await debit_member_wallet(
@@ -157,11 +174,12 @@ async def sign_in_to_session(
 async def public_sign_in_to_session(
     session_id: uuid.UUID,
     attendance_in: PublicAttendanceCreate,
+    current_user: AuthUser = Depends(require_coach),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """
-    Public sign in to a session (no auth required). Idempotent upsert.
-    """
+    """Record attendance for another member as service, admin, or coach."""
+    await require_admin_or_coach_for_session(session_id, current_user, db)
+
     # Verify session exists (via sessions-service)
     session_data = await get_session_by_id(
         str(session_id), calling_service="attendance"
@@ -186,12 +204,9 @@ async def public_sign_in_to_session(
     )
     linked_booking_id = uuid.UUID(booking_data["id"]) if booking_data else None
 
-    # A CONFIRMED booking already represents authorized access — the member
-    # either self-booked (which passed this check) or an admin recorded a
-    # walk-in (admin authority overrides tier rules). Only enforce tier-based
-    # access control when no booking vouches for the member.
-    if linked_booking_id is None:
-        await validate_session_access(session_data, str(attendance_in.member_id))
+    # This is the controlled coach/admin/service walk-in path. Operator
+    # authorization above intentionally overrides member tier and self
+    # check-in-window rules; member self sign-in uses the guarded route.
 
     # Check for existing attendance
     query = select(AttendanceRecord).where(

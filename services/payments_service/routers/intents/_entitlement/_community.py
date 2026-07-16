@@ -14,12 +14,6 @@ from libs.common.config import get_settings
 from libs.common.logging import get_logger
 from services.payments_service.models import (
     Payment,
-    PaymentPurpose,
-)
-
-from .._helpers import (
-    _send_tier_activated_email,
-    _update_pending_payment_reference,
 )
 
 settings = get_settings()
@@ -60,7 +54,11 @@ async def apply_community(payment: Payment) -> None:
     }
     path = f"/admin/members/by-auth/{payment.member_auth_id}/community/activate"
     years = int((payment.payment_metadata or {}).get("years") or 1)
-    payload = {"years": years}
+    payload = {
+        "years": years,
+        "idempotency_key": f"payment:{payment.id}:community-activate",
+        "source_reference": payment.reference,
+    }
 
     headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
     async with httpx.AsyncClient(timeout=30) as client:
@@ -72,11 +70,3 @@ async def apply_community(payment: Payment) -> None:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Failed to apply entitlement via members_service ({resp.status_code}): {resp.text}",
             )
-    # Clear pending payment reference on success
-    await _update_pending_payment_reference(payment.member_auth_id, None)
-
-    # Send tier activation email (only reaches here for COMMUNITY)
-    if payment.purpose == PaymentPurpose.COMMUNITY:
-        years = int((payment.payment_metadata or {}).get("years") or 1)
-        duration = f"{years} year{'s' if years != 1 else ''}"
-        await _send_tier_activated_email(payment, tier="community", duration=duration)

@@ -16,12 +16,6 @@ from services.members_service.schemas.assessment import (  # noqa: F401
     AssessmentStatsResponse,
     AssessmentSubmit,
 )
-from services.members_service.schemas.club import (  # noqa: F401
-    ClubBase,
-    ClubCreate,
-    ClubResponse,
-    ClubUpdate,
-)
 from services.members_service.schemas.challenge import (  # noqa: F401
     ChallengeAudience,
     ChallengeBadgeAwardResponse,
@@ -52,14 +46,11 @@ from services.members_service.schemas.challenge import (  # noqa: F401
     VolunteerRoleResponse,
     VolunteerRoleUpdate,
 )
-from services.members_service.schemas.pod import (  # noqa: F401
-    PodCreateRequest,
-    PodDetail,
-    PodMemberAddRequest,
-    PodMemberOut,
-    PodSummary,
-    PodTransferRequest,
-    PodUpdateRequest,
+from services.members_service.schemas.club import (  # noqa: F401
+    ClubBase,
+    ClubCreate,
+    ClubResponse,
+    ClubUpdate,
 )
 from services.members_service.schemas.coach import (  # noqa: F401
     AdminApproveCoach,
@@ -127,8 +118,19 @@ from services.members_service.schemas.member import (  # noqa: F401
     MemberProfileResponse,
     MemberPublicResponse,
     MemberResponse,
+    MemberTierStatusResponse,
     MemberUpdate,
     PendingMemberResponse,
+    ProjectAcademyRequest,
     PendingRegistrationCreate,
     PendingRegistrationResponse,
+)
+from services.members_service.schemas.pod import (  # noqa: F401
+    PodCreateRequest,
+    PodDetail,
+    PodMemberAddRequest,
+    PodMemberOut,
+    PodSummary,
+    PodTransferRequest,
+    PodUpdateRequest,
 )

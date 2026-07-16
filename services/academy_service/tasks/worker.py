@@ -94,6 +94,16 @@ async def task_reconcile_chat_memberships(ctx: dict):
     await reconcile_chat_memberships()
 
 
+async def task_reconcile_academy_membership_projections(ctx: dict):
+    """Repair members_service Academy tier state from enrollment truth."""
+    from services.academy_service.tasks import (
+        reconcile_academy_membership_projections,
+    )
+
+    logger.info("Running: reconcile_academy_membership_projections")
+    await reconcile_academy_membership_projections()
+
+
 # ── Worker configuration ──
 
 
@@ -115,6 +125,7 @@ class WorkerSettings:
         task_send_weekly_progress_reports,
         task_check_attendance_and_notify,
         task_reconcile_chat_memberships,
+        task_reconcile_academy_membership_projections,
     ]
 
     cron_jobs = [
@@ -185,6 +196,13 @@ class WorkerSettings:
         cron(
             task_reconcile_chat_memberships,
             minute=50,
+            run_at_startup=True,
+        ),
+        # Members-service tier state is a projection of Academy enrollments.
+        # Re-assert it hourly and at startup to heal cross-service outages.
+        cron(
+            task_reconcile_academy_membership_projections,
+            minute=55,
             run_at_startup=True,
         ),
     ]

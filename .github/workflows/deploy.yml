@@ -62,13 +62,59 @@ jobs:
           ruff check .
           ruff format --check .
 
-      - name: Apply wallet migrations for tests
+      - name: Apply service migrations for tests
         run: |
+          alembic -c services/members_service/alembic.ini upgrade head
+          alembic -c services/academy_service/alembic.ini upgrade head
+          alembic -c services/attendance_service/alembic.ini upgrade head
+          alembic -c services/communications_service/alembic.ini upgrade head
+          alembic -c services/payments_service/alembic.ini upgrade head
+          alembic -c services/sessions_service/alembic.ini upgrade head
+          alembic -c services/transport_service/alembic.ini upgrade head
           alembic -c services/wallet_service/alembic.ini upgrade head
 
       - name: Run unit tests
         run: |
           pytest tests/unit/ -v
+
+      - name: Run critical entitlement and booking integration tests
+        run: |
+          # Keep service model registries isolated. Several services map a
+          # lightweight MemberRef to the shared members table, while the
+          # members service maps the complete Member model. Running all of
+          # these files in one pytest process can corrupt SQLAlchemy mappings.
+          pytest -v \
+            tests/integration/test_members_entitlement_idempotency.py
+
+          pytest -v \
+            tests/integration/test_academy_public.py::test_mark_paid_updates_non_installment_enrollment
+
+          pytest -v \
+            tests/integration/test_sessions_book_reconcile.py \
+            tests/integration/test_sessions_internal.py::test_paid_booking_confirmation_restores_an_expired_reservation \
+            tests/integration/test_sessions_internal.py::test_paid_booking_confirmation_rejects_a_different_member \
+            tests/integration/test_sessions_internal.py::test_paid_booking_confirmation_rejects_a_cancelled_session \
+            tests/integration/test_sessions_internal.py::test_member_access_preserves_confirmed_booking_but_enforces_window \
+            tests/integration/test_sessions_internal.py::test_member_access_rejects_confirmed_booking_outside_window \
+            tests/integration/test_sessions_internal.py::test_bundle_reservation_uses_database_prices_and_creates_pending_rows \
+            tests/integration/test_sessions_internal.py::test_bundle_reservation_rejects_second_active_payment
+
+          pytest -v \
+            tests/integration/test_transport_bookings.py::test_internal_bundle_ride_quote_uses_database_cost \
+            tests/integration/test_transport_bookings.py::test_internal_bundle_ride_quote_rejects_cross_session_config \
+            tests/integration/test_transport_bookings.py::test_member_must_book_session_before_booking_ride \
+            tests/integration/test_transport_bookings.py::test_member_with_confirmed_session_booking_can_book_ride
+
+          pytest -v \
+            tests/integration/test_payments_intent_creation.py::test_session_fee_uses_server_total_without_client_amount \
+            tests/integration/test_payments_intent_creation.py::test_session_fee_requires_backend_sign_in_access \
+            tests/integration/test_payments_intent_creation.py::test_session_booking_uses_server_total_without_client_amount \
+            tests/integration/test_payments_intent_creation.py::test_session_bundle_uses_server_total_without_client_amount \
+            tests/integration/test_payments_intent_creation.py::test_session_bundle_rejects_tampered_client_total_and_releases_hold \
+            tests/integration/test_payments_intent_creation.py::test_ride_share_requires_confirmed_session_booking
+
+          pytest -v \
+            tests/integration/test_attendance_walkin.py
 
       # Guards against the frontend's TypeScript types drifting from backend
       # schemas. The husky pre-commit hook regenerates these locally; this

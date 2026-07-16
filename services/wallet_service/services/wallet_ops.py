@@ -253,10 +253,16 @@ async def debit_wallet(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Wallet temporarily suspended",
         )
-    if wallet.balance < amount:
+    from services.wallet_service.services.hold_ops import available_wallet_balance
+
+    available_balance = await available_wallet_balance(db, wallet)
+    if available_balance < amount:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Not enough Bubbles. You need {amount} 🫧 but have {wallet.balance} 🫧.",
+            detail=(
+                f"Not enough available Bubbles. You need {amount} 🫧 but have "
+                f"{available_balance} 🫧."
+            ),
         )
 
     # 4. Create transaction
@@ -487,4 +493,7 @@ async def check_balance(
 ) -> tuple[bool, int, WalletStatus]:
     """Check if wallet has sufficient balance. Non-destructive read."""
     wallet = await get_wallet_by_auth_id(db, member_auth_id)
-    return (wallet.balance >= required_amount, wallet.balance, wallet.status)
+    from services.wallet_service.services.hold_ops import available_wallet_balance
+
+    available = await available_wallet_balance(db, wallet)
+    return (available >= required_amount, available, wallet.status)

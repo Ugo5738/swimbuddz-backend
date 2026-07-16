@@ -16,7 +16,10 @@ from services.members_service.schemas import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ._shared import _apply_wallet_paid_activation_side_effects
+from ._shared import (
+    _apply_wallet_paid_activation_side_effects,
+    _claim_entitlement_application,
+)
 
 router = APIRouter()
 
@@ -33,6 +36,7 @@ async def admin_activate_community_membership_by_auth(
         select(Member)
         .where(Member.auth_id == auth_id)
         .options(*member_eager_load_options())
+        .with_for_update()
     )
     result = await db.execute(query)
     member = result.scalar_one_or_none()
@@ -41,6 +45,18 @@ async def admin_activate_community_membership_by_auth(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Member not found"
         )
+
+    should_apply = await _claim_entitlement_application(
+        db,
+        member=member,
+        idempotency_key=payload.idempotency_key,
+        tier="community",
+        action="activate",
+        source_reference=payload.source_reference,
+    )
+    if not should_apply:
+        await db.commit()
+        return member
 
     now = utc_now()
 
@@ -91,6 +107,7 @@ async def admin_extend_community_membership_by_auth(
         select(Member)
         .where(Member.auth_id == auth_id)
         .options(*member_eager_load_options())
+        .with_for_update()
     )
     result = await db.execute(query)
     member = result.scalar_one_or_none()
@@ -99,6 +116,18 @@ async def admin_extend_community_membership_by_auth(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Member not found"
         )
+
+    should_apply = await _claim_entitlement_application(
+        db,
+        member=member,
+        idempotency_key=payload.idempotency_key,
+        tier="community",
+        action="extend",
+        source_reference=payload.source_reference,
+    )
+    if not should_apply:
+        await db.commit()
+        return member
 
     now = utc_now()
 

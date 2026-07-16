@@ -165,6 +165,7 @@ async def update_order(
 @router.post("/orders/{order_id}/mark-paid", response_model=OrderResponse)
 async def mark_order_paid(
     order_id: uuid.UUID,
+    wallet_transaction_id: Optional[str] = None,
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -183,10 +184,16 @@ async def mark_order_paid(
 
     if order.status == OrderStatus.PAID:
         # Already paid, idempotent return
+        if wallet_transaction_id and not order.wallet_transaction_id:
+            order.wallet_transaction_id = wallet_transaction_id
+            await db.commit()
+            await db.refresh(order)
         return order
 
     old_status = order.status
     order.status = OrderStatus.PAID
+    if wallet_transaction_id:
+        order.wallet_transaction_id = wallet_transaction_id
 
     await log_audit(
         db,

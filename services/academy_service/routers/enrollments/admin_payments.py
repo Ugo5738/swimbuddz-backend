@@ -32,6 +32,9 @@ from services.academy_service.services.chat_sync import (
     ensure_cohort_channel,
     reconcile_cohort_membership,
 )
+from services.academy_service.services.membership_projection import (
+    project_member_academy_membership,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -317,44 +320,56 @@ async def admin_mark_enrollment_paid(
         except Exception as e:
             logger.warning(f"Failed to send enrollment confirmation email: {e}")
 
-    # Activate the academy tier on the member for the duration of this cohort.
-    # We do this on every installment payment (not just the first) so that if a
-    # later cohort ends after the current academy_paid_until, the date is extended.
-    # The members_service endpoint keeps whichever date is later, so it is safe to
-    # call multiple times.
+    # A paid enrollment is not fulfilled until its membership entitlement is
+    # durable. The stable key ensures retries and later installment payments do
+    # not repeatedly extend the bundled Community and Club periods.
     try:
         _settings = get_settings()
         cohort_end = enrollment.cohort.end_date if enrollment.cohort else None
-        member_auth_id = None
-        if enrollment.member_id:
+        member_auth_id = enrollment.member_auth_id
+        if not member_auth_id and enrollment.member_id:
             member_data = await get_member_by_id(
                 str(enrollment.member_id), calling_service="academy"
             )
             if member_data:
                 member_auth_id = member_data.get("auth_id")
+                if member_auth_id:
+                    enrollment.member_auth_id = member_auth_id
+                    await db.commit()
 
-        if cohort_end and member_auth_id:
-            end_iso = (
-                cohort_end.isoformat()
-                if hasattr(cohort_end, "isoformat")
-                else str(cohort_end)
+        if not cohort_end or not member_auth_id:
+            raise RuntimeError(
+                "Paid Academy enrollment is missing cohort end date or member auth ID"
             )
-            await internal_post(
-                service_url=_settings.MEMBERS_SERVICE_URL,
-                path=f"/admin/members/by-auth/{member_auth_id}/academy/activate",
-                calling_service="academy",
-                json={"cohort_end_date": end_iso},
-            )
-        else:
-            logger.warning(
-                f"Skipping academy tier activation for enrollment {enrollment_id}: "
-                f"cohort_end={cohort_end}, member_auth_id={member_auth_id}"
-            )
-    except Exception as e:
-        # Non-fatal — enrollment payment succeeded; log and continue
-        logger.error(
-            f"Failed to activate academy tier for enrollment {enrollment_id}: {e}"
+
+        response = await internal_post(
+            service_url=_settings.MEMBERS_SERVICE_URL,
+            path=f"/admin/members/by-auth/{member_auth_id}/academy/activate",
+            calling_service="academy",
+            json={
+                "cohort_end_date": cohort_end.isoformat(),
+                "idempotency_key": f"academy:{enrollment.id}:paid-access",
+                "source_reference": str(enrollment.id),
+            },
         )
+        if response.status_code >= 400:
+            raise RuntimeError(
+                "members_service rejected Academy activation "
+                f"({response.status_code}): {response.text}"
+            )
+    except Exception as exc:
+        logger.error(
+            "Failed to activate Academy tier for enrollment %s",
+            enrollment_id,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Enrollment payment was recorded but Academy access could not "
+                "be activated. Retrying is safe."
+            ),
+        ) from exc
 
     # Re-fetch with relationships for response
     result = await db.execute(query)
@@ -466,6 +481,21 @@ async def admin_dropout_action(
         )
 
     await db.commit()
+
+    try:
+        await project_member_academy_membership(
+            db,
+            member_id=enrollment.member_id,
+            member_auth_id=enrollment.member_auth_id,
+            source_reference=f"academy-dropout-action:{enrollment.id}",
+        )
+    except Exception:
+        logger.warning(
+            "Failed to project Academy access after dropout action %s; "
+            "hourly reconciliation will retry",
+            enrollment.id,
+            exc_info=True,
+        )
 
     # Reflect the dropout decision in chat membership. Best-effort.
     if enrollment.cohort_id is not None:

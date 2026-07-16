@@ -67,7 +67,8 @@ SwimBuddz Chat Service provides real-time, persistent, role-aware messaging acro
 
 See `.env.dev` for required configuration:
 - `DATABASE_URL` - PostgreSQL connection string
-- `OPENAI_API_KEY` - Optional; enables text moderation
+- `OPENAI_MODERATION_API_KEY` - Optional; enables text moderation. The legacy
+  `OPENAI_API_KEY` fallback is temporary during credential migration.
 - `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` - Optional; enables image moderation
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` - Required for attachment uploads to `chat-attachments` bucket
 

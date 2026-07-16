@@ -1,7 +1,10 @@
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
+import services.communications_service.tasks.session_notifications as notifications
 from services.communications_service.tasks.session_notifications import (
     _default_booking_prompt_tier,
     _get_session_announcement_members,
@@ -86,7 +89,7 @@ def test_default_booking_prompt_tier_uses_highest_paid_membership():
 
 
 @pytest.mark.asyncio
-async def test_community_prompt_targets_default_community_and_prospects_only():
+async def test_community_prompt_targets_all_paid_members_and_prospects():
     future = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
     members = [
         _member(id="community", community_paid_until=future),
@@ -113,11 +116,16 @@ async def test_community_prompt_targets_default_community_and_prospects_only():
         active_members=members,
     )
 
-    assert {m["id"] for m in recipients} == {"community", "prospect"}
+    assert {m["id"] for m in recipients} == {
+        "community",
+        "prospect",
+        "club",
+        "academy",
+    }
 
 
 @pytest.mark.asyncio
-async def test_club_prompt_targets_default_club_members_only():
+async def test_club_prompt_targets_every_member_with_inherited_club_access():
     future = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
     members = [
         _member(id="community", community_paid_until=future),
@@ -144,7 +152,43 @@ async def test_club_prompt_targets_default_club_members_only():
         active_members=members,
     )
 
-    assert {m["id"] for m in recipients} == {"club"}
+    assert {m["id"] for m in recipients} == {"club", "academy"}
+
+
+@pytest.mark.asyncio
+async def test_cohort_prompt_excludes_suspended_enrollments(monkeypatch):
+    members = [_member(id="active"), _member(id="suspended")]
+
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return [
+                {"member_id": "active", "access_suspended": False},
+                {"member_id": "suspended", "access_suspended": True},
+            ]
+
+    monkeypatch.setattr(
+        notifications,
+        "internal_get",
+        AsyncMock(return_value=Response()),
+    )
+    monkeypatch.setattr(
+        notifications,
+        "get_members_bulk",
+        AsyncMock(return_value=members),
+    )
+
+    recipients = await _get_session_announcement_members(
+        session={
+            "session_type": "cohort_class",
+            "cohort_id": "cohort-1",
+        },
+        active_members=[],
+    )
+
+    assert [member["id"] for member in recipients] == ["active"]
 
 
 def test_expired_paid_until_does_not_grant_booking_prompt():
@@ -203,3 +247,120 @@ def test_summarize_session_weather_returns_none_without_matching_hours():
         )
         is None
     )
+
+
+@pytest.mark.asyncio
+async def test_weekly_digest_excludes_suspended_cohort_enrollment(monkeypatch):
+    fixed_now = datetime(2026, 7, 12, 7, 0, tzinfo=timezone.utc)
+    session_id = "11111111-1111-1111-1111-111111111111"
+    cohort_id = "22222222-2222-2222-2222-222222222222"
+    active_member_id = "33333333-3333-3333-3333-333333333333"
+    suspended_member_id = "44444444-4444-4444-4444-444444444444"
+
+    sessions = [
+        {
+            "id": session_id,
+            "title": "Academy Week 4",
+            "session_type": "cohort_class",
+            "status": "scheduled",
+            "cohort_id": cohort_id,
+            "starts_at": (fixed_now + timedelta(days=2)).isoformat(),
+            "ends_at": (fixed_now + timedelta(days=2, hours=1)).isoformat(),
+            "timezone": "Africa/Lagos",
+            "location_name": "Sunfit Pool",
+        }
+    ]
+    members = [
+        {
+            "id": active_member_id,
+            "auth_id": "auth-active",
+            "email": "active@example.com",
+            "first_name": "Ada",
+            "primary_tier": "academy",
+            "active_tiers": ["academy", "club", "community"],
+        },
+        {
+            "id": suspended_member_id,
+            "auth_id": "auth-suspended",
+            "email": "suspended@example.com",
+            "first_name": "Bola",
+            "primary_tier": "academy",
+            "active_tiers": ["academy", "club", "community"],
+        },
+    ]
+    enrollments = [
+        {
+            "enrollment_id": "enroll-active",
+            "member_id": active_member_id,
+            "status": "enrolled",
+            "access_suspended": False,
+        },
+        {
+            "enrollment_id": "enroll-suspended",
+            "member_id": suspended_member_id,
+            "status": "enrolled",
+            "access_suspended": True,
+        },
+    ]
+
+    class Response:
+        def __init__(self, payload):
+            self.status_code = 200
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    async def fake_internal_get(*, path, **kwargs):
+        if path == "/internal/sessions/scheduled":
+            return Response(sessions)
+        if path == "/internal/members/active":
+            return Response(members)
+        if path.endswith(f"/cohorts/{cohort_id}/enrolled-students"):
+            return Response(enrollments)
+        raise AssertionError(f"Unexpected internal_get path: {path}")
+
+    class EmptyResult:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return []
+
+    fake_db = SimpleNamespace(
+        execute=AsyncMock(return_value=EmptyResult()), close=AsyncMock()
+    )
+
+    async def fake_get_async_db():
+        yield fake_db
+
+    send_email = AsyncMock(return_value=True)
+    monkeypatch.setattr(notifications, "utc_now", lambda: fixed_now)
+    monkeypatch.setattr(notifications, "internal_get", fake_internal_get)
+    monkeypatch.setattr(notifications, "get_async_db", fake_get_async_db)
+    monkeypatch.setattr(
+        notifications,
+        "_get_notification_preferences_by_auth",
+        AsyncMock(
+            return_value={
+                "auth-active": SimpleNamespace(
+                    weekly_session_digest=True,
+                    weekly_digest=False,
+                ),
+                "auth-suspended": SimpleNamespace(
+                    weekly_session_digest=True,
+                    weekly_digest=False,
+                ),
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "services.communications_service.templates.session_notifications."
+        "send_weekly_session_digest_email",
+        send_email,
+    )
+
+    await notifications.send_weekly_session_digest()
+
+    send_email.assert_awaited_once()
+    assert send_email.await_args.kwargs["to_email"] == "active@example.com"

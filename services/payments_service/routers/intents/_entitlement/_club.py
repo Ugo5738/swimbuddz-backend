@@ -11,18 +11,11 @@ from fastapi import HTTPException, status
 
 from libs.auth.dependencies import _service_role_jwt
 from libs.common.config import get_settings
-from libs.common.logging import get_logger
 from services.payments_service.models import (
     Payment,
 )
 
-from .._helpers import (
-    _send_tier_activated_email,
-    _update_pending_payment_reference,
-)
-
 settings = get_settings()
-logger = get_logger(__name__)
 
 
 async def apply_club(payment: Payment) -> None:
@@ -37,16 +30,31 @@ async def apply_club(payment: Payment) -> None:
         if community_extension_months > 0:
             community_resp = await client.post(
                 f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/community/extend",
-                json={"months": community_extension_months},
+                json={
+                    "months": community_extension_months,
+                    "idempotency_key": f"payment:{payment.id}:community-extend",
+                    "source_reference": payment.reference,
+                },
                 headers=headers,
             )
             if community_resp.status_code >= 400:
-                logger.warning(f"Failed to extend community: {community_resp.text}")
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=(
+                        "Failed to apply bundled community extension via "
+                        f"members_service ({community_resp.status_code}): "
+                        f"{community_resp.text}"
+                    ),
+                )
 
         # Activate Club
         club_resp = await client.post(
             f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/club/activate",
-            json={"months": months},
+            json={
+                "months": months,
+                "idempotency_key": f"payment:{payment.id}:club-activate",
+                "source_reference": payment.reference,
+            },
             headers=headers,
         )
         if club_resp.status_code >= 400:
@@ -54,7 +62,3 @@ async def apply_club(payment: Payment) -> None:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Failed to apply club entitlement via members_service ({club_resp.status_code}): {club_resp.text}",
             )
-    # Clear pending payment reference on success
-    await _update_pending_payment_reference(payment.member_auth_id, None)
-    duration = f"{months} month{'s' if months != 1 else ''}"
-    await _send_tier_activated_email(payment, tier="club", duration=duration)

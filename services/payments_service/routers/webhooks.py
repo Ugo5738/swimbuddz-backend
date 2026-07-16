@@ -24,6 +24,10 @@ from services.payments_service.routers.intents import (
     _to_kobo,
     _verify_paystack_signature,
 )
+from services.payments_service.routers.intents._helpers import (
+    _clear_pending_tier_payment_for_payment,
+    _release_bubbles_hold,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -163,6 +167,8 @@ async def paystack_webhook(
             }
             db.add(payment)
             await db.commit()
+            await _release_bubbles_hold(payment)
+            await _clear_pending_tier_payment_for_payment(payment)
 
             # For ACADEMY_COHORT payments: notify the student that their access
             # is suspended because the installment payment failed.

@@ -6,6 +6,14 @@ from services.ai_service.schemas.analysis import (
     AnalysisJobResponse,
     AnalysisResultPayload,
 )
+from services.ai_service.schemas.content import (
+    ContentDraftPayload,
+    ContentDraftRequest,
+    ContentDraftResponse,
+    ContentDraftSection,
+    ContentImageRequest,
+    ContentImageResponse,
+)
 from services.ai_service.schemas.main import (
     AIModelConfigCreate,
     AIModelConfigResponse,
@@ -32,6 +40,12 @@ __all__ = [
     "AnalysisJobDetailResponse",
     "AnalysisJobResponse",
     "AnalysisResultPayload",
+    "ContentDraftPayload",
+    "ContentDraftRequest",
+    "ContentDraftResponse",
+    "ContentDraftSection",
+    "ContentImageRequest",
+    "ContentImageResponse",
     "CoachGradeScoringRequest",
     "CoachGradeScoringResponse",
     "CoachRanking",

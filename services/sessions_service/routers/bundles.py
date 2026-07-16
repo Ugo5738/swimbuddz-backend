@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import List
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -17,9 +18,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
-from libs.db.session import get_async_db
 from libs.common.datetime_utils import utc_now
-from services.sessions_service.models import SessionBundleCart
+from libs.common.service_client import get_member_by_auth_id
+from libs.common.session_access import denial_message
+from libs.db.session import get_async_db
+from services.sessions_service.models import Session, SessionBundleCart
+from services.sessions_service.services.session_access import (
+    evaluate_member_session_access,
+)
 
 router = APIRouter(prefix="/sessions/bundles", tags=["bundles"])
 
@@ -72,6 +78,46 @@ async def create_bundle_cart(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Maximum {MAX_BUNDLE_SIZE} sessions per bundle",
         )
+
+    try:
+        member = await get_member_by_auth_id(
+            current_user.user_id, calling_service="sessions"
+        )
+    except httpx.HTTPError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not verify your member profile. Please try again.",
+        )
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member profile not found. Complete registration first.",
+        )
+    member_id = uuid.UUID(member["id"])
+
+    session_ids = [uuid.UUID(sid) for sid in unique_ids]
+    result = await db.execute(select(Session).where(Session.id.in_(session_ids)))
+    sessions_by_id = {str(session.id): session for session in result.scalars().all()}
+    missing = [sid for sid in unique_ids if sid not in sessions_by_id]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="One or more selected sessions could not be found.",
+        )
+
+    now = utc_now()
+    for sid in unique_ids:
+        session = sessions_by_id[sid]
+        access = await evaluate_member_session_access(
+            session=session,
+            member_id=member_id,
+            now=now,
+        )
+        if not access.bookable:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"{session.title}: {denial_message(access.reason)}",
+            )
 
     cart = SessionBundleCart(
         id=uuid.uuid4(),

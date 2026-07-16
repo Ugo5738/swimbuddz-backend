@@ -25,7 +25,6 @@ from services.payments_service.schemas import (
 from .._helpers import (
     _debit_bubbles,
     _require_attendance_status,
-    _update_pending_payment_reference,
 )
 
 settings = get_settings()
@@ -64,7 +63,29 @@ async def apply_session_fee(payment: Payment) -> None:
         member_data = member_resp.json()
         member_id = member_data.get("id")
 
-        # Partial Bubbles: debit wallet for bubbles_to_apply before attendance.
+        access_resp = await client.get(
+            f"{settings.SESSIONS_SERVICE_URL}/internal/sessions/{session_id}/access",
+            params={"member_auth_id": payment.member_auth_id},
+            headers=headers,
+        )
+        if access_resp.status_code >= 400:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "Could not revalidate session access "
+                    f"({access_resp.status_code}): {access_resp.text}"
+                ),
+            )
+        access = access_resp.json()
+        if access.get("sign_in_allowed") is not True:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    access.get("message") or "Session sign-in is no longer available."
+                ),
+            )
+
+        # Legacy Bubbles metadata is collected before attendance is granted.
         await _debit_bubbles(client, payment, reference_type="session_fee")
 
         # Create attendance record via attendance service
@@ -94,12 +115,20 @@ async def apply_session_fee(payment: Payment) -> None:
                     "pickup_location_id": pickup_location_id,
                     "num_seats": num_seats,
                 },
-                params={"member_id": str(member_id)},
+                params={
+                    "member_id": str(member_id),
+                    "allow_without_booking": "true",
+                },
                 headers=headers,
             )
-            # Log but don't fail if ride booking fails
             if transport_resp.status_code >= 400:
-                logger.warning(f"Ride booking failed: {transport_resp.text}")
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=(
+                        "Session attendance was recorded but ride fulfillment "
+                        f"failed ({transport_resp.status_code}): {transport_resp.text}"
+                    ),
+                )
 
         # Send session confirmation email
         try:
@@ -212,4 +241,3 @@ async def apply_session_fee(payment: Payment) -> None:
             logger.error(f"Failed to send session confirmation email: {e}")
 
     # Clear pending payment reference on success
-    await _update_pending_payment_reference(payment.member_auth_id, None)

@@ -14,6 +14,8 @@ class WalletResponse(BaseModel):
     member_id: uuid.UUID
     member_auth_id: str
     balance: int
+    available_balance: Optional[int] = None
+    held_balance: int = 0
     lifetime_bubbles_purchased: int
     lifetime_bubbles_spent: int
     lifetime_bubbles_received: int

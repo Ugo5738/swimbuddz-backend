@@ -26,6 +26,8 @@ from services.payments_service.models import (
     PaymentStatus,
 )
 from services.payments_service.routers.intents import (
+    _apply_entitlement_with_tracking,
+    _mark_paid_and_apply,
     _callback_url,
     _paystack_enabled,
     _paystack_headers,
@@ -257,19 +259,22 @@ async def internal_initialize_payment(
     dependencies=[Depends(require_service_role)],
     tags=["internal-payments"],
 )
-async def internal_verify_paystack_reference(reference: str):
+async def internal_verify_paystack_reference(
+    reference: str,
+    db: AsyncSession = Depends(get_async_db),
+):
     """Verify a Paystack reference for internal fulfillment reconciliation."""
     data = await _verify_paystack_transaction(reference)
     provider_status = str((data.get("status") or "")).lower()
 
     if provider_status == "success":
-        status = "completed"
+        normalized_status = "completed"
     elif provider_status in {"failed", "abandoned", "reversed"}:
-        status = "failed"
+        normalized_status = "failed"
     elif provider_status in {"pending", "ongoing", "processing", "queued"}:
-        status = "pending"
+        normalized_status = "pending"
     else:
-        status = "unknown"
+        normalized_status = "unknown"
 
     paid_at = None
     paid_at_str = data.get("paid_at")
@@ -279,9 +284,51 @@ async def internal_verify_paystack_reference(reference: str):
         except ValueError:
             paid_at = None
 
+    if normalized_status == "completed":
+        payment = (
+            await db.execute(select(Payment).where(Payment.reference == reference))
+        ).scalar_one_or_none()
+        if payment is not None:
+            amount_kobo = int(data.get("amount") or 0)
+            expected_kobo = _to_kobo(payment.amount)
+            if amount_kobo and expected_kobo and amount_kobo != expected_kobo:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Amount mismatch: got {amount_kobo}, expected {expected_kobo}"
+                    ),
+                )
+            if (
+                payment.status == PaymentStatus.PAID
+                and not payment.entitlement_applied_at
+            ):
+                await _apply_entitlement_with_tracking(payment)
+                db.add(payment)
+                await db.commit()
+                await db.refresh(payment)
+                if not payment.entitlement_applied_at:
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="Payment is confirmed but order fulfillment is still pending",
+                    )
+            elif payment.status != PaymentStatus.PAID:
+                payment = await _mark_paid_and_apply(
+                    db=db,
+                    payment=payment,
+                    provider="paystack",
+                    provider_reference=reference,
+                    paid_at=paid_at,
+                    provider_payload={"internal_verify": data},
+                )
+                if not payment.entitlement_applied_at:
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="Payment is confirmed but order fulfillment is still pending",
+                    )
+
     return InternalPaystackVerifyResponse(
         reference=reference,
-        status=status,
+        status=normalized_status,
         provider_status=provider_status or None,
         paid_at=paid_at,
         amount_kobo=data.get("amount"),

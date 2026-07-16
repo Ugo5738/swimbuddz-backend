@@ -95,7 +95,7 @@ async def test_emit_settlement_dead_letters_and_returns_false(db_session, monkey
     assert "ledger down" in (row.last_error or "")
 
 
-async def test_ingest_dry_run_does_not_post_and_totals_gross(monkeypatch):
+async def test_ingest_dry_run_does_not_post_and_totals_gross(monkeypatch, test_engine):
     sid1 = f"S-{uuid.uuid4().hex[:8]}"
     sid2 = f"S-{uuid.uuid4().hex[:8]}"
 

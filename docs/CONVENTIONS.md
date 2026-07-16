@@ -57,6 +57,18 @@ async def get_member_info(member_id: str):
 
 **See [docs/reference/SERVICE_COMMUNICATION.md](../docs/reference/SERVICE_COMMUNICATION.md) for complete patterns.**
 
+### Generative AI boundary
+
+`ai_service` exclusively owns generative model providers, SDKs, credentials,
+prompts, model context, and request telemetry. Domain services call typed,
+service-authenticated AI endpoints and keep ownership of persistence, human
+review, and business actions. They must not import LiteLLM or a generative
+provider SDK. See
+[docs/architecture/AI_SERVICE_OWNERSHIP.md](architecture/AI_SERVICE_OWNERSHIP.md).
+
+The shared moderation libraries are a documented non-generative safety
+exception: they classify input and must never generate user-facing content.
+
 ---
 
 ## 3. Python Style

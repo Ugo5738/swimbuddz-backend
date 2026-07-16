@@ -30,7 +30,7 @@ async def test_analyzer_ready_renders_branded(monkeypatch):
     assert ok is True
     assert "ready" in cap["subject"].lower()
     assert "<!DOCTYPE" in cap["html"]  # full branded document, not a fragment
-    assert "logo-white" in cap["html"]  # branded header logo
+    assert "swimbuddz-icon-white.png" in cap["html"]  # branded header logo
     assert "SwimBuddz Limited" in cap["html"]  # branded footer
     assert "View My Analysis" in cap["html"]  # cta button
     assert _LINK in cap["html"] and _LINK in cap["body"]

@@ -2,11 +2,17 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
+from services.transport_service.models.enums import RidePassengerType
+
+
+def enum_values(enum_cls):
+    return [member.value for member in enum_cls]
 
 
 class MemberRef(Base):
@@ -180,6 +186,12 @@ class RideBooking(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
+    passengers: Mapped[list["RidePassenger"]] = relationship(
+        back_populates="booking",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="RidePassenger.position",
+    )
 
     __table_args__ = (
         UniqueConstraint("session_id", "member_id", name="uq_session_member_booking"),
@@ -187,3 +199,37 @@ class RideBooking(Base):
 
     def __repr__(self):
         return f"\u003cRideBooking session={self.session_id} member={self.member_id} pickup_location={self.pickup_location_id}\u003e"
+
+
+class RidePassenger(Base):
+    """One occupied transport seat, independent of swimming participation."""
+
+    __tablename__ = "ride_passengers"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    ride_booking_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("ride_bookings.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    passenger_type: Mapped[RidePassengerType] = mapped_column(
+        SAEnum(
+            RidePassengerType,
+            values_callable=enum_values,
+            name="ride_passenger_type_enum",
+        ),
+        nullable=False,
+    )
+    full_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    booking: Mapped[RideBooking] = relationship(back_populates="passengers")

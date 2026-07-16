@@ -11,13 +11,14 @@ affect the names already bound via ``from ... import ...``.
 """
 
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
 
 import services.attendance_service.routers.member.sign_in as signin_mod
 from services.attendance_service.models import AttendanceRecord, AttendanceStatus
-from tests.factories import MemberFactory
+from services.attendance_service.schemas import AttendanceCreate
 
 
 def _session_payload(session_id: uuid.UUID) -> dict:
@@ -35,11 +36,10 @@ def _session_payload(session_id: uuid.UUID) -> dict:
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_public_signin_links_booking_and_skips_tier_check(
-    attendance_client, db_session, monkeypatch
+    attendance_client, db_session, monkeypatch, seed_member_row
 ):
     """A CONFIRMED booking → PRESENT row linked to the booking, tier check skipped."""
-    member = MemberFactory.create()
-    db_session.add(member)
+    member = await seed_member_row()
     await db_session.commit()
 
     session_id = uuid.uuid4()
@@ -84,36 +84,119 @@ async def test_public_signin_links_booking_and_skips_tier_check(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_public_signin_enforces_tier_check_without_booking(
-    attendance_client, db_session, monkeypatch
+async def test_public_signin_allows_controlled_walkin_without_booking(
+    attendance_client,
+    db_session,
+    monkeypatch,
+    seed_member_row,
 ):
-    """No booking → the tier check still runs and its rejection is surfaced."""
-    from fastapi import HTTPException
-
-    member = MemberFactory.create()
-    db_session.add(member)
+    """An authorized coach/admin can record a genuine walk-in without a booking."""
+    member = await seed_member_row()
     await db_session.commit()
 
     session_id = uuid.uuid4()
+    session_payload = _session_payload(session_id)
 
-    async def fake_get_session(*args, **kwargs):
-        return _session_payload(session_id)
+    get_session = AsyncMock(return_value=session_payload)
+    get_booking = AsyncMock(return_value=None)
+    validate_access = AsyncMock(return_value=None)
 
-    async def no_booking(*args, **kwargs):
-        return None
-
-    async def deny(*args, **kwargs):
-        raise HTTPException(status_code=403, detail="not enrolled")
-
-    monkeypatch.setattr(signin_mod, "get_session_by_id", fake_get_session)
+    monkeypatch.setattr(signin_mod, "get_session_by_id", get_session)
     monkeypatch.setattr(
-        signin_mod, "get_confirmed_booking_for_session_member", no_booking
+        signin_mod,
+        "get_confirmed_booking_for_session_member",
+        get_booking,
     )
-    monkeypatch.setattr(signin_mod, "validate_session_access", deny)
+    monkeypatch.setattr(
+        signin_mod,
+        "validate_session_access",
+        validate_access,
+    )
 
     resp = await attendance_client.post(
         f"/attendance/sessions/{session_id}/attendance/public",
-        json={"member_id": str(member.id), "status": "present", "role": "swimmer"},
+        json={
+            "member_id": str(member.id),
+            "status": "present",
+            "role": "swimmer",
+        },
     )
 
-    assert resp.status_code == 403
+    assert resp.status_code == 200, resp.text
+
+    record = (
+        await db_session.execute(
+            select(AttendanceRecord).where(
+                AttendanceRecord.session_id == session_id,
+                AttendanceRecord.member_id == member.id,
+            )
+        )
+    ).scalar_one()
+
+    assert record.booking_id is None
+    assert (
+        getattr(record.status, "value", record.status) == AttendanceStatus.PRESENT.value
+    )
+
+    validate_access.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_authenticated_signin_links_booking_and_uses_booking_override(
+    db_session,
+    monkeypatch,
+    seed_member_row,
+):
+    """A confirmed booking bypasses tier checks but still runs shared validation."""
+    member = await seed_member_row()
+    await db_session.commit()
+
+    session_id = uuid.uuid4()
+    booking_id = uuid.uuid4()
+    session_payload = _session_payload(session_id)
+
+    get_session = AsyncMock(return_value=session_payload)
+    get_booking = AsyncMock(
+        return_value={
+            "id": str(booking_id),
+            "status": "confirmed",
+        }
+    )
+    validate_access = AsyncMock(return_value=None)
+
+    monkeypatch.setattr(
+        signin_mod,
+        "get_session_by_id",
+        get_session,
+    )
+    monkeypatch.setattr(
+        signin_mod,
+        "get_confirmed_booking_for_session_member",
+        get_booking,
+    )
+    monkeypatch.setattr(
+        signin_mod,
+        "validate_session_access",
+        validate_access,
+    )
+    monkeypatch.setattr(
+        signin_mod,
+        "_check_attendance_milestones",
+        AsyncMock(return_value=None),
+    )
+
+    attendance = await signin_mod.sign_in_to_session(
+        session_id=session_id,
+        attendance_in=AttendanceCreate(),
+        current_member=member,
+        db=db_session,
+    )
+
+    assert attendance.booking_id == booking_id
+
+    validate_access.assert_awaited_once_with(
+        session_payload,
+        str(member.id),
+        confirmed_booking=True,
+    )

@@ -29,7 +29,7 @@ from libs.common.config import get_settings
 from libs.common.logging import get_logger
 from services.payments_service.models import Payment
 
-from .._helpers import _debit_bubbles, _update_pending_payment_reference
+from .._helpers import _debit_bubbles
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -38,6 +38,9 @@ logger = get_logger(__name__)
 async def apply_session_booking(payment: Payment) -> None:
     meta = payment.payment_metadata or {}
     booking_id = meta.get("booking_id")
+    session_id = meta.get("session_id")
+    ride_config_id = meta.get("ride_config_id")
+    pickup_location_id = meta.get("pickup_location_id")
     if not booking_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -58,23 +61,62 @@ async def apply_session_booking(payment: Payment) -> None:
             f"{settings.SESSIONS_SERVICE_URL}"
             f"/internal/sessions/bookings/{booking_id}/confirm",
             json={
+                "member_auth_id": payment.member_auth_id,
                 "payment_intent_id": str(payment.id),
                 "wallet_transaction_id": wallet_transaction_id,
             },
             headers=headers,
         )
-        if resp.status_code == 404:
+        if resp.status_code in {404, 409, 422}:
             # Booking expired (TTL) or was cancelled before payment cleared.
             # Surface as a hard failure so the retry/dead-letter machinery
             # records it; ops can then refund manually. Don't silently drop.
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    f"SessionBooking {booking_id} not found at confirm time "
-                    f"(likely expired before payment). Payment {payment.reference} "
-                    f"needs manual refund."
+                    f"SessionBooking {booking_id} could not be confirmed after "
+                    f"payment. Payment {payment.reference} needs manual review "
+                    f"or refund. Sessions service said: {resp.text}"
                 ),
             )
+
+        if ride_config_id or pickup_location_id:
+            if not session_id or not ride_config_id or not pickup_location_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Combined session and ride payment metadata is incomplete",
+                )
+            member_id = meta.get("member_id")
+            if not member_id:
+                member_resp = await client.get(
+                    f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{payment.member_auth_id}",
+                    headers=headers,
+                )
+                if member_resp.status_code >= 400:
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="Failed to resolve member for ride fulfillment",
+                    )
+                member_id = member_resp.json().get("id")
+            transport_resp = await client.post(
+                f"{settings.TRANSPORT_SERVICE_URL}/transport/sessions/{session_id}/bookings",
+                json={
+                    "session_ride_config_id": ride_config_id,
+                    "pickup_location_id": pickup_location_id,
+                    "num_seats": int(meta.get("num_seats") or 1),
+                    "passengers": meta.get("passengers"),
+                },
+                params={"member_id": str(member_id)},
+                headers=headers,
+            )
+            if transport_resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=(
+                        "Session was confirmed but ride fulfillment failed "
+                        f"({transport_resp.status_code}): {transport_resp.text}"
+                    ),
+                )
         if resp.status_code >= 400:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -91,4 +133,3 @@ async def apply_session_booking(payment: Payment) -> None:
     )
 
     # Clear pending payment reference on success (mirrors session_fee).
-    await _update_pending_payment_reference(payment.member_auth_id, None)

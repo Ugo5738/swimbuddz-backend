@@ -196,6 +196,62 @@ async def check_wallet_balance(
     return resp.json()
 
 
+async def create_wallet_hold(
+    auth_id: str,
+    *,
+    amount: int,
+    idempotency_key: str,
+    description: str,
+    calling_service: str,
+    reference_type: Optional[str] = None,
+    reference_id: Optional[str] = None,
+    expires_in_seconds: int = 1800,
+) -> dict:
+    """Reserve Bubbles without changing the wallet ledger balance."""
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.WALLET_SERVICE_URL,
+        path="/internal/wallet/holds",
+        calling_service=calling_service,
+        json={
+            "member_auth_id": auth_id,
+            "amount": amount,
+            "idempotency_key": idempotency_key,
+            "description": description,
+            "service_source": calling_service,
+            "reference_type": reference_type,
+            "reference_id": reference_id,
+            "expires_in_seconds": expires_in_seconds,
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def capture_wallet_hold(hold_id: str, *, calling_service: str) -> dict:
+    """Capture a wallet hold into an immutable debit transaction."""
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.WALLET_SERVICE_URL,
+        path=f"/internal/wallet/holds/{hold_id}/capture",
+        calling_service=calling_service,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def release_wallet_hold(hold_id: str, *, calling_service: str) -> dict:
+    """Release an uncaptured wallet hold. Replays are harmless."""
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.WALLET_SERVICE_URL,
+        path=f"/internal/wallet/holds/{hold_id}/release",
+        calling_service=calling_service,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 async def emit_rewards_event(
     *,
     event_type: str,

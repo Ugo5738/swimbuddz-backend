@@ -80,6 +80,9 @@ class Wallet(Base):
     grants: Mapped[list["PromotionalBubbleGrant"]] = relationship(  # noqa: F821
         back_populates="wallet", lazy="selectin"
     )
+    holds: Mapped[list["WalletHold"]] = relationship(  # noqa: F821
+        back_populates="wallet", lazy="selectin", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         CheckConstraint("balance >= 0", name="ck_wallet_balance_non_negative"),

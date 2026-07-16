@@ -10,10 +10,14 @@ Provides:
 
 import uuid
 from contextlib import contextmanager
+from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import text
+
 from libs.auth.dependencies import (
     get_current_user,
     get_optional_user,
@@ -138,6 +142,72 @@ def override_auth_as_member(app, user: AuthUser | None = None):
 # ---------------------------------------------------------------------------
 # Service Role Headers (for contract tests)
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def seed_member_row(db_session):
+    """Insert a member without importing the full members-service ORM model."""
+
+    async def _seed(*, auth_id=None, email=None):
+        member_id = uuid.uuid4()
+        auth_id = auth_id or str(uuid.uuid4())
+        email = email or f"test-{uuid.uuid4().hex[:10]}@test.com"
+        now = datetime.now(timezone.utc)
+
+        await db_session.execute(
+            text(
+                """
+                INSERT INTO members (
+                    id,
+                    auth_id,
+                    email,
+                    first_name,
+                    last_name,
+                    is_active,
+                    registration_complete,
+                    roles,
+                    approval_status,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    :id,
+                    :auth_id,
+                    :email,
+                    'Test',
+                    'Member',
+                    true,
+                    true,
+                    CAST(ARRAY['member'] AS VARCHAR[]),
+                    'approved',
+                    :created_at,
+                    :updated_at
+                )
+                """
+            ),
+            {
+                "id": member_id,
+                "auth_id": auth_id,
+                "email": email,
+                "created_at": now,
+                "updated_at": now,
+            },
+        )
+        await db_session.flush()
+
+        return SimpleNamespace(
+            id=member_id,
+            auth_id=auth_id,
+            email=email,
+            first_name="Test",
+            last_name="Member",
+            is_active=True,
+            registration_complete=True,
+            roles=["member"],
+            approval_status="approved",
+        )
+
+    return _seed
 
 
 @pytest.fixture
@@ -289,6 +359,7 @@ def mock_service_client(**overrides):
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+
 from libs.db.session import get_async_db
 
 

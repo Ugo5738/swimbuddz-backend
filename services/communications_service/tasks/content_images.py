@@ -1,18 +1,13 @@
-"""
-Background task for generating featured images for content posts using DALL-E.
-
-Reads image prompts from the seed data JSON, generates images via LiteLLM,
-uploads them to the media service, and links them to their ContentPost.
-"""
+"""Generate content images through the AI service and store them in media."""
 
 import json
 from pathlib import Path
 
 import httpx
-import litellm
 from libs.auth.dependencies import _service_role_jwt
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
+from libs.common.service_client import internal_post
 from libs.db.session import get_async_db
 from sqlalchemy import select
 
@@ -21,7 +16,7 @@ from services.communications_service.models import ContentPost
 logger = get_logger(__name__)
 
 SEED_PATH = (
-    Path(__file__).resolve().parents[2] / "scripts" / "seed-data" / "content_posts.json"
+    Path(__file__).resolve().parents[3] / "scripts" / "seed-data" / "content_posts.json"
 )
 
 
@@ -42,24 +37,25 @@ def _load_image_prompts() -> dict[str, str]:
 
 
 async def _generate_and_upload_image(prompt: str, title: str) -> str | None:
-    """Generate image with DALL-E and upload to media service. Returns media_id or None."""
+    """Generate through ai_service and upload to media-service."""
     settings = get_settings()
 
-    # 1. Generate image via LiteLLM (DALL-E)
+    # 1. Generate through ai_service. Communications never owns provider calls.
     try:
-        response = await litellm.aimage_generation(
-            model="dall-e-3",
-            prompt=prompt,
-            size="1792x1024",
-            quality="standard",
-            n=1,
+        response = await internal_post(
+            service_url=settings.AI_SERVICE_URL,
+            path="/ai/content/images",
+            calling_service="communications",
+            json={"prompt": prompt, "title": title},
+            timeout=90.0,
         )
-        image_url = response.data[0].url
+        response.raise_for_status()
+        image_url = response.json()["image_url"]
     except Exception:
-        logger.error("DALL-E generation failed for '%s'", title, exc_info=True)
+        logger.error("AI image generation failed for '%s'", title, exc_info=True)
         return None
 
-    # 2. Download the generated image (DALL-E URLs are temporary)
+    # 2. Download the provider's temporary image URL.
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             img_response = await client.get(image_url)
@@ -100,14 +96,10 @@ async def _generate_and_upload_image(prompt: str, title: str) -> str | None:
 
 
 async def generate_content_images() -> None:
-    """
-    Find content posts without featured images and generate them using DALL-E.
-    Prompts are read from the seed data JSON file.
-    """
+    """Generate missing featured images from stored prompts or seed fallbacks."""
     prompts_map = _load_image_prompts()
     if not prompts_map:
-        logger.info("No image prompts found in seed data.")
-        return
+        logger.info("No seed image prompts found; using prompts stored on posts.")
 
     async for db in get_async_db():
         try:
@@ -126,7 +118,7 @@ async def generate_content_images() -> None:
             skipped = 0
 
             for post in posts:
-                prompt = prompts_map.get(post.title)
+                prompt = post.featured_image_prompt or prompts_map.get(post.title)
                 if not prompt:
                     skipped += 1
                     continue

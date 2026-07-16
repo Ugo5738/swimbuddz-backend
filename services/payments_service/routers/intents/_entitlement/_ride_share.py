@@ -20,7 +20,6 @@ from services.payments_service.models import (
 
 from .._helpers import (
     _debit_bubbles,
-    _update_pending_payment_reference,
 )
 
 settings = get_settings()
@@ -32,6 +31,7 @@ async def apply_ride_share(payment: Payment) -> None:
     ride_config_id = (payment.payment_metadata or {}).get("ride_config_id")
     pickup_location_id = (payment.payment_metadata or {}).get("pickup_location_id")
     num_seats = (payment.payment_metadata or {}).get("num_seats", 1)
+    passengers = (payment.payment_metadata or {}).get("passengers")
 
     if not session_id or not ride_config_id or not pickup_location_id:
         raise HTTPException(
@@ -66,6 +66,7 @@ async def apply_ride_share(payment: Payment) -> None:
                 "session_ride_config_id": ride_config_id,
                 "pickup_location_id": pickup_location_id,
                 "num_seats": num_seats,
+                "passengers": passengers,
             },
             params={"member_id": str(member_id)},
             headers=headers,
@@ -153,4 +154,3 @@ async def apply_ride_share(payment: Payment) -> None:
             logger.error(f"Failed to send ride share confirmation email: {e}")
 
     # Clear pending payment reference on success
-    await _update_pending_payment_reference(payment.member_auth_id, None)

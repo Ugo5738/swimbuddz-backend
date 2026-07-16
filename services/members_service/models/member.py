@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -328,6 +328,9 @@ class MemberMembership(Base):
     pending_payment_reference: Mapped[Optional[str]] = mapped_column(
         String(50), nullable=True, index=True
     )
+    pending_tier_payments: Mapped[dict[str, str]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
 
     # Club Gamification
     club_badges_earned: Mapped[Optional[list[str]]] = mapped_column(
@@ -381,6 +384,35 @@ class MemberMembership(Base):
 
     def __repr__(self):
         return f"<MemberMembership member_id={self.member_id} tier={self.primary_tier}>"
+
+
+class MemberEntitlementApplication(Base):
+    """Durable idempotency record for membership entitlement mutations."""
+
+    __tablename__ = "member_entitlement_applications"
+    __table_args__ = (
+        UniqueConstraint(
+            "idempotency_key",
+            name="uq_member_entitlement_applications_idempotency_key",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("members.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    tier: Mapped[str] = mapped_column(String(20), nullable=False)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_reference: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    applied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
 
 
 class MemberPreferences(Base):

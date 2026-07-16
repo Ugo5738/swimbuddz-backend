@@ -106,7 +106,7 @@ async def _check_text_moderation(body: str) -> SafeguardingReviewState:
 
     Policy (Phase 1):
       - Provider unavailable → return NONE (open-by-default; covers local
-        dev where OPENAI_API_KEY is unset). Will switch to fail-closed for
+        dev where moderation credentials are unset). Will switch to fail-closed for
         channels with `has_minors=true` once the override config lands.
       - Provider returns flagged=true → return FLAGGED so the message
         surfaces in the safeguarding admin queue. Message is still

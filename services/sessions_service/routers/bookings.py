@@ -23,7 +23,7 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import (
@@ -33,11 +33,11 @@ from libs.auth.dependencies import (
     require_coach,
 )
 from libs.auth.models import AuthUser
-from libs.common.currency import kobo_to_bubbles
+from libs.common.currency import kobo_to_bubbles, kobo_to_bubbles_exact
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
+from libs.common.session_access import denial_message
 from libs.common.service_client import (
-    check_cohort_enrollment,
     credit_member_wallet,
     debit_member_wallet,
     get_member_by_auth_id,
@@ -65,14 +65,16 @@ from services.sessions_service.schemas import (
     TrialGuestCreate,
     UnpaidBookingResponse,
 )
+from services.sessions_service.services.session_access import (
+    evaluate_member_session_access,
+)
+from services.sessions_service.services.booking_capacity import (
+    PENDING_TTL_MINUTES,
+    assert_booking_capacity,
+)
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["bookings"])
-
-# PENDING bookings expire 15 minutes after `booked_at` if not CONFIRMED.
-# A 5-min worker sweep flips expired rows to status=EXPIRED, freeing the seat.
-PENDING_TTL_MINUTES = 15
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -121,9 +123,19 @@ async def _debit_booking_fee(
     if fee_amount_kobo <= 0:
         return None
     try:
+        fee_bubbles = kobo_to_bubbles_exact(fee_amount_kobo)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This fee cannot be paid entirely with whole Bubbles. "
+                "Use mixed Bubbles and card payment instead."
+            ),
+        ) from exc
+    try:
         result_txn = await debit_member_wallet(
             member_auth_id,
-            amount=kobo_to_bubbles(fee_amount_kobo),
+            amount=fee_bubbles,
             idempotency_key=(
                 f"booking-fee-{session_id}-{member_id}-{int(booked_at.timestamp())}"
             ),
@@ -211,54 +223,6 @@ def _validate_guest_policy(
                 )
 
 
-async def _assert_capacity(
-    db: AsyncSession,
-    *,
-    session: Session,
-    member_id: uuid.UUID,
-    new_party_size: int,
-) -> None:
-    """Reject a booking that would exceed the session's head-count capacity.
-
-    Sums ``party_size`` over active bookings (CONFIRMED + unexpired PENDING),
-    excluding this member's own row so a re-book / party-size change doesn't
-    double-count their seat. A ``FOR UPDATE`` lock on the session row serialises
-    concurrent bookings so two members can't both grab the last seats. The lock
-    is held until the request commits — which, on the Bubbles path, spans the
-    wallet debit; per-session contention is low, so that's an acceptable trade.
-    """
-    await db.execute(
-        select(Session.id).where(Session.id == session.id).with_for_update()
-    )
-    now = utc_now()
-    used = (
-        await db.execute(
-            select(func.coalesce(func.sum(SessionBooking.party_size), 0)).where(
-                SessionBooking.session_id == session.id,
-                SessionBooking.member_id != member_id,
-                or_(
-                    SessionBooking.status == SessionBookingStatus.CONFIRMED,
-                    and_(
-                        SessionBooking.status == SessionBookingStatus.PENDING,
-                        or_(
-                            SessionBooking.expires_at.is_(None),
-                            SessionBooking.expires_at > now,
-                        ),
-                    ),
-                ),
-            )
-        )
-    ).scalar_one()
-    if int(used) + new_party_size > session.capacity:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"This session is full — {int(used)}/{session.capacity} seats "
-                f"taken and you need {new_party_size}."
-            ),
-        )
-
-
 async def _replace_guests(
     db: AsyncSession, booking_id: uuid.UUID, guests: list, block_count: int = 0
 ) -> None:
@@ -333,39 +297,6 @@ async def book_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     member_id, member_auth_id = await _resolve_member_for_user(current_user)
-
-    # Cohort sessions are auto-rostered from academy enrollments. Block
-    # ad-hoc self-bookings from members who aren't enrolled in the session's
-    # cohort — otherwise they end up paying for and "attending" cohorts
-    # they aren't part of. Admin walk-in still bypasses this check so
-    # coaches can admit legitimate drop-ins.
-    if session.cohort_id is not None:
-        try:
-            check = await check_cohort_enrollment(
-                cohort_id=str(session.cohort_id),
-                member_id=str(member_id),
-                calling_service="sessions",
-            )
-        except httpx.HTTPError as e:
-            logger.warning(
-                "check_cohort_enrollment failed for session=%s member=%s: %s",
-                session_id,
-                member_id,
-                e,
-            )
-            raise HTTPException(
-                status_code=503,
-                detail="Could not verify cohort enrollment. Please try again.",
-            )
-        if not check or not check.get("enrolled"):
-            raise HTTPException(
-                status_code=403,
-                detail=(
-                    "This session is restricted to members enrolled in its "
-                    "academy cohort. Enroll in the cohort first to book."
-                ),
-            )
-
     now = utc_now()
 
     # At most one booking row per (session, member) exists — enforced by the
@@ -385,6 +316,17 @@ async def book_session(
     if existing is not None and existing.status == SessionBookingStatus.CONFIRMED:
         return existing
 
+    access = await evaluate_member_session_access(
+        session=session,
+        member_id=member_id,
+        now=now,
+    )
+    if not access.bookable:
+        raise HTTPException(
+            status_code=403,
+            detail=denial_message(access.reason),
+        )
+
     # Server-authoritative head count + fee: the member's own slot plus any
     # named guests (D1/D3); fee is pool_fee × heads (D8) — the client-sent
     # fee_amount_kobo is ignored. Guest eligibility + capacity are checked
@@ -398,7 +340,7 @@ async def book_session(
         guests=booking_in.guests,
         block_count=booking_in.block_guests,
     )
-    await _assert_capacity(
+    await assert_booking_capacity(
         db, session=session, member_id=member_id, new_party_size=party_size
     )
 
@@ -576,7 +518,7 @@ async def add_trial_guest(
 
     # Capacity for the extra head — the booking's own row is excluded, so pass
     # its new total as the would-be party size.
-    await _assert_capacity(
+    await assert_booking_capacity(
         db,
         session=session,
         member_id=booking.member_id,

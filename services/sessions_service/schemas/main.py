@@ -108,6 +108,26 @@ class SessionUpdate(BaseModel):
     lesson_title: Optional[str] = None
 
 
+class SessionAccessResponse(BaseModel):
+    required_tier: str
+    visible: bool
+    bookable: bool
+    digest_eligible: bool
+    prompt_eligible: bool
+    sign_in_allowed: bool
+    sign_in_eligible: bool
+    reason: Optional[str] = None
+    message: Optional[str] = None
+
+
+class MemberSessionAccessResponse(SessionAccessResponse):
+    """Authoritative access decision for one member/session pair."""
+
+    member_id: uuid.UUID
+    confirmed_booking: bool
+    confirmed_booking_id: Optional[uuid.UUID] = None
+
+
 class SessionResponse(SessionBase):
     id: uuid.UUID
     status: SessionStatus  # Override to make required in response
@@ -116,6 +136,7 @@ class SessionResponse(SessionBase):
     updated_at: datetime
     template_id: Optional[uuid.UUID] = None
     is_recurring_instance: bool = False
+    access: Optional[SessionAccessResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -157,4 +178,5 @@ class SessionResponse(SessionBase):
             "published_at": obj.published_at,
             "created_at": obj.created_at,
             "updated_at": obj.updated_at,
+            "access": getattr(obj, "access", None),
         }

@@ -22,6 +22,10 @@ logger = get_logger(__name__)
 BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 
+class EmailDeliveryUnknownError(RuntimeError):
+    """Raised when a provider may have accepted an email before I/O failed."""
+
+
 def _get_smtp_password() -> str:
     """Get SMTP password from settings (BREVO_KEY takes priority over SMTP_PASSWORD)."""
     settings = get_settings()
@@ -35,6 +39,8 @@ async def send_email(
     html_body: Optional[str] = None,
     from_email: Optional[str] = None,
     from_name: Optional[str] = None,
+    *,
+    raise_on_unknown: bool = False,
 ) -> bool:
     """
     Send a single email. Uses the Brevo HTTP API when ``BREVO_API_KEY`` is set
@@ -50,10 +56,23 @@ async def send_email(
     api_key = getattr(settings, "BREVO_API_KEY", "") or ""
     if api_key:
         return await _send_via_brevo_api(
-            api_key, to_email, subject, body, html_body, sender_email, sender_name
+            api_key,
+            to_email,
+            subject,
+            body,
+            html_body,
+            sender_email,
+            sender_name,
+            raise_on_unknown=raise_on_unknown,
         )
     return await _send_via_smtp(
-        to_email, subject, body, html_body, sender_email, sender_name
+        to_email,
+        subject,
+        body,
+        html_body,
+        sender_email,
+        sender_name,
+        raise_on_unknown=raise_on_unknown,
     )
 
 
@@ -65,6 +84,8 @@ async def _send_via_brevo_api(
     html_body: Optional[str],
     sender_email: str,
     sender_name: str,
+    *,
+    raise_on_unknown: bool = False,
 ) -> bool:
     """Send via Brevo's transactional email HTTP API (works over port 443)."""
     payload: dict = {
@@ -99,6 +120,10 @@ async def _send_via_brevo_api(
         logger.error(
             f"Brevo API request error sending to {to_email}: {type(e).__name__}: {e}"
         )
+        if raise_on_unknown:
+            raise EmailDeliveryUnknownError(
+                "Brevo delivery result is unknown after a transport failure"
+            ) from e
         return False
 
 
@@ -109,6 +134,8 @@ async def _send_via_smtp(
     html_body: Optional[str],
     sender_email: str,
     sender_name: str,
+    *,
+    raise_on_unknown: bool = False,
 ) -> bool:
     """Send via Brevo SMTP. Blocked on hosts that close outbound SMTP ports."""
     settings = get_settings()
@@ -148,9 +175,17 @@ async def _send_via_smtp(
     except smtplib.SMTPAuthenticationError as e:
         logger.error(f"SMTP authentication failed: {e}")
         return False
-    except smtplib.SMTPException as e:
+    except (
+        smtplib.SMTPRecipientsRefused,
+        smtplib.SMTPSenderRefused,
+        smtplib.SMTPDataError,
+    ) as e:
         logger.error(f"SMTP error sending email: {e}")
         return False
     except Exception as e:
         logger.error(f"Failed to send email: {type(e).__name__}: {e}")
+        if raise_on_unknown:
+            raise EmailDeliveryUnknownError(
+                "SMTP delivery result is unknown after a transport failure"
+            ) from e
         return False

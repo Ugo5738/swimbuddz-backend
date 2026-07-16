@@ -38,6 +38,10 @@ from services.wallet_service.schemas.grant import (  # noqa: F401
     GrantWelcomeBonusResponse,
     PoolSubmissionRewardRequest,
 )
+from services.wallet_service.schemas.hold import (  # noqa: F401
+    WalletHoldCreateRequest,
+    WalletHoldResponse,
+)
 from services.wallet_service.schemas.referral import (  # noqa: F401
     AdminReferralListResponse,
     AdminReferralProgramStats,
@@ -103,6 +107,8 @@ __all__ = [
     "WalletCreateRequest",
     "WalletEcosystemStatsResponse",
     "WalletResponse",
+    "WalletHoldCreateRequest",
+    "WalletHoldResponse",
     # Transaction
     "CreditRequest",
     "DebitRequest",

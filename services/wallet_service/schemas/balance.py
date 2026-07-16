@@ -14,6 +14,8 @@ class BalanceCheckRequest(BaseModel):
 class BalanceCheckResponse(BaseModel):
     sufficient: bool
     current_balance: int
+    ledger_balance: int | None = None
+    held_balance: int = 0
     required_amount: int
     wallet_status: WalletStatus
 
@@ -22,4 +24,6 @@ class BalanceResponse(BaseModel):
     wallet_id: uuid.UUID
     member_auth_id: str
     balance: int
+    available_balance: int
+    held_balance: int
     status: WalletStatus

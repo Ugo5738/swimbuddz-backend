@@ -1,3 +1,14 @@
+x-no-generative-ai-service: &no-generative-ai-service
+  environment:
+    OPENAI_API_KEY: ""
+    ANTHROPIC_API_KEY: ""
+    GEMINI_API_KEY: ""
+
+x-moderation-only-service: &moderation-only-service
+  environment:
+    ANTHROPIC_API_KEY: ""
+    GEMINI_API_KEY: ""
+
 services:
   # ==================================================================
   # INGRESS / TLS
@@ -37,6 +48,7 @@ services:
   # DOMAIN MICROSERVICES
   # ==================================================================
   members-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-members-service:latest
     container_name: swimbuddz_members
     env_file:
@@ -46,6 +58,7 @@ services:
     restart: unless-stopped
 
   sessions-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-sessions-service:latest
     container_name: swimbuddz_sessions
     env_file:
@@ -55,6 +68,7 @@ services:
     restart: unless-stopped
 
   attendance-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-attendance-service:latest
     container_name: swimbuddz_attendance
     env_file:
@@ -64,6 +78,7 @@ services:
     restart: unless-stopped
 
   communications-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-communications-service:latest
     container_name: swimbuddz_communications
     env_file:
@@ -73,6 +88,7 @@ services:
     restart: unless-stopped
 
   payments-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-payments-service:latest
     container_name: swimbuddz_payments
     env_file:
@@ -82,6 +98,7 @@ services:
     restart: unless-stopped
 
   academy-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-academy-service:latest
     container_name: swimbuddz_academy
     env_file:
@@ -91,6 +108,7 @@ services:
     restart: unless-stopped
 
   media-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-media-service:latest
     container_name: swimbuddz_media
     env_file:
@@ -100,6 +118,7 @@ services:
     restart: unless-stopped
 
   events-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-events-service:latest
     container_name: swimbuddz_events
     env_file:
@@ -109,6 +128,7 @@ services:
     restart: unless-stopped
 
   transport-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-transport-service:latest
     container_name: swimbuddz_transport
     env_file:
@@ -118,6 +138,7 @@ services:
     restart: unless-stopped
 
   store-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-store-service:latest
     container_name: swimbuddz_store
     env_file:
@@ -136,6 +157,7 @@ services:
     restart: unless-stopped
 
   volunteer-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-volunteer-service:latest
     container_name: swimbuddz_volunteer
     env_file:
@@ -145,6 +167,7 @@ services:
     restart: unless-stopped
 
   wallet-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-wallet-service:latest
     container_name: swimbuddz_wallet
     env_file:
@@ -154,6 +177,7 @@ services:
     restart: unless-stopped
 
   pools-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-pools-service:latest
     container_name: swimbuddz_pools
     env_file:
@@ -163,6 +187,7 @@ services:
     restart: unless-stopped
 
   reporting-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-reporting-service:latest
     container_name: swimbuddz_reporting
     env_file:
@@ -172,6 +197,7 @@ services:
     restart: unless-stopped
 
   chat-service:
+    <<: *moderation-only-service
     image: ${DOCKER_USERNAME}/swimbuddz-chat-service:latest
     container_name: swimbuddz_chat
     env_file:
@@ -181,6 +207,7 @@ services:
     restart: unless-stopped
 
   ledger-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-ledger-service:latest
     container_name: swimbuddz_ledger
     env_file:
@@ -190,6 +217,7 @@ services:
     restart: unless-stopped
 
   corporate-service:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-corporate-service:latest
     container_name: swimbuddz_corporate
     env_file:
@@ -202,6 +230,7 @@ services:
   # API GATEWAY
   # ==================================================================
   gateway:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-gateway-service:latest
     container_name: swimbuddz_gateway
     env_file:
@@ -272,6 +301,7 @@ services:
   # BACKGROUND WORKERS
   # ==================================================================
   academy-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-academy-service:latest
     container_name: swimbuddz_academy_worker
     env_file:
@@ -287,6 +317,7 @@ services:
     restart: unless-stopped
 
   members-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-members-service:latest
     container_name: swimbuddz_members_worker
     env_file:
@@ -304,6 +335,7 @@ services:
     restart: unless-stopped
 
   events-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-events-service:latest
     container_name: swimbuddz_events_worker
     env_file:
@@ -321,6 +353,7 @@ services:
     restart: unless-stopped
 
   transport-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-transport-service:latest
     container_name: swimbuddz_transport_worker
     env_file:
@@ -338,6 +371,7 @@ services:
     restart: unless-stopped
 
   communications-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-communications-service:latest
     container_name: swimbuddz_communications_worker
     env_file:
@@ -353,6 +387,7 @@ services:
     restart: unless-stopped
 
   volunteer-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-volunteer-service:latest
     container_name: swimbuddz_volunteer_worker
     env_file:
@@ -368,6 +403,7 @@ services:
     restart: unless-stopped
 
   payments-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-payments-service:latest
     container_name: swimbuddz_payments_worker
     env_file:
@@ -383,6 +419,7 @@ services:
     restart: unless-stopped
 
   media-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-media-service:latest
     container_name: swimbuddz_media_worker
     env_file:
@@ -398,6 +435,7 @@ services:
     restart: unless-stopped
 
   sessions-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-sessions-service:latest
     container_name: swimbuddz_sessions_worker
     env_file:
@@ -413,6 +451,7 @@ services:
     restart: unless-stopped
 
   reporting-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-reporting-service:latest
     container_name: swimbuddz_reporting_worker
     env_file:
@@ -428,6 +467,7 @@ services:
     restart: unless-stopped
 
   corporate-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-corporate-service:latest
     container_name: swimbuddz_corporate_worker
     env_file:
@@ -443,6 +483,7 @@ services:
     restart: unless-stopped
 
   ledger-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-ledger-service:latest
     container_name: swimbuddz_ledger_worker
     env_file:
@@ -458,6 +499,7 @@ services:
     restart: unless-stopped
 
   attendance-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-attendance-service:latest
     container_name: swimbuddz_attendance_worker
     env_file:
@@ -473,6 +515,7 @@ services:
     restart: unless-stopped
 
   pools-worker:
+    <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-pools-service:latest
     container_name: swimbuddz_pools_worker
     env_file:

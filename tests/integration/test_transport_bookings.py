@@ -28,15 +28,14 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from libs.auth.dependencies import (
     get_current_user,
     get_optional_user,
     require_admin,
     require_service_role,
 )
-
-from tests.conftest import make_admin_user
-from tests.factories import MemberFactory
+from tests.conftest import make_admin_user, make_member_user
 
 # Chat-sync calls live in the bookings router's namespace (patch where
 # they're called from — MEMORY.md).
@@ -51,13 +50,13 @@ def _silence_chat_sync():
     )
 
 
-async def _setup_member(db_session):
+async def _setup_member(db_session, seed_member_row, *, admin: bool = True):
     """Seed a Member with a known auth_id and point the transport app's
     auth deps at it. Returns the seeded Member."""
     unique = uuid.uuid4().hex[:8]
-    user = make_admin_user(user_id=str(uuid.uuid4()), email=f"rider-{unique}@test.com")
-    member = MemberFactory.create(auth_id=user.user_id, email=user.email)
-    db_session.add(member)
+    user_factory = make_admin_user if admin else make_member_user
+    user = user_factory(user_id=str(uuid.uuid4()), email=f"rider-{unique}@test.com")
+    member = await seed_member_row(auth_id=user.user_id, email=user.email)
     await db_session.commit()
 
     from services.transport_service.app.main import app
@@ -130,8 +129,8 @@ async def _seed_ride(db_session, *, cost=0, capacity=4):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_book_unknown_config_404(transport_client, db_session):
-    await _setup_member(db_session)
+async def test_book_unknown_config_404(transport_client, db_session, seed_member_row):
+    await _setup_member(db_session, seed_member_row)
     area = _make_area()
     db_session.add(area)
     await db_session.flush()
@@ -154,8 +153,65 @@ async def test_book_unknown_config_404(transport_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_book_free_ride_happy_path(transport_client, db_session):
-    await _setup_member(db_session)
+async def test_member_must_book_session_before_booking_ride(
+    transport_client, db_session, monkeypatch, seed_member_row
+):
+    import services.transport_service.routers.bookings as bookings_router
+
+    await _setup_member(db_session, seed_member_row, admin=False)
+    cfg, pickup = await _seed_ride(db_session, cost=0, capacity=4)
+    lookup = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        bookings_router,
+        "get_confirmed_booking_for_session_member",
+        lookup,
+    )
+
+    response = await transport_client.post(
+        f"/transport/sessions/{cfg.session_id}/bookings",
+        json={
+            "session_ride_config_id": str(cfg.id),
+            "pickup_location_id": str(pickup.id),
+        },
+    )
+
+    assert response.status_code == 403, response.text
+    assert "Book this session" in response.json()["detail"]
+    lookup.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_member_with_confirmed_session_booking_can_book_ride(
+    transport_client, db_session, monkeypatch, seed_member_row
+):
+    import services.transport_service.routers.bookings as bookings_router
+
+    await _setup_member(db_session, seed_member_row, admin=False)
+    cfg, pickup = await _seed_ride(db_session, cost=0, capacity=4)
+    monkeypatch.setattr(
+        bookings_router,
+        "get_confirmed_booking_for_session_member",
+        AsyncMock(return_value={"id": str(uuid.uuid4()), "status": "confirmed"}),
+    )
+
+    e, r = _silence_chat_sync()
+    with e, r:
+        response = await transport_client.post(
+            f"/transport/sessions/{cfg.session_id}/bookings",
+            json={
+                "session_ride_config_id": str(cfg.id),
+                "pickup_location_id": str(pickup.id),
+            },
+        )
+
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_book_free_ride_happy_path(transport_client, db_session, seed_member_row):
+    await _setup_member(db_session, seed_member_row)
     cfg, pickup = await _seed_ride(db_session, cost=0, capacity=4)
 
     e, r = _silence_chat_sync()
@@ -176,9 +232,11 @@ async def test_book_free_ride_happy_path(transport_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_multi_seat_cost_is_kobo_times_seats(transport_client, db_session):
+async def test_multi_seat_cost_is_kobo_times_seats(
+    transport_client, db_session, seed_member_row
+):
     """₦2,000 (200000 kobo) × 3 seats → 6000.0 naira on the response."""
-    await _setup_member(db_session)
+    await _setup_member(db_session, seed_member_row)
     cfg, pickup = await _seed_ride(db_session, cost=200000, capacity=10)
 
     e, r = _silence_chat_sync()
@@ -197,14 +255,69 @@ async def test_multi_seat_cost_is_kobo_times_seats(transport_client, db_session)
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_rebooking_updates_not_duplicates(transport_client, db_session):
+async def test_internal_bundle_ride_quote_uses_database_cost(
+    transport_client, db_session
+):
+    cfg, pickup = await _seed_ride(db_session, cost=175000, capacity=4)
+
+    response = await transport_client.post(
+        "/internal/transport/ride-quotes",
+        json={
+            "member_id": str(uuid.uuid4()),
+            "selections": [
+                {
+                    "session_id": str(cfg.session_id),
+                    "ride_config_id": str(cfg.id),
+                    "pickup_location_id": str(pickup.id),
+                    "num_seats": 2,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["total_kobo"] == 350000
+    assert response.json()["lines"][0]["unit_amount_kobo"] == 175000
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_internal_bundle_ride_quote_rejects_cross_session_config(
+    transport_client, db_session
+):
+    cfg, pickup = await _seed_ride(db_session, cost=175000, capacity=4)
+
+    response = await transport_client.post(
+        "/internal/transport/ride-quotes",
+        json={
+            "member_id": str(uuid.uuid4()),
+            "selections": [
+                {
+                    "session_id": str(uuid.uuid4()),
+                    "ride_config_id": str(cfg.id),
+                    "pickup_location_id": str(pickup.id),
+                    "num_seats": 1,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "does not belong" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_rebooking_updates_not_duplicates(
+    transport_client, db_session, seed_member_row
+):
     """Same member re-POSTs with a different pickup: one row, updated,
     no second charge (the update branch never debits)."""
     from sqlalchemy import func, select
 
     from services.transport_service.models import RideBooking
 
-    await _setup_member(db_session)
+    await _setup_member(db_session, seed_member_row)
     cfg, pickup1 = await _seed_ride(db_session, cost=50000, capacity=4)
     # Capture scalars before any expire — re-reading an expired ORM
     # attribute synchronously triggers IO outside the async greenlet.
@@ -229,10 +342,12 @@ async def test_rebooking_updates_not_duplicates(transport_client, db_session):
             json={
                 "session_ride_config_id": str(cfg_id),
                 "pickup_location_id": str(pickup2.id),
+                "num_seats": 3,
             },
         )
     assert second.status_code == 200, second.text
     assert second.json()["pickup_location_id"] == str(pickup2.id)
+    assert second.json()["num_seats"] == 3
 
     count = (
         await db_session.execute(
@@ -246,14 +361,16 @@ async def test_rebooking_updates_not_duplicates(transport_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_van_number_rolls_over_by_capacity(transport_client, db_session):
+async def test_van_number_rolls_over_by_capacity(
+    transport_client, db_session, seed_member_row
+):
     """capacity=2: rider A books 2 seats (fills van 1) at a pickup; a
     second member booking the same pickup lands in van 2."""
     cfg, pickup = await _seed_ride(db_session, cost=0, capacity=2)
     session_id = cfg.session_id
 
     # Rider A — 2 seats fill van 1.
-    await _setup_member(db_session)
+    await _setup_member(db_session, seed_member_row)
     e, r = _silence_chat_sync()
     with e, r:
         a = await transport_client.post(
@@ -268,7 +385,7 @@ async def test_van_number_rolls_over_by_capacity(transport_client, db_session):
     assert a.json()["assigned_ride_number"] == 1
 
     # Rider B — same pickup, van 1 is full → van 2.
-    await _setup_member(db_session)
+    await _setup_member(db_session, seed_member_row)
     e, r = _silence_chat_sync()
     with e, r:
         b = await transport_client.post(
@@ -289,8 +406,10 @@ async def test_van_number_rolls_over_by_capacity(transport_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_get_my_booking_none_then_present(transport_client, db_session):
-    await _setup_member(db_session)
+async def test_get_my_booking_none_then_present(
+    transport_client, db_session, seed_member_row
+):
+    await _setup_member(db_session, seed_member_row)
     cfg, pickup = await _seed_ride(db_session, cost=0, capacity=4)
 
     none = await transport_client.get(
@@ -318,8 +437,8 @@ async def test_get_my_booking_none_then_present(transport_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_list_session_bookings(transport_client, db_session):
-    await _setup_member(db_session)
+async def test_list_session_bookings(transport_client, db_session, seed_member_row):
+    await _setup_member(db_session, seed_member_row)
     cfg, pickup = await _seed_ride(db_session, cost=0, capacity=4)
 
     e, r = _silence_chat_sync()

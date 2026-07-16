@@ -19,6 +19,8 @@ from services.members_service.schemas import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ._shared import _claim_entitlement_application
+
 logger = get_logger(__name__)
 router = APIRouter()
 
@@ -38,13 +40,14 @@ async def admin_extend_club_membership_by_auth(
     the caller is the system, not the member self-upgrading.
 
     The new ``club_paid_until`` becomes ``max(current, anchor) + months`` where
-    ``anchor = payload.from_date or now``. Idempotent: if club_paid_until is
-    already at or past the computed target, no change is made.
+    ``anchor = payload.from_date or now``. Callers that may retry must provide
+    an idempotency key.
     """
     query = (
         select(Member)
         .where(Member.auth_id == auth_id)
         .options(*member_eager_load_options())
+        .with_for_update()
     )
     result = await db.execute(query)
     member = result.scalar_one_or_none()
@@ -53,6 +56,18 @@ async def admin_extend_club_membership_by_auth(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Member not found"
         )
+
+    should_apply = await _claim_entitlement_application(
+        db,
+        member=member,
+        idempotency_key=payload.idempotency_key,
+        tier="club",
+        action="extend",
+        source_reference=payload.source_reference,
+    )
+    if not should_apply:
+        await db.commit()
+        return member
 
     now = utc_now()
 
@@ -68,7 +83,7 @@ async def admin_extend_club_membership_by_auth(
     base = current_until if current_until and current_until > anchor else anchor
     new_until = base + relativedelta(months=payload.months)
 
-    # Idempotency: don't shrink, don't no-op an already-covered period.
+    # Never shrink an existing grant.
     if current_until is None or new_until > current_until:
         member.membership.club_paid_until = new_until
         if payload.reason:
@@ -122,6 +137,7 @@ async def admin_activate_club_membership_by_auth(
         select(Member)
         .where(Member.auth_id == auth_id)
         .options(*member_eager_load_options())
+        .with_for_update()
     )
     result = await db.execute(query)
     member = result.scalar_one_or_none()
@@ -130,6 +146,18 @@ async def admin_activate_club_membership_by_auth(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Member not found"
         )
+
+    should_apply = await _claim_entitlement_application(
+        db,
+        member=member,
+        idempotency_key=payload.idempotency_key,
+        tier="club",
+        action="activate",
+        source_reference=payload.source_reference,
+    )
+    if not should_apply:
+        await db.commit()
+        return member
 
     now = utc_now()
 
