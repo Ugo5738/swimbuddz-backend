@@ -17886,6 +17886,55 @@
         ]
       }
     },
+    "/api/v1/payments/admin/payouts/{payout_id}/recalculate": {
+      "put": {
+        "tags": [
+          "admin-payouts"
+        ],
+        "summary": "Recalculate Payout",
+        "description": "Refresh a pending recurring payout from the latest attendance.\n\nManual/legacy payouts cannot be recalculated because they have no recurring\nconfig and block to compute from. Approved or processed payouts are locked.",
+        "operationId": "recalculate_payout_payments_admin_payouts__payout_id__recalculate_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "payout_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Payout Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayoutResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/payments/admin/payouts/{payout_id}": {
       "get": {
         "tags": [
