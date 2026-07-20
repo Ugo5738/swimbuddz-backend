@@ -29,6 +29,8 @@ from libs.auth.dependencies import (
     require_safeguarding_admin,
     require_service_role,
 )
+from services.members_service.models import PodAssignment, PodAssignmentSource
+from sqlalchemy import select
 from tests.conftest import make_admin_user, make_member_user, override_auth
 from tests.factories import ClubFactory, MemberFactory, PodFactory
 
@@ -605,7 +607,7 @@ async def test_member_list_public_pods_filters_by_club(members_client, db_sessio
 @pytest.mark.integration
 async def test_admin_transfer_member_to_another_pod(members_client, db_session):
     """Transfer soft-leaves the source assignment, creates a new one with
-    assigned_by=lead_transfer, and fires reconcile remove + add."""
+    assigned_by=admin, and fires reconcile remove + add."""
     await _setup_admin_with_member(db_session)
     club = ClubFactory.create()
     lead1 = MemberFactory.create()
@@ -637,39 +639,36 @@ async def test_admin_transfer_member_to_another_pod(members_client, db_session):
     actions = [c.kwargs["action"] for c in mr.await_args_list]
     assert actions == ["remove", "add"]
 
+    active_assignment = (
+        await db_session.execute(
+            select(PodAssignment).where(
+                PodAssignment.member_id == member.id,
+                PodAssignment.left_at.is_(None),
+            )
+        )
+    ).scalar_one()
+    assert active_assignment.pod_id == pod_tgt.id
+    assert active_assignment.assigned_by == PodAssignmentSource.ADMIN
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    ("different_club", "target_status", "detail"),
-    [
-        (True, "active", "same club"),
-        (False, "inactive", "inactive pod"),
-    ],
-)
 async def test_admin_transfer_rejects_invalid_target_pod(
     members_client,
     db_session,
-    different_club,
-    target_status,
-    detail,
 ):
     await _setup_admin_with_member(db_session)
     source_club = ClubFactory.create()
-    target_club = ClubFactory.create() if different_club else source_club
     lead1 = MemberFactory.create()
     lead2 = MemberFactory.create()
     pod_src = PodFactory.create(club_id=source_club.id, pod_lead_id=lead1.id)
     pod_tgt = PodFactory.create(
-        club_id=target_club.id,
+        club_id=source_club.id,
         pod_lead_id=lead2.id,
-        status=target_status,
+        status="inactive",
     )
     member = MemberFactory.create()
-    db_session.add_all(
-        [source_club, lead1, lead2, pod_src, pod_tgt, member]
-        + ([target_club] if different_club else [])
-    )
+    db_session.add_all([source_club, lead1, lead2, pod_src, pod_tgt, member])
     await db_session.commit()
 
     patches = _silence_chat_sync()
@@ -686,7 +685,40 @@ async def test_admin_transfer_rejects_invalid_target_pod(
         )
 
     assert response.status_code == 400, response.text
-    assert detail in response.json()["detail"].lower()
+    assert "inactive pod" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_admin_transfer_can_move_member_to_another_club(
+    members_client,
+    db_session,
+):
+    await _setup_admin_with_member(db_session)
+    source_club = ClubFactory.create()
+    target_club = ClubFactory.create()
+    lead1 = MemberFactory.create()
+    lead2 = MemberFactory.create()
+    pod_src = PodFactory.create(club_id=source_club.id, pod_lead_id=lead1.id)
+    pod_tgt = PodFactory.create(club_id=target_club.id, pod_lead_id=lead2.id)
+    member = MemberFactory.create()
+    db_session.add_all(
+        [source_club, target_club, lead1, lead2, pod_src, pod_tgt, member]
+    )
+    await db_session.commit()
+
+    patches = _silence_chat_sync()
+    with patches["ensure"], patches["reconcile"]:
+        await members_client.post(
+            f"/admin/members/pods/{pod_src.id}/members",
+            json={"member_id": str(member.id)},
+        )
+        response = await members_client.post(
+            f"/admin/members/pods/{pod_src.id}/transfers?member_id={member.id}",
+            json={"target_pod_id": str(pod_tgt.id)},
+        )
+
+    assert response.status_code == 204, response.text
 
 
 # ---------------------------------------------------------------------------
@@ -703,7 +735,7 @@ async def test_internal_get_pod_returns_schedule_and_active_members(
     pod's schedule + active member roster when scheduling a Club session."""
     from datetime import time
 
-    from services.members_service.models import DayOfWeek, PodAssignmentSource
+    from services.members_service.models import DayOfWeek
 
     club = ClubFactory.create()
     lead = MemberFactory.create()
