@@ -13,6 +13,25 @@ aligns cleanly with a Monday-to-Sunday activity week. Review the day only after
 there is enough delivery, open, click, booking, and attendance data to compare
 another cadence.
 
+Community, Club, and Academy sections use lightweight default banner images
+served by the frontend. Admins can replace each section image, description,
+introduction, and gear guidance from Community > Content; a Media-library image
+always overrides the packaged fallback.
+
+Each recipient gets one combined email containing only the Community, Club,
+and Academy sections they can attend. The shared backend access decision owns
+that filtering, including cohort suspension and pod membership. A confirmed
+booking remains in the digest even if the member's entitlement or pod assignment
+changes later, so the member can still manage an existing commitment.
+
+The digest includes current booking state, session fee and capacity, weather
+when a pool forecast is available, configured transport, Pod Lead/coach details,
+gear guidance, calendar links, and up to two tier-eligible recent articles.
+Per-member dispatch state prevents a Sunday retry from sending the same campaign
+twice. Admin reporting shows delivery outcomes, tracked clicks, and attributed
+booking outcomes; ambiguous sends remain visible for review instead of being
+retried automatically.
+
 ## Session Publication
 
 Each session system has a different source and should not be forced into one
@@ -29,12 +48,38 @@ creation deadline:
   and regenerate the extension window when a cohort is extended. Academy
   sessions are tied to enrollment and installment access, not a weekly manual
   publishing cycle.
+  An unpaid installment remains in grace through the first day of the following
+  month. It can suspend access from 00:00 WAT on the second day. The compliance
+  job reverses premature `MISSED` states while that grace remains active.
 - **Late changes:** publish or update them when confirmed. Immediate publication
   notifications and daily booking prompts cover changes made after the weekly
   digest cutoff.
 
 The admin sessions screen reports next-week Community coverage, the Club
 four-week horizon, Academy cohort sessions, drafts, and the next digest run.
+
+## Booking Attendance
+
+A confirmed booking creates or updates the member's attendance row to `present`
+with the booking linked. This is the operational default, not a final coach
+review: coaches and admins must overwrite no-shows, lateness, excused absences,
+or cancellations. Repeating a confirmation repairs a failed attendance sync
+without creating a second booking or attendance row.
+
+The stale-attendance task reminds the assigned coaches and admins about default
+or unreviewed rows after a session. The legacy no-show sweep only creates an
+`absent` row when a confirmed booking has no attendance row at all; it does not
+reverse the default-present policy.
+
+## All-Bubbles Payments
+
+Payment-intent session, bundle, and transport checkouts made entirely with
+Bubbles still create a payment record. The member web booking flow uses this
+path for every paid session; its direct sessions request is reserved for a
+truly free session. After entitlement fulfillment succeeds, the payments worker
+sends one admin receipt per configured admin email and records delivery state in
+`payment_admin_email_logs`. Failed deliveries retry; completed payments leave
+the queue, and historical payments are not backfilled into it.
 
 ## Article Publication
 

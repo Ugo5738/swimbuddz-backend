@@ -34,7 +34,7 @@ async def evaluate_installment_compliance():
     """Mark overdue installments and enforce suspension/dropout rules.
 
     For each active enrollment:
-    - Marks installments MISSED after the 24h grace window expires.
+    - Marks installments MISSED after the next-month grace window expires.
     - Suspends access if a required installment is unpaid.
     - At missed_count=2:
         - If cohort.admin_dropout_approval is True → DROPOUT_PENDING (admin reviews).

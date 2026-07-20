@@ -41,6 +41,7 @@ async def test_get_my_preferences_auto_creates_defaults_on_first_access(
     # Defaults from the model
     assert body["email_announcements"] is True
     assert body["email_marketing"] is False
+    assert body["weekly_session_digest"] is True
     # Auth-id surfaced (was previously a UUID member_id)
     assert isinstance(body["member_auth_id"], str)
 

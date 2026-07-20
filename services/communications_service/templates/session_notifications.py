@@ -579,100 +579,222 @@ async def send_weekly_session_digest_email(
     week_label: str,
     sessions: list[dict],
     articles: list[dict] | None = None,
+    digest_configs: dict[str, dict] | None = None,
+    preferences_url: str | None = None,
 ) -> bool:
-    """
-    Send weekly digest of upcoming sessions and newly published articles.
-
-    Args:
-        to_email: Recipient email address.
-        member_name: Recipient's first name.
-        week_label: e.g., "February 10-16, 2026"
-        sessions: List of session dicts with keys:
-            - title, date, time, location, type
-    """
+    """Send a tier-sectioned weekly booking digest."""
     articles = articles or []
+    digest_configs = digest_configs or {}
     if not sessions and not articles:
-        # No updates to report, skip sending
         return True
 
-    subject = f"This Week at SwimBuddz - {week_label}"
+    subject = f"Your SwimBuddz week - {week_label}"
+    audience_labels = {
+        "community": "Community swims",
+        "club": "Club training",
+        "academy": "Academy classes",
+    }
+    audience_colors = {
+        "community": "#0891b2",
+        "club": "#2563eb",
+        "academy": "#16a34a",
+    }
+    grouped = {
+        audience: [s for s in sessions if s.get("audience") == audience]
+        for audience in audience_labels
+    }
 
-    # Plain text
-    session_list = "\n".join(
-        f"• {s['title']} - {s['date']} at {s['time']} ({s['location']})"
-        for s in sessions
-    )
-    article_list = "\n".join(f"• {a['title']} - {a['url']}" for a in articles)
-    session_section = f"Upcoming sessions:\n{session_list}\n\n" if session_list else ""
-    article_section = f"New articles:\n{article_list}\n\n" if article_list else ""
+    text_sections: list[str] = []
+    for audience, label in audience_labels.items():
+        audience_sessions = grouped[audience]
+        if not audience_sessions:
+            continue
+        lines = [f"{label}:"]
+        for session in audience_sessions:
+            lines.append(
+                f"- {session['title']} - {session['date']} at {session['time']} "
+                f"({session['location']})\n  {session['state_label']}: "
+                f"{session['action_url']}"
+            )
+            if session.get("weather_text"):
+                lines.append(f"  Weather: {session['weather_text']}")
+            if session.get("transport_text"):
+                lines.append(f"  Transport: {session['transport_text']}")
+        gear = (digest_configs.get(audience) or {}).get("default_gear_notes")
+        if gear:
+            lines.append(f"Gear: {gear}")
+        text_sections.append("\n".join(lines))
+
+    if articles:
+        article_lines = ["Worth reading:"] + [
+            f"- {article['title']} - {article['url']}" for article in articles
+        ]
+        text_sections.append("\n".join(article_lines))
 
     body = f"""Hi {member_name},
 
-Here are this week's SwimBuddz updates:
+Here are the sessions you can attend this week, with your current booking state.
 
-{session_section}{article_section}
+{chr(10).join(text_sections)}
 
-View the full schedule and latest articles on the SwimBuddz app.
+Manage email preferences: {preferences_url or settings.FRONTEND_URL + '/account/settings'}
 
-— The SwimBuddz Team
+The SwimBuddz Team
 """
 
-    # HTML
-    session_cards = ""
-    for s in sessions:
-        type_colors = {
-            "community": "#0891b2",
-            "club": "#8b5cf6",
-            "event": "#f59e0b",
-        }
-        color = type_colors.get(s.get("type", "community").lower(), "#0891b2")
-        session_cards += f"""
-        <div style="background: #f8fafc; border-left: 4px solid {color}; 
-                    border-radius: 0 8px 8px 0; padding: 16px 20px; margin: 12px 0;">
-            <strong style="color: #1e293b;">{s["title"]}</strong><br/>
-            <span style="font-size: 14px; color: #64748b;">
-                📅 {s["date"]} &nbsp;•&nbsp; ⏰ {s["time"]}<br/>
-                📍 {s["location"]}
-            </span>
-        </div>
-        """
+    html_sections = ""
+    for audience, label in audience_labels.items():
+        audience_sessions = grouped[audience]
+        if not audience_sessions:
+            continue
+        config = digest_configs.get(audience) or {}
+        color = audience_colors[audience]
+        image_html = ""
+        if config.get("featured_image_url"):
+            image_html = (
+                f'<img src="{escape(str(config["featured_image_url"]))}" '
+                f'alt="{escape(str(config.get("image_alt") or label))}" '
+                'style="display:block;width:100%;max-height:260px;object-fit:cover;'
+                'border-radius:6px;margin:10px 0 16px;"/>'
+            )
+        intro_html = (
+            f'<p style="margin:0 0 12px;color:#475569;font-size:14px;">'
+            f'{escape(str(config.get("section_intro")))}</p>'
+            if config.get("section_intro")
+            else ""
+        )
+        cards = ""
+        for session in audience_sessions:
+            details = [
+                f"{escape(str(session['date']))} at {escape(str(session['time']))}",
+                escape(str(session["location"])),
+            ]
+            if session.get("scope_label"):
+                details.append(escape(str(session["scope_label"])))
+            if session.get("leader_label"):
+                details.append(escape(str(session["leader_label"])))
+            facts = " &nbsp;|&nbsp; ".join(details)
+            purpose = (
+                f'<p style="margin:8px 0;color:#475569;font-size:14px;">'
+                f'{escape(str(session["purpose"]))}</p>'
+                if session.get("purpose")
+                else ""
+            )
+            operational_lines = []
+            if session.get("weather_text"):
+                operational_lines.append(
+                    f"<strong>Weather:</strong> {escape(str(session['weather_text']))}"
+                )
+            if session.get("transport_text"):
+                operational_lines.append(
+                    f"<strong>Transport:</strong> {escape(str(session['transport_text']))}"
+                )
+            if session.get("fee_text"):
+                operational_lines.append(
+                    f"<strong>Fee:</strong> {escape(str(session['fee_text']))}"
+                )
+            if session.get("availability_text"):
+                operational_lines.append(
+                    f"<strong>Availability:</strong> "
+                    f"{escape(str(session['availability_text']))}"
+                )
+            operations = ""
+            if operational_lines:
+                operations = (
+                    '<p style="margin:10px 0 0;color:#334155;font-size:13px;'
+                    'line-height:1.6;">' + "<br/>".join(operational_lines) + "</p>"
+                )
+            state_color = "#166534" if session.get("is_booked") else "#1d4ed8"
+            cards += f"""
+            <div style="border:1px solid #e2e8f0;border-left:4px solid {color};
+                        border-radius:6px;padding:16px;margin:12px 0;background:#ffffff;">
+              <div style="font-size:12px;font-weight:700;text-transform:uppercase;
+                          color:{color};margin-bottom:5px;">{escape(label)}</div>
+              <div style="font-size:17px;font-weight:700;color:#0f172a;">
+                {escape(str(session['title']))}
+              </div>
+              {purpose}
+              <p style="margin:8px 0;color:#64748b;font-size:13px;line-height:1.55;">
+                {facts}
+              </p>
+              {operations}
+              <p style="margin:12px 0 10px;color:{state_color};font-size:13px;
+                        font-weight:700;">{escape(str(session['state_label']))}</p>
+              <a href="{escape(str(session['action_url']))}"
+                 style="display:inline-block;background:{color};color:#ffffff;
+                        text-decoration:none;font-weight:700;font-size:13px;
+                        padding:10px 16px;border-radius:5px;">
+                {escape(str(session['action_label']))}
+              </a>
+              <a href="{escape(str(session['calendar_url']))}"
+                 style="display:inline-block;margin-left:12px;color:#475569;
+                        font-size:13px;font-weight:600;">Add to calendar</a>
+            </div>
+            """
+        gear_html = ""
+        if config.get("default_gear_notes"):
+            gear_html = info_box(
+                "<strong>What to bring</strong><br/>"
+                + escape(str(config["default_gear_notes"])),
+                bg_color="#f8fafc",
+                border_color=color,
+            )
+        html_sections += (
+            f'<div style="margin:26px 0 30px;">'
+            f'<h2 style="font-size:21px;color:#0f172a;margin:0 0 6px;">'
+            f"{escape(label)}</h2>{intro_html}{image_html}{cards}{gear_html}</div>"
+        )
 
     article_cards = ""
     for article in articles:
+        image_html = ""
+        if article.get("image_url"):
+            image_html = (
+                f'<img src="{escape(str(article["image_url"]))}" '
+                f'alt="{escape(str(article["title"]))}" '
+                'style="display:block;width:100%;max-height:220px;object-fit:cover;'
+                'border-radius:6px;margin-bottom:12px;"/>'
+            )
         article_cards += f"""
-        <div style="background: #f8fafc; border-left: 4px solid #0891b2;
-                    border-radius: 0 8px 8px 0; padding: 16px 20px; margin: 12px 0;">
-            <strong style="color: #1e293b;">{article["title"]}</strong><br/>
-            <span style="font-size: 14px; color: #64748b;">
-                {article.get("summary") or article.get("category") or "New article"}
+        <div style="border:1px solid #e2e8f0;border-radius:6px;padding:16px;
+                    margin:12px 0;background:#ffffff;">
+            {image_html}
+            <strong style="color:#1e293b;">{escape(str(article["title"]))}</strong><br/>
+            <span style="font-size:14px;color:#64748b;">
+                {escape(str(article.get("summary") or article.get("category") or "New article"))}
             </span><br/>
-            <a href="{article["url"]}" style="font-size: 14px; color: #0891b2; font-weight: 600;">
-                Read article
-            </a>
+            <a href="{escape(str(article["url"]))}" style="font-size:14px;
+               color:#0891b2;font-weight:700;">Read article</a>
         </div>
         """
 
-    frontend_url = settings.FRONTEND_URL
-    sessions_section = (
-        "<h3>Upcoming Sessions</h3>" + session_cards if session_cards else ""
+    articles_section = (
+        '<div style="margin:26px 0;"><h2 style="font-size:21px;color:#0f172a;">'
+        "Worth reading</h2>" + article_cards + "</div>"
+        if article_cards
+        else ""
     )
-    articles_section = "<h3>New Articles</h3>" + article_cards if article_cards else ""
+    preferences_link = escape(
+        preferences_url or f"{settings.FRONTEND_URL.rstrip('/')}/account/settings"
+    )
 
     body_html = (
-        f"<p>Hi {member_name},</p>"
-        f"<p>Here's what's happening at SwimBuddz:</p>"
-        + sessions_section
+        f"<p>Hi {escape(member_name)},</p>"
+        "<p>Here are the sessions you can attend this week, with your current "
+        "booking state and the details you need to plan.</p>"
+        + html_sections
         + articles_section
-        + cta_button("View Full Schedule", f"{frontend_url}/sessions")
-        + sign_off("See you in the water! 🌊")
+        + f'<p style="margin-top:28px;font-size:12px;color:#64748b;">'
+        f'<a href="{preferences_link}" style="color:#475569;">Manage email preferences</a>'
+        "</p>" + sign_off("See you in the water.")
     )
 
     html_body = wrap_html(
-        title="📅 Weekly SwimBuddz Digest",
+        title="Your SwimBuddz week",
         subtitle=week_label,
         body_html=body_html,
         header_gradient=GRADIENT_CYAN,
-        preheader=f"This week's SwimBuddz updates - {week_label}",
+        preheader=f"Your eligible sessions and booking status - {week_label}",
     )
 
     return await send_email(to_email, subject, body, html_body)

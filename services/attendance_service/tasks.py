@@ -1,12 +1,9 @@
 """Background reconciliation tasks for the attendance service.
 
-The nightly NO_SHOW sweep: for every CONFIRMED SessionBooking
-(retrieved from sessions_service via HTTP) whose session ended without
-a matching AttendanceRecord, create AttendanceRecord(status=ABSENT,
-booking_id=<>) on the member's behalf. This is how "no-show" enters the
-data model — the booking itself stays CONFIRMED (its lifecycle ended
-cleanly; the member just didn't show up), and the negative outcome is
-captured on AttendanceRecord where every other attendance fact lives.
+The nightly NO_SHOW sweep remains a repair path for legacy or temporarily
+unsynchronized confirmed bookings. New booking confirmations materialize a
+PRESENT row immediately, so coaches/admins are responsible for changing a
+no-show to ABSENT.
 
 After A1 Phase 3.3 was relocated to sessions_service, this task is
 cross-service: pull candidates from sessions_service, check each against
@@ -186,7 +183,7 @@ async def notify_stale_attendance(*, lookback_hours: int = 24) -> dict:
         return {"error": str(exc)}
 
     # Group bookings by session, then filter to sessions that ended inside
-    # the window AND still have ≥1 unmatched booking.
+    # the window and still have at least one default or unreviewed record.
     bookings_by_session: dict[str, list[dict]] = defaultdict(list)
     for b in bookings:
         bookings_by_session[b["session_id"]].append(b)
@@ -214,27 +211,37 @@ async def notify_stale_attendance(*, lookback_hours: int = 24) -> dict:
             if not (cutoff_lower <= ends_at <= cutoff_upper):
                 continue
 
-            # Count unmatched: bookings whose (session, member) tuple has
-            # no AttendanceRecord at all. ABSENT counts as "unmatched"
-            # because it was likely auto-created by an earlier run of the
-            # no-show sweep; we still want the coach to confirm/override.
-            unmatched_count = 0
+            # Booking confirmation creates a PRESENT row whose note identifies
+            # it as the default. It remains review-needed until a coach/admin
+            # overwrites the status/note. Legacy missing rows and sweep-created
+            # ABSENT rows also stay in the review queue.
+            review_needed_count = 0
             for b in session_bookings:
                 member_uuid = uuid.UUID(b["member_id"])
                 existing = (
                     await db.execute(
-                        select(AttendanceRecord.status).where(
+                        select(
+                            AttendanceRecord.status,
+                            AttendanceRecord.notes,
+                        ).where(
                             AttendanceRecord.session_id == session_uuid,
                             AttendanceRecord.member_id == member_uuid,
                         )
                     )
-                ).scalar_one_or_none()
+                ).one_or_none()
                 if existing is None:
-                    unmatched_count += 1
-                elif str(existing).lower() == "absent":
-                    unmatched_count += 1
+                    review_needed_count += 1
+                    continue
+                status_value = (
+                    existing.status.value
+                    if hasattr(existing.status, "value")
+                    else str(existing.status)
+                )
+                note = str(existing.notes or "").lower()
+                if status_value.lower() == "absent" or "default attendance" in note:
+                    review_needed_count += 1
 
-            if unmatched_count == 0:
+            if review_needed_count == 0:
                 continue
 
             sessions_with_stale += 1
@@ -254,12 +261,12 @@ async def notify_stale_attendance(*, lookback_hours: int = 24) -> dict:
             if not recipients:
                 continue
 
-            title = f"Attendance still unmarked: {session_data.get('title', 'session')}"
+            title = f"Review attendance: {session_data.get('title', 'session')}"
             body = (
-                f"{unmatched_count} booking"
-                f"{'' if unmatched_count == 1 else 's'} "
-                f"haven't been marked yet. The system will auto-mark them "
-                f"as absent overnight if you don't confirm."
+                f"{review_needed_count} booking"
+                f"{'' if review_needed_count == 1 else 's'} still need review. "
+                "Confirmed bookings remain present by default; mark any absence, "
+                "lateness, or excused attendance."
             )
             resp = await dispatch_notification(
                 type="attendance_stale_reminder",
@@ -272,7 +279,7 @@ async def notify_stale_attendance(*, lookback_hours: int = 24) -> dict:
                 channels=["in_app"],
                 metadata={
                     "session_id": session_id_str,
-                    "unmatched_count": unmatched_count,
+                    "review_needed_count": review_needed_count,
                 },
                 calling_service="attendance",
             )

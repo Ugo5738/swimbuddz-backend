@@ -24,12 +24,21 @@ WAT_TZ = ZoneInfo("Africa/Lagos")
 # late-cycle balances and protects the school's cash flow.
 MIN_DEPOSIT_RATIO = 1 / 3
 
-# Payment window: an installment is only marked MISSED this many hours past its
-# due date. Founder decision (May 2026): 3-day grace — gives students a buffer
-# for mobile-money / bank-transfer delays before access is suspended. The
-# reminder emails (7/3/1 days before + due-day) land inside this window, so a
-# member who acts on any reminder is never suspended.
-GRACE_HOURS = 72
+# Founder-confirmed policy (July 2026): an installment remains in grace through
+# the first day of the month after it is due. Access can be suspended from
+# 00:00 WAT on the second day of that month. This gives every learner the same
+# predictable month-end boundary regardless of the installment's due day.
+
+
+def installment_access_cutoff(due_at: datetime) -> datetime:
+    """Return the UTC instant at which an unpaid installment blocks access."""
+    due_wat = due_at.astimezone(WAT_TZ)
+    if due_wat.month == 12:
+        year, month = due_wat.year + 1, 1
+    else:
+        year, month = due_wat.year, due_wat.month + 1
+    cutoff_wat = datetime(year, month, 2, tzinfo=WAT_TZ)
+    return cutoff_wat.astimezone(ZoneInfo("UTC"))
 
 
 def validate_duration_weeks(duration_weeks: int) -> None:
@@ -292,19 +301,20 @@ def mark_overdue_installments(
     *,
     now: datetime,
 ) -> int:
-    """Mark PENDING installments as MISSED if the 24h grace window has closed.
+    """Reconcile unpaid statuses against the month-boundary grace policy.
 
-    Due date is Monday 00:00 WAT. Students have until Monday 23:59 WAT (24h) to pay.
-    An installment is only counted MISSED after the grace window expires.
+    Reverting premature ``MISSED`` rows is intentional: it repairs enrollments
+    evaluated under the former 72-hour policy and lets the normal state sync
+    restore access without a member-specific exception.
     """
     changed = 0
-    grace_cutoff = timedelta(hours=GRACE_HOURS)
     for installment in installments:
-        if (
-            installment.status == InstallmentStatus.PENDING
-            and installment.due_at + grace_cutoff <= now
-        ):
+        cutoff = installment_access_cutoff(installment.due_at)
+        if installment.status == InstallmentStatus.PENDING and cutoff <= now:
             installment.status = InstallmentStatus.MISSED
+            changed += 1
+        elif installment.status == InstallmentStatus.MISSED and cutoff > now:
+            installment.status = InstallmentStatus.PENDING
             changed += 1
     return changed
 
@@ -328,7 +338,7 @@ def sync_enrollment_installment_state(
       path back from a late payment. (Previous behavior was cumulative —
       counter only ever went up — which created permanent DROPOUT_PENDING
       states from a single late payment.)
-    - An installment is "due" when its ``due_at + GRACE`` is in the past.
+    - An installment is required when its month-boundary grace cutoff is past.
       Compliance is driven by per-installment ``due_at``, NOT by block index.
       This decouples cash-flow cadence from cohort calendar — mid-cohort
       joiners whose installments are anchored to their enrollment date no
@@ -343,7 +353,6 @@ def sync_enrollment_installment_state(
       (missed_count drops below 2). DROPPED is final — admin-only reversal.
     """
     effective_now = now or utc_now()
-    grace = timedelta(hours=GRACE_HOURS)
     total = len(installments)
     paid_statuses = {InstallmentStatus.PAID, InstallmentStatus.WAIVED}
     paid_count = sum(1 for i in installments if i.status in paid_statuses)
@@ -362,11 +371,12 @@ def sync_enrollment_installment_state(
         return
 
     # Due-date-based compliance: an installment is "required" only if its own
-    # due_at + grace window has passed. Ignores block index entirely so a
+    # month-boundary grace cutoff has passed. Ignores block index entirely so a
     # student whose installment is due next month isn't flagged because the
     # cohort calendar's block boundary has rolled over.
     is_required_installment_unpaid = any(
-        i.due_at + grace <= effective_now and i.status not in paid_statuses
+        installment_access_cutoff(i.due_at) <= effective_now
+        and i.status not in paid_statuses
         for i in installments
     )
 

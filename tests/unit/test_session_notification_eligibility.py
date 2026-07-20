@@ -256,6 +256,7 @@ async def test_weekly_digest_excludes_suspended_cohort_enrollment(monkeypatch):
     cohort_id = "22222222-2222-2222-2222-222222222222"
     active_member_id = "33333333-3333-3333-3333-333333333333"
     suspended_member_id = "44444444-4444-4444-4444-444444444444"
+    booked_suspended_member_id = "55555555-5555-5555-5555-555555555555"
 
     sessions = [
         {
@@ -268,6 +269,7 @@ async def test_weekly_digest_excludes_suspended_cohort_enrollment(monkeypatch):
             "ends_at": (fixed_now + timedelta(days=2, hours=1)).isoformat(),
             "timezone": "Africa/Lagos",
             "location_name": "Sunfit Pool",
+            "confirmed_booking_member_ids": [booked_suspended_member_id],
         }
     ]
     members = [
@@ -287,6 +289,14 @@ async def test_weekly_digest_excludes_suspended_cohort_enrollment(monkeypatch):
             "primary_tier": "academy",
             "active_tiers": ["academy", "club", "community"],
         },
+        {
+            "id": booked_suspended_member_id,
+            "auth_id": "auth-booked-suspended",
+            "email": "booked@example.com",
+            "first_name": "Chioma",
+            "primary_tier": "academy",
+            "active_tiers": ["academy", "club", "community"],
+        },
     ]
     enrollments = [
         {
@@ -298,6 +308,12 @@ async def test_weekly_digest_excludes_suspended_cohort_enrollment(monkeypatch):
         {
             "enrollment_id": "enroll-suspended",
             "member_id": suspended_member_id,
+            "status": "enrolled",
+            "access_suspended": True,
+        },
+        {
+            "enrollment_id": "enroll-booked-suspended",
+            "member_id": booked_suspended_member_id,
             "status": "enrolled",
             "access_suspended": True,
         },
@@ -327,8 +343,15 @@ async def test_weekly_digest_excludes_suspended_cohort_enrollment(monkeypatch):
         def all(self):
             return []
 
+        def scalar_one_or_none(self):
+            return None
+
     fake_db = SimpleNamespace(
-        execute=AsyncMock(return_value=EmptyResult()), close=AsyncMock()
+        execute=AsyncMock(return_value=EmptyResult()),
+        add=lambda _value: None,
+        flush=AsyncMock(),
+        commit=AsyncMock(),
+        close=AsyncMock(),
     )
 
     async def fake_get_async_db():
@@ -337,6 +360,17 @@ async def test_weekly_digest_excludes_suspended_cohort_enrollment(monkeypatch):
     send_email = AsyncMock(return_value=True)
     monkeypatch.setattr(notifications, "utc_now", lambda: fixed_now)
     monkeypatch.setattr(notifications, "internal_get", fake_internal_get)
+    monkeypatch.setattr(
+        notifications,
+        "internal_post",
+        AsyncMock(side_effect=RuntimeError("transport unavailable")),
+    )
+    monkeypatch.setattr(notifications, "resolve_media_urls", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        notifications,
+        "_get_session_weather_summary",
+        AsyncMock(return_value=None),
+    )
     monkeypatch.setattr(notifications, "get_async_db", fake_get_async_db)
     monkeypatch.setattr(
         notifications,
@@ -351,6 +385,10 @@ async def test_weekly_digest_excludes_suspended_cohort_enrollment(monkeypatch):
                     weekly_session_digest=True,
                     weekly_digest=False,
                 ),
+                "auth-booked-suspended": SimpleNamespace(
+                    weekly_session_digest=True,
+                    weekly_digest=False,
+                ),
             }
         ),
     )
@@ -362,5 +400,11 @@ async def test_weekly_digest_excludes_suspended_cohort_enrollment(monkeypatch):
 
     await notifications.send_weekly_session_digest()
 
-    send_email.assert_awaited_once()
-    assert send_email.await_args.kwargs["to_email"] == "active@example.com"
+    assert send_email.await_count == 2
+    calls_by_email = {
+        call.kwargs["to_email"]: call.kwargs for call in send_email.await_args_list
+    }
+    assert set(calls_by_email) == {"active@example.com", "booked@example.com"}
+    booked_session = calls_by_email["booked@example.com"]["sessions"][0]
+    assert booked_session["is_booked"] is True
+    assert booked_session["state_label"] == "You are booked"

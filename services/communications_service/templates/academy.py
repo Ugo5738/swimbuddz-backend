@@ -899,7 +899,8 @@ async def send_academy_access_suspended_email(
     failed installment payment.
 
     The student can restore access by completing the overdue payment from their
-    academy dashboard. A 24-hour grace window applies after each due date.
+    academy dashboard. Access remains available through the first day of the
+    month following each due date.
     """
     currency_symbol = "₦" if currency == "NGN" else currency
     amount_display = f"{currency_symbol}{amount:,.0f}"
@@ -936,7 +937,8 @@ If you believe this is an error, please contact our support team.
     alert_html = info_box(
         "<strong>Your access to academy sessions has been suspended.</strong><br/>"
         "Please complete your payment as soon as possible to restore access. "
-        "You have a 24-hour grace window after each installment due date.",
+        "For future installments, access remains available through the first "
+        "day of the month after the due date.",
         bg_color="#fef2f2",
         border_color="#ef4444",
     )

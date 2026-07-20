@@ -1265,6 +1265,9 @@ async def create_payment_intent(
         status=PaymentStatus.PENDING,
         payment_method=payload.payment_method,  # paystack or manual_transfer
         payment_metadata=payment_metadata,
+        admin_payment_notification_required=(
+            bubbles_to_apply_val > 0 and amount <= 0 and original_amount > 0
+        ),
     )
 
     db.add(payment)

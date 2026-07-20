@@ -20,6 +20,8 @@ from services.communications_service.models.core import (
     ScheduledNotificationStatus,
     SessionNotificationLog,
     SessionNotificationType,
+    WeeklyDigestConfig,
+    WeeklyDigestDispatch,
 )
 from services.communications_service.models.testimonial import Testimonial
 
@@ -43,5 +45,7 @@ __all__ = [
     "ScheduledNotificationStatus",
     "SessionNotificationLog",
     "SessionNotificationType",
+    "WeeklyDigestConfig",
+    "WeeklyDigestDispatch",
     "Testimonial",
 ]

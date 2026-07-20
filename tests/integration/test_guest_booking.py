@@ -19,6 +19,12 @@ SESSION_ACCESS = "services.sessions_service.services.session_access"
 SIGN_IN = "services.attendance_service.routers.member.sign_in"
 
 
+@pytest.fixture(autouse=True)
+def _stub_booking_attendance_sync():
+    with patch(f"{BOOKINGS}.sync_booking_attendance", AsyncMock(return_value=None)):
+        yield
+
+
 def _start():
     return datetime(2030, 6, 1, 9, 0, tzinfo=timezone.utc)
 

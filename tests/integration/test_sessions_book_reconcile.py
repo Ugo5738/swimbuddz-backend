@@ -30,8 +30,15 @@ _SESSION_ACCESS = "services.sessions_service.services.session_access"
 _DEBIT = f"{_BOOKINGS}.debit_member_wallet"
 _RESOLVE_MEMBER = f"{_BOOKINGS}.get_member_by_auth_id"
 _MEMBERSHIP = f"{_SESSION_ACCESS}.get_member_membership"
+_ATTENDANCE = f"{_BOOKINGS}.sync_booking_attendance"
 
 POOL_FEE_KOBO = 350_000  # ₦3,500
+
+
+@pytest.fixture(autouse=True)
+def _stub_attendance_sync():
+    with patch(_ATTENDANCE, AsyncMock(return_value=None)):
+        yield
 
 
 async def _session(db_session, **overrides):
@@ -225,3 +232,28 @@ async def test_new_paystack_booking_creates_pending_without_debit(
     assert body["status"] == "pending"
     assert body["expires_at"] is not None
     debit.assert_not_awaited()  # Paystack path — wallet untouched
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_free_booking_confirms_without_client_bubbles_flag(
+    sessions_client, db_session
+):
+    member_id = uuid.uuid4()
+    session = await _session(db_session, pool_fee=0)
+
+    with (
+        patch(_RESOLVE_MEMBER, _member_mock(member_id)),
+        patch(_MEMBERSHIP, _club_membership_mock(member_id)),
+    ):
+        response = await sessions_client.post(
+            f"/sessions/{session.id}/book",
+            json={
+                "session_id": str(session.id),
+                "pay_with_bubbles": False,
+            },
+        )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["status"] == "confirmed"
+    assert response.json()["wallet_transaction_id"] is None

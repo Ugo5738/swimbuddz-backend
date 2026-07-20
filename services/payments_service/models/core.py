@@ -18,7 +18,16 @@ from services.payments_service.models.enums import (
 )
 from sqlalchemy import DateTime
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import Float, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Float,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
@@ -85,6 +94,12 @@ class Payment(Base):
     )
     entitlement_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # True only for new payments settled entirely with Bubbles. The payments
+    # worker creates one durable admin-email log per configured recipient.
+    admin_payment_notification_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
     # "metadata" is reserved by SQLAlchemy's Declarative API, so we map the DB column
     # named "metadata" onto a safe attribute name.
     payment_metadata: Mapped[dict | None] = mapped_column(
@@ -135,6 +150,49 @@ class Payment(Base):
 
     def __repr__(self):
         return f"<Payment {self.reference}>"
+
+
+class PaymentAdminEmailLog(Base):
+    """Per-recipient delivery state for a full-Bubbles payment receipt."""
+
+    __tablename__ = "payment_admin_email_logs"
+    __table_args__ = (
+        UniqueConstraint(
+            "payment_id",
+            "recipient_email",
+            name="uq_payment_admin_email_logs_payment_recipient",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    payment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("payments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    recipient_email: Mapped[str] = mapped_column(String, nullable=False)
+    delivery_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending"
+    )
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
 
 
 class Discount(Base):

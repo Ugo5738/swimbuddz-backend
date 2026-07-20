@@ -974,6 +974,56 @@ async def test_session_booking_persists_wallet_hold_metadata(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+async def test_full_bubbles_payment_is_flagged_for_admin_receipt(
+    payments_client, db_session, monkeypatch
+):
+    from libs.common.datetime_utils import utc_now
+    from services.payments_service.app.main import app as payments_app
+    from services.payments_service.models import Payment, PaymentStatus
+    from services.payments_service.routers.intents import intent_creation
+    from sqlalchemy import select
+
+    _override_current_user_email(payments_app)
+    _install_paystack_stubs(monkeypatch)
+    session_id = str(uuid.uuid4())
+    booking_id = str(uuid.uuid4())
+    _stub_session_booking_quote(
+        monkeypatch,
+        session_id=session_id,
+        booking_id=booking_id,
+        fee_kobo=350000,
+    )
+
+    async def settle_internally(*, db, payment, **_kwargs):
+        payment.status = PaymentStatus.PAID
+        payment.entitlement_applied_at = utc_now()
+        db.add(payment)
+        await db.commit()
+        await db.refresh(payment)
+        return payment
+
+    monkeypatch.setattr(intent_creation, "_mark_paid_and_apply", settle_internally)
+
+    response = await payments_client.post(
+        "/payments/intents",
+        json={
+            "purpose": "session_booking",
+            "session_id": session_id,
+            "direct_amount": 3500.0,
+            "bubbles_to_apply": 35,
+            "payment_metadata": {"booking_id": booking_id},
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["status"] == "paid"
+    payment = (await db_session.execute(select(Payment))).scalar_one()
+    assert payment.amount == 0
+    assert payment.admin_payment_notification_required is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 async def test_session_booking_uses_server_total_without_client_amount(
     payments_client, monkeypatch
 ):

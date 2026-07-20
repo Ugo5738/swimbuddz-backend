@@ -11,8 +11,8 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
-from sqlalchemy import select
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_service_role
@@ -47,6 +47,9 @@ from services.sessions_service.services.booking_capacity import (
     PENDING_TTL_MINUTES,
     assert_booking_capacity,
 )
+from services.sessions_service.services.booking_attendance import (
+    sync_booking_attendance,
+)
 from services.sessions_service.services.session_access import (
     evaluate_session_access_for_member,
     get_member_session_access_payload,
@@ -63,6 +66,8 @@ router = APIRouter(prefix="/internal/sessions", tags=["internal"])
 class SessionBasic(BaseModel):
     id: str
     title: str
+    description: Optional[str] = None
+    notes: Optional[str] = None
     session_type: str
     status: str
     starts_at: str
@@ -77,6 +82,10 @@ class SessionBasic(BaseModel):
     # pool_fee is returned in KOBO (integer) for service-to-service use.
     # Wallet-only consumers require pool_fee to be exactly divisible by one Bubble.
     pool_fee: Optional[int] = None
+    ride_share_fee: Optional[int] = None
+    occupied_slots: int = 0
+    confirmed_booking_member_ids: List[str] = Field(default_factory=list)
+    coach_member_ids: List[str] = Field(default_factory=list)
     week_number: Optional[int] = None
     lesson_title: Optional[str] = None
     timezone: str = "Africa/Lagos"
@@ -147,10 +156,49 @@ async def get_scheduled_sessions(
     query = query.order_by(Session.starts_at.asc())
     result = await db.execute(query)
     sessions = result.scalars().all()
+    session_ids = [session.id for session in sessions]
+    confirmed_by_session: dict[uuid.UUID, list[str]] = {
+        session_id: [] for session_id in session_ids
+    }
+    occupied_by_session: dict[uuid.UUID, int] = {
+        session_id: 0 for session_id in session_ids
+    }
+    coaches_by_session: dict[uuid.UUID, list[str]] = {
+        session_id: [] for session_id in session_ids
+    }
+    if session_ids:
+        booking_rows = (
+            await db.execute(
+                select(
+                    SessionBooking.session_id,
+                    SessionBooking.member_id,
+                    SessionBooking.party_size,
+                ).where(
+                    SessionBooking.session_id.in_(session_ids),
+                    SessionBooking.status == SessionBookingStatus.CONFIRMED,
+                )
+            )
+        ).all()
+        for session_id, member_id, party_size in booking_rows:
+            confirmed_by_session[session_id].append(str(member_id))
+            occupied_by_session[session_id] += int(party_size or 1)
+
+        coach_rows = (
+            await db.execute(
+                select(SessionCoach.session_id, SessionCoach.coach_id).where(
+                    SessionCoach.session_id.in_(session_ids)
+                )
+            )
+        ).all()
+        for session_id, coach_id in coach_rows:
+            coaches_by_session[session_id].append(str(coach_id))
+
     return [
         SessionBasic(
             id=str(s.id),
             title=s.title,
+            description=s.description,
+            notes=s.notes,
             session_type=s.session_type.value,
             status=s.status.value,
             starts_at=s.starts_at.isoformat(),
@@ -163,6 +211,10 @@ async def get_scheduled_sessions(
             pod_id=str(s.pod_id) if s.pod_id else None,
             capacity=s.capacity,
             pool_fee=s.pool_fee,
+            ride_share_fee=s.ride_share_fee,
+            occupied_slots=occupied_by_session[s.id],
+            confirmed_booking_member_ids=confirmed_by_session[s.id],
+            coach_member_ids=coaches_by_session[s.id],
             week_number=s.week_number,
             lesson_title=s.lesson_title,
             timezone=s.timezone,
@@ -198,6 +250,43 @@ class SessionDetailedStats(BaseModel):
     most_popular_day: str | None = None
     most_popular_time_slot: str | None = None
     session_details: list[dict] | None = None
+
+
+class CampaignBookingStats(BaseModel):
+    campaign_key: str
+    total: int = 0
+    pending: int = 0
+    confirmed: int = 0
+    cancelled: int = 0
+    expired: int = 0
+
+
+@router.get("/bookings/campaign-stats", response_model=CampaignBookingStats)
+async def get_campaign_booking_stats(
+    campaign_key: str = Query(..., min_length=1, max_length=80),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+) -> CampaignBookingStats:
+    """Count booking outcomes attributed to a digest or other campaign."""
+    rows = (
+        await db.execute(
+            select(SessionBooking.status, func.count(SessionBooking.id))
+            .where(SessionBooking.campaign_key == campaign_key)
+            .group_by(SessionBooking.status)
+        )
+    ).all()
+    counts = {
+        status.value if hasattr(status, "value") else str(status): int(count)
+        for status, count in rows
+    }
+    return CampaignBookingStats(
+        campaign_key=campaign_key,
+        total=sum(counts.values()),
+        pending=counts.get("pending", 0),
+        confirmed=counts.get("confirmed", 0),
+        cancelled=counts.get("cancelled", 0),
+        expired=counts.get("expired", 0),
+    )
 
 
 @router.get("/range-stats", response_model=SessionRangeStats)
@@ -1040,6 +1129,7 @@ async def confirm_bundle_bookings(
     await db.commit()
     for booking in ordered_bookings:
         await db.refresh(booking)
+        await sync_booking_attendance(booking)
     return BundleBookingConfirmResponse(
         confirmed=len(ordered_bookings),
         bookings=ordered_bookings,
@@ -1245,6 +1335,7 @@ async def internal_confirm_booking(
         if updated:
             await db.commit()
             await db.refresh(booking)
+        await sync_booking_attendance(booking)
         return booking
     now = utc_now()
     if session.status != SessionStatus.SCHEDULED or session.starts_at <= now:
@@ -1273,6 +1364,7 @@ async def internal_confirm_booking(
         booking.wallet_transaction_id = confirm_in.wallet_transaction_id
     await db.commit()
     await db.refresh(booking)
+    await sync_booking_attendance(booking)
     return booking
 
 
@@ -1324,6 +1416,7 @@ async def bulk_create_bookings(
     await db.commit()
     for booking in created_rows:
         await db.refresh(booking)
+        await sync_booking_attendance(booking)
 
     return BulkBookingResponse(
         created=len(payload.items) - skipped,

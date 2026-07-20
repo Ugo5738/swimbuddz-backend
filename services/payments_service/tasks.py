@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
+from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.db.config import AsyncSessionLocal
 from services.payments_service.models import (
@@ -12,6 +14,7 @@ from services.payments_service.models import (
     CohortMakeupObligation,
     MakeupStatus,
     Payment,
+    PaymentAdminEmailLog,
     PaymentPurpose,
     PaymentStatus,
     PayoutStatus,
@@ -246,6 +249,141 @@ async def retry_failed_entitlement_fulfillment() -> None:
 
     if processed:
         logger.info("Retried entitlement fulfillment for %d payments", processed)
+
+
+async def _deliver_pending_admin_payment_emails(db) -> dict[str, int]:
+    """Deliver per-recipient admin receipts for new all-Bubbles payments."""
+    sending_lease_cutoff = utc_now() - timedelta(minutes=30)
+    recipients = sorted(
+        {
+            email.strip().lower()
+            for email in (get_settings().ADMIN_EMAILS or [])
+            if email and email.strip()
+        }
+    )
+    if not recipients:
+        return {"payments": 0, "sent": 0, "failed": 0}
+
+    payments = list(
+        (
+            await db.execute(
+                select(Payment)
+                .where(
+                    Payment.admin_payment_notification_required.is_(True),
+                    Payment.status == PaymentStatus.PAID,
+                    Payment.entitlement_applied_at.is_not(None),
+                )
+                .order_by(Payment.created_at.asc())
+                .limit(200)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not payments:
+        return {"payments": 0, "sent": 0, "failed": 0}
+
+    payment_ids = [payment.id for payment in payments]
+    logs = list(
+        (
+            await db.execute(
+                select(PaymentAdminEmailLog).where(
+                    PaymentAdminEmailLog.payment_id.in_(payment_ids),
+                    PaymentAdminEmailLog.recipient_email.in_(recipients),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    logs_by_key = {(log.payment_id, log.recipient_email): log for log in logs}
+    sent = failed = 0
+    email_client = get_email_client()
+
+    for payment in payments:
+        metadata = payment.payment_metadata or {}
+        bubbles_used = int(metadata.get("bubbles_to_apply") or 0)
+        bubbles_value_ngn = float(metadata.get("bubbles_value_ngn") or 0)
+        total_ngn = float(metadata.get("original_amount") or bubbles_value_ngn)
+        for recipient in recipients:
+            key = (payment.id, recipient)
+            log = logs_by_key.get(key)
+            if log and log.delivery_status == "sent":
+                continue
+            if (
+                log
+                and log.delivery_status == "sending"
+                and log.last_attempt_at
+                and log.last_attempt_at > sending_lease_cutoff
+            ):
+                continue
+            if log is None:
+                log = PaymentAdminEmailLog(
+                    payment_id=payment.id,
+                    recipient_email=recipient,
+                )
+                db.add(log)
+                logs_by_key[key] = log
+
+            log.delivery_status = "sending"
+            log.attempt_count += 1
+            log.last_attempt_at = utc_now()
+            log.error_message = None
+            await db.commit()
+
+            try:
+                success = await email_client.send_template(
+                    template_type="admin_bubbles_payment_received",
+                    to_email=recipient,
+                    template_data={
+                        "payment_reference": payment.reference,
+                        "member_email": payment.payer_email or "Not available",
+                        "purpose": payment.purpose.value,
+                        "amount": total_ngn,
+                        "currency": payment.currency,
+                        "bubbles_used": bubbles_used,
+                        "bubbles_value_ngn": bubbles_value_ngn,
+                        "paid_at": (
+                            payment.paid_at.isoformat() if payment.paid_at else ""
+                        ),
+                    },
+                )
+                if success:
+                    log.delivery_status = "sent"
+                    log.sent_at = utc_now()
+                    sent += 1
+                else:
+                    log.delivery_status = "failed"
+                    log.error_message = "Email provider returned failure"
+                    failed += 1
+            except Exception as exc:  # noqa: BLE001 - persisted for worker retry
+                log.delivery_status = "failed"
+                log.error_message = str(exc)[:2000]
+                failed += 1
+                logger.exception(
+                    "Admin Bubbles receipt failed for payment=%s recipient=%s",
+                    payment.reference,
+                    recipient,
+                )
+            await db.commit()
+
+        if all(
+            logs_by_key[(payment.id, recipient)].delivery_status == "sent"
+            for recipient in recipients
+        ):
+            payment.admin_payment_notification_required = False
+            await db.commit()
+
+    return {"payments": len(payments), "sent": sent, "failed": failed}
+
+
+async def send_pending_admin_payment_emails() -> dict[str, int]:
+    """Worker entry point for durable all-Bubbles admin payment receipts."""
+    async with AsyncSessionLocal() as db:
+        result = await _deliver_pending_admin_payment_emails(db)
+    if result["sent"] or result["failed"]:
+        logger.info("Admin Bubbles payment email delivery: %s", result)
+    return result
 
 
 # ---------------------------------------------------------------------------

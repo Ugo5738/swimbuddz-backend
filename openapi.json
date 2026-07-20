@@ -5007,15 +5007,20 @@
         ],
         "summary": "Admin Create Pod",
         "operationId": "admin_create_pod_admin_members_pods_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PodCreateRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -5038,12 +5043,81 @@
               }
             }
           }
-        },
+        }
+      },
+      "get": {
+        "tags": [
+          "pods-admin"
+        ],
+        "summary": "Admin List Pods",
+        "description": "List every pod an admin can manage, including private pods.",
+        "operationId": "admin_list_pods_admin_members_pods_get",
         "security": [
           {
             "HTTPBearer": []
           }
-        ]
+        ],
+        "parameters": [
+          {
+            "name": "club_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Club Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PodStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PodSummary"
+                  },
+                  "title": "Response Admin List Pods Admin Members Pods Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/admin/members/pods/review-queue": {
@@ -8946,6 +9020,56 @@
         }
       }
     },
+    "/api/v1/internal/sessions/bookings/campaign-stats": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Campaign Booking Stats",
+        "description": "Count booking outcomes attributed to a digest or other campaign.",
+        "operationId": "get_campaign_booking_stats_internal_sessions_bookings_campaign_stats_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80,
+              "title": "Campaign Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignBookingStats"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/sessions/range-stats": {
       "get": {
         "tags": [
@@ -10355,7 +10479,7 @@
           "attendance"
         ],
         "summary": "Coach Mark Session Attendance",
-        "description": "Bulk attendance mark by the cohort's coach (or admin override).\n\nDefault-present model: students NOT included in `entries` are treated\nas PRESENT \u2014 no row is written, the cohort payout calculator infers\npresence from the absence of an exception. The coach typically only\nsubmits entries for EXCUSED, ABSENT, or LATE statuses.\n\nBehavior per entry:\n  - status == PRESENT: deletes any existing exception row (revert to default)\n  - status in {EXCUSED, ABSENT, LATE, CANCELLED}: upserts the row by\n    (session_id, member_id), overwriting prior status\n\nEXCUSED entries auto-create a CohortMakeupObligation downstream when\nthe next coach-payout cron runs (handled by payments_service).",
+        "description": "Bulk attendance mark by the cohort's coach (or admin override).\n\nConfirmed bookings already carry a PRESENT row. The coach typically only\nsubmits exceptions such as EXCUSED, ABSENT, or LATE; explicit PRESENT can\nrestore an accidentally changed row.\n\nBehavior per entry:\n  - status == PRESENT: upserts the row to PRESENT\n  - status in {EXCUSED, ABSENT, LATE, CANCELLED}: upserts the row by\n    (session_id, member_id), overwriting prior status\n\nEXCUSED entries auto-create a CohortMakeupObligation downstream when\nthe next coach-payout cron runs (handled by payments_service).",
         "operationId": "coach_mark_session_attendance_attendance_sessions__session_id__coach_mark_post",
         "security": [
           {
@@ -20913,6 +21037,206 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/digest/admin/configs": {
+      "get": {
+        "tags": [
+          "weekly-digest"
+        ],
+        "summary": "List Digest Configs",
+        "operationId": "list_digest_configs_digest_admin_configs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WeeklyDigestConfigResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Digest Configs Digest Admin Configs Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/digest/admin/configs/{audience}": {
+      "patch": {
+        "tags": [
+          "weekly-digest"
+        ],
+        "summary": "Update Digest Config",
+        "operationId": "update_digest_config_digest_admin_configs__audience__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "audience",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Audience"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WeeklyDigestConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklyDigestConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/digest/admin/stats": {
+      "get": {
+        "tags": [
+          "weekly-digest"
+        ],
+        "summary": "Get Digest Stats",
+        "operationId": "get_digest_stats_digest_admin_stats_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Campaign Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklyDigestStatsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/digest/click/{token}/{kind}/{resource_id}": {
+      "get": {
+        "tags": [
+          "weekly-digest"
+        ],
+        "summary": "Track Digest Click",
+        "operationId": "track_digest_click_digest_click__token___kind___resource_id__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Token"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "resource_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Resource Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/notifications/": {
@@ -57634,6 +57958,28 @@
               }
             ],
             "title": "Wallet Transaction Id"
+          },
+          "booking_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Source"
+          },
+          "campaign_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Key"
           }
         },
         "type": "object",
@@ -58131,6 +58477,44 @@
           "expires_at"
         ],
         "title": "BundleCartResponse"
+      },
+      "CampaignBookingStats": {
+        "properties": {
+          "campaign_key": {
+            "type": "string",
+            "title": "Campaign Key"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "default": 0
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending",
+            "default": 0
+          },
+          "confirmed": {
+            "type": "integer",
+            "title": "Confirmed",
+            "default": 0
+          },
+          "cancelled": {
+            "type": "integer",
+            "title": "Cancelled",
+            "default": 0
+          },
+          "expired": {
+            "type": "integer",
+            "title": "Expired",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "campaign_key"
+        ],
+        "title": "CampaignBookingStats"
       },
       "CreateBundleCartRequest": {
         "properties": {
@@ -59158,6 +59542,28 @@
             "type": "string",
             "title": "Title"
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
           "session_type": {
             "type": "string",
             "title": "Session Type"
@@ -59255,6 +59661,36 @@
             ],
             "title": "Pool Fee"
           },
+          "ride_share_fee": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ride Share Fee"
+          },
+          "occupied_slots": {
+            "type": "integer",
+            "title": "Occupied Slots",
+            "default": 0
+          },
+          "confirmed_booking_member_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Confirmed Booking Member Ids"
+          },
+          "coach_member_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Coach Member Ids"
+          },
           "week_number": {
             "anyOf": [
               {
@@ -59339,6 +59775,32 @@
             "minimum": 0.0,
             "title": "Block Guests",
             "default": 0
+          },
+          "booking_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Source"
+          },
+          "campaign_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Key"
           }
         },
         "type": "object",
@@ -59346,7 +59808,7 @@
           "session_id"
         ],
         "title": "SessionBookingCreate",
-        "description": "Member self-book a session ahead of time.\n\nChannel defaults to MEMBER_SELF. Admin and internal/corporate routes\nset channel explicitly. Default flow: this route creates\nSessionBooking(status=PENDING) with ``expires_at = booked_at + 15 min``\nand the frontend (or payments_service webhook) calls the confirm\nendpoint once Paystack payment clears, before ``expires_at``, to\ntransition status \u2192 CONFIRMED. A 5-min sweep otherwise marks the\nbooking EXPIRED.\n\nFree-session / full-Bubbles fast path: pass ``pay_with_bubbles=True``\nAND ``fee_amount_kobo`` (zero is OK for free sessions). The endpoint\ndebits the member's wallet and confirms in one transaction, returning\na CONFIRMED booking. Mirrors the existing one-click sign-in UX."
+        "description": "Member self-book a session ahead of time.\n\nChannel defaults to MEMBER_SELF. Admin and internal/corporate routes\nset channel explicitly. Default flow: this route creates\nSessionBooking(status=PENDING) with ``expires_at = booked_at + 15 min``\nand the frontend (or payments_service webhook) calls the confirm\nendpoint once Paystack payment clears, before ``expires_at``, to\ntransition status \u2192 CONFIRMED. A 5-min sweep otherwise marks the\nbooking EXPIRED.\n\nFree sessions are confirmed automatically from the server price. For a\npaid session's full-Bubbles fast path, pass ``pay_with_bubbles=True``;\nthe endpoint debits the member's wallet and confirms in one transaction,\nreturning a CONFIRMED booking."
       },
       "SessionBookingResponse": {
         "properties": {
@@ -61231,7 +61693,7 @@
           "entries"
         ],
         "title": "CoachAttendanceMarkRequest",
-        "description": "Bulk attendance mark by coach for a single session.\n\nDefault-present model: students NOT included in `entries` are treated\nas implicitly PRESENT (no row written). The coach typically only\nsubmits entries for exceptions: EXCUSED, ABSENT, or LATE.\n\nServer upserts by (session_id, member_id) so resubmitting the same\nentry overwrites the previous status (last-write-wins). To \"unmark\"\na previously-recorded exception (return a student to default-present),\nsubmit them with status=PRESENT \u2014 the row is deleted."
+        "description": "Bulk attendance mark by coach for a single session.\n\nConfirmed bookings are created with an explicit PRESENT row. The coach\nnormally submits only exceptions such as EXCUSED, ABSENT, or LATE.\n\nServer upserts by (session_id, member_id) so resubmitting the same\nentry overwrites the previous status (last-write-wins). To reverse an\nexception, submit status=PRESENT."
       },
       "CoachAttendanceMarkResponse": {
         "properties": {
@@ -72520,7 +72982,7 @@
           "weekly_session_digest": {
             "type": "boolean",
             "title": "Weekly Session Digest",
-            "default": false
+            "default": true
           },
           "id": {
             "type": "string",
@@ -73247,6 +73709,219 @@
         },
         "type": "object",
         "title": "TestimonialUpdate"
+      },
+      "WeeklyDigestConfigResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "audience": {
+            "type": "string",
+            "enum": [
+              "community",
+              "club",
+              "academy"
+            ],
+            "title": "Audience"
+          },
+          "featured_image_media_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Featured Image Media Id"
+          },
+          "featured_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Featured Image Url"
+          },
+          "image_alt": {
+            "type": "string",
+            "title": "Image Alt"
+          },
+          "section_intro": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Intro"
+          },
+          "default_gear_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Gear Notes"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "audience",
+          "image_alt",
+          "is_enabled",
+          "updated_at"
+        ],
+        "title": "WeeklyDigestConfigResponse"
+      },
+      "WeeklyDigestConfigUpdate": {
+        "properties": {
+          "featured_image_media_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Featured Image Media Id"
+          },
+          "image_alt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 240,
+                "minLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Alt"
+          },
+          "section_intro": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Intro"
+          },
+          "default_gear_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Gear Notes"
+          },
+          "is_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Enabled"
+          }
+        },
+        "type": "object",
+        "title": "WeeklyDigestConfigUpdate"
+      },
+      "WeeklyDigestStatsResponse": {
+        "properties": {
+          "campaign_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Key"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "default": 0
+          },
+          "sent": {
+            "type": "integer",
+            "title": "Sent",
+            "default": 0
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed",
+            "default": 0
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending",
+            "default": 0
+          },
+          "uncertain": {
+            "type": "integer",
+            "title": "Uncertain",
+            "default": 0
+          },
+          "recipients_clicked": {
+            "type": "integer",
+            "title": "Recipients Clicked",
+            "default": 0
+          },
+          "total_clicks": {
+            "type": "integer",
+            "title": "Total Clicks",
+            "default": 0
+          },
+          "bookings_started": {
+            "type": "integer",
+            "title": "Bookings Started",
+            "default": 0
+          },
+          "bookings_confirmed": {
+            "type": "integer",
+            "title": "Bookings Confirmed",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "WeeklyDigestStatsResponse"
       },
       "CohortFillSnapshotResponse": {
         "properties": {

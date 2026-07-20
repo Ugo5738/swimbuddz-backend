@@ -281,6 +281,88 @@ class ContentPostEmailLog(Base):
         return f"<ContentPostEmailLog post={self.post_id} member={self.member_id}>"
 
 
+class WeeklyDigestConfig(Base):
+    """Admin-managed presentation defaults for one digest tier section."""
+
+    __tablename__ = "weekly_digest_configs"
+    __table_args__ = (
+        UniqueConstraint("audience", name="uq_weekly_digest_configs_audience"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    audience: Mapped[str] = mapped_column(String(20), nullable=False)
+    featured_image_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    image_alt: Mapped[str] = mapped_column(String(240), nullable=False)
+    section_intro: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    default_gear_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class WeeklyDigestDispatch(Base):
+    """Per-member delivery state and click attribution for one weekly digest."""
+
+    __tablename__ = "weekly_digest_dispatches"
+    __table_args__ = (
+        UniqueConstraint(
+            "campaign_key",
+            "member_id",
+            name="uq_weekly_digest_dispatches_campaign_member",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    campaign_key: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    recipient_email: Mapped[str] = mapped_column(String, nullable=False)
+    tracking_token: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, unique=True, default=uuid.uuid4
+    )
+    delivery_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending"
+    )
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    click_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    first_clicked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_clicked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
 class ContentComment(Base):
     """Comments on content posts."""
 
@@ -418,7 +500,9 @@ class NotificationPreferences(Base):
 
     # Digest preferences
     weekly_digest: Mapped[bool] = mapped_column(Boolean, default=True)
-    weekly_session_digest: Mapped[bool] = mapped_column(Boolean, default=False)
+    weekly_session_digest: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now

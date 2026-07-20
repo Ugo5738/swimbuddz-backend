@@ -8,9 +8,9 @@ Routes (mounted under /sessions by app/main.py):
   POST /sessions/bookings/{booking_id}/refund-pool-fee — admin: refund pool fee → Bubbles (make-up)
   GET  /sessions/{session_id}/bookings           — admin: list CONFIRMED bookings for a session
 
-The booking lifecycle is intent-only. Day-of attendance still goes through
-attendance_service's sign-in flow — that's what creates the
-``AttendanceRecord`` and links it back here via ``booking_id``.
+The booking lifecycle remains session-owned. Confirmation also asks
+attendance_service to materialize the default PRESENT state; day-of coach and
+admin actions overwrite that state with any attendance exception.
 
 See docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §C.
 """
@@ -71,6 +71,9 @@ from services.sessions_service.services.session_access import (
 from services.sessions_service.services.booking_capacity import (
     PENDING_TTL_MINUTES,
     assert_booking_capacity,
+)
+from services.sessions_service.services.booking_attendance import (
+    sync_booking_attendance,
 )
 
 logger = get_logger(__name__)
@@ -314,6 +317,7 @@ async def book_session(
     # A CONFIRMED booking is returned unchanged (idempotent; never re-charged,
     # guests untouched) before any validation or capacity lock runs.
     if existing is not None and existing.status == SessionBookingStatus.CONFIRMED:
+        await sync_booking_attendance(existing)
         return existing
 
     access = await evaluate_member_session_access(
@@ -364,10 +368,12 @@ async def book_session(
 
         existing.party_size = party_size
         existing.fee_amount_kobo = fee_kobo
+        existing.booking_source = booking_in.booking_source
+        existing.campaign_key = booking_in.campaign_key
         if booking_in.notes is not None:
             existing.notes = booking_in.notes
 
-        if booking_in.pay_with_bubbles:
+        if booking_in.pay_with_bubbles or fee_kobo == 0:
             # Bubbles / free → debit (if any fee) and confirm this row. This
             # is the core fix: an existing PENDING row used to short-circuit
             # with `return existing` *before* the debit ran, so re-booking
@@ -396,13 +402,15 @@ async def book_session(
         )
         await db.commit()
         await db.refresh(existing)
+        if existing.status == SessionBookingStatus.CONFIRMED:
+            await sync_booking_attendance(existing)
         return existing
 
     # No prior booking for this (session, member) → create one.
     #
     # Fast path: free session OR member elected to pay full Bubbles. Mirrors
     # the one-click sign-in UX: debit wallet (if non-zero fee) → CONFIRMED.
-    if booking_in.pay_with_bubbles:
+    if booking_in.pay_with_bubbles or fee_kobo == 0:
         wallet_txn_id = await _debit_booking_fee(
             member_auth_id=member_auth_id,
             session_id=session_id,
@@ -421,6 +429,8 @@ async def book_session(
             fee_amount_kobo=fee_kobo,
             notes=booking_in.notes,
             wallet_transaction_id=wallet_txn_id,
+            booking_source=booking_in.booking_source,
+            campaign_key=booking_in.campaign_key,
             booked_at=now,
             confirmed_at=now,
         )
@@ -431,6 +441,7 @@ async def book_session(
         )
         await db.commit()
         await db.refresh(booking)
+        await sync_booking_attendance(booking)
         return booking
 
     # Default Paystack path: create PENDING; frontend confirms after verify.
@@ -443,6 +454,8 @@ async def book_session(
         party_size=party_size,
         fee_amount_kobo=fee_kobo,
         notes=booking_in.notes,
+        booking_source=booking_in.booking_source,
+        campaign_key=booking_in.campaign_key,
         booked_at=now,
         expires_at=now + timedelta(minutes=PENDING_TTL_MINUTES),
     )
@@ -715,6 +728,7 @@ async def confirm_booking(
             status_code=403, detail="You can only confirm your own bookings."
         )
     if booking.status == SessionBookingStatus.CONFIRMED:
+        await sync_booking_attendance(booking)
         return booking
     if booking.status != SessionBookingStatus.PENDING:
         raise HTTPException(
@@ -735,6 +749,7 @@ async def confirm_booking(
         booking.wallet_transaction_id = confirm_in.wallet_transaction_id
     await db.commit()
     await db.refresh(booking)
+    await sync_booking_attendance(booking)
     return booking
 
 
@@ -1008,6 +1023,8 @@ async def cancel_booking(
         SessionBookingStatus.CANCELLED,
         SessionBookingStatus.EXPIRED,
     ):
+        if booking.status == SessionBookingStatus.CANCELLED:
+            await sync_booking_attendance(booking, attendance_status="cancelled")
         return booking  # idempotent
 
     if booking.status == SessionBookingStatus.CONFIRMED:
@@ -1053,6 +1070,7 @@ async def cancel_booking(
                 exc,
             )
 
+    await sync_booking_attendance(booking, attendance_status="cancelled")
     return booking
 
 

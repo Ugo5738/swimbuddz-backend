@@ -370,7 +370,18 @@ async def transfer_member(
             detail="source and target pods are the same",
         )
 
+    source = await get_pod_or_404(db, source_pod_id)
     target = await get_pod_or_404(db, target_pod_id)
+    if target.status != PodStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot transfer a member into an inactive pod",
+        )
+    if target.club_id != source.club_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pod transfers must stay within the same club",
+        )
 
     # Pull the source assignment first so we can soft-leave it.
     src_result = await db.execute(
@@ -454,6 +465,22 @@ async def list_public_pods(
         q = q.where(Pod.club_id == club_id)
     q = q.order_by(Pod.created_at.desc())
     result = await db.execute(q)
+    return list(result.scalars().all())
+
+
+async def list_admin_pods(
+    db: AsyncSession,
+    *,
+    club_id: Optional[uuid.UUID] = None,
+    status: Optional[PodStatus] = None,
+) -> list[Pod]:
+    """Complete admin inventory, including private and inactive pods."""
+    q = select(Pod)
+    if club_id is not None:
+        q = q.where(Pod.club_id == club_id)
+    if status is not None:
+        q = q.where(Pod.status == status)
+    result = await db.execute(q.order_by(Pod.created_at.desc()))
     return list(result.scalars().all())
 
 

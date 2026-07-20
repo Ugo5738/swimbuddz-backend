@@ -132,6 +132,22 @@ async def admin_review_queue(
     return [await _summary(db, p) for p in pods]
 
 
+@admin_router.get("", response_model=List[PodSummary])
+async def admin_list_pods(
+    club_id: Optional[uuid.UUID] = Query(default=None),
+    pod_status: Optional[PodStatus] = Query(default=None, alias="status"),
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List every pod an admin can manage, including private pods."""
+    pods = await pod_ops.list_admin_pods(
+        db,
+        club_id=club_id,
+        status=pod_status,
+    )
+    return [await _summary(db, p) for p in pods]
+
+
 @admin_router.get("/{pod_id}", response_model=PodDetail)
 async def admin_get_pod(
     pod_id: uuid.UUID,

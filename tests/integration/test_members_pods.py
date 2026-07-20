@@ -402,6 +402,36 @@ async def test_admin_extend_resets_review_window(members_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+async def test_admin_list_pods_includes_private_and_filters_status(
+    members_client, db_session
+):
+    club = ClubFactory.create()
+    lead = MemberFactory.create()
+    private_active = PodFactory.create(
+        club_id=club.id,
+        pod_lead_id=lead.id,
+        visibility="private",
+    )
+    inactive = PodFactory.create(
+        club_id=club.id,
+        pod_lead_id=lead.id,
+        status="inactive",
+    )
+    db_session.add_all([club, lead, private_active, inactive])
+    await db_session.commit()
+
+    response = await members_client.get(
+        f"/admin/members/pods?club_id={club.id}&status=active"
+    )
+
+    assert response.status_code == 200, response.text
+    pod_ids = {pod["id"] for pod in response.json()}
+    assert str(private_active.id) in pod_ids
+    assert str(inactive.id) not in pod_ids
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 async def test_admin_review_queue_includes_due_pods_only(members_client, db_session):
     """review-queue surfaces only active pods with review_due_at <= now."""
     from datetime import datetime, timedelta, timezone
@@ -606,6 +636,57 @@ async def test_admin_transfer_member_to_another_pod(members_client, db_session):
     assert mr.await_count == 2
     actions = [c.kwargs["action"] for c in mr.await_args_list]
     assert actions == ["remove", "add"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("different_club", "target_status", "detail"),
+    [
+        (True, "active", "same club"),
+        (False, "inactive", "inactive pod"),
+    ],
+)
+async def test_admin_transfer_rejects_invalid_target_pod(
+    members_client,
+    db_session,
+    different_club,
+    target_status,
+    detail,
+):
+    await _setup_admin_with_member(db_session)
+    source_club = ClubFactory.create()
+    target_club = ClubFactory.create() if different_club else source_club
+    lead1 = MemberFactory.create()
+    lead2 = MemberFactory.create()
+    pod_src = PodFactory.create(club_id=source_club.id, pod_lead_id=lead1.id)
+    pod_tgt = PodFactory.create(
+        club_id=target_club.id,
+        pod_lead_id=lead2.id,
+        status=target_status,
+    )
+    member = MemberFactory.create()
+    db_session.add_all(
+        [source_club, lead1, lead2, pod_src, pod_tgt, member]
+        + ([target_club] if different_club else [])
+    )
+    await db_session.commit()
+
+    patches = _silence_chat_sync()
+    with patches["ensure"], patches["reconcile"]:
+        add_response = await members_client.post(
+            f"/admin/members/pods/{pod_src.id}/members",
+            json={"member_id": str(member.id)},
+        )
+        assert add_response.status_code == 201, add_response.text
+
+        response = await members_client.post(
+            f"/admin/members/pods/{pod_src.id}/transfers?member_id={member.id}",
+            json={"target_pod_id": str(pod_tgt.id)},
+        )
+
+    assert response.status_code == 400, response.text
+    assert detail in response.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------
