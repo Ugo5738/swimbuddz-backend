@@ -30,13 +30,16 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # ALTER TYPE ... ADD VALUE cannot run inside a transaction on PG < 12
-    # and Alembic wraps migrations in one. Commit, then run it autonomously.
-    op.execute("COMMIT")
-    op.execute(
-        "ALTER TYPE payment_purpose_enum ADD VALUE IF NOT EXISTS 'session_booking'"
-    )
-
+    # PostgreSQL requires a newly added enum value to be committed before
+    # subsequent statements can safely use it.
+    with op.get_context().autocommit_block():
+        op.execute(
+            """
+            ALTER TYPE payment_purpose_enum
+            ADD VALUE IF NOT EXISTS 'session_booking'
+            """
+        )
+        
 
 def downgrade() -> None:
     # No-op — Postgres cannot drop an enum value. See module docstring.
