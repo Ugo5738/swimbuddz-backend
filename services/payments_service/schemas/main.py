@@ -137,6 +137,7 @@ class PaymentResponse(BaseModel):
     status: PaymentStatus
     provider: Optional[str] = None
     provider_reference: Optional[str] = None
+    session_booking_id: Optional[uuid.UUID] = None
     payment_method: Optional[str] = None  # paystack or manual_transfer
     proof_of_payment_media_id: Optional[str] = None  # Media ID for uploaded proof
     proof_of_payment_url: Optional[str] = None  # Resolved URL for display (not stored)
@@ -185,6 +186,7 @@ class MemberPaymentResponse(BaseModel):
     status: PaymentStatus
     provider: Optional[str] = None
     provider_reference: Optional[str] = None
+    session_booking_id: Optional[uuid.UUID] = None
     payment_method: Optional[str] = None
     proof_of_payment_media_id: Optional[str] = None
     proof_of_payment_url: Optional[str] = None

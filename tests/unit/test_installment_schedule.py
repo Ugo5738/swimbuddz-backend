@@ -23,6 +23,8 @@ from services.academy_service.services.installments import (
     apply_member_payment_across_installments,
     build_schedule,
     installment_count,
+    installment_access_cutoff,
+    mark_overdue_installments,
     split_amounts,
     sync_enrollment_installment_state,
 )
@@ -336,7 +338,7 @@ class TestSyncEnrollmentInstallmentState:
         assert enrollment.payment_status == PaymentStatus.PAID
 
     def test_past_due_unpaid_suspends(self):
-        # Inst 2 due 5 days ago, still PENDING (not yet marked MISSED by cron).
+        # Inst 2 was due in the prior month and its grace cutoff has passed.
         # The compliance check should still trigger suspension on the basis
         # of due_at + grace, not on installment status alone.
         now = datetime(2026, 5, 22, tzinfo=timezone.utc)
@@ -351,7 +353,7 @@ class TestSyncEnrollmentInstallmentState:
                 installment_number=2,
                 amount=5_000_000,
                 status=InstallmentStatus.PENDING,
-                due_at=datetime(2026, 5, 17, tzinfo=timezone.utc),  # 5d ago
+                due_at=datetime(2026, 4, 17, tzinfo=timezone.utc),
             ),
         ]
         enrollment = FakeEnrollment(status=EnrollmentStatus.ENROLLED)
@@ -360,8 +362,8 @@ class TestSyncEnrollmentInstallmentState:
         assert enrollment.payment_status == PaymentStatus.FAILED
 
     def test_within_grace_window_does_not_suspend(self):
-        # Inst 2 due 12 hours ago — still within the 24h grace window.
-        now = datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc)
+        # A May installment remains in grace through June 1 WAT.
+        now = datetime(2026, 6, 1, 22, 59, tzinfo=timezone.utc)
         installments = [
             FakeInstallment(
                 installment_number=1,
@@ -379,6 +381,41 @@ class TestSyncEnrollmentInstallmentState:
         enrollment = FakeEnrollment(status=EnrollmentStatus.ENROLLED)
         self._sync(enrollment, installments, now=now)
         assert enrollment.access_suspended is False
+
+    def test_access_suspends_at_start_of_second_day_wat(self):
+        due_at = datetime(2026, 5, 22, 0, 0, tzinfo=timezone.utc)
+        cutoff = installment_access_cutoff(due_at)
+        assert cutoff == datetime(2026, 6, 1, 23, 0, tzinfo=timezone.utc)
+
+        installments = [
+            FakeInstallment(
+                installment_number=1,
+                amount=5_000_000,
+                status=InstallmentStatus.PENDING,
+                due_at=due_at,
+            )
+        ]
+        enrollment = FakeEnrollment(status=EnrollmentStatus.ENROLLED)
+        self._sync(enrollment, installments, now=cutoff)
+        assert enrollment.access_suspended is True
+
+    def test_old_policy_missed_flag_is_restored_during_new_grace(self):
+        installments = [
+            FakeInstallment(
+                installment_number=1,
+                amount=5_000_000,
+                status=InstallmentStatus.MISSED,
+                due_at=datetime(2026, 7, 15, 0, 0, tzinfo=timezone.utc),
+            )
+        ]
+
+        changed = mark_overdue_installments(
+            installments,
+            now=datetime(2026, 7, 18, 0, 0, tzinfo=timezone.utc),
+        )
+
+        assert changed == 1
+        assert installments[0].status == InstallmentStatus.PENDING
 
     def test_two_misses_trigger_dropout_pending_when_admin_approval_required(self):
         now = datetime(2026, 5, 22, tzinfo=timezone.utc)

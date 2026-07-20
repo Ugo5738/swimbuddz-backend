@@ -571,6 +571,7 @@ async def create_payment_intent(
     Create a payment intent (records a pending payment) and (if configured) initializes Paystack checkout.
     """
     payment_id = uuid.uuid4()
+    session_booking_id: uuid.UUID | None = None
     bundle_reservation_active = False
 
     async def release_active_bundle_reservation() -> None:
@@ -912,6 +913,7 @@ async def create_payment_intent(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="payment_metadata.booking_id must be a valid UUID",
             ) from exc
+        session_booking_id = booking_id
         booking_quote = await _get_session_booking_quote(
             booking_id=booking_id,
             member_auth_id=current_user.user_id,
@@ -1264,7 +1266,11 @@ async def create_payment_intent(
         currency=payload.currency,
         status=PaymentStatus.PENDING,
         payment_method=payload.payment_method,  # paystack or manual_transfer
+        session_booking_id=session_booking_id,
         payment_metadata=payment_metadata,
+        admin_payment_notification_required=(
+            bubbles_to_apply_val > 0 and amount <= 0 and original_amount > 0
+        ),
     )
 
     db.add(payment)

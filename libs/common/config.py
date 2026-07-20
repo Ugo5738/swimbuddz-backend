@@ -40,6 +40,9 @@ class Settings(BaseSettings):
 
     # Gateway
     GATEWAY_URL: str = "http://localhost:8000"
+    # Browser-facing gateway URL used in email links. Internal services should
+    # continue to use GATEWAY_URL/service URLs for Docker-network traffic.
+    PUBLIC_API_URL: str = ""
 
     # Microservices URLs
     MEMBERS_SERVICE_URL: str = "http://members-service:8001"

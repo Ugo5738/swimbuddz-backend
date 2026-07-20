@@ -106,10 +106,10 @@ class SessionBookingCreate(BaseModel):
     transition status → CONFIRMED. A 5-min sweep otherwise marks the
     booking EXPIRED.
 
-    Free-session / full-Bubbles fast path: pass ``pay_with_bubbles=True``
-    AND ``fee_amount_kobo`` (zero is OK for free sessions). The endpoint
-    debits the member's wallet and confirms in one transaction, returning
-    a CONFIRMED booking. Mirrors the existing one-click sign-in UX.
+    Free sessions are confirmed automatically from the server price. For a
+    paid session's full-Bubbles fast path, pass ``pay_with_bubbles=True``;
+    the endpoint debits the member's wallet and confirms in one transaction,
+    returning a CONFIRMED booking.
     """
 
     session_id: uuid.UUID
@@ -125,6 +125,8 @@ class SessionBookingCreate(BaseModel):
     # Anonymous extra slots for a block booking (Phase 2). Head count =
     # 1 + len(guests) + block_guests; placeholders are named before check-in.
     block_guests: int = Field(default=0, ge=0, le=50)
+    booking_source: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    campaign_key: Optional[str] = Field(default=None, min_length=1, max_length=80)
 
 
 class BookingConfirmRequest(BaseModel):
@@ -133,6 +135,8 @@ class BookingConfirmRequest(BaseModel):
     member_auth_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
     payment_intent_id: Optional[uuid.UUID] = None
     wallet_transaction_id: Optional[uuid.UUID] = None
+    booking_source: Optional[str] = None
+    campaign_key: Optional[str] = None
 
 
 class BundleBookingReserveRequest(BaseModel):

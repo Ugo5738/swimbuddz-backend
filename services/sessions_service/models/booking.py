@@ -5,12 +5,10 @@ because the session owns capacity gating and "who's booked this session"
 is naturally a session-side query.
 
 Represents the booking *lifecycle* only (PENDING → CONFIRMED → CANCELLED /
-EXPIRED). The post-session attendance fact (PRESENT / ABSENT / LATE /
-EXCUSED) lives on ``AttendanceRecord`` in attendance_service; the link is
-``AttendanceRecord.booking_id`` (plain UUID, cross-service ref). Walk-in
-flow doesn't create a SessionBooking — AttendanceRecord is created
-directly with ``booking_id=NULL``. Pre-book flow creates SessionBooking
-first; at sign-in time AttendanceRecord is created with ``booking_id`` set.
+EXPIRED). Attendance facts live in attendance_service. Confirming a booking
+idempotently creates a linked PRESENT row; coaches/admins later record an
+exception such as ABSENT, LATE, or EXCUSED. Walk-ins create attendance at the
+pool and may have ``booking_id=NULL``.
 
 See docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §C for the full
 design rationale, including the "single source of truth for attendance"
@@ -113,6 +111,11 @@ class SessionBooking(Base):
     wallet_transaction_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+
+    # Member acquisition/reporting attribution. These values are accepted only
+    # by authenticated booking routes; they are not used for authorization.
+    booking_source: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    campaign_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True, index=True)
 
     # Corporate-wellness sponsor link (forward-looking). Plain UUID.
     corporate_program_id: Mapped[Optional[uuid.UUID]] = mapped_column(

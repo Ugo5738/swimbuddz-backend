@@ -360,7 +360,7 @@ async def transfer_member(
     member_id: uuid.UUID,
     actor_id: uuid.UUID,
 ) -> tuple[PodAssignment, PodAssignment]:
-    """Pod Lead / admin moves a member from one pod to another.
+    """Admin moves a member from one pod to another.
 
     Returns (old_assignment, new_assignment) so the router can call chat
     reconcile twice — `remove` from old, `add` to new."""
@@ -371,6 +371,11 @@ async def transfer_member(
         )
 
     target = await get_pod_or_404(db, target_pod_id)
+    if target.status != PodStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot transfer a member into an inactive pod",
+        )
 
     # Pull the source assignment first so we can soft-leave it.
     src_result = await db.execute(
@@ -400,7 +405,7 @@ async def transfer_member(
     new_assignment = PodAssignment(
         pod_id=target.id,
         member_id=member_id,
-        assigned_by=PodAssignmentSource.LEAD_TRANSFER,
+        assigned_by=PodAssignmentSource.ADMIN,
         assigned_by_id=actor_id,
     )
     db.add(new_assignment)
@@ -454,6 +459,22 @@ async def list_public_pods(
         q = q.where(Pod.club_id == club_id)
     q = q.order_by(Pod.created_at.desc())
     result = await db.execute(q)
+    return list(result.scalars().all())
+
+
+async def list_admin_pods(
+    db: AsyncSession,
+    *,
+    club_id: Optional[uuid.UUID] = None,
+    status: Optional[PodStatus] = None,
+) -> list[Pod]:
+    """Complete admin inventory, including private and inactive pods."""
+    q = select(Pod)
+    if club_id is not None:
+        q = q.where(Pod.club_id == club_id)
+    if status is not None:
+        q = q.where(Pod.status == status)
+    result = await db.execute(q.order_by(Pod.created_at.desc()))
     return list(result.scalars().all())
 
 

@@ -205,6 +205,41 @@ class ContentPostResponse(ContentPostBase):
         return "draft"
 
 
+class WeeklyDigestConfigUpdate(BaseModel):
+    featured_image_media_id: Optional[uuid.UUID] = None
+    image_alt: Optional[str] = Field(None, min_length=3, max_length=240)
+    section_intro: Optional[str] = Field(None, max_length=1000)
+    default_gear_notes: Optional[str] = Field(None, max_length=1000)
+    is_enabled: Optional[bool] = None
+
+
+class WeeklyDigestConfigResponse(BaseModel):
+    id: uuid.UUID
+    audience: Literal["community", "club", "academy"]
+    featured_image_media_id: Optional[uuid.UUID] = None
+    featured_image_url: Optional[str] = None
+    image_alt: str
+    section_intro: Optional[str] = None
+    default_gear_notes: Optional[str] = None
+    is_enabled: bool
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WeeklyDigestStatsResponse(BaseModel):
+    campaign_key: Optional[str] = None
+    total: int = 0
+    sent: int = 0
+    failed: int = 0
+    pending: int = 0
+    uncertain: int = 0
+    recipients_clicked: int = 0
+    total_clicks: int = 0
+    bookings_started: int = 0
+    bookings_confirmed: int = 0
+
+
 # ===== COMMENT SCHEMAS =====
 class CommentCreate(BaseModel):
     """Schema for creating a comment."""
@@ -364,7 +399,7 @@ class NotificationPreferencesBase(BaseModel):
 
     # Digest preferences
     weekly_digest: bool = True
-    weekly_session_digest: bool = False
+    weekly_session_digest: bool = True
 
 
 class NotificationPreferencesUpdate(BaseModel):

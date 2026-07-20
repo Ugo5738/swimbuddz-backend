@@ -30,6 +30,9 @@ from services.communications_service.schemas.main import (
     NotificationResponse,
     NotificationUnreadCountResponse,
     StudentMessageCreate,
+    WeeklyDigestConfigResponse,
+    WeeklyDigestConfigUpdate,
+    WeeklyDigestStatsResponse,
 )
 
 __all__ = [
@@ -62,4 +65,7 @@ __all__ = [
     "NotificationResponse",
     "NotificationUnreadCountResponse",
     "StudentMessageCreate",
+    "WeeklyDigestConfigResponse",
+    "WeeklyDigestConfigUpdate",
+    "WeeklyDigestStatsResponse",
 ]

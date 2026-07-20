@@ -29,6 +29,8 @@ from libs.auth.dependencies import (
     require_safeguarding_admin,
     require_service_role,
 )
+from services.members_service.models import PodAssignment, PodAssignmentSource
+from sqlalchemy import select
 from tests.conftest import make_admin_user, make_member_user, override_auth
 from tests.factories import ClubFactory, MemberFactory, PodFactory
 
@@ -402,6 +404,36 @@ async def test_admin_extend_resets_review_window(members_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+async def test_admin_list_pods_includes_private_and_filters_status(
+    members_client, db_session
+):
+    club = ClubFactory.create()
+    lead = MemberFactory.create()
+    private_active = PodFactory.create(
+        club_id=club.id,
+        pod_lead_id=lead.id,
+        visibility="private",
+    )
+    inactive = PodFactory.create(
+        club_id=club.id,
+        pod_lead_id=lead.id,
+        status="inactive",
+    )
+    db_session.add_all([club, lead, private_active, inactive])
+    await db_session.commit()
+
+    response = await members_client.get(
+        f"/admin/members/pods?club_id={club.id}&status=active"
+    )
+
+    assert response.status_code == 200, response.text
+    pod_ids = {pod["id"] for pod in response.json()}
+    assert str(private_active.id) in pod_ids
+    assert str(inactive.id) not in pod_ids
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 async def test_admin_review_queue_includes_due_pods_only(members_client, db_session):
     """review-queue surfaces only active pods with review_due_at <= now."""
     from datetime import datetime, timedelta, timezone
@@ -575,7 +607,7 @@ async def test_member_list_public_pods_filters_by_club(members_client, db_sessio
 @pytest.mark.integration
 async def test_admin_transfer_member_to_another_pod(members_client, db_session):
     """Transfer soft-leaves the source assignment, creates a new one with
-    assigned_by=lead_transfer, and fires reconcile remove + add."""
+    assigned_by=admin, and fires reconcile remove + add."""
     await _setup_admin_with_member(db_session)
     club = ClubFactory.create()
     lead1 = MemberFactory.create()
@@ -607,6 +639,87 @@ async def test_admin_transfer_member_to_another_pod(members_client, db_session):
     actions = [c.kwargs["action"] for c in mr.await_args_list]
     assert actions == ["remove", "add"]
 
+    active_assignment = (
+        await db_session.execute(
+            select(PodAssignment).where(
+                PodAssignment.member_id == member.id,
+                PodAssignment.left_at.is_(None),
+            )
+        )
+    ).scalar_one()
+    assert active_assignment.pod_id == pod_tgt.id
+    assert active_assignment.assigned_by == PodAssignmentSource.ADMIN
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_admin_transfer_rejects_invalid_target_pod(
+    members_client,
+    db_session,
+):
+    await _setup_admin_with_member(db_session)
+    source_club = ClubFactory.create()
+    lead1 = MemberFactory.create()
+    lead2 = MemberFactory.create()
+    pod_src = PodFactory.create(club_id=source_club.id, pod_lead_id=lead1.id)
+    pod_tgt = PodFactory.create(
+        club_id=source_club.id,
+        pod_lead_id=lead2.id,
+        status="inactive",
+    )
+    member = MemberFactory.create()
+    db_session.add_all([source_club, lead1, lead2, pod_src, pod_tgt, member])
+    await db_session.commit()
+
+    patches = _silence_chat_sync()
+    with patches["ensure"], patches["reconcile"]:
+        add_response = await members_client.post(
+            f"/admin/members/pods/{pod_src.id}/members",
+            json={"member_id": str(member.id)},
+        )
+        assert add_response.status_code == 201, add_response.text
+
+        response = await members_client.post(
+            f"/admin/members/pods/{pod_src.id}/transfers?member_id={member.id}",
+            json={"target_pod_id": str(pod_tgt.id)},
+        )
+
+    assert response.status_code == 400, response.text
+    assert "inactive pod" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_admin_transfer_can_move_member_to_another_club(
+    members_client,
+    db_session,
+):
+    await _setup_admin_with_member(db_session)
+    source_club = ClubFactory.create()
+    target_club = ClubFactory.create()
+    lead1 = MemberFactory.create()
+    lead2 = MemberFactory.create()
+    pod_src = PodFactory.create(club_id=source_club.id, pod_lead_id=lead1.id)
+    pod_tgt = PodFactory.create(club_id=target_club.id, pod_lead_id=lead2.id)
+    member = MemberFactory.create()
+    db_session.add_all(
+        [source_club, target_club, lead1, lead2, pod_src, pod_tgt, member]
+    )
+    await db_session.commit()
+
+    patches = _silence_chat_sync()
+    with patches["ensure"], patches["reconcile"]:
+        await members_client.post(
+            f"/admin/members/pods/{pod_src.id}/members",
+            json={"member_id": str(member.id)},
+        )
+        response = await members_client.post(
+            f"/admin/members/pods/{pod_src.id}/transfers?member_id={member.id}",
+            json={"target_pod_id": str(pod_tgt.id)},
+        )
+
+    assert response.status_code == 204, response.text
+
 
 # ---------------------------------------------------------------------------
 # Internal: /internal/members/pods/* (sessions ↔ pods read-time integration)
@@ -622,7 +735,7 @@ async def test_internal_get_pod_returns_schedule_and_active_members(
     pod's schedule + active member roster when scheduling a Club session."""
     from datetime import time
 
-    from services.members_service.models import DayOfWeek, PodAssignmentSource
+    from services.members_service.models import DayOfWeek
 
     club = ClubFactory.create()
     lead = MemberFactory.create()

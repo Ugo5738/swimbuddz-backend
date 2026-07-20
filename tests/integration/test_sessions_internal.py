@@ -2,10 +2,21 @@
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from libs.common.session_access import SessionAccessDecision
 from tests.factories import MemberFactory, SessionCoachFactory, SessionFactory
+
+
+@pytest.fixture(autouse=True)
+def _stub_booking_attendance_sync():
+    with patch(
+        "services.sessions_service.routers.internal.sync_booking_attendance",
+        AsyncMock(return_value=None),
+    ):
+        yield
+
 
 # ---------------------------------------------------------------------------
 # GET /internal/sessions/{session_id}
@@ -41,6 +52,59 @@ async def test_get_session_by_id_not_found(sessions_client):
 
     response = await sessions_client.get(f"/internal/sessions/{uuid.uuid4()}")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_campaign_booking_stats_are_backend_attributed(
+    sessions_client, db_session
+):
+    from services.sessions_service.models import (
+        BookingChannel,
+        SessionBooking,
+        SessionBookingStatus,
+    )
+
+    campaign = "week-2026-07-20"
+    session = SessionFactory.create()
+    db_session.add(session)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            SessionBooking(
+                session_id=session.id,
+                member_id=uuid.uuid4(),
+                member_auth_id=str(uuid.uuid4()),
+                status=SessionBookingStatus.PENDING,
+                channel=BookingChannel.MEMBER_SELF,
+                campaign_key=campaign,
+            ),
+            SessionBooking(
+                session_id=session.id,
+                member_id=uuid.uuid4(),
+                member_auth_id=str(uuid.uuid4()),
+                status=SessionBookingStatus.CONFIRMED,
+                channel=BookingChannel.MEMBER_SELF,
+                campaign_key=campaign,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await sessions_client.get(
+        "/internal/sessions/bookings/campaign-stats",
+        params={"campaign_key": campaign},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "campaign_key": campaign,
+        "total": 2,
+        "pending": 1,
+        "confirmed": 1,
+        "cancelled": 0,
+        "expired": 0,
+    }
 
 
 @pytest.mark.asyncio

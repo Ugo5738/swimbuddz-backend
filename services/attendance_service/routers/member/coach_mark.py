@@ -1,4 +1,4 @@
-"""Coach bulk-attendance marking endpoint (default-present model)."""
+"""Coach bulk-attendance marking endpoint."""
 
 import uuid
 
@@ -34,13 +34,12 @@ async def coach_mark_session_attendance(
 ):
     """Bulk attendance mark by the cohort's coach (or admin override).
 
-    Default-present model: students NOT included in `entries` are treated
-    as PRESENT — no row is written, the cohort payout calculator infers
-    presence from the absence of an exception. The coach typically only
-    submits entries for EXCUSED, ABSENT, or LATE statuses.
+    Confirmed bookings already carry a PRESENT row. The coach typically only
+    submits exceptions such as EXCUSED, ABSENT, or LATE; explicit PRESENT can
+    restore an accidentally changed row.
 
     Behavior per entry:
-      - status == PRESENT: deletes any existing exception row (revert to default)
+      - status == PRESENT: upserts the row to PRESENT
       - status in {EXCUSED, ABSENT, LATE, CANCELLED}: upserts the row by
         (session_id, member_id), overwriting prior status
 

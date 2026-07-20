@@ -12,11 +12,11 @@ WITH THE STUDENT. A coach earns credit for a (student, session) pair iff an
 else — ``ABSENT``, ``CANCELLED``, ``EXCUSED``, or no attendance row at all —
 does NOT credit the coach.
 
-This is a behavioral change from the previous default-present model. Coaches
-must affirmatively mark attendance via the admin/coach attendance page (or
-via the member self-sign-in flow that produces a PRESENT row) for pay to
-accrue. Pairs with Phase 1 of the attendance restructure, which switched
-the UI to require an explicit booking + an explicit attendance mark.
+Confirmed bookings create a linked ``PRESENT`` row by default. Coaches and
+admins overwrite that row when the member was absent, late, or excused;
+walk-ins create their attendance row at the pool. Payouts still require the
+persisted attendance fact, so a legacy or failed-sync booking with no row does
+not credit the coach.
 
 Make-ups still work the same way: EXCUSED creates a ``CohortMakeupObligation``
 that the coach gets paid for once they actually deliver the make-up (the
@@ -49,9 +49,8 @@ logger = get_logger(__name__)
 
 
 # Statuses that count as "lesson was actually held with the student" — coach
-# earns pay. ABSENT used to be in this set under the legacy default-present
-# model (no-shows still counted as held sessions). Now: a no-show means no
-# lesson happened, so the coach does NOT earn pay for it.
+# earns pay. A no-show means no lesson happened, so the coach does not earn
+# pay for it.
 DELIVERED_STATUSES = ("present", "late")
 # Status that marks an excused absence (with notice). No pay; make-up owed.
 EXCUSED_STATUS = "excused"
@@ -69,9 +68,8 @@ def classify_session_for_payout(status: Optional[str]) -> str:
         "skip"      — coach is not paid; session was cancelled or the student
                       simply didn't attend (no Present/Late row exists)
 
-    ``status`` may be ``None`` (no attendance row recorded). Under the
-    explicit-attendance policy that case is "skip" — coaches must mark
-    attendance to be credited.
+    ``status`` may be ``None`` for legacy or failed-sync data. That case is
+    "skip" because payouts require a persisted attendance fact.
     """
     if status is None:
         return "skip"

@@ -10,7 +10,8 @@ Handles:
 
 from datetime import date, datetime, timedelta
 from typing import Optional
-from uuid import UUID
+from urllib.parse import urlencode
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -19,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
+from libs.common.media_utils import resolve_media_urls
 from libs.common.service_client import (
     dispatch_notification,
     get_confirmed_booking_member_ids,
@@ -26,6 +28,7 @@ from libs.common.service_client import (
     get_pod_by_id,
     get_session_by_id,
     internal_get,
+    internal_post,
 )
 from libs.common.session_access import (
     default_booking_prompt_tier as shared_default_booking_prompt_tier,
@@ -48,6 +51,8 @@ from services.communications_service.models import (
     ScheduledNotificationStatus,
     SessionNotificationLog,
     SessionNotificationType,
+    WeeklyDigestConfig,
+    WeeklyDigestDispatch,
 )
 from services.communications_service.templates.session_notifications import (
     send_session_announcement_email,
@@ -1273,11 +1278,7 @@ def _should_send_reminder(
 
 
 async def send_weekly_session_digest() -> None:
-    """
-    Send weekly digest of upcoming sessions to members who opted in.
-
-    Called by the ARQ worker on Sundays.
-    """
+    """Send the idempotent, tier-sectioned weekly digest on Sundays."""
     from services.communications_service.templates.session_notifications import (
         send_weekly_session_digest_email,
     )
@@ -1296,7 +1297,6 @@ async def send_weekly_session_digest() -> None:
             week_start = week_start_local.astimezone(ZoneInfo("UTC"))
             week_end = week_end_local.astimezone(ZoneInfo("UTC"))
 
-            # Get upcoming sessions for the week via sessions-service
             settings = get_settings()
             sessions_resp = await internal_get(
                 service_url=settings.SESSIONS_SERVICE_URL,
@@ -1312,13 +1312,11 @@ async def send_weekly_session_digest() -> None:
                 return
             sessions = sessions_resp.json()
 
-            if not sessions:
-                logger.info("No sessions this week for digest; checking articles")
-
             week_label = (
                 f"{week_start_local.strftime('%B %d')} - "
                 f"{(week_end_local - timedelta(days=1)).strftime('%d, %Y')}"
             )
+            campaign_key = f"week-{week_start_local.date().isoformat()}"
 
             # Get active members from members-service
             members_resp = await internal_get(
@@ -1332,6 +1330,15 @@ async def send_weekly_session_digest() -> None:
             all_members = members_resp.json()
 
             prefs_map = await _get_notification_preferences_by_auth(db, all_members)
+            config_rows = (
+                (
+                    await db.execute(
+                        select(WeeklyDigestConfig).order_by(WeeklyDigestConfig.audience)
+                    )
+                )
+                .scalars()
+                .all()
+            )
             articles_result = await db.execute(
                 select(ContentPost)
                 .where(
@@ -1341,7 +1348,7 @@ async def send_weekly_session_digest() -> None:
                     ContentPost.published_at <= now,
                 )
                 .order_by(ContentPost.published_at.desc())
-                .limit(5)
+                .limit(10)
             )
             recent_articles = articles_result.scalars().all()
 
@@ -1349,8 +1356,50 @@ async def send_weekly_session_digest() -> None:
                 logger.info("No sessions or articles for weekly digest")
                 return
 
+            media_ids = [config.featured_image_media_id for config in config_rows]
+            media_ids.extend(
+                article.featured_image_media_id for article in recent_articles
+            )
+            media_urls = await resolve_media_urls(media_ids)
+            digest_configs = {
+                config.audience: {
+                    "featured_image_url": media_urls.get(config.featured_image_media_id)
+                    or (
+                        f"{settings.FRONTEND_URL.rstrip('/')}"
+                        f"/email/digest/{config.audience}.webp"
+                    ),
+                    "image_alt": config.image_alt,
+                    "section_intro": config.section_intro,
+                    "default_gear_notes": config.default_gear_notes,
+                    "is_enabled": config.is_enabled,
+                }
+                for config in config_rows
+            }
+
+            session_ids = [str(session["id"]) for session in sessions]
+            transport_by_session: dict[str, list[dict]] = {}
+            if session_ids:
+                try:
+                    transport_resp = await internal_post(
+                        service_url=settings.TRANSPORT_SERVICE_URL,
+                        path="/transport/sessions/ride-configs/batch",
+                        calling_service="communications",
+                        json={"session_ids": session_ids},
+                    )
+                    if transport_resp.status_code == 200:
+                        transport_by_session = transport_resp.json().get("configs", {})
+                except Exception as exc:
+                    logger.warning("Digest transport lookup failed: %s", exc)
+
+            weather_by_session: dict[str, dict | None] = {}
+            for session in sessions:
+                weather_by_session[
+                    str(session["id"])
+                ] = await _get_session_weather_summary(session)
+
             cohort_enrollments_by_session: dict[str, dict[str, dict]] = {}
             pod_member_ids_by_session: dict[str, set[str]] = {}
+            pods_by_session: dict[str, dict] = {}
             for s in sessions:
                 session_id = str(s.get("id"))
                 session_type = str(s.get("session_type") or "").lower()
@@ -1400,11 +1449,40 @@ async def send_weekly_session_digest() -> None:
                     pod_member_ids_by_session[session_id] = {
                         str(mid) for mid in ((pod or {}).get("active_member_ids") or [])
                     }
+                    if pod:
+                        pods_by_session[session_id] = pod
+
+            people_by_id = {
+                str(member["id"]): member for member in all_members if member.get("id")
+            }
+            related_people_ids: set[str] = set()
+            for session in sessions:
+                related_people_ids.update(
+                    str(member_id)
+                    for member_id in session.get("coach_member_ids") or []
+                )
+            for pod in pods_by_session.values():
+                if pod.get("pod_lead_id"):
+                    related_people_ids.add(str(pod["pod_lead_id"]))
+                if pod.get("assistant_pod_lead_id"):
+                    related_people_ids.add(str(pod["assistant_pod_lead_id"]))
+            missing_people_ids = related_people_ids - people_by_id.keys()
+            if missing_people_ids:
+                related_people = await get_members_bulk(
+                    sorted(missing_people_ids), calling_service="communications"
+                )
+                people_by_id.update(
+                    {
+                        str(person["id"]): person
+                        for person in related_people
+                        if person.get("id")
+                    }
+                )
 
             eligible_members = []
             for m in all_members:
                 pref = prefs_map.get(m.get("auth_id"))
-                wants_session_digest = bool(pref and pref.weekly_session_digest)
+                wants_session_digest = pref is None or bool(pref.weekly_session_digest)
                 wants_content_digest = not (pref and pref.weekly_digest is False)
                 if not wants_session_digest and not wants_content_digest:
                     continue
@@ -1417,10 +1495,17 @@ async def send_weekly_session_digest() -> None:
                 member_id = str(member.get("id"))
                 pref = prefs_map.get(member.get("auth_id"))
                 wants_session_digest = bool(pref and pref.weekly_session_digest)
+                if pref is None:
+                    wants_session_digest = True
                 wants_content_digest = not (pref and pref.weekly_digest is False)
                 if wants_session_digest:
                     for s in sessions:
                         session_id = str(s.get("id"))
+                        booked_member_ids = {
+                            str(value)
+                            for value in s.get("confirmed_booking_member_ids") or []
+                        }
+                        is_booked = member_id in booked_member_ids
                         cohort_enrollment = None
                         if session_id in cohort_enrollments_by_session:
                             cohort_enrollment = cohort_enrollments_by_session[
@@ -1439,40 +1524,233 @@ async def send_weekly_session_digest() -> None:
                             now=now,
                             cohort_enrollment=cohort_enrollment,
                             pod_member_ids=pod_member_ids,
+                            confirmed_booking=is_booked,
                         )
                         if not access.digest_eligible:
                             continue
 
                         tz = ZoneInfo(s.get("timezone", "Africa/Lagos"))
                         local_dt = datetime.fromisoformat(s["starts_at"]).astimezone(tz)
-                        member_sessions.append(
+                        local_end = datetime.fromisoformat(s["ends_at"]).astimezone(tz)
+                        session_type = str(s.get("session_type") or "").lower()
+                        audience = (
+                            "academy"
+                            if session_type == "cohort_class"
+                            else "club"
+                            if session_type == "club"
+                            else "community"
+                        )
+                        if not (digest_configs.get(audience) or {}).get(
+                            "is_enabled", True
+                        ):
+                            continue
+
+                        pod = pods_by_session.get(session_id)
+                        scope_label = ""
+                        leader_labels: list[str] = []
+                        if audience == "club":
+                            if pod:
+                                pod_name = pod.get("handle") or pod.get("name") or "Pod"
+                                scope_label = f"{pod_name} Pod"
+                                lead = people_by_id.get(str(pod.get("pod_lead_id")))
+                                if lead:
+                                    leader_labels.append(
+                                        "Pod Lead: "
+                                        f"{lead.get('first_name', '')} "
+                                        f"{lead.get('last_name', '')}"
+                                    )
+                                assistant = people_by_id.get(
+                                    str(pod.get("assistant_pod_lead_id"))
+                                )
+                                if assistant:
+                                    leader_labels.append(
+                                        "Assistant Pod Lead: "
+                                        f"{assistant.get('first_name', '')} "
+                                        f"{assistant.get('last_name', '')}"
+                                    )
+                            else:
+                                scope_label = "General Club session"
+                        coach_names = []
+                        for coach_id in s.get("coach_member_ids") or []:
+                            coach = people_by_id.get(str(coach_id))
+                            if coach:
+                                coach_names.append(
+                                    f"{coach.get('first_name', '')} "
+                                    f"{coach.get('last_name', '')}".strip()
+                                )
+                        if coach_names:
+                            leader_labels.append(f"Coach: {', '.join(coach_names)}")
+
+                        weather = weather_by_session.get(session_id) or {}
+                        weather_text = " | ".join(
+                            str(weather.get(key))
+                            for key in (
+                                "condition_text",
+                                "temperature_text",
+                                "rain_chance_text",
+                            )
+                            if weather.get(key)
+                        )
+                        if weather.get("explanation"):
+                            weather_text = (
+                                f"{weather_text}. {weather['explanation']}".strip()
+                            )
+
+                        ride_configs = transport_by_session.get(session_id) or []
+                        transport_text = ""
+                        if ride_configs:
+                            areas = sorted(
+                                {
+                                    str(config.get("ride_area_name"))
+                                    for config in ride_configs
+                                    if config.get("ride_area_name")
+                                }
+                            )
+                            costs = [
+                                float(config.get("cost") or 0)
+                                for config in ride_configs
+                            ]
+                            price = min(costs) if costs else 0
+                            transport_text = f"Available from {', '.join(areas)}" + (
+                                f" from NGN {price:,.0f}" if price else ""
+                            )
+
+                        fee_kobo = int(s.get("pool_fee") or 0)
+                        remaining = max(
+                            0,
+                            int(s.get("capacity") or 0)
+                            - int(s.get("occupied_slots") or 0),
+                        )
+                        start_utc = datetime.fromisoformat(s["starts_at"]).astimezone(
+                            ZoneInfo("UTC")
+                        )
+                        end_utc = datetime.fromisoformat(s["ends_at"]).astimezone(
+                            ZoneInfo("UTC")
+                        )
+                        calendar_params = urlencode(
                             {
-                                "title": s["title"],
-                                "type": s["session_type"],
-                                "date": local_dt.strftime("%A, %B %d"),
-                                "time": local_dt.strftime("%I:%M %p"),
+                                "action": "TEMPLATE",
+                                "text": s["title"],
+                                "dates": (
+                                    f"{start_utc.strftime('%Y%m%dT%H%M%SZ')}/"
+                                    f"{end_utc.strftime('%Y%m%dT%H%M%SZ')}"
+                                ),
                                 "location": s.get("location_name")
                                 or s.get("location")
                                 or "TBD",
                             }
                         )
+                        member_sessions.append(
+                            {
+                                "id": session_id,
+                                "title": s["title"],
+                                "audience": audience,
+                                "date": local_dt.strftime("%A, %B %d"),
+                                "time": (
+                                    f"{local_dt.strftime('%I:%M %p')} - "
+                                    f"{local_end.strftime('%I:%M %p')}"
+                                ),
+                                "location": s.get("location_name")
+                                or s.get("location")
+                                or "TBD",
+                                "scope_label": scope_label,
+                                "leader_label": " | ".join(
+                                    label.strip() for label in leader_labels
+                                ),
+                                "purpose": s.get("lesson_title")
+                                or s.get("description"),
+                                "weather_text": weather_text,
+                                "transport_text": transport_text,
+                                "fee_text": (
+                                    f"NGN {fee_kobo / 100:,.0f}"
+                                    if fee_kobo
+                                    else "No additional pool fee"
+                                ),
+                                "availability_text": f"{remaining} spots left",
+                                "is_booked": is_booked,
+                                "state_label": (
+                                    "You are booked"
+                                    if is_booked
+                                    else "Available for you to book"
+                                ),
+                                "action_label": (
+                                    "Manage booking" if is_booked else "Book session"
+                                ),
+                                "calendar_url": (
+                                    "https://calendar.google.com/calendar/render?"
+                                    f"{calendar_params}"
+                                ),
+                            }
+                        )
 
                 if wants_content_digest:
-                    frontend_url = settings.FRONTEND_URL.rstrip("/")
                     for article in recent_articles:
                         if not _member_can_read_post(member, article):
                             continue
                         member_articles.append(
                             {
+                                "id": str(article.id),
                                 "title": article.title,
                                 "summary": article.summary,
                                 "category": article.category,
-                                "url": f"{frontend_url}/community/tips/{article.id}",
+                                "image_url": media_urls.get(
+                                    article.featured_image_media_id
+                                ),
                             }
                         )
+                        if len(member_articles) >= 2:
+                            break
 
                 if not member_sessions and not member_articles:
                     continue
+
+                dispatch = (
+                    await db.execute(
+                        select(WeeklyDigestDispatch).where(
+                            WeeklyDigestDispatch.campaign_key == campaign_key,
+                            WeeklyDigestDispatch.member_id == UUID(member_id),
+                        )
+                    )
+                ).scalar_one_or_none()
+                if dispatch and dispatch.delivery_status in {
+                    "sent",
+                    "sending",
+                    "unknown",
+                }:
+                    continue
+                if dispatch is None:
+                    dispatch = WeeklyDigestDispatch(
+                        campaign_key=campaign_key,
+                        member_id=UUID(member_id),
+                        recipient_email=member["email"],
+                        tracking_token=uuid4(),
+                        delivery_status="pending",
+                        attempt_count=0,
+                        click_count=0,
+                    )
+                    db.add(dispatch)
+                    await db.flush()
+
+                public_api_url = settings.PUBLIC_API_URL or (
+                    "https://api.swimbuddz.com"
+                    if settings.ENVIRONMENT == "production"
+                    else settings.GATEWAY_URL
+                )
+                tracking_base = (
+                    f"{public_api_url.rstrip('/')}"
+                    f"/api/v1/communications/digest/click/{dispatch.tracking_token}"
+                )
+                for session in member_sessions:
+                    kind = "session-manage" if session["is_booked"] else "session"
+                    session["action_url"] = f"{tracking_base}/{kind}/{session['id']}"
+                for article in member_articles:
+                    article["url"] = f"{tracking_base}/article/{article['id']}"
+                preferences_url = f"{tracking_base}/preferences/me"
+
+                dispatch.delivery_status = "sending"
+                dispatch.attempt_count += 1
+                dispatch.error_message = None
+                await db.commit()
 
                 try:
                     success = await send_weekly_session_digest_email(
@@ -1481,13 +1759,24 @@ async def send_weekly_session_digest() -> None:
                         week_label=week_label,
                         sessions=member_sessions,
                         articles=member_articles,
+                        digest_configs=digest_configs,
+                        preferences_url=preferences_url,
                     )
                     if success:
+                        dispatch.delivery_status = "sent"
+                        dispatch.sent_at = utc_now()
                         sent_count += 1
+                    else:
+                        dispatch.delivery_status = "failed"
+                        dispatch.error_message = "Email provider returned failure"
                 except Exception as e:
+                    dispatch.delivery_status = "failed"
+                    dispatch.error_message = str(e)[:2000]
                     logger.error(
                         f"Failed to send weekly digest to {member['email']}: {e}"
                     )
+                finally:
+                    await db.commit()
 
             logger.info(f"Sent weekly session digest to {sent_count} members")
 
