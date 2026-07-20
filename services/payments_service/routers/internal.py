@@ -166,6 +166,14 @@ async def internal_initialize_payment(
 
     payment: Payment | None = None
     if purpose_enum:
+        session_booking_id = None
+        if purpose_enum == PaymentPurpose.SESSION_BOOKING:
+            try:
+                session_booking_id = uuid.UUID(
+                    str((req.metadata or {}).get("booking_id"))
+                )
+            except (TypeError, ValueError):
+                session_booking_id = None
         existing = await db.execute(
             select(Payment).where(Payment.reference == req.reference)
         )
@@ -182,6 +190,7 @@ async def internal_initialize_payment(
                 provider="paystack",
                 provider_reference=req.reference,
                 payment_method="paystack",
+                session_booking_id=session_booking_id,
                 payment_metadata={
                     **(req.metadata or {}),
                     "internal_reference": req.reference,

@@ -16625,6 +16625,65 @@
         }
       }
     },
+    "/api/v1/payments/admin/bookings/{booking_id}/offline-payment": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Admin Record Booking Offline Payment",
+        "description": "Record a full session fee collected outside SwimBuddz checkout.\n\nThe booking's pricing snapshot is authoritative. The endpoint deliberately\ndoes not accept a client total or partial payment because the booking model\ncurrently represents one fully settled fee. The resulting Payment follows\nthe normal entitlement and ledger path and backfills payment_intent_id on\nan already-confirmed walk-in booking.",
+        "operationId": "admin_record_booking_offline_payment_payments_admin_bookings__booking_id__offline_payment_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminBookingOfflinePaymentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/payments/admin/bookings/{booking_id}/payment-link": {
       "post": {
         "tags": [
@@ -67667,6 +67726,61 @@
         "title": "WithdrawEnrollmentResponse",
         "description": "Summary of a withdrawal action \u2014 what was refunded and waived."
       },
+      "AdminBookingOfflinePaymentRequest": {
+        "properties": {
+          "payment_method": {
+            "type": "string",
+            "enum": [
+              "bank_transfer",
+              "cash",
+              "pos",
+              "other"
+            ],
+            "title": "Payment Method",
+            "default": "bank_transfer"
+          },
+          "received_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received At"
+          },
+          "external_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Reference"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AdminBookingOfflinePaymentRequest",
+        "description": "Auditable receipt details for a session fee collected off-platform."
+      },
       "AdminBookingPayLinkRequest": {
         "properties": {
           "amount_naira": {
@@ -69428,6 +69542,18 @@
             ],
             "title": "Provider Reference"
           },
+          "session_booking_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Booking Id"
+          },
           "payment_method": {
             "anyOf": [
               {
@@ -69713,6 +69839,18 @@
               }
             ],
             "title": "Provider Reference"
+          },
+          "session_booking_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Booking Id"
           },
           "payment_method": {
             "anyOf": [

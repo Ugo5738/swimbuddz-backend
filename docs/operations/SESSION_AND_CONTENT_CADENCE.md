@@ -81,6 +81,21 @@ sends one admin receipt per configured admin email and records delivery state in
 `payment_admin_email_logs`. Failed deliveries retry; completed payments leave
 the queue, and historical payments are not backfilled into it.
 
+## Offline Session Payments
+
+An admin can settle an outstanding session booking from the attendance roster
+when the member paid outside SwimBuddz checkout. The receipt records the
+verified method (`bank_transfer`, `cash`, `pos`, or `other`), external
+reference where applicable, receipt time, note, and recording admin. The
+booking's server-side fee snapshot owns the amount; the endpoint does not
+accept a client total or a partial payment.
+
+The resulting `session_booking` payment follows the normal entitlement and
+ledger path and is linked back to the booking. Existing legacy attendance rows
+without a booking must first use **Create booking** so attendance, payment, and
+session revenue remain separately auditable. Recording payment does not change
+the member's attendance result.
+
 ## Article Publication
 
 Use a human-reviewed weekly cadence:

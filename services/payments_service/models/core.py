@@ -73,6 +73,12 @@ class Payment(Base):
     provider_reference: Mapped[str | None] = mapped_column(
         String(128), index=True, nullable=True
     )
+    # Authoritative cross-service reference for one-session booking payments.
+    # Historical rows also retain metadata.booking_id; this column makes
+    # reconciliation and duplicate checks queryable without JSON extraction.
+    session_booking_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), index=True, nullable=True
+    )
     paid_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

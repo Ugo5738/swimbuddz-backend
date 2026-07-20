@@ -929,8 +929,9 @@ async def admin_walk_in_booking(
             SessionBookingStatus.PENDING,
             SessionBookingStatus.CONFIRMED,
         ):
-            # Upgrade PENDING to CONFIRMED if needed — admin walk-in implies
-            # payment has happened (the member is physically present).
+            # Upgrade PENDING to CONFIRMED if needed. Physical attendance and
+            # fee settlement are separate: without a payment/wallet link this
+            # booking remains visible as outstanding for later collection.
             if existing.status == SessionBookingStatus.PENDING:
                 existing.status = SessionBookingStatus.CONFIRMED
                 existing.confirmed_at = utc_now()
