@@ -4,10 +4,13 @@ import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-from libs.common.emails.client import get_email_client
 from libs.common.datetime_utils import utc_now
+from libs.common.emails.client import get_email_client
 from libs.db.session import get_async_db
 from services.members_service.models import Member
 from services.members_service.routers._helpers import member_eager_load_options
@@ -16,8 +19,6 @@ from services.members_service.schemas import (
     MemberResponse,
     PendingMemberResponse,
 )
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -213,6 +214,9 @@ async def approve_member_upgrade(
 
     new_tiers = member.membership.requested_tiers or []
     member.membership.active_tiers = new_tiers
+    member.membership.declared_tiers = sorted(
+        set(member.membership.declared_tiers or ["community"]) | set(new_tiers)
+    )
     if new_tiers:
         member.membership.primary_tier = new_tiers[0]
 

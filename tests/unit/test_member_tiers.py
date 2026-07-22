@@ -13,29 +13,29 @@ from services.members_service import service as member_service
 class TestNormalizeMemberTiers:
     """Tests for tier normalization logic."""
 
-    def test_defaults_to_community_when_no_tiers(self):
-        """Members with no tiers should default to community."""
+    def test_defaults_to_prospect_when_no_entitlements(self):
+        """Approved accounts without payment have no effective tier."""
         primary, tiers, changed = member_service.normalize_member_tiers(
             current_tier=None,
             current_tiers=None,
             community_paid_until=None,
             club_paid_until=None,
         )
-        assert primary == "community"
-        assert tiers == ["community"]
+        assert primary == "prospect"
+        assert tiers == []
         assert changed is True
 
-    def test_preserves_existing_community_tier(self):
-        """Members already on community should not trigger change."""
+    def test_strips_unpaid_community_cache(self):
+        """A cached Community label cannot manufacture access."""
         primary, tiers, changed = member_service.normalize_member_tiers(
             current_tier="community",
             current_tiers=["community"],
             community_paid_until=None,
             club_paid_until=None,
         )
-        assert primary == "community"
-        assert tiers == ["community"]
-        assert changed is False
+        assert primary == "prospect"
+        assert tiers == []
+        assert changed is True
 
     def test_club_entitlement_adds_club_and_community(self):
         """Active club subscription should add both club and community tiers."""
@@ -82,8 +82,8 @@ class TestNormalizeMemberTiers:
         assert "community" in tiers
         assert primary == "club"
 
-    def test_all_expired_falls_back_to_community_baseline(self):
-        """When everything has expired, fall back to community as persistent baseline."""
+    def test_all_expired_falls_back_to_prospect(self):
+        """When every paid entitlement expires, effective tiers are empty."""
         past = datetime.now(timezone.utc) - timedelta(days=1)
         primary, tiers, _ = member_service.normalize_member_tiers(
             current_tier="academy",
@@ -92,8 +92,21 @@ class TestNormalizeMemberTiers:
             club_paid_until=past,
             academy_paid_until=past,
         )
-        assert tiers == ["community"]
-        assert primary == "community"
+        assert tiers == []
+        assert primary == "prospect"
+
+    def test_post_academy_bridge_grants_effective_club(self):
+        future = datetime.now(timezone.utc) + timedelta(days=30)
+        primary, tiers, _ = member_service.normalize_member_tiers(
+            current_tier="community",
+            current_tiers=["community"],
+            community_paid_until=future,
+            club_paid_until=None,
+            academy_paid_until=None,
+            post_academy_club_until=future,
+        )
+        assert primary == "club"
+        assert tiers == ["club", "community"]
 
     def test_tiers_sorted_by_priority(self):
         """Tiers should be sorted by priority (academy > club > community)."""
@@ -152,6 +165,18 @@ class TestCalculateExpiry:
         # Sanity: at least 364 days from start time (calendar year >= 365 days,
         # minus a tiny clock-tick slack)
         assert (result - start).total_seconds() >= 364 * 86400
+
+    def test_club_expiry_stacks_after_post_academy_bridge(self):
+        """Early Club payment must not consume the complimentary bridge."""
+        bridge_until = datetime.now(timezone.utc) + relativedelta(months=1)
+
+        result = member_service.calculate_club_expiry(
+            current_expiry=None,
+            months=3,
+            additional_active_until=bridge_until,
+        )
+
+        assert result == bridge_until + relativedelta(months=3)
 
 
 class TestClubReadinessValidation:

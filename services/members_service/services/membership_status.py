@@ -1,7 +1,8 @@
 """Display-oriented membership status normalization.
 
 The stored tier fields have different meanings:
-- ``active_tiers``/``primary_tier`` describe approval/admin lifecycle.
+- ``active_tiers``/``primary_tier`` are legacy cached fields and must not be
+  used as an authorization source.
 - ``requested_tiers`` describes an upgrade request.
 - ``*_paid_until`` is the paid entitlement source of truth.
 
@@ -12,6 +13,7 @@ surfaces can render without re-implementing business semantics.
 from __future__ import annotations
 
 from datetime import datetime
+from math import ceil
 from typing import Any, Optional
 
 from libs.common.datetime_utils import utc_now
@@ -64,14 +66,38 @@ def _sort_tiers(tiers: set[str]) -> list[str]:
     return sorted(tiers, key=lambda tier: TIER_PRIORITY[tier], reverse=True)
 
 
+def effective_tiers_from_dates(
+    *,
+    community_paid_until: Optional[datetime],
+    club_paid_until: Optional[datetime],
+    academy_paid_until: Optional[datetime],
+    post_academy_club_until: Optional[datetime] = None,
+    now: Optional[datetime] = None,
+) -> set[str]:
+    """Return effective tiers from canonical entitlement dates."""
+    now = now or utc_now()
+    tiers: set[str] = set()
+    if _paid_until_is_active(academy_paid_until, now):
+        tiers.update(TIERS)
+    if _paid_until_is_active(club_paid_until, now) or _paid_until_is_active(
+        post_academy_club_until, now
+    ):
+        tiers.update({"club", "community"})
+    if _paid_until_is_active(community_paid_until, now):
+        tiers.add("community")
+    return tiers
+
+
 def build_membership_status_summary(
     *,
     primary_tier: Optional[str],
     active_tiers: Optional[list[str]],
+    declared_tiers: Optional[list[str]] = None,
     requested_tiers: Optional[list[str]],
     community_paid_until: Optional[datetime],
     club_paid_until: Optional[datetime],
     academy_paid_until: Optional[datetime],
+    post_academy_club_until: Optional[datetime] = None,
     pending_payment_reference: Optional[str] = None,
     pending_tier_payments: Optional[dict[str, str]] = None,
     now: Optional[datetime] = None,
@@ -79,16 +105,28 @@ def build_membership_status_summary(
     """Build canonical display/access status fields for one membership row."""
 
     now = now or utc_now()
-    declared_tiers = _normalize_tiers(active_tiers)
-    if primary := _normalize_tier(primary_tier):
-        declared_tiers.add(primary)
+    lifecycle_tiers = _normalize_tiers(declared_tiers)
+    if not lifecycle_tiers:
+        lifecycle_tiers = _normalize_tiers(active_tiers)
+        if primary := _normalize_tier(primary_tier):
+            lifecycle_tiers.add(primary)
     requested = _normalize_tiers(requested_tiers)
     paid_until = {
         "community": community_paid_until,
         "club": club_paid_until,
         "academy": academy_paid_until,
     }
+    # Every approved membership row has Community identity, even when payment
+    # has lapsed. Historical entitlement dates preserve higher-tier lifecycle
+    # context after the effective cache has been normalized to Prospect.
+    lifecycle_tiers.add("community")
+    lifecycle_tiers.update(
+        tier for tier, entitlement_end in paid_until.items() if entitlement_end
+    )
+    if post_academy_club_until:
+        lifecycle_tiers.add("club")
     direct_paid = {tier: _paid_until_is_active(paid_until[tier], now) for tier in TIERS}
+    bridge_active = _paid_until_is_active(post_academy_club_until, now)
 
     inherited_from: dict[str, Optional[str]] = {tier: None for tier in TIERS}
     paid_tiers: set[str] = set()
@@ -102,6 +140,12 @@ def build_membership_status_summary(
         paid_tiers.update({"club", "community"})
         if not direct_paid["community"] and inherited_from["community"] is None:
             inherited_from["community"] = "club"
+    if bridge_active:
+        paid_tiers.update({"club", "community"})
+        if not direct_paid["club"] and inherited_from["club"] is None:
+            inherited_from["club"] = "post_academy"
+        if not direct_paid["community"] and inherited_from["community"] is None:
+            inherited_from["community"] = "club"
     if direct_paid["community"]:
         paid_tiers.add("community")
 
@@ -112,7 +156,7 @@ def build_membership_status_summary(
     has_pending_payment = bool(pending_tiers)
     tier_statuses: dict[str, dict[str, Any]] = {}
     for tier in TIERS:
-        declared = tier in declared_tiers
+        declared = tier in lifecycle_tiers
         is_requested = tier in requested
         is_direct_paid = direct_paid[tier]
         inherited = tier in paid_tiers and not is_direct_paid
@@ -130,6 +174,24 @@ def build_membership_status_summary(
         else:
             status = "inactive"
 
+        effective_candidates = [paid_until[tier]]
+        if tier == "club":
+            effective_candidates.extend([post_academy_club_until, academy_paid_until])
+        elif tier == "community":
+            effective_candidates.extend(
+                [club_paid_until, post_academy_club_until, academy_paid_until]
+            )
+        effective_dates = [
+            value for value in effective_candidates if value and value > now
+        ]
+        effective_until = max(effective_dates) if effective_dates else None
+        days_remaining = (
+            max(0, ceil((effective_until - now).total_seconds() / 86400))
+            if effective_until
+            else None
+        )
+        reminder_window = 30 if tier == "community" else 14
+
         tier_statuses[tier] = {
             "tier": tier,
             "status": status,
@@ -140,6 +202,20 @@ def build_membership_status_summary(
             "direct_paid": is_direct_paid,
             "inherited": inherited,
             "inherited_from": inherited_from[tier] if inherited else None,
+            "effective_until": effective_until,
+            "expiring_soon": bool(
+                status == "active"
+                and days_remaining is not None
+                and days_remaining <= reminder_window
+            ),
+            "days_remaining": days_remaining,
+            "access_source": (
+                "direct"
+                if is_direct_paid
+                else inherited_from[tier]
+                if inherited
+                else None
+            ),
         }
 
     sorted_paid_tiers = _sort_tiers(paid_tiers)
@@ -148,6 +224,11 @@ def build_membership_status_summary(
     display_detail = _display_detail(paid_tier, tier_statuses)
 
     return {
+        "declared_tiers": _sort_tiers(lifecycle_tiers),
+        "effective_paid_tiers": sorted_paid_tiers,
+        "highest_paid_tier": paid_tier,
+        # Compatibility aliases. New authorization code should use the
+        # explicit effective/highest names above.
         "paid_tier": paid_tier,
         "paid_tiers": sorted_paid_tiers,
         "display_label": display_label,
@@ -190,6 +271,13 @@ def _display_detail(
         }
         if tiers:
             tier = _sort_tiers(tiers)[0]
-            return f"{TIER_LABELS[tier]}: {STATUS_LABELS[status]}"
+            noun = (
+                "request"
+                if status == "requested"
+                else "payment"
+                if status == "payment_pending"
+                else "access"
+            )
+            return f"{TIER_LABELS[tier]} {noun}: {STATUS_LABELS[status]}"
 
     return None

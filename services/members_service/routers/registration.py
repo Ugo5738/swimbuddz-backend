@@ -5,6 +5,9 @@ import json
 import re
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
@@ -13,9 +16,6 @@ from libs.common.logging import get_logger
 from libs.common.service_client import internal_post
 from libs.common.supabase import get_supabase_admin_client
 from libs.db.session import get_async_db
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.members_service.models import (
     Member,
     MemberAvailability,
@@ -652,6 +652,9 @@ async def complete_pending_registration(
         or profile_data.get("membership_tier")
         or "community",
         active_tiers=profile_data.get("active_tiers")
+        or profile_data.get("membership_tiers")
+        or ["community"],
+        declared_tiers=profile_data.get("active_tiers")
         or profile_data.get("membership_tiers")
         or ["community"],
         requested_tiers=profile_data.get("requested_tiers")

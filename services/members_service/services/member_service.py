@@ -22,6 +22,7 @@ def normalize_member_tiers(
     community_paid_until: Optional[datetime],
     club_paid_until: Optional[datetime],
     academy_paid_until: Optional[datetime] = None,
+    post_academy_club_until: Optional[datetime] = None,
 ) -> tuple[str, list[str], bool]:
     """
     Compute member tier state derived from paid entitlements.
@@ -35,10 +36,12 @@ def normalize_member_tiers(
 
     Rules:
     - Add academy + club + community if academy_paid_until is in the future.
-    - Add club + community if club_paid_until is in the future.
+    - Add club + community if club_paid_until or the post-Academy bridge is
+      in the future.
     - Add community if community_paid_until is in the future.
-    - If nothing paid, fall back to community as the persistent baseline (matches
-      "where club members land if they pause" framing in PRICING_STRATEGY.md).
+    - If nothing is paid, expose no effective tier and use ``prospect`` as the
+      derived primary tier. Community is a paid entitlement, not an implicit
+      fallback label.
     - Sort by priority (academy > club > community).
     - Expired tiers are stripped — this is the source of truth, not the
       stored value.
@@ -50,12 +53,11 @@ def normalize_member_tiers(
 
     if academy_paid_until and academy_paid_until > now:
         tiers.update({"academy", "club", "community"})
-    if club_paid_until and club_paid_until > now:
+    if (club_paid_until and club_paid_until > now) or (
+        post_academy_club_until and post_academy_club_until > now
+    ):
         tiers.update({"club", "community"})
     if community_paid_until and community_paid_until > now:
-        tiers.add("community")
-
-    if not tiers:
         tiers.add("community")
 
     sorted_tiers = sorted(
@@ -64,7 +66,7 @@ def normalize_member_tiers(
         reverse=True,
     )
 
-    new_primary = sorted_tiers[0] if sorted_tiers else "community"
+    new_primary = sorted_tiers[0] if sorted_tiers else "prospect"
 
     tiers_changed = set(sorted_tiers) != set(current_tiers or [])
     primary_changed = new_primary != current_tier
@@ -95,36 +97,29 @@ def academy_bundle_expiry(
     now: datetime,
     community_paid_until: Optional[datetime],
     club_paid_until: Optional[datetime],
-) -> tuple[datetime, datetime]:
-    """Community + Club expiry granted by an academy payment.
+) -> tuple[datetime, Optional[datetime]]:
+    """Lower-tier dates updated by an Academy payment.
 
-    Academy enrollment bundles Community (1 year) and Club (3 months) access,
-    whether paid in full or by installment (docs/club/PRICING_STRATEGY.md tier
-    hierarchy: academy ⊃ club ⊃ community). Each entitlement is floored to
-    ``now + duration`` and never shortened below an existing, longer date — so
-    repeated installment payments are idempotent and a member who already paid
-    further out keeps their longer access.
+    Academy includes Club while Academy is active, so an Academy payment does
+    not manufacture a direct Club entitlement. It extends Community to at
+    least one year from payment and preserves any independently purchased
+    Club date. The separate post-Academy bridge is granted on graduation.
 
     Returns ``(community_paid_until, club_paid_until)``.
     """
     community_floor = now + relativedelta(years=1)
-    club_floor = now + relativedelta(months=3)
     new_community = (
         community_floor
         if community_paid_until is None or community_paid_until < community_floor
         else community_paid_until
     )
-    new_club = (
-        club_floor
-        if club_paid_until is None or club_paid_until < club_floor
-        else club_paid_until
-    )
-    return new_community, new_club
+    return new_community, club_paid_until
 
 
 def calculate_club_expiry(
     current_expiry: Optional[datetime],
     months: int,
+    additional_active_until: Optional[datetime] = None,
 ) -> datetime:
     """Calculate new club tier expiry date.
 
@@ -136,7 +131,11 @@ def calculate_club_expiry(
     30-day approximation was systematically short by 1-5 days per year.
     """
     now = utc_now()
-    base = current_expiry if current_expiry and current_expiry > now else now
+    base = max(
+        value
+        for value in (now, current_expiry, additional_active_until)
+        if value is not None
+    )
     return base + relativedelta(months=months)
 
 

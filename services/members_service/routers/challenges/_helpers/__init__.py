@@ -21,6 +21,7 @@ from ._auth import (
     _authorize_review,
     _enforce_prerequisite,
     _pod_lead_kind_for_member,
+    _require_reviewer_club_access,
     _resolve_member_id_from_auth,
     _resolve_member_id_from_auth_optional,
 )
@@ -35,20 +36,14 @@ from ._members import (
     _load_member_records,
     _short_display_name,
 )
-from ._notifications import (
-    _notify_submission_reviewed,
-    _notify_submission_winner,
-)
+from ._notifications import _notify_submission_reviewed, _notify_submission_winner
 from ._responses import (
     _build_winner_info,
     _hydrate_challenge_response,
     _hydrate_public_challenge_response,
     _hydrate_submission_response,
 )
-from ._rewards import (
-    _award_badge_and_members,
-    _distribute_external_rewards,
-)
+from ._rewards import _award_badge_and_members, _distribute_external_rewards
 
 # Public constants + module logger used by route modules; matches the
 # pre-split surface so route files keep their existing
@@ -64,6 +59,7 @@ __all__ = [
     "_authorize_review",
     "_enforce_prerequisite",
     "_pod_lead_kind_for_member",
+    "_require_reviewer_club_access",
     "_resolve_member_id_from_auth",
     "_resolve_member_id_from_auth_optional",
     # _members

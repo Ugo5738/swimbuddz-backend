@@ -121,6 +121,10 @@ class MemberTierStatusResponse(BaseModel):
     direct_paid: bool = False
     inherited: bool = False
     inherited_from: Optional[str] = None
+    effective_until: Optional[datetime] = None
+    expiring_soon: bool = False
+    days_remaining: Optional[int] = None
+    access_source: Optional[str] = None
 
 
 class MemberMembershipResponse(BaseModel):
@@ -132,16 +136,23 @@ class MemberMembershipResponse(BaseModel):
     # Tiers
     primary_tier: str = "community"
     active_tiers: Optional[list[str]] = None
+    declared_tiers: list[str] = Field(default_factory=lambda: ["community"])
     requested_tiers: Optional[list[str]] = None
 
     # Billing
     community_paid_until: Optional[datetime] = None
     club_paid_until: Optional[datetime] = None
     academy_paid_until: Optional[datetime] = None
+    post_academy_club_until: Optional[datetime] = None
+    club_billing_cycle_months: Optional[int] = None
     pending_payment_reference: Optional[str] = None
     pending_tier_payments: dict[str, str] = Field(default_factory=dict)
 
     # Normalized display/access summary
+    declared_tiers: list[str] = Field(default_factory=list)
+    effective_paid_tiers: list[str] = Field(default_factory=list)
+    highest_paid_tier: str = "prospect"
+    # Compatibility aliases for existing clients.
     paid_tier: str = "prospect"
     paid_tiers: list[str] = Field(default_factory=list)
     display_label: str = "Prospect"
@@ -178,15 +189,20 @@ class MemberMembershipResponse(BaseModel):
         summary = build_membership_status_summary(
             primary_tier=self.primary_tier,
             active_tiers=self.active_tiers,
+            declared_tiers=self.declared_tiers,
             requested_tiers=self.requested_tiers,
             community_paid_until=self.community_paid_until,
             club_paid_until=self.club_paid_until,
             academy_paid_until=self.academy_paid_until,
+            post_academy_club_until=self.post_academy_club_until,
             pending_payment_reference=self.pending_payment_reference,
             pending_tier_payments=self.pending_tier_payments,
         )
-        self.paid_tier = summary["paid_tier"]
-        self.paid_tiers = summary["paid_tiers"]
+        self.declared_tiers = summary["declared_tiers"]
+        self.effective_paid_tiers = summary["effective_paid_tiers"]
+        self.highest_paid_tier = summary["highest_paid_tier"]
+        self.paid_tier = self.highest_paid_tier
+        self.paid_tiers = self.effective_paid_tiers
         self.display_label = summary["display_label"]
         self.display_detail = summary["display_detail"]
         self.payment_pending = summary["payment_pending"]
@@ -379,6 +395,7 @@ class MemberListResponse(BaseModel):
     community_paid_until: Optional[datetime] = None
     club_paid_until: Optional[datetime] = None
     academy_paid_until: Optional[datetime] = None
+    post_academy_club_until: Optional[datetime] = None
 
     # Flattened from emergency contact
     emergency_contact_name: Optional[str] = None
@@ -614,9 +631,9 @@ class ExtendCommunityRequest(BaseModel):
 class ExtendClubRequest(BaseModel):
     """Request to extend club membership without eligibility checks.
 
-    Intended for service-to-service grants (e.g. the free 1-month post-academy
-    club access from PRICING_STRATEGY.md). The optional ``from_date`` anchors
-    the new period — useful when granting at cohort.end_date rather than now.
+    Intended for direct service/admin Club grants. The optional ``from_date``
+    anchors the new period. Post-Academy access uses the dedicated bridge
+    request so complimentary time stays distinguishable from direct Club time.
     """
 
     months: int = Field(default=1, ge=1, le=12)
@@ -624,8 +641,7 @@ class ExtendClubRequest(BaseModel):
         default=None,
         description=(
             "Anchor the new period at this date (defaults to NOW or current "
-            "expiry, whichever is later). Pass the cohort end_date for "
-            "post-academy free month grants."
+            "expiry, whichever is later)."
         ),
     )
     reason: Optional[str] = Field(
@@ -633,6 +649,19 @@ class ExtendClubRequest(BaseModel):
         max_length=200,
         description="Audit note describing why the extension was granted.",
     )
+    idempotency_key: Optional[str] = Field(default=None, max_length=200)
+    source_reference: Optional[str] = Field(default=None, max_length=160)
+
+
+class GrantPostAcademyClubBridgeRequest(BaseModel):
+    """Grant the complimentary Club period earned at Academy graduation."""
+
+    months: int = Field(default=1, ge=1, le=12)
+    from_date: Optional[datetime] = Field(
+        default=None,
+        description="Graduation/cohort end date that anchors the bridge.",
+    )
+    reason: Optional[str] = Field(default=None, max_length=200)
     idempotency_key: Optional[str] = Field(default=None, max_length=200)
     source_reference: Optional[str] = Field(default=None, max_length=160)
 
@@ -668,9 +697,10 @@ class ActivateAcademyRequest(BaseModel):
 class ProjectAcademyRequest(BaseModel):
     """Replace the Academy tier projection with Academy's current truth.
 
-    Unlike activation, projection does not grant the bundled Community or Club
-    periods. It is used by academy_service after withdrawals, cohort changes,
-    and during reconciliation to repair derived member state.
+    Unlike activation, projection does not extend Community or grant the
+    post-graduation Club bridge. It is used by academy_service after
+    withdrawals, cohort changes, and during reconciliation to repair derived
+    member state.
     """
 
     paid_until: Optional[datetime] = Field(

@@ -1328,13 +1328,71 @@
         }
       }
     },
+    "/api/v1/admin/members/by-auth/{auth_id}/club/post-academy-bridge": {
+      "post": {
+        "tags": [
+          "admin-members"
+        ],
+        "summary": "Admin Grant Post Academy Club Bridge By Auth",
+        "description": "Grant the explicit complimentary Club period after graduation.",
+        "operationId": "admin_grant_post_academy_club_bridge_by_auth_admin_members_by_auth__auth_id__club_post_academy_bridge_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Auth Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantPostAcademyClubBridgeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/members/by-auth/{auth_id}/club/extend": {
       "post": {
         "tags": [
           "admin-members"
         ],
         "summary": "Admin Extend Club Membership By Auth",
-        "description": "Extend club membership by N months without eligibility checks.\n\nIntended for service-to-service grants such as the free 1-month\npost-academy club access bridge (see PRICING_STRATEGY.md). Skips the\nreadiness/requested-tier gates that ``/club/activate`` enforces because\nthe caller is the system, not the member self-upgrading.\n\nThe new ``club_paid_until`` becomes ``max(current, anchor) + months`` where\n``anchor = payload.from_date or now``. Callers that may retry must provide\nan idempotency key.",
+        "description": "Extend club membership by N months without eligibility checks.\n\nIntended for direct service/admin Club grants. Post-Academy access uses\nthe separate ``/club/post-academy-bridge`` endpoint so it remains\ndistinguishable from purchased Club time.\n\nThe new ``club_paid_until`` becomes ``max(current, anchor) + months`` where\n``anchor = payload.from_date or now``. Callers that may retry must provide\nan idempotency key.",
         "operationId": "admin_extend_club_membership_by_auth_admin_members_by_auth__auth_id__club_extend_post",
         "security": [
           {
@@ -1498,7 +1556,7 @@
           "admin-members"
         ],
         "summary": "Admin Activate Academy Membership By Auth",
-        "description": "Apply a paid Academy entitlement once and preserve later cohorts.\n\nThe idempotency key protects both the Academy end date and the Community\nand Club periods bundled with the first Academy payment. Retrying the same\npayment therefore cannot keep moving those lower-tier expiries forward.",
+        "description": "Apply a paid Academy entitlement once and preserve later cohorts.\n\nThe idempotency key protects both the Academy end date and the Community\nperiod granted by the first Academy payment. Club is inherited while\nAcademy is active; its explicit one-month bridge is granted separately on\ngraduation. Retrying the same payment cannot keep moving entitlements.",
         "operationId": "admin_activate_academy_membership_by_auth_admin_members_by_auth__auth_id__academy_activate_post",
         "security": [
           {
@@ -5565,7 +5623,7 @@
           "pods"
         ],
         "summary": "List Pods I Lead",
-        "description": "Pods where I am the lead OR assistant lead.\n\nPowers two member-facing surfaces:\n  * The \"Pod Lead Review\" entry in the member sidebar \u2014 only shown\n    when this returns at least one pod.\n  * The Pod-Lead-side challenge review queue, which uses the list\n    for context (e.g. \"you're reviewing as Pod Lead of {pod.name}\").\n\nReturns ALL pods the member leads regardless of status, so a recently\ndissolved pod still shows up briefly before fading from the UI.",
+        "description": "Pods where I am the lead OR assistant lead.\n\nPowers two member-facing surfaces:\n  * The \"Pod Lead Review\" entry in the member sidebar \u2014 only shown\n    when this returns at least one pod.\n  * The Pod-Lead-side challenge review queue, which uses the list\n    for context (e.g. \"you're reviewing as Pod Lead of {pod.name}\").\n\nOnly active pods are operational, and active Club access (direct,\ninherited from Academy, or the post-Academy bridge) is required.",
         "operationId": "list_pods_i_lead_members_pods_i_lead_get",
         "responses": {
           "200": {
@@ -52642,7 +52700,7 @@
               }
             ],
             "title": "From Date",
-            "description": "Anchor the new period at this date (defaults to NOW or current expiry, whichever is later). Pass the cohort end_date for post-academy free month grants."
+            "description": "Anchor the new period at this date (defaults to NOW or current expiry, whichever is later)."
           },
           "reason": {
             "anyOf": [
@@ -52684,7 +52742,7 @@
         },
         "type": "object",
         "title": "ExtendClubRequest",
-        "description": "Request to extend club membership without eligibility checks.\n\nIntended for service-to-service grants (e.g. the free 1-month post-academy\nclub access from PRICING_STRATEGY.md). The optional ``from_date`` anchors\nthe new period \u2014 useful when granting at cohort.end_date rather than now."
+        "description": "Request to extend club membership without eligibility checks.\n\nIntended for direct service/admin Club grants. The optional ``from_date``\nanchors the new period. Post-Academy access uses the dedicated bridge\nrequest so complimentary time stays distinguishable from direct Club time."
       },
       "ExtendCommunityRequest": {
         "properties": {
@@ -52723,6 +52781,69 @@
         "type": "object",
         "title": "ExtendCommunityRequest",
         "description": "Request to extend community membership by months."
+      },
+      "GrantPostAcademyClubBridgeRequest": {
+        "properties": {
+          "months": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Months",
+            "default": 1
+          },
+          "from_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Date",
+            "description": "Graduation/cohort end date that anchors the bridge."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "source_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Reference"
+          }
+        },
+        "type": "object",
+        "title": "GrantPostAcademyClubBridgeRequest",
+        "description": "Grant the complimentary Club period earned at Academy graduation."
       },
       "GuardianLinkCreate": {
         "properties": {
@@ -53382,6 +53503,45 @@
             ],
             "title": "Active Tiers"
           },
+          "declared_tiers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared Tiers"
+          },
+          "effective_paid_tiers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Paid Tiers"
+          },
+          "highest_paid_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Paid Tier"
+          },
           "community_paid_until": {
             "anyOf": [
               {
@@ -53414,6 +53574,17 @@
               }
             ],
             "title": "Academy Paid Until"
+          },
+          "post_academy_club_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Academy Club Until"
           },
           "profile_photo_url": {
             "anyOf": [
@@ -54184,6 +54355,18 @@
               }
             ],
             "title": "Academy Paid Until"
+          },
+          "post_academy_club_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Academy Club Until"
           },
           "emergency_contact_name": {
             "anyOf": [
@@ -55514,6 +55697,45 @@
               }
             ],
             "title": "Inherited From"
+          },
+          "effective_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Until"
+          },
+          "expiring_soon": {
+            "type": "boolean",
+            "title": "Expiring Soon",
+            "default": false
+          },
+          "days_remaining": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Remaining"
+          },
+          "access_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Source"
           }
         },
         "type": "object",
@@ -56947,7 +57169,7 @@
         },
         "type": "object",
         "title": "ProjectAcademyRequest",
-        "description": "Replace the Academy tier projection with Academy's current truth.\n\nUnlike activation, projection does not grant the bundled Community or Club\nperiods. It is used by academy_service after withdrawals, cohort changes,\nand during reconciliation to repair derived member state."
+        "description": "Replace the Academy tier projection with Academy's current truth.\n\nUnlike activation, projection does not extend Community or grant the\npost-graduation Club bridge. It is used by academy_service after\nwithdrawals, cohort changes, and during reconciliation to repair derived\nmember state."
       },
       "RecurringBlockInput": {
         "properties": {
@@ -57448,6 +57670,25 @@
             ],
             "title": "Active Tiers"
           },
+          "declared_tiers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Declared Tiers"
+          },
+          "effective_paid_tiers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Effective Paid Tiers"
+          },
+          "highest_paid_tier": {
+            "type": "string",
+            "title": "Highest Paid Tier",
+            "default": "prospect"
+          },
           "community_paid_until": {
             "anyOf": [
               {
@@ -57480,6 +57721,17 @@
               }
             ],
             "title": "Academy Paid Until"
+          },
+          "post_academy_club_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Academy Club Until"
           }
         },
         "type": "object",
@@ -57519,6 +57771,13 @@
               }
             ],
             "title": "Active Tiers"
+          },
+          "declared_tiers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Declared Tiers"
           },
           "requested_tiers": {
             "anyOf": [
@@ -57570,6 +57829,29 @@
             ],
             "title": "Academy Paid Until"
           },
+          "post_academy_club_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Academy Club Until"
+          },
+          "club_billing_cycle_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Billing Cycle Months"
+          },
           "pending_payment_reference": {
             "anyOf": [
               {
@@ -57587,6 +57869,18 @@
             },
             "type": "object",
             "title": "Pending Tier Payments"
+          },
+          "effective_paid_tiers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Effective Paid Tiers"
+          },
+          "highest_paid_tier": {
+            "type": "string",
+            "title": "Highest Paid Tier",
+            "default": "prospect"
           },
           "paid_tier": {
             "type": "string",
@@ -74871,6 +75165,21 @@
             },
             "type": "array",
             "title": "Entries"
+          },
+          "minimum_attendance": {
+            "type": "integer",
+            "title": "Minimum Attendance",
+            "default": 3
+          },
+          "current_user_attendance": {
+            "type": "integer",
+            "title": "Current User Attendance",
+            "default": 0
+          },
+          "current_user_eligible": {
+            "type": "boolean",
+            "title": "Current User Eligible",
+            "default": false
           }
         },
         "type": "object",
@@ -75090,6 +75399,26 @@
             "type": "string",
             "format": "date-time",
             "title": "Computed At"
+          },
+          "activity_state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "low_activity",
+              "no_activity"
+            ],
+            "title": "Activity State",
+            "readOnly": true
+          },
+          "leaderboard_eligible": {
+            "type": "boolean",
+            "title": "Leaderboard Eligible",
+            "readOnly": true
+          },
+          "share_card_eligible": {
+            "type": "boolean",
+            "title": "Share Card Eligible",
+            "readOnly": true
           }
         },
         "type": "object",
@@ -75119,7 +75448,10 @@
           "store_spent_ngn",
           "events_attended",
           "leaderboard_opt_out",
-          "computed_at"
+          "computed_at",
+          "activity_state",
+          "leaderboard_eligible",
+          "share_card_eligible"
         ],
         "title": "MemberQuarterlyReportResponse",
         "description": "Individual member's quarterly report."

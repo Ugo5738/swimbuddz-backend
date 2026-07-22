@@ -27,6 +27,7 @@ from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.members_service.models import (
     Member,
+    MemberMembership,
     Pod,
     PodAssignment,
     PodAssignmentSource,
@@ -45,6 +46,9 @@ from services.members_service.services import pod_ops
 from services.members_service.services.chat_sync import (
     ensure_pod_channel,
     reconcile_pod_membership,
+)
+from services.members_service.services.membership_status import (
+    effective_tiers_from_dates,
 )
 
 logger = get_logger(__name__)
@@ -68,6 +72,32 @@ async def _resolve_member_id(current_user: AuthUser, db: AsyncSession) -> uuid.U
             detail="Member profile not found",
         )
     return row[0]
+
+
+async def _require_effective_club(member_id: uuid.UUID, db: AsyncSession) -> None:
+    membership = (
+        await db.execute(
+            select(MemberMembership).where(MemberMembership.member_id == member_id)
+        )
+    ).scalar_one_or_none()
+    tiers = (
+        effective_tiers_from_dates(
+            community_paid_until=membership.community_paid_until,
+            club_paid_until=membership.club_paid_until,
+            academy_paid_until=membership.academy_paid_until,
+            post_academy_club_until=membership.post_academy_club_until,
+        )
+        if membership
+        else set()
+    )
+    if "club" not in tiers:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Active Club access is required to participate in pods. "
+                "Renew Club or Academy to continue."
+            ),
+        )
 
 
 async def _summary(db: AsyncSession, pod: Pod) -> PodSummary:
@@ -344,14 +374,16 @@ async def list_pods_i_lead(
       * The Pod-Lead-side challenge review queue, which uses the list
         for context (e.g. "you're reviewing as Pod Lead of {pod.name}").
 
-    Returns ALL pods the member leads regardless of status, so a recently
-    dissolved pod still shows up briefly before fading from the UI.
+    Only active pods are operational, and active Club access (direct,
+    inherited from Academy, or the post-Academy bridge) is required.
     """
     member_id = await _resolve_member_id(current_user, db)
+    await _require_effective_club(member_id, db)
     rows = await db.execute(
         select(Pod)
         .where(
-            (Pod.pod_lead_id == member_id) | (Pod.assistant_pod_lead_id == member_id)
+            (Pod.pod_lead_id == member_id) | (Pod.assistant_pod_lead_id == member_id),
+            Pod.status == PodStatus.ACTIVE,
         )
         .order_by(Pod.created_at.desc())
     )
@@ -391,6 +423,7 @@ async def member_join_pod(
     """Self-join a public pod with capacity. Refuses for private pods —
     those go through admin assignment."""
     member_id = await _resolve_member_id(current_user, db)
+    await _require_effective_club(member_id, db)
     pod = await pod_ops.get_pod_or_404(db, pod_id)
 
     if pod.visibility.value != "public":

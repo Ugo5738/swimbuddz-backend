@@ -1,9 +1,7 @@
-"""Unit tests for academy_bundle_expiry.
+"""Unit tests for Academy lower-tier entitlement policy.
 
-Academy enrollment bundles Community (1 year) + Club (3 months) access,
-whether paid in full or by installment. These verify the pure date logic the
-``academy/activate`` endpoint uses so paid academy members are never wrongly
-shown the "Activate Community/Club" upsell.
+Academy extends Community for one year and inherits Club while Academy is
+active. It does not create direct Club time; graduation grants the bridge.
 """
 
 from datetime import timezone
@@ -16,18 +14,18 @@ from services.members_service.services.member_service import academy_bundle_expi
 NOW = utc_now().replace(microsecond=0)
 
 
-def test_grants_one_year_community_and_three_months_club_when_unset():
+def test_grants_one_year_community_without_direct_club_when_unset():
     community, club = academy_bundle_expiry(NOW, None, None)
     assert community == NOW + relativedelta(years=1)
-    assert club == NOW + relativedelta(months=3)
+    assert club is None
 
 
-def test_extends_expired_or_shorter_dates_up_to_the_floor():
+def test_extends_community_but_preserves_existing_club_date():
     expired_community = NOW - relativedelta(days=10)
     shorter_club = NOW + relativedelta(days=15)  # < 3-month floor
     community, club = academy_bundle_expiry(NOW, expired_community, shorter_club)
     assert community == NOW + relativedelta(years=1)
-    assert club == NOW + relativedelta(months=3)
+    assert club == shorter_club
 
 
 def test_never_shortens_a_longer_existing_entitlement():
@@ -47,6 +45,6 @@ def test_idempotent_across_repeated_installment_payments():
 def test_returns_timezone_aware_datetimes():
     community, club = academy_bundle_expiry(NOW, None, None)
     assert community.tzinfo is not None
-    assert club.tzinfo is not None
-    # NOW is UTC, so the floors are too.
+    assert club is None
+    # NOW is UTC, so the Community floor is too.
     assert community.utcoffset() == timezone.utc.utcoffset(None)

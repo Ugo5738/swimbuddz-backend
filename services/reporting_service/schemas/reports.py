@@ -4,7 +4,14 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
+
+from services.reporting_service.services.activity_policy import (
+    ReportActivityState,
+    leaderboard_eligible,
+    report_activity_state,
+    share_card_eligible,
+)
 
 
 class MemberQuarterlyReportResponse(BaseModel):
@@ -76,6 +83,21 @@ class MemberQuarterlyReportResponse(BaseModel):
     # Timestamps
     computed_at: datetime
 
+    @computed_field
+    @property
+    def activity_state(self) -> ReportActivityState:
+        return report_activity_state(self)
+
+    @computed_field
+    @property
+    def leaderboard_eligible(self) -> bool:
+        return leaderboard_eligible(self)
+
+    @computed_field
+    @property
+    def share_card_eligible(self) -> bool:
+        return share_card_eligible(self)
+
     model_config = {"from_attributes": True}
 
 
@@ -143,6 +165,9 @@ class LeaderboardResponse(BaseModel):
     year: int
     quarter: int
     entries: list[LeaderboardEntry]
+    minimum_attendance: int = 3
+    current_user_attendance: int = 0
+    current_user_eligible: bool = False
 
 
 class GenerateReportRequest(BaseModel):

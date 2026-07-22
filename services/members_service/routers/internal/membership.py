@@ -10,14 +10,18 @@ import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.members_service.models import Member, MemberMembership
 from services.members_service.services.member_service import normalize_member_tiers
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from services.members_service.services.membership_status import (
+    build_membership_status_summary,
+)
 
 from ._helpers import _membership_fields
 from ._schemas import (
@@ -54,16 +58,33 @@ async def get_member_membership(
         community_paid_until=membership.community_paid_until,
         club_paid_until=membership.club_paid_until,
         academy_paid_until=membership.academy_paid_until,
+        post_academy_club_until=membership.post_academy_club_until,
     )
     if changed:
         membership.primary_tier = new_primary
         membership.active_tiers = new_tiers
         await db.commit()
 
+    summary = build_membership_status_summary(
+        primary_tier=membership.primary_tier,
+        active_tiers=membership.active_tiers,
+        declared_tiers=membership.declared_tiers,
+        requested_tiers=membership.requested_tiers,
+        community_paid_until=membership.community_paid_until,
+        club_paid_until=membership.club_paid_until,
+        academy_paid_until=membership.academy_paid_until,
+        post_academy_club_until=membership.post_academy_club_until,
+        pending_payment_reference=membership.pending_payment_reference,
+        pending_tier_payments=membership.pending_tier_payments,
+    )
+
     return MemberMembershipResponse(
         member_id=str(membership.member_id),
         primary_tier=new_primary,
         active_tiers=new_tiers,
+        declared_tiers=summary["declared_tiers"],
+        effective_paid_tiers=summary["effective_paid_tiers"],
+        highest_paid_tier=summary["highest_paid_tier"],
         community_paid_until=(
             membership.community_paid_until.isoformat()
             if membership.community_paid_until
@@ -77,6 +98,11 @@ async def get_member_membership(
         academy_paid_until=(
             membership.academy_paid_until.isoformat()
             if membership.academy_paid_until
+            else None
+        ),
+        post_academy_club_until=(
+            membership.post_academy_club_until.isoformat()
+            if membership.post_academy_club_until
             else None
         ),
     )

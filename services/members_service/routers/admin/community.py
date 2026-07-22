@@ -2,10 +2,13 @@
 
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-from libs.db.session import get_async_db
 from libs.common.datetime_utils import utc_now
+from libs.db.session import get_async_db
 from services.members_service.models import Member, MemberMembership
 from services.members_service.routers._helpers import member_eager_load_options
 from services.members_service.schemas import (
@@ -13,8 +16,6 @@ from services.members_service.schemas import (
     ExtendCommunityRequest,
     MemberResponse,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ._shared import (
     _apply_wallet_paid_activation_side_effects,
@@ -75,6 +76,9 @@ async def admin_activate_community_membership_by_auth(
 
     if not member.membership.active_tiers:
         member.membership.active_tiers = ["community"]
+    member.membership.declared_tiers = sorted(
+        set(member.membership.declared_tiers or []) | {"community"}
+    )
     if not member.membership.primary_tier:
         member.membership.primary_tier = "community"
 
@@ -146,6 +150,9 @@ async def admin_extend_community_membership_by_auth(
 
     if not member.membership.active_tiers:
         member.membership.active_tiers = ["community"]
+    member.membership.declared_tiers = sorted(
+        set(member.membership.declared_tiers or []) | {"community"}
+    )
     if not member.membership.primary_tier:
         member.membership.primary_tier = "community"
 

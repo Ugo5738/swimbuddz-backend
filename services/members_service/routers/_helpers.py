@@ -1,9 +1,10 @@
 """Shared helper functions for members service routers."""
 
+from sqlalchemy.orm import selectinload
+
 from libs.common.media_utils import resolve_media_urls
 from services.members_service.models import Member
 from services.members_service.services import member_service
-from sqlalchemy.orm import selectinload
 
 
 def member_eager_load_options():
@@ -35,6 +36,7 @@ def normalize_member_tiers(member: Member) -> bool:
         community_paid_until=m.community_paid_until,
         club_paid_until=m.club_paid_until,
         academy_paid_until=m.academy_paid_until,
+        post_academy_club_until=m.post_academy_club_until,
     )
     if changed:
         m.primary_tier = primary

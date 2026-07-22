@@ -5,6 +5,7 @@ Run with: arq services.members_service.tasks.worker.WorkerSettings
 """
 
 from arq import cron
+
 from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
 
@@ -22,6 +23,14 @@ async def task_reconcile_chat_memberships(ctx: dict):
     await reconcile_chat_memberships()
 
 
+async def task_send_membership_renewal_reminders(ctx: dict):
+    """Send idempotent membership expiry/renewal reminders."""
+    from services.members_service.tasks import send_membership_renewal_reminders
+
+    logger.info("Running: send_membership_renewal_reminders")
+    await send_membership_renewal_reminders()
+
+
 # ── Worker configuration ──
 
 
@@ -33,6 +42,7 @@ class WorkerSettings:
 
     functions = [
         task_reconcile_chat_memberships,
+        task_send_membership_renewal_reminders,
     ]
 
     cron_jobs = [
@@ -44,4 +54,6 @@ class WorkerSettings:
             minute=55,
             run_at_startup=True,
         ),
+        # 08:10 West Africa Time (ARQ cron uses UTC).
+        cron(task_send_membership_renewal_reminders, hour=7, minute=10),
     ]

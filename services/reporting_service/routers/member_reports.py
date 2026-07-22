@@ -9,12 +9,14 @@ from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
+from services.reporting_service.dependencies import require_active_community_membership
 from services.reporting_service.models import MemberQuarterlyReport
 from services.reporting_service.schemas.reports import (
     MemberQuarterlyReportResponse,
     PrivacyToggleRequest,
     QuarterlyReportSummary,
 )
+from services.reporting_service.services.activity_policy import share_card_eligible
 from services.reporting_service.services.aggregator import compute_member_report
 from services.reporting_service.services.card_generator import generate_card_image
 from services.reporting_service.services.pdf_generator import generate_pdf_report
@@ -25,7 +27,11 @@ from services.reporting_service.services.quarter_utils import (
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/reports", tags=["reports"])
+router = APIRouter(
+    prefix="/reports",
+    tags=["reports"],
+    dependencies=[Depends(require_active_community_membership)],
+)
 
 
 @router.get("/me/quarterly", response_model=MemberQuarterlyReportResponse)
@@ -94,6 +100,15 @@ async def get_my_quarterly_card(
     if report is None:
         raise HTTPException(
             status_code=404, detail="Report not available for this quarter."
+        )
+
+    if not share_card_eligible(report):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Shareable cards are available after at least one verified "
+                "session, event, volunteer contribution, or milestone."
+            ),
         )
 
     image_bytes = await generate_card_image(report, format=format)
