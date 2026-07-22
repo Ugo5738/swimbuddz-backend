@@ -327,10 +327,18 @@ async def test_mark_paid_updates_non_installment_enrollment(
         assert second_data["total_installments"] == 0
         assert second_data["payment_status"] == "paid"
         assert activate_membership.await_count == 2
-        assert (
-            activate_membership.await_args_list[0].kwargs["json"]["idempotency_key"]
-            == activate_membership.await_args_list[1].kwargs["json"]["idempotency_key"]
-        )
+        assert activate_membership.await_count == 2
+
+        first_key = activate_membership.await_args_list[0].kwargs["json"][
+            "idempotency_key"
+        ]
+        second_key = activate_membership.await_args_list[1].kwargs["json"][
+            "idempotency_key"
+        ]
+
+        assert first_key == "academy-payment:PAY-INST-1:paid-access"
+        assert second_key == "academy-payment:PAY-INST-2:paid-access"
+        assert first_key != second_key
 
 
 # ---------------------------------------------------------------------------
