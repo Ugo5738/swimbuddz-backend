@@ -3,7 +3,8 @@
 from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
 
-from services.members_service.models import MemberMembership
+from services.members_service.models import Member, MemberMembership
+from services.members_service.services.member_service import normalize_member_tiers
 
 _VALID_TIERS = {"community", "club", "academy"}
 
@@ -12,6 +13,67 @@ _LAGOS_TZ = ZoneInfo("Africa/Lagos")
 # Kept loose so any admin-flavoured role gets the reminder; tighten later
 # once a dedicated "comms_admin" role is rolled out.
 _ADMIN_REMINDER_ROLES = ("admin", "comms_admin", "community_manager")
+
+
+def _membership_fields(member: Member) -> dict:
+    """Return the complete normalized tier contract for an internal member read."""
+    membership = member.membership
+    if not membership:
+        primary_tier, active_tiers, _ = normalize_member_tiers(
+            current_tier="community",
+            current_tiers=["community"],
+            community_paid_until=None,
+            club_paid_until=None,
+            academy_paid_until=None,
+        )
+        return {
+            "primary_tier": primary_tier,
+            "active_tiers": active_tiers,
+            "community_paid_until": None,
+            "club_paid_until": None,
+            "academy_paid_until": None,
+        }
+
+    normalize_kwargs = dict(
+        current_tier=membership.primary_tier,
+        current_tiers=membership.active_tiers,
+        community_paid_until=membership.community_paid_until,
+        club_paid_until=membership.club_paid_until,
+        academy_paid_until=membership.academy_paid_until,
+    )
+    post_academy_club_until = getattr(membership, "post_academy_club_until", None)
+    if hasattr(membership, "post_academy_club_until"):
+        normalize_kwargs["post_academy_club_until"] = post_academy_club_until
+
+    primary_tier, active_tiers, changed = normalize_member_tiers(**normalize_kwargs)
+    if changed:
+        membership.primary_tier = primary_tier
+        membership.active_tiers = active_tiers
+
+    fields = {
+        "primary_tier": primary_tier,
+        "active_tiers": active_tiers,
+        "community_paid_until": (
+            membership.community_paid_until.isoformat()
+            if membership.community_paid_until
+            else None
+        ),
+        "club_paid_until": (
+            membership.club_paid_until.isoformat()
+            if membership.club_paid_until
+            else None
+        ),
+        "academy_paid_until": (
+            membership.academy_paid_until.isoformat()
+            if membership.academy_paid_until
+            else None
+        ),
+    }
+    if hasattr(membership, "post_academy_club_until"):
+        fields["post_academy_club_until"] = (
+            post_academy_club_until.isoformat() if post_academy_club_until else None
+        )
+    return fields
 
 
 def _age_on(dob: datetime, on: date) -> int:

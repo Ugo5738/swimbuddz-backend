@@ -23,6 +23,7 @@ def _member(**overrides):
         "community_paid_until": None,
         "club_paid_until": None,
         "academy_paid_until": None,
+        "post_academy_club_until": None,
     }
     data.update(overrides)
     return data
@@ -153,6 +154,51 @@ async def test_club_prompt_targets_every_member_with_inherited_club_access():
     )
 
     assert {m["id"] for m in recipients} == {"club", "academy"}
+
+
+@pytest.mark.asyncio
+async def test_pod_club_prompt_uses_bulk_membership_entitlements(monkeypatch):
+    future = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    pod = {
+        "id": "pod-1",
+        "active_member_ids": ["club", "bridge", "community"],
+    }
+    members = [
+        _member(
+            id="club",
+            active_tiers=["club", "community"],
+            primary_tier="club",
+            club_paid_until=future,
+        ),
+        _member(
+            id="bridge",
+            active_tiers=["club", "community"],
+            primary_tier="club",
+            post_academy_club_until=future,
+        ),
+        _member(id="community", community_paid_until=future),
+    ]
+    get_pod = AsyncMock(return_value=pod)
+    get_bulk = AsyncMock(return_value=members)
+    monkeypatch.setattr(notifications, "get_pod_by_id", get_pod)
+    monkeypatch.setattr(notifications, "get_members_bulk", get_bulk)
+
+    recipients = await _get_session_announcement_members(
+        session={
+            "id": "session-1",
+            "session_type": "club",
+            "pod_id": "pod-1",
+            "status": "scheduled",
+            "starts_at": future,
+        },
+        active_members=[],
+    )
+
+    assert {member["id"] for member in recipients} == {"club", "bridge"}
+    get_bulk.assert_awaited_once_with(
+        ["club", "bridge", "community"],
+        calling_service="communications",
+    )
 
 
 @pytest.mark.asyncio

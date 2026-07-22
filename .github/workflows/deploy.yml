@@ -88,6 +88,10 @@ jobs:
             tests/integration/test_members_entitlement_idempotency.py
 
           pytest -v \
+            tests/integration/test_members_internal.py::test_bulk_member_lookup_returns_normalized_club_entitlement \
+            tests/contract/test_members_contract.py::test_bulk_members_contract
+
+          pytest -v \
             tests/integration/test_academy_public.py::test_mark_paid_updates_non_installment_enrollment
 
           pytest -v \

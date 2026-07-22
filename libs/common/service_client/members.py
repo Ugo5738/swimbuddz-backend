@@ -53,8 +53,8 @@ async def search_members(
 async def get_member_by_id(member_id: str, *, calling_service: str) -> Optional[dict]:
     """Look up a member by their member ID.
 
-    Returns dict with {id, auth_id, first_name, last_name, email, phone,
-    community_paid_until, profile_photo_url, date_of_birth} or None.
+    Returns dict with identity fields plus the complete normalized membership
+    contract (primary/active tiers and every paid-until entitlement) or None.
     `date_of_birth` is ISO-8601 (or None) — used for age gates. `auth_id` is the
     Supabase user UUID — required to call members-service activation
     endpoints which key on auth_id (e.g. `/admin/members/by-auth/{auth_id}
@@ -77,8 +77,9 @@ async def get_members_bulk(
 ) -> list[dict]:
     """Bulk-lookup members by IDs.
 
-    Returns list of {id, auth_id, first_name, last_name, email, phone,
-    community_paid_until}.
+    Returns identity fields plus the complete normalized membership contract
+    for each member. Session eligibility depends on every paid tier date being
+    present here.
     """
     if not member_ids:
         return []
