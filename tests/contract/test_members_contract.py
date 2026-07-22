@@ -30,7 +30,17 @@ async def test_member_by_id_contract(members_client, db_session):
     data = response.json()
 
     # MemberBasic fields consumed by other services
-    required_fields = ["id", "first_name", "last_name", "email"]
+    required_fields = [
+        "id",
+        "first_name",
+        "last_name",
+        "email",
+        "primary_tier",
+        "active_tiers",
+        "community_paid_until",
+        "club_paid_until",
+        "academy_paid_until",
+    ]
     for field in required_fields:
         assert field in data, (
             f"Missing required contract field '{field}' in /internal/members/{{id}} response. "
@@ -58,7 +68,17 @@ async def test_member_by_auth_id_contract(members_client, db_session):
     assert response.status_code == 200
     data = response.json()
 
-    required_fields = ["id", "first_name", "last_name", "email"]
+    required_fields = [
+        "id",
+        "first_name",
+        "last_name",
+        "email",
+        "primary_tier",
+        "active_tiers",
+        "community_paid_until",
+        "club_paid_until",
+        "academy_paid_until",
+    ]
     for field in required_fields:
         assert (
             field in data
@@ -88,7 +108,17 @@ async def test_bulk_members_contract(members_client, db_session):
     assert len(data) >= 1
 
     item = data[0]
-    required_fields = ["id", "first_name", "last_name", "email"]
+    required_fields = [
+        "id",
+        "first_name",
+        "last_name",
+        "email",
+        "primary_tier",
+        "active_tiers",
+        "community_paid_until",
+        "club_paid_until",
+        "academy_paid_until",
+    ]
     for field in required_fields:
         assert (
             field in item

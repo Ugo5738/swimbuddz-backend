@@ -25,6 +25,7 @@ def _member(**overrides):
         "community_paid_until": None,
         "club_paid_until": None,
         "academy_paid_until": None,
+        "post_academy_club_until": None,
     }
     data.update(overrides)
     return data
@@ -114,6 +115,21 @@ def test_paid_academy_member_inherits_club_access():
 
     assert decision.bookable
     assert decision.digest_eligible
+
+
+def test_post_academy_bridge_grants_club_access_and_prompt_tier():
+    member = _member(
+        active_tiers=["club", "community"],
+        primary_tier="club",
+        post_academy_club_until=FUTURE,
+    )
+
+    decision = evaluate_session_access(member, _session(session_type="club"), now=NOW)
+
+    assert active_paid_tiers(member, NOW) == {"club", "community"}
+    assert default_booking_prompt_tier(member, NOW) == "club"
+    assert decision.bookable
+    assert decision.prompt_eligible
 
 
 def test_cohort_class_requires_enrollment_and_not_suspended():

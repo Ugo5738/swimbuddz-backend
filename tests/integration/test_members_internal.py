@@ -96,6 +96,40 @@ async def test_bulk_member_lookup(members_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+async def test_bulk_member_lookup_returns_normalized_club_entitlement(
+    members_client, db_session
+):
+    """Pod email consumers receive the fields needed for Club eligibility."""
+    from datetime import timedelta
+
+    from libs.common.datetime_utils import utc_now
+    from services.members_service.models import MemberMembership
+
+    member = MemberFactory.create()
+    membership = MemberMembership(
+        member_id=member.id,
+        primary_tier="community",
+        active_tiers=["community"],
+        club_paid_until=utc_now() + timedelta(days=30),
+    )
+    db_session.add_all([member, membership])
+    await db_session.commit()
+
+    response = await members_client.post(
+        "/internal/members/bulk",
+        json={"ids": [str(member.id)]},
+    )
+
+    assert response.status_code == 200
+    item = response.json()[0]
+    assert item["primary_tier"] == "club"
+    assert set(item["active_tiers"]) == {"club", "community"}
+    assert item["club_paid_until"] is not None
+    assert item["academy_paid_until"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 async def test_bulk_member_lookup_empty_list(members_client, db_session):
     """Bulk lookup with empty list returns empty array."""
     response = await members_client.post(

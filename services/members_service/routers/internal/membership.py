@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ._helpers import _membership_fields
 from ._schemas import (
     BulkMembersRequest,
     MemberBasic,
@@ -180,11 +181,15 @@ async def get_member_by_id(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Look up a member by ID."""
-    result = await db.execute(select(Member).where(Member.id == member_id))
+    result = await db.execute(
+        select(Member)
+        .where(Member.id == member_id)
+        .options(selectinload(Member.membership))
+    )
     member = result.scalar_one_or_none()
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
-    return MemberBasic(
+    response = MemberBasic(
         id=str(member.id),
         auth_id=member.auth_id,
         first_name=member.first_name,
@@ -196,7 +201,10 @@ async def get_member_by_id(
             if member.profile and member.profile.date_of_birth
             else None
         ),
+        **_membership_fields(member),
     )
+    await db.commit()
+    return response
 
 
 @router.post("/bulk", response_model=List[MemberBasic])
@@ -216,7 +224,7 @@ async def get_members_bulk(
         .options(selectinload(Member.membership))
     )
     members = result.scalars().all()
-    return [
+    response = [
         MemberBasic(
             id=str(m.id),
             auth_id=m.auth_id,
@@ -229,11 +237,9 @@ async def get_members_bulk(
                 if m.profile and m.profile.date_of_birth
                 else None
             ),
-            community_paid_until=(
-                m.membership.community_paid_until.isoformat()
-                if m.membership and m.membership.community_paid_until
-                else None
-            ),
+            **_membership_fields(m),
         )
         for m in members
     ]
+    await db.commit()
+    return response

@@ -126,7 +126,9 @@ def active_paid_tiers(member: Any, now: datetime | None = None) -> set[str]:
     tiers: set[str] = set()
     if has_active_paid_until(member, "academy_paid_until", now):
         tiers.update({ACADEMY, CLUB, COMMUNITY})
-    if has_active_paid_until(member, "club_paid_until", now):
+    if has_active_paid_until(member, "club_paid_until", now) or has_active_paid_until(
+        member, "post_academy_club_until", now
+    ):
         tiers.update({CLUB, COMMUNITY})
     if has_active_paid_until(member, "community_paid_until", now):
         tiers.add(COMMUNITY)
@@ -142,7 +144,9 @@ def default_booking_prompt_tier(member: Any, now: datetime | None = None) -> str
     now = now or utc_now()
     if has_active_paid_until(member, "academy_paid_until", now):
         return ACADEMY
-    if has_active_paid_until(member, "club_paid_until", now):
+    if has_active_paid_until(member, "club_paid_until", now) or has_active_paid_until(
+        member, "post_academy_club_until", now
+    ):
         return CLUB
     if has_active_paid_until(member, "community_paid_until", now):
         return COMMUNITY
