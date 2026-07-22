@@ -102,6 +102,7 @@ from services.members_service.schemas.member import (  # noqa: F401
     CoachProfileResponse,
     ExtendClubRequest,
     ExtendCommunityRequest,
+    GrantPostAcademyClubBridgeRequest,
     MemberAvailabilityInput,
     MemberAvailabilityResponse,
     MemberBasicResponse,
@@ -121,9 +122,9 @@ from services.members_service.schemas.member import (  # noqa: F401
     MemberTierStatusResponse,
     MemberUpdate,
     PendingMemberResponse,
-    ProjectAcademyRequest,
     PendingRegistrationCreate,
     PendingRegistrationResponse,
+    ProjectAcademyRequest,
 )
 from services.members_service.schemas.pod import (  # noqa: F401
     PodCreateRequest,

@@ -8,6 +8,7 @@ from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
+from services.reporting_service.dependencies import require_active_community_membership
 from services.reporting_service.models import (
     CommunityQuarterlyStats,
     LeaderboardCategory,
@@ -18,10 +19,17 @@ from services.reporting_service.schemas.reports import (
     LeaderboardEntry,
     LeaderboardResponse,
 )
+from services.reporting_service.services.activity_policy import (
+    MIN_LEADERBOARD_ATTENDANCE,
+)
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/reports/community", tags=["community-reports"])
+router = APIRouter(
+    prefix="/reports/community",
+    tags=["community-reports"],
+    dependencies=[Depends(require_active_community_membership)],
+)
 
 # Map leaderboard categories to model fields
 LEADERBOARD_FIELDS = {
@@ -77,11 +85,21 @@ async def get_leaderboard(
             MemberQuarterlyReport.year == year,
             MemberQuarterlyReport.quarter == quarter,
             MemberQuarterlyReport.leaderboard_opt_out == False,  # noqa: E712
+            MemberQuarterlyReport.total_sessions_attended >= MIN_LEADERBOARD_ATTENDANCE,
         )
         .order_by(field.desc())
         .limit(limit)
     )
     reports = result.scalars().all()
+
+    current_result = await db.execute(
+        select(MemberQuarterlyReport.total_sessions_attended).where(
+            MemberQuarterlyReport.year == year,
+            MemberQuarterlyReport.quarter == quarter,
+            MemberQuarterlyReport.member_auth_id == current_user.user_id,
+        )
+    )
+    current_attendance = current_result.scalar_one_or_none() or 0
 
     entries = [
         LeaderboardEntry(
@@ -99,4 +117,7 @@ async def get_leaderboard(
         year=year,
         quarter=quarter,
         entries=entries,
+        minimum_attendance=MIN_LEADERBOARD_ATTENDANCE,
+        current_user_attendance=current_attendance,
+        current_user_eligible=current_attendance >= MIN_LEADERBOARD_ATTENDANCE,
     )

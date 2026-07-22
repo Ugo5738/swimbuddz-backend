@@ -310,6 +310,14 @@ class MemberMembership(Base):
     active_tiers: Mapped[Optional[list[str]]] = mapped_column(
         ARRAY(String), nullable=True
     )
+    # Durable lifecycle/approval identity. Unlike active_tiers (a legacy
+    # effective-access cache), this is never stripped when payment expires.
+    declared_tiers: Mapped[list[str]] = mapped_column(
+        ARRAY(String),
+        nullable=False,
+        default=lambda: ["community"],
+        server_default="{community}",
+    )
     requested_tiers: Mapped[Optional[list[str]]] = mapped_column(
         ARRAY(String), nullable=True
     )
@@ -323,6 +331,18 @@ class MemberMembership(Base):
     )
     academy_paid_until: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # Complimentary Club access awarded after an Academy graduation. Kept
+    # separate from ``club_paid_until`` so direct purchases and the bridge are
+    # independently auditable and can fall back correctly.
+    post_academy_club_until: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    club_billing_cycle_months: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    renewal_reminders_sent: Mapped[dict[str, bool]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
     )
     # Pending payment tracking for cross-device resumption
     pending_payment_reference: Mapped[Optional[str]] = mapped_column(

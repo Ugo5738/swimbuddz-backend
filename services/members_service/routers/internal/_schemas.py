@@ -5,7 +5,7 @@ Kept slim — only what cross-service callers actually need.
 
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class MemberBasic(BaseModel):
@@ -25,9 +25,13 @@ class MemberBasic(BaseModel):
     phone: str | None = None
     primary_tier: str | None = None
     active_tiers: list[str] | None = None
+    declared_tiers: list[str] | None = None
+    effective_paid_tiers: list[str] | None = None
+    highest_paid_tier: str | None = None
     community_paid_until: str | None = None
     club_paid_until: str | None = None
     academy_paid_until: str | None = None
+    post_academy_club_until: str | None = None
     profile_photo_url: str | None = None
     # ISO-8601 date-of-birth (from MemberProfile). Used by cross-service callers
     # for age gates (e.g. events_service adults-only meets). None if unset.
@@ -69,9 +73,13 @@ class MemberMembershipResponse(BaseModel):
     member_id: str
     primary_tier: str
     active_tiers: list[str] | None = None
+    declared_tiers: list[str] = Field(default_factory=list)
+    effective_paid_tiers: list[str] = Field(default_factory=list)
+    highest_paid_tier: str = "prospect"
     community_paid_until: str | None = None
     club_paid_until: str | None = None
     academy_paid_until: str | None = None
+    post_academy_club_until: str | None = None
 
 
 class BulkMembersRequest(BaseModel):

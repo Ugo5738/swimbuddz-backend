@@ -5,6 +5,9 @@ from zoneinfo import ZoneInfo
 
 from services.members_service.models import Member, MemberMembership
 from services.members_service.services.member_service import normalize_member_tiers
+from services.members_service.services.membership_status import (
+    build_membership_status_summary,
+)
 
 _VALID_TIERS = {"community", "club", "academy"}
 
@@ -29,6 +32,9 @@ def _membership_fields(member: Member) -> dict:
         return {
             "primary_tier": primary_tier,
             "active_tiers": active_tiers,
+            "declared_tiers": ["community"],
+            "effective_paid_tiers": [],
+            "highest_paid_tier": "prospect",
             "community_paid_until": None,
             "club_paid_until": None,
             "academy_paid_until": None,
@@ -50,9 +56,24 @@ def _membership_fields(member: Member) -> dict:
         membership.primary_tier = primary_tier
         membership.active_tiers = active_tiers
 
+    summary = build_membership_status_summary(
+        primary_tier=membership.primary_tier,
+        active_tiers=membership.active_tiers,
+        declared_tiers=membership.declared_tiers,
+        requested_tiers=membership.requested_tiers,
+        community_paid_until=membership.community_paid_until,
+        club_paid_until=membership.club_paid_until,
+        academy_paid_until=membership.academy_paid_until,
+        post_academy_club_until=post_academy_club_until,
+        pending_payment_reference=membership.pending_payment_reference,
+        pending_tier_payments=membership.pending_tier_payments,
+    )
     fields = {
         "primary_tier": primary_tier,
         "active_tiers": active_tiers,
+        "declared_tiers": summary["declared_tiers"],
+        "effective_paid_tiers": summary["effective_paid_tiers"],
+        "highest_paid_tier": summary["highest_paid_tier"],
         "community_paid_until": (
             membership.community_paid_until.isoformat()
             if membership.community_paid_until

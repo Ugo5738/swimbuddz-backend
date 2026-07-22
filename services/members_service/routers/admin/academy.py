@@ -63,6 +63,7 @@ def _normalize_stored_tiers(member: Member) -> None:
         community_paid_until=membership.community_paid_until,
         club_paid_until=membership.club_paid_until,
         academy_paid_until=membership.academy_paid_until,
+        post_academy_club_until=membership.post_academy_club_until,
     )
     membership.primary_tier = primary_tier
     membership.active_tiers = active_tiers
@@ -108,8 +109,9 @@ async def admin_activate_academy_membership_by_auth(
     """Apply a paid Academy entitlement once and preserve later cohorts.
 
     The idempotency key protects both the Academy end date and the Community
-    and Club periods bundled with the first Academy payment. Retrying the same
-    payment therefore cannot keep moving those lower-tier expiries forward.
+    period granted by the first Academy payment. Club is inherited while
+    Academy is active; its explicit one-month bridge is granted separately on
+    graduation. Retrying the same payment cannot keep moving entitlements.
     """
     member = await _load_member_for_update(db, auth_id=auth_id)
     should_apply = await _claim_entitlement_application(
@@ -132,6 +134,10 @@ async def admin_activate_academy_membership_by_auth(
     current_until = member.membership.academy_paid_until
     if current_until is None or new_end > current_until:
         member.membership.academy_paid_until = new_end
+    member.membership.declared_tiers = sorted(
+        set(member.membership.declared_tiers or ["community"])
+        | {"community", "club", "academy"}
+    )
 
     (
         member.membership.community_paid_until,
@@ -170,6 +176,11 @@ async def admin_project_academy_membership_by_auth(
     member.membership.academy_paid_until = (
         _as_aware(payload.paid_until) if payload.paid_until else None
     )
+    if payload.paid_until:
+        member.membership.declared_tiers = sorted(
+            set(member.membership.declared_tiers or ["community"])
+            | {"community", "club", "academy"}
+        )
     _normalize_stored_tiers(member)
     logger.info(
         "Academy projection applied: member=%s paid_until=%s source=%s",

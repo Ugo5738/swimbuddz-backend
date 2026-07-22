@@ -408,7 +408,7 @@ async def grant_graduation_rewards(
         _settings = get_settings()
         await internal_post(
             service_url=_settings.MEMBERS_SERVICE_URL,
-            path=f"/admin/members/by-auth/{auth_id}/club/extend",
+            path=f"/admin/members/by-auth/{auth_id}/club/post-academy-bridge",
             calling_service="academy",
             json={
                 "months": _settings.POST_ACADEMY_FREE_CLUB_MONTHS,

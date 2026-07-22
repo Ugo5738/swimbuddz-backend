@@ -4,11 +4,10 @@ import uuid
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from libs.auth.dependencies import (
-    get_current_user,
-    is_admin_or_service,
-    require_admin,
-)
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from libs.auth.dependencies import get_current_user, is_admin_or_service, require_admin
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.service_client import dispatch_notification
@@ -20,14 +19,13 @@ from services.members_service.models import (
     MemberChallengeCompletion,
     Pod,
     PodAssignment,
+    PodStatus,
 )
 from services.members_service.schemas import (
     ChallengeSubmissionResponse,
     ChallengeSubmissionReview,
     ChallengeSubmissionRevokeRequest,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ._helpers import (
     CHALLENGES_CALLING_SERVICE,
@@ -38,6 +36,7 @@ from ._helpers import (
     _hydrate_submission_response,
     _notify_submission_reviewed,
     _notify_submission_winner,
+    _require_reviewer_club_access,
     _resolve_member_id_from_auth_optional,
     logger,
 )
@@ -167,10 +166,13 @@ async def _list_submissions_impl(
                 detail="Reviewer must be an admin or a Pod Lead.",
             )
 
+        await _require_reviewer_club_access(reviewer_member_id, db)
+
         # Pods led by this reviewer (lead OR assistant lead)
         led_pods_q = select(Pod.id).where(
             (Pod.pod_lead_id == reviewer_member_id)
-            | (Pod.assistant_pod_lead_id == reviewer_member_id)
+            | (Pod.assistant_pod_lead_id == reviewer_member_id),
+            Pod.status == PodStatus.ACTIVE,
         )
         led_pods_rows = await db.execute(led_pods_q)
         led_pod_ids = [row[0] for row in led_pods_rows.all()]

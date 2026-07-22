@@ -3,6 +3,11 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
+
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
@@ -35,10 +40,6 @@ from services.academy_service.services.chat_sync import (
 from services.academy_service.services.membership_projection import (
     project_member_academy_membership,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-from sqlalchemy.orm.attributes import flag_modified
 
 # Sentinel stored in Enrollment.reminders_sent to make the enrollment
 # confirmation email idempotent. mark-paid is legitimately called more
@@ -50,6 +51,16 @@ _CONFIRMATION_SENT_KEY = "enrollment_confirmation"
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+def _academy_access_application_key(
+    enrollment_id: uuid.UUID,
+    payment_reference: str | None,
+) -> str:
+    """Deduplicate retries without collapsing distinct installment payments."""
+    if payment_reference:
+        return f"academy-payment:{payment_reference}:paid-access"
+    return f"academy:{enrollment_id}:paid-access"
 
 
 @router.post(
@@ -321,8 +332,10 @@ async def admin_mark_enrollment_paid(
             logger.warning(f"Failed to send enrollment confirmation email: {e}")
 
     # A paid enrollment is not fulfilled until its membership entitlement is
-    # durable. The stable key ensures retries and later installment payments do
-    # not repeatedly extend the bundled Community and Club periods.
+    # durable. A payment-scoped key deduplicates webhook/verify retries while
+    # allowing each distinct successful installment to refresh Community to at
+    # least one year from that payment. Academy itself remains cohort-bounded;
+    # Club is inherited while Academy is active.
     try:
         _settings = get_settings()
         cohort_end = enrollment.cohort.end_date if enrollment.cohort else None
@@ -348,8 +361,13 @@ async def admin_mark_enrollment_paid(
             calling_service="academy",
             json={
                 "cohort_end_date": cohort_end.isoformat(),
-                "idempotency_key": f"academy:{enrollment.id}:paid-access",
-                "source_reference": str(enrollment.id),
+                "idempotency_key": _academy_access_application_key(
+                    enrollment.id,
+                    mark_payload.payment_reference,
+                ),
+                "source_reference": (
+                    mark_payload.payment_reference or str(enrollment.id)
+                ),
             },
         )
         if response.status_code >= 400:

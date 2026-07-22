@@ -13,10 +13,12 @@ def _summary(**overrides):
     data = {
         "primary_tier": "community",
         "active_tiers": ["community"],
+        "declared_tiers": ["community"],
         "requested_tiers": None,
         "community_paid_until": None,
         "club_paid_until": None,
         "academy_paid_until": None,
+        "post_academy_club_until": None,
         "pending_payment_reference": None,
         "pending_tier_payments": {},
         "now": NOW,
@@ -42,7 +44,7 @@ def test_requested_upgrade_is_distinct_from_active_access():
 
     assert summary["paid_tier"] == "community"
     assert summary["display_label"] == "Community Member"
-    assert summary["display_detail"] == "Club: Requested"
+    assert summary["display_detail"] == "Club request: Requested"
     assert summary["tier_statuses"]["community"]["status"] == "active"
     assert summary["tier_statuses"]["club"]["status"] == "requested"
 
@@ -67,7 +69,7 @@ def test_paid_tier_keeps_pending_upgrade_as_secondary_display_detail():
     )
 
     assert summary["display_label"] == "Community Member"
-    assert summary["display_detail"] == "Club: Payment pending"
+    assert summary["display_detail"] == "Club payment: Payment pending"
 
 
 def test_pending_payment_only_marks_its_own_tier():
@@ -115,3 +117,29 @@ def test_expired_declared_tier_is_not_active_but_remains_visible():
     assert summary["display_label"] == "Club (Expired)"
     assert summary["tier_statuses"]["club"]["status"] == "expired"
     assert summary["tier_statuses"]["club"]["declared_active"] is True
+
+
+def test_post_academy_bridge_is_effective_club_with_auditable_source():
+    summary = _summary(post_academy_club_until=FUTURE)
+
+    assert summary["paid_tier"] == "club"
+    assert summary["paid_tiers"] == ["club", "community"]
+    assert summary["tier_statuses"]["club"]["status"] == "active"
+    assert summary["tier_statuses"]["club"]["direct_paid"] is False
+    assert summary["tier_statuses"]["club"]["access_source"] == "post_academy"
+
+
+def test_contract_separates_declared_identity_from_effective_paid_access():
+    summary = _summary(
+        primary_tier="prospect",
+        active_tiers=[],
+        declared_tiers=["community", "club", "academy"],
+        academy_paid_until=PAST,
+        community_paid_until=FUTURE,
+    )
+
+    assert summary["declared_tiers"] == ["academy", "club", "community"]
+    assert summary["effective_paid_tiers"] == ["community"]
+    assert summary["highest_paid_tier"] == "community"
+    assert summary["paid_tiers"] == summary["effective_paid_tiers"]
+    assert summary["paid_tier"] == summary["highest_paid_tier"]

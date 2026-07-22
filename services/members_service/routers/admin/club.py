@@ -4,25 +4,100 @@ from datetime import timezone
 
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-from libs.common.logging import get_logger
 from libs.common.datetime_utils import utc_now
+from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.members_service.models import Member, MemberMembership
-from services.members_service.routers._helpers import member_eager_load_options
+from services.members_service.routers._helpers import (
+    member_eager_load_options,
+    normalize_member_tiers,
+)
 from services.members_service.schemas import (
     ActivateClubRequest,
     ExtendClubRequest,
+    GrantPostAcademyClubBridgeRequest,
     MemberResponse,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from services.members_service.services.member_service import calculate_club_expiry
 
 from ._shared import _claim_entitlement_application
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+@router.post(
+    "/by-auth/{auth_id}/club/post-academy-bridge",
+    response_model=MemberResponse,
+)
+async def admin_grant_post_academy_club_bridge_by_auth(
+    auth_id: str,
+    payload: GrantPostAcademyClubBridgeRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Grant the explicit complimentary Club period after graduation."""
+    query = (
+        select(Member)
+        .where(Member.auth_id == auth_id)
+        .options(*member_eager_load_options())
+        .with_for_update()
+    )
+    member = (await db.execute(query)).scalar_one_or_none()
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Member not found"
+        )
+
+    should_apply = await _claim_entitlement_application(
+        db,
+        member=member,
+        idempotency_key=payload.idempotency_key,
+        tier="club",
+        action="post_academy_bridge",
+        source_reference=payload.source_reference,
+    )
+    if not should_apply:
+        await db.commit()
+        return member
+
+    if not member.membership:
+        member.membership = MemberMembership(member_id=member.id)
+        db.add(member.membership)
+
+    now = utc_now()
+    anchor = payload.from_date or now
+    if anchor.tzinfo is None:
+        anchor = anchor.replace(tzinfo=timezone.utc)
+    current_until = member.membership.post_academy_club_until
+    base = current_until if current_until and current_until > anchor else anchor
+    member.membership.post_academy_club_until = base + relativedelta(
+        months=payload.months
+    )
+    member.membership.declared_tiers = sorted(
+        set(member.membership.declared_tiers or ["community"]) | {"community", "club"}
+    )
+
+    logger.info(
+        "post-Academy Club bridge granted: member=%s months=%s new_until=%s",
+        member.id,
+        payload.months,
+        member.membership.post_academy_club_until.isoformat(),
+    )
+    normalize_member_tiers(member)
+    await db.commit()
+    return (
+        await db.execute(
+            select(Member)
+            .where(Member.id == member.id)
+            .options(*member_eager_load_options())
+        )
+    ).scalar_one()
 
 
 @router.post("/by-auth/{auth_id}/club/extend", response_model=MemberResponse)
@@ -34,10 +109,9 @@ async def admin_extend_club_membership_by_auth(
 ):
     """Extend club membership by N months without eligibility checks.
 
-    Intended for service-to-service grants such as the free 1-month
-    post-academy club access bridge (see PRICING_STRATEGY.md). Skips the
-    readiness/requested-tier gates that ``/club/activate`` enforces because
-    the caller is the system, not the member self-upgrading.
+    Intended for direct service/admin Club grants. Post-Academy access uses
+    the separate ``/club/post-academy-bridge`` endpoint so it remains
+    distinguishable from purchased Club time.
 
     The new ``club_paid_until`` becomes ``max(current, anchor) + months`` where
     ``anchor = payload.from_date or now``. Callers that may retry must provide
@@ -103,6 +177,9 @@ async def admin_extend_club_membership_by_auth(
         [t for t in updated_tiers if t in tier_priority],
         key=lambda t: tier_priority[t],
         reverse=True,
+    )
+    member.membership.declared_tiers = sorted(
+        set(member.membership.declared_tiers or ["community"]) | {"community", "club"}
     )
     if (
         not member.membership.primary_tier
@@ -211,12 +288,15 @@ async def admin_activate_club_membership_by_auth(
 
     tier_priority = {"academy": 3, "club": 2, "community": 1}
 
-    base = (
-        member.membership.club_paid_until
-        if member.membership.club_paid_until and member.membership.club_paid_until > now
-        else now
+    member.membership.club_paid_until = calculate_club_expiry(
+        member.membership.club_paid_until,
+        payload.months,
+        additional_active_until=member.membership.post_academy_club_until,
     )
-    member.membership.club_paid_until = base + relativedelta(months=payload.months)
+    member.membership.club_billing_cycle_months = payload.months
+    member.membership.declared_tiers = sorted(
+        set(member.membership.declared_tiers or ["community"]) | {"community", "club"}
+    )
 
     # Policy (founder-confirmed May 2026, see docs/club/PRICING_STRATEGY.md):
     # club purchase extends community_paid_until to max(current, NOW + 1 year).

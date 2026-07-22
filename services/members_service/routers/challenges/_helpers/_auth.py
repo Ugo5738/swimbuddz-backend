@@ -8,6 +8,9 @@ import uuid
 from typing import List, Literal, Optional
 
 from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import is_admin_or_service
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
@@ -15,11 +18,14 @@ from services.members_service.models import (
     ChallengeBadgeAward,
     ClubChallenge,
     Member,
+    MemberMembership,
     Pod,
     PodAssignment,
+    PodStatus,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from services.members_service.services.membership_status import (
+    effective_tiers_from_dates,
+)
 
 CHALLENGES_CALLING_SERVICE = "members_service.challenges"
 logger = get_logger(__name__)
@@ -79,6 +85,34 @@ async def _resolve_member_id_from_auth_optional(
     return member.id if member else None
 
 
+async def _require_reviewer_club_access(
+    reviewer_member_id: uuid.UUID, db: AsyncSession
+) -> None:
+    """Reject operational Pod Lead access without an effective Club tier."""
+    membership = (
+        await db.execute(
+            select(MemberMembership).where(
+                MemberMembership.member_id == reviewer_member_id
+            )
+        )
+    ).scalar_one_or_none()
+    tiers = (
+        effective_tiers_from_dates(
+            community_paid_until=membership.community_paid_until,
+            club_paid_until=membership.club_paid_until,
+            academy_paid_until=membership.academy_paid_until,
+            post_academy_club_until=membership.post_academy_club_until,
+        )
+        if membership
+        else set()
+    )
+    if "club" not in tiers:
+        raise HTTPException(
+            status_code=403,
+            detail="Active Club access is required to use Pod Lead tools.",
+        )
+
+
 async def _pod_lead_kind_for_member(
     *,
     reviewer_member_id: uuid.UUID,
@@ -119,7 +153,10 @@ async def _pod_lead_kind_for_member(
         return None
 
     pod_row = await db.execute(
-        select(Pod.pod_lead_id, Pod.assistant_pod_lead_id).where(Pod.id == pod_id)
+        select(Pod.pod_lead_id, Pod.assistant_pod_lead_id).where(
+            Pod.id == pod_id,
+            Pod.status == PodStatus.ACTIVE,
+        )
     )
     pod = pod_row.first()
     if pod is None:
@@ -170,6 +207,8 @@ async def _authorize_review(
             status_code=403,
             detail="Reviewer must be an admin or a Pod Lead.",
         )
+
+    await _require_reviewer_club_access(reviewer_member_id, db)
 
     kind = await _pod_lead_kind_for_member(
         reviewer_member_id=reviewer_member_id,
