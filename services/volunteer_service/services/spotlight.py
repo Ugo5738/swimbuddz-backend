@@ -34,6 +34,7 @@ class VolunteerOfMonthResult:
     member_id: uuid.UUID | None
     monthly_hours: float
     monthly_logs: int
+    announcement_required: bool
 
 
 def _next_month_start(value: date) -> date:
@@ -182,15 +183,28 @@ async def apply_monthly_volunteer_spotlight(
             member_id=None,
             monthly_hours=0.0,
             monthly_logs=0,
+            announcement_required=False,
         )
 
     winner_profile, monthly_hours_value, monthly_logs_value = winner
+    display_month_start = datetime(
+        now.year,
+        now.month,
+        1,
+        tzinfo=timezone.utc,
+    )
+    already_announced_this_display_month = bool(
+        winner_profile.is_featured
+        and winner_profile.featured_from is not None
+        and winner_profile.featured_from >= display_month_start
+    )
     for profile in current_featured:
         if profile.member_id != winner_profile.member_id:
             profile.is_featured = False
 
     winner_profile.is_featured = True
-    winner_profile.featured_from = now
+    if not already_announced_this_display_month:
+        winner_profile.featured_from = now
     winner_profile.featured_until = featured_until
 
     await db.commit()
@@ -202,6 +216,7 @@ async def apply_monthly_volunteer_spotlight(
         member_id=winner_profile.member_id,
         monthly_hours=monthly_hours_value,
         monthly_logs=monthly_logs_value,
+        announcement_required=not already_announced_this_display_month,
     )
 
 

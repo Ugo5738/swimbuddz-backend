@@ -1,13 +1,17 @@
 """Admin: profile listing, lookup, update + spotlight feature/unfeature."""
 
 import uuid
+from datetime import date, timezone
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-from libs.common.member_utils import resolve_member_basic, resolve_members_basic
 from libs.common.datetime_utils import utc_now
+from libs.common.member_utils import resolve_member_basic, resolve_members_basic
 from libs.db.session import get_async_db
 from services.volunteer_service.models import VolunteerProfile, VolunteerTier
 from services.volunteer_service.schemas import (
@@ -15,8 +19,7 @@ from services.volunteer_service.schemas import (
     VolunteerProfileAdminUpdate,
     VolunteerProfileResponse,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from services.volunteer_service.services import announce_volunteer_of_the_month
 
 router = APIRouter()
 
@@ -105,6 +108,30 @@ async def feature_volunteer(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Feature a volunteer for the public spotlight. Un-features any currently featured volunteer."""
+    now = utc_now()
+    profile = (
+        await db.execute(
+            select(VolunteerProfile).where(VolunteerProfile.member_id == member_id)
+        )
+    ).scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    display_month_start = now.replace(
+        day=1,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    if display_month_start.tzinfo is None:
+        display_month_start = display_month_start.replace(tzinfo=timezone.utc)
+    already_announced = bool(
+        profile.is_featured
+        and profile.featured_from is not None
+        and profile.featured_from >= display_month_start
+    )
+
     # Un-feature all currently featured
     current_featured = (
         (
@@ -118,23 +145,22 @@ async def feature_volunteer(
     for p in current_featured:
         p.is_featured = False
 
-    # Feature the target
-    profile = (
-        await db.execute(
-            select(VolunteerProfile).where(VolunteerProfile.member_id == member_id)
-        )
-    ).scalar_one_or_none()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-
     profile.is_featured = True
-    profile.featured_from = utc_now()
+    if not already_announced:
+        profile.featured_from = now
     profile.featured_until = data.featured_until
     if data.spotlight_quote is not None:
         profile.spotlight_quote = data.spotlight_quote
 
     await db.commit()
     await db.refresh(profile)
+
+    if not already_announced:
+        await announce_volunteer_of_the_month(
+            db,
+            member_id=member_id,
+            period_start=date(now.year, now.month, 1),
+        )
 
     result = {c.key: getattr(profile, c.key) for c in profile.__table__.columns}
     member_info = await resolve_members_basic([member_id])

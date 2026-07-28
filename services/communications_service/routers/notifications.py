@@ -32,6 +32,7 @@ CATEGORY_TO_EMAIL_PREF: dict[str, str] = {
     "store": "email_payment_receipts",  # reuse payment receipts pref for now
     "coaching": "email_coach_messages",
     "announcements": "email_announcements",
+    "volunteer": "email_announcements",
 }
 
 # ============================================================================
@@ -250,14 +251,17 @@ async def dispatch_notification(
 
                     # Build email from template data
                     email_data = payload.email_data or {}
-                    to_email = email_data.get("to_email")
+                    # A dispatch may target several members. Default to the
+                    # address resolved for the member currently being
+                    # processed; an explicit address remains useful for a
+                    # one-recipient, pre-rendered template.
+                    to_email = email_data.get("to_email") or member_detail.get("email")
                     if to_email:
                         await send_email(
                             to_email=to_email,
                             subject=payload.title,
-                            html_content=email_data.get(
-                                "html_content", payload.body or ""
-                            ),
+                            body=email_data.get("body", payload.body or ""),
+                            html_body=email_data.get("html_content"),
                         )
             except Exception as e:
                 logger.warning(

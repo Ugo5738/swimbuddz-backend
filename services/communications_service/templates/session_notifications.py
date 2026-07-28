@@ -65,217 +65,252 @@ def _weather_html(weather_summary: dict | None) -> str:
     )
 
 
+TYPE_LABELS = {
+    "community": "Community Swim",
+    "club": "Club Session",
+    "event": "Event",
+    "cohort_class": "Academy Class",
+}
+
+
+def _type_label(session: dict) -> str:
+    return TYPE_LABELS.get(str(session.get("session_type") or "").lower(), "Session")
+
+
+def _session_image_html(session: dict, *, compact: bool = False) -> str:
+    image_url = session.get("featured_image_url")
+    if not image_url:
+        return ""
+    max_height = "180px" if compact else "280px"
+    return (
+        f'<img src="{escape(str(image_url), quote=True)}" '
+        f'alt="{escape(str(session.get("image_alt") or session["title"]), quote=True)}" '
+        f'style="display:block;width:100%;max-height:{max_height};object-fit:cover;'
+        'border-radius:6px;margin:12px 0 18px;"/>'
+    )
+
+
+def _session_details_html(session: dict, *, include_fee: bool) -> str:
+    details = {
+        "Date": escape(str(session["date"])),
+        "Time": escape(str(session["time"])),
+        "Location": escape(str(session["location"])),
+    }
+    if session.get("address"):
+        details["Address"] = escape(str(session["address"]))
+    if include_fee:
+        details["Fee"] = escape(str(session["fee_text"]))
+    if session.get("availability_text"):
+        details["Availability"] = escape(str(session["availability_text"]))
+    return detail_box(details)
+
+
+def _session_identity_html(session: dict) -> str:
+    lines = [
+        value
+        for value in (
+            session.get("scope_label"),
+            session.get("leader_label"),
+            session.get("purpose"),
+        )
+        if value
+    ]
+    if not lines:
+        return ""
+    return (
+        '<p style="margin:10px 0 16px;color:#475569;font-size:14px;line-height:1.6;">'
+        + "<br/>".join(escape(str(line)) for line in lines)
+        + "</p>"
+    )
+
+
+def _transport_html(session: dict) -> str:
+    if not session.get("transport_text"):
+        return ""
+    return info_box(
+        "<strong>Transport</strong><br/>" + escape(str(session["transport_text"])),
+        bg_color="#f0fdf4",
+        border_color="#16a34a",
+    )
+
+
+def _gear_html(session: dict) -> str:
+    if not session.get("gear_notes"):
+        return ""
+    return info_box(
+        "<strong>What to bring</strong><br/>" + escape(str(session["gear_notes"])),
+        bg_color="#fefce8",
+        border_color="#ca8a04",
+    )
+
+
+def _plain_session_facts(
+    session: dict,
+    *,
+    include_fee: bool,
+    include_gear: bool,
+) -> str:
+    lines = [
+        str(session["title"]),
+        f"Date: {session['date']}",
+        f"Time: {session['time']}",
+        f"Location: {session['location']}",
+    ]
+    if session.get("address"):
+        lines.append(f"Address: {session['address']}")
+    if session.get("scope_label"):
+        lines.append(str(session["scope_label"]))
+    if session.get("leader_label"):
+        lines.append(str(session["leader_label"]))
+    if session.get("purpose"):
+        lines.append(f"Focus: {session['purpose']}")
+    if include_fee:
+        lines.append(f"Fee: {session['fee_text']}")
+    if session.get("availability_text"):
+        lines.append(f"Availability: {session['availability_text']}")
+    if session.get("weather_text"):
+        lines.append(f"Weather: {session['weather_text']}")
+    if session.get("transport_text"):
+        lines.append(f"Transport: {session['transport_text']}")
+    if include_gear and session.get("gear_notes"):
+        lines.append(f"What to bring: {session['gear_notes']}")
+    return "\n".join(lines)
+
+
 async def send_session_announcement_email(
     to_email: str,
     member_name: str,
-    session_id: str,
-    session_title: str,
-    session_type: str,
-    session_date: str,
-    session_time: str,
-    session_location: str,
-    session_address: str = "",
-    pool_fee: float = 0,
+    session: dict,
     is_short_notice: bool = False,
     short_notice_message: str = "",
-    currency: str = "NGN",
-    weather_summary: dict | None = None,
+    is_follow_up: bool = False,
 ) -> bool:
-    """
-    Send a booking prompt when a session is available to book.
-
-    Args:
-        to_email: Recipient email address.
-        member_name: Recipient's first name.
-        session_id: UUID of the session being booked.
-        session_title: Title of the session.
-        session_type: Type of session (community, club, event).
-        session_date: Formatted date string.
-        session_time: Formatted time string.
-        session_location: Pool/venue name.
-        session_address: Optional full address.
-        pool_fee: Session fee amount.
-        is_short_notice: Whether this is a same-day/short notice session.
-        short_notice_message: Optional message explaining the short notice.
-        currency: Currency code for fee display.
-    """
-    fee_display = (
-        f"₦{pool_fee:,.0f}" if currency == "NGN" else f"{currency} {pool_fee:,.2f}"
-    )
-    fee_text = f"Fee: {fee_display}" if pool_fee > 0 else "Fee: Free"
-
-    # Header based on session type
-    type_labels = {
-        "community": "Community Swim",
-        "club": "Club Session",
-        "event": "Event",
-        "cohort_class": "Academy Class",
-    }
-    type_label = type_labels.get(session_type.lower(), "Session")
+    """Send an image-led booking prompt using the shared session context."""
+    type_label = _type_label(session)
     frontend_url = settings.FRONTEND_URL.rstrip("/")
-    booking_url = f"{frontend_url}/sessions/{session_id}/book"
-
-    # Short notice banner
-    short_notice_html = ""
+    booking_url = f"{frontend_url}/sessions/{session['id']}/book"
     short_notice_text = (
         short_notice_message or "This session was scheduled on short notice."
     )
-    if is_short_notice:
-        short_notice_html = info_box(
-            f"⚠️ <strong>Short Notice</strong><br/>{short_notice_text}",
+    short_notice_html = (
+        info_box(
+            "<strong>Short notice</strong><br/>" + escape(short_notice_text),
             bg_color="#fef3c7",
             border_color="#f59e0b",
         )
+        if is_short_notice
+        else ""
+    )
 
-    subject = f"New {type_label}: {session_title} on {session_date}"
-    weather_text = _weather_text(weather_summary)
-    weather_html = _weather_html(weather_summary)
-
-    # Plain text body
+    availability_intro = (
+        f"This {type_label.lower()} is still available to book."
+        if is_follow_up
+        else f"A new {type_label.lower()} is available to book."
+    )
+    configured_intro = str(session.get("section_intro") or "").strip()
+    intro = (
+        f"{availability_intro} {configured_intro}"
+        if configured_intro
+        else availability_intro
+    )
+    subject_prefix = "Book your" if is_follow_up else "New"
+    subject = f"{subject_prefix} {type_label}: {session['title']} on {session['date']}"
+    plain_facts = _plain_session_facts(
+        session,
+        include_fee=True,
+        include_gear=True,
+    )
     body = f"""Hi {member_name},
 
-A new {type_label.lower()} is available to book.
+{intro}
 
-{session_title}
-📅 {session_date}
-⏰ {session_time}
-📍 {session_location}
-{f"🗺️ {session_address}" if session_address else ""}
-💳 {fee_text}
-{weather_text}
+{plain_facts}
 
-{f"⚠️ {short_notice_text}" if is_short_notice else ""}
+{f"Short notice: {short_notice_text}" if is_short_notice else ""}
 
-What to bring:
-✓ Swimwear and swim cap
-✓ Goggles
-✓ Towel
-✓ Water bottle
-
-Book your spot here:
+Book your spot:
 {booking_url}
 
-— The SwimBuddz Team
+Add to calendar:
+{session["calendar_url"]}
+
+The SwimBuddz Team
 """
 
-    # HTML body
-    details = {
-        "📅 Date": session_date,
-        "⏰ Time": session_time,
-        "📍 Location": session_location,
-    }
-    if session_address:
-        details["🗺️ Address"] = session_address
-    if pool_fee > 0:
-        details["💳 Fee"] = fee_display
-    else:
-        details["💳 Fee"] = "Free"
-
-    checklist_html = """
-    <div style="background: #fefce8; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h4 style="margin: 0 0 10px 0; color: #854d0e;">🎒 What to Bring</h4>
-        <ul style="margin: 0; padding-left: 20px; color: #713f12;">
-            <li>Swimwear and swim cap</li>
-            <li>Goggles</li>
-            <li>Towel</li>
-            <li>Water bottle</li>
-        </ul>
-    </div>
-    """
-
     body_html = (
-        f"<p>Hi {member_name},</p>"
-        f"<p>A new <strong>{type_label.lower()}</strong> is available to book.</p>"
+        f"<p>Hi {escape(member_name)},</p>"
+        f"<p>{escape(intro)}</p>"
         + short_notice_html
-        + f"<h3>🏊‍♂️ {session_title}</h3>"
-        + detail_box(details)
-        + weather_html
-        + checklist_html
+        + _session_image_html(session)
+        + f"<h3>{escape(str(session['title']))}</h3>"
+        + _session_identity_html(session)
+        + _session_details_html(session, include_fee=True)
+        + _weather_html(session.get("weather_summary"))
+        + _transport_html(session)
+        + _gear_html(session)
         + cta_button("Book Session", booking_url)
-        + sign_off("Book early so your spot is held. 🌊")
+        + (
+            f'<p style="text-align:center;font-size:13px;">'
+            f'<a href="{escape(str(session["calendar_url"]), quote=True)}" '
+            'style="color:#475569;">Add to calendar</a></p>'
+        )
+        + sign_off("Book early so your spot is held.")
     )
-
     html_body = wrap_html(
-        title=f"New {type_label}",
-        subtitle=session_title,
+        title=f"{subject_prefix} {type_label}",
+        subtitle=str(session["title"]),
         body_html=body_html,
         header_gradient=GRADIENT_CYAN,
-        preheader=f"New {type_label.lower()} on {session_date}",
+        preheader=f"{subject_prefix} {type_label.lower()} on {session['date']}",
     )
-
     return await send_email(to_email, subject, body, html_body)
 
 
 async def send_session_prospect_invite_email(
     to_email: str,
     member_name: str,
-    session_id: str,
-    session_title: str,
-    session_date: str,
-    session_time: str,
-    session_location: str,
-    session_address: str = "",
-    pool_fee: float = 0,
-    currency: str = "NGN",
-    weather_summary: dict | None = None,
+    session: dict,
 ) -> bool:
-    """Invite an unpaid signup to choose a SwimBuddz path before booking."""
-    fee_display = (
-        f"₦{pool_fee:,.0f}" if currency == "NGN" else f"{currency} {pool_fee:,.2f}"
-    )
-    fee_text = f"Pool fee: {fee_display}" if pool_fee > 0 else "Pool fee: Free"
+    """Invite an unpaid signup using the same Community session facts."""
     frontend_url = settings.FRONTEND_URL.rstrip("/")
     activation_url = f"{frontend_url}/account/billing?required=community"
-    booking_url = f"{frontend_url}/sessions/{session_id}/book"
-    weather_text = _weather_text(weather_summary)
-    weather_html = _weather_html(weather_summary)
-
-    subject = f"Choose your SwimBuddz path - Community swim on {session_date}"
-
+    booking_url = f"{frontend_url}/sessions/{session['id']}/book"
+    subject = f"Choose your SwimBuddz path - Community swim on {session['date']}"
+    plain_facts = _plain_session_facts(
+        session,
+        include_fee=True,
+        include_gear=True,
+    )
     body = f"""Hi {member_name},
 
 We have a Community swim coming up, and it is a good moment to choose how you want to join SwimBuddz.
 
-{session_title}
-📅 {session_date}
-⏰ {session_time}
-📍 {session_location}
-{f"🗺️ {session_address}" if session_address else ""}
-💳 {fee_text}
-{weather_text}
+{plain_facts}
 
 Choose the path that fits you:
 - Community: open swims, events, and the broader SwimBuddz network.
 - Club: weekly structured training with a crew.
 - Academy: cohort-based programs for learning or improving your swimming.
 
-Choose and activate your membership here:
+Choose and activate your membership:
 {activation_url}
 
-Booking is reserved for active SwimBuddz members. After activation, you can book this session here:
+After activation, book this session:
 {booking_url}
 
-If you are new and want to ask about a first-timer visit before paying, reply to this email and we will confirm what is possible for that session.
-
-— The SwimBuddz Team
+The SwimBuddz Team
 """
-
-    details = {
-        "📅 Date": session_date,
-        "⏰ Time": session_time,
-        "📍 Location": session_location,
-        "💳 Pool fee": fee_display if pool_fee > 0 else "Free",
-    }
-    if session_address:
-        details["🗺️ Address"] = session_address
-
     body_html = (
-        f"<p>Hi {member_name},</p>"
+        f"<p>Hi {escape(member_name)},</p>"
         "<p>We have a <strong>Community swim</strong> coming up and thought you "
         "might want to choose how you want to join SwimBuddz.</p>"
-        + f"<h3>🏊‍♂️ {session_title}</h3>"
-        + detail_box(details)
-        + weather_html
+        + _session_image_html(session)
+        + f"<h3>{escape(str(session['title']))}</h3>"
+        + _session_identity_html(session)
+        + _session_details_html(session, include_fee=True)
+        + _weather_html(session.get("weather_summary"))
+        + _transport_html(session)
+        + _gear_html(session)
         + info_box(
             "<strong>Choose your path</strong><br/>"
             "Community: open swims, events, and the broader network.<br/>"
@@ -286,137 +321,78 @@ If you are new and want to ask about a first-timer visit before paying, reply to
         )
         + cta_button("Choose and Activate Membership", activation_url)
         + (
-            f'<p style="font-size: 14px; color: #64748b;">After activation, '
-            f'you can book this session here: <a href="{booking_url}">{booking_url}</a></p>'
+            f'<p style="font-size:14px;color:#64748b;">After activation, '
+            f'<a href="{escape(booking_url, quote=True)}">book this session</a>.</p>'
         )
-        + sign_off(
-            "If you want to ask about a first-timer visit before paying, reply "
-            "to this email and we will confirm what is possible for that session."
-        )
+        + sign_off("Reply to this email if you want to ask about a first-timer visit.")
     )
-
     html_body = wrap_html(
         title="Choose Your SwimBuddz Path",
-        subtitle=session_title,
+        subtitle=str(session["title"]),
         body_html=body_html,
         header_gradient=GRADIENT_CYAN,
-        preheader=f"Community swim on {session_date}",
+        preheader=f"Community swim on {session['date']}",
     )
-
     return await send_email(to_email, subject, body, html_body)
 
 
 async def send_session_reminder_email(
     to_email: str,
     member_name: str,
-    session_id: str,
-    session_title: str,
-    session_date: str,
-    session_time: str,
-    session_location: str,
-    session_address: str = "",
+    session: dict,
     reminder_type: str = "24h",
-    pool_fee: float = 0,
-    currency: str = "NGN",
-    weather_summary: dict | None = None,
 ) -> bool:
-    """
-    Send session reminder email (24h, 3h, or 1h before).
-
-    Args:
-        to_email: Recipient email address.
-        member_name: Recipient's first name.
-        session_id: UUID of the booked session.
-        session_title: Title of the session.
-        session_date: Formatted date string.
-        session_time: Formatted time string.
-        session_location: Pool/venue name.
-        session_address: Optional full address.
-        reminder_type: "24h", "3h", or "1h".
-        pool_fee: Session fee amount.
-        currency: Currency code for fee display.
-    """
+    """Send a purpose-sized reminder using the shared session context."""
     reminder_messages = {
-        "24h": ("Tomorrow", "Your session is tomorrow! Time to prepare."),
-        "3h": ("Starting Soon", "Your session starts in a few hours. Get ready!"),
-        "1h": ("Starting in 1 Hour", "Your session is about to begin!"),
+        "24h": ("Tomorrow", "Your session is tomorrow. Here is what you need."),
+        "3h": ("Starting Soon", "Your session starts in a few hours."),
+        "1h": ("Starting in 1 Hour", "Your session is about to begin."),
     }
     title_suffix, intro_message = reminder_messages.get(
-        reminder_type, ("Reminder", "Your session is coming up.")
+        reminder_type,
+        ("Reminder", "Your session is coming up."),
     )
-
-    subject = f"Reminder: {session_title} - {title_suffix}"
-
-    # Plain text body
     frontend_url = settings.FRONTEND_URL.rstrip("/")
-    booking_url = f"{frontend_url}/sessions/{session_id}/book"
-    weather_text = _weather_text(weather_summary)
-    weather_html = _weather_html(weather_summary)
+    session_url = f"{frontend_url}/sessions/{session['id']}"
+    include_preparation = reminder_type == "24h"
+    subject = f"Reminder: {session['title']} - {title_suffix}"
+    plain_facts = _plain_session_facts(
+        session,
+        include_fee=False,
+        include_gear=include_preparation,
+    )
     body = f"""Hi {member_name},
 
 {intro_message}
 
-{session_title}
-📅 {session_date}
-⏰ {session_time}
-📍 {session_location}
-{f"🗺️ {session_address}" if session_address else ""}
-{weather_text}
+{plain_facts}
 
-What to bring:
-✓ Swimwear and swim cap
-✓ Goggles
-✓ Towel
-✓ Water bottle
+View the session:
+{session_url}
 
-See you there! 🏊‍♂️
-
-View your booking:
-{booking_url}
-
-— The SwimBuddz Team
+The SwimBuddz Team
 """
 
-    # HTML body
-    details = {
-        "📅 Date": session_date,
-        "⏰ Time": session_time,
-        "📍 Location": session_location,
-    }
-    if session_address:
-        details["🗺️ Address"] = session_address
-
-    checklist_html = """
-    <div style="background: #fefce8; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <h4 style="margin: 0 0 10px 0; color: #854d0e;">🎒 What to Bring</h4>
-        <ul style="margin: 0; padding-left: 20px; color: #713f12;">
-            <li>Swimwear and swim cap</li>
-            <li>Goggles</li>
-            <li>Towel</li>
-            <li>Water bottle</li>
-        </ul>
-    </div>
-    """
-
     body_html = (
-        f"<p>Hi {member_name},</p>"
-        f"<p>{intro_message}</p>"
-        + f"<h3>🏊‍♂️ {session_title}</h3>"
-        + detail_box(details)
-        + weather_html
-        + checklist_html
-        + cta_button("View Booking", booking_url)
-        + sign_off("See you in the water! 🌊")
+        f"<p>Hi {escape(member_name)},</p>"
+        f"<p>{escape(intro_message)}</p>"
+        + (_session_image_html(session, compact=True) if include_preparation else "")
+        + f"<h3>{escape(str(session['title']))}</h3>"
+        + (_session_identity_html(session) if include_preparation else "")
+        + _session_details_html(session, include_fee=False)
+        + _weather_html(session.get("weather_summary"))
+        + _transport_html(session)
+        + (_gear_html(session) if include_preparation else "")
+        + cta_button("View Session", session_url)
+        + sign_off("See you in the water.")
     )
-
     html_body = wrap_html(
-        title=f"⏰ {title_suffix}",
-        subtitle=session_title,
+        title=title_suffix,
+        subtitle=str(session["title"]),
         body_html=body_html,
         header_gradient=GRADIENT_CYAN,
-        preheader=f"Reminder: {session_title} - {title_suffix}",
+        preheader=f"Reminder: {session['title']} - {title_suffix}",
     )
-
     return await send_email(to_email, subject, body, html_body)
 
 
@@ -581,11 +557,12 @@ async def send_weekly_session_digest_email(
     articles: list[dict] | None = None,
     digest_configs: dict[str, dict] | None = None,
     preferences_url: str | None = None,
+    volunteer_spotlight: dict | None = None,
 ) -> bool:
     """Send a tier-sectioned weekly booking digest."""
     articles = articles or []
     digest_configs = digest_configs or {}
-    if not sessions and not articles:
+    if not sessions and not articles and not volunteer_spotlight:
         return True
 
     subject = f"Your SwimBuddz week - {week_label}"
@@ -630,6 +607,18 @@ async def send_weekly_session_digest_email(
             f"- {article['title']} - {article['url']}" for article in articles
         ]
         text_sections.append("\n".join(article_lines))
+
+    if volunteer_spotlight:
+        text_sections.append(
+            "Volunteer of the Month:\n"
+            f"- {volunteer_spotlight['member_name']}"
+            + (
+                f" — {volunteer_spotlight['spotlight_quote']}"
+                if volunteer_spotlight.get("spotlight_quote")
+                else ""
+            )
+            + f"\n  {settings.FRONTEND_URL.rstrip('/')}/community"
+        )
 
     body = f"""Hi {member_name},
 
@@ -774,6 +763,36 @@ The SwimBuddz Team
         if article_cards
         else ""
     )
+    volunteer_section = ""
+    if volunteer_spotlight:
+        volunteer_name = escape(str(volunteer_spotlight["member_name"]))
+        volunteer_photo = ""
+        if volunteer_spotlight.get("profile_photo_url"):
+            volunteer_photo = (
+                f'<img src="{escape(str(volunteer_spotlight["profile_photo_url"]), quote=True)}" '
+                f'alt="{volunteer_name}" '
+                'style="display:block;width:150px;height:150px;object-fit:cover;'
+                'border-radius:999px;margin:14px auto;"/>'
+            )
+        volunteer_quote = ""
+        if volunteer_spotlight.get("spotlight_quote"):
+            volunteer_quote = (
+                '<p style="margin:12px 0;color:#475569;font-style:italic;">“'
+                f'{escape(str(volunteer_spotlight["spotlight_quote"]))}”</p>'
+            )
+        volunteer_section = (
+            '<div style="margin:26px 0;padding:22px;border-radius:8px;'
+            'background:#f0f9ff;text-align:center;border:1px solid #bae6fd;">'
+            '<div style="font-size:12px;font-weight:800;text-transform:uppercase;'
+            'letter-spacing:.08em;color:#0e7490;">Volunteer of the Month</div>'
+            f"{volunteer_photo}"
+            f'<h2 style="font-size:22px;color:#0f172a;margin:10px 0 4px;">'
+            f"{volunteer_name}</h2>"
+            f"{volunteer_quote}"
+            f'<a href="{escape(settings.FRONTEND_URL.rstrip("/") + "/community", quote=True)}" '
+            'style="display:inline-block;margin-top:8px;color:#0e7490;'
+            'font-weight:700;">Celebrate their contribution</a></div>'
+        )
     preferences_link = escape(
         preferences_url or f"{settings.FRONTEND_URL.rstrip('/')}/account/settings"
     )
@@ -783,6 +802,7 @@ The SwimBuddz Team
         "<p>Here are the sessions you can attend this week, with your current "
         "booking state and the details you need to plan.</p>"
         + html_sections
+        + volunteer_section
         + articles_section
         + f'<p style="margin-top:28px;font-size:12px;color:#64748b;">'
         f'<a href="{preferences_link}" style="color:#475569;">Manage email preferences</a>'
