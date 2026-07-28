@@ -5772,6 +5772,53 @@
         ]
       }
     },
+    "/api/v1/internal/members/pods/rosters/batch": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Pod Rosters Batch Internal",
+        "description": "Return active member rosters for many pods in one database query.",
+        "operationId": "get_pod_rosters_batch_internal_internal_members_pods_rosters_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PodRosterBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodRosterBatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/internal/members/pods/{pod_id}": {
       "get": {
         "tags": [
@@ -8457,7 +8504,7 @@
           "sessions"
         ],
         "summary": "List Sessions",
-        "description": "List all upcoming sessions. Optional `types` filter is a comma-separated list\nof SessionType values (e.g., \"club,community\"). Optional `cohort_id` filter\nreturns only sessions for that cohort.\n\nDraft sessions are only visible to admins with include_drafts=true.",
+        "description": "List a bounded, chronologically sorted session window.\n\nWith no explicit date/status/admin-draft filters, this endpoint returns\nupcoming scheduled/in-progress sessions. An explicit date window without a\nstatus returns every published status in that window. `from` is inclusive\nand `to` is exclusive. `after`/`before` remain supported for older clients.",
         "operationId": "list_sessions_sessions__get",
         "security": [
           {
@@ -8497,6 +8544,127 @@
               ],
               "title": "Cohort Id"
             }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SessionStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact session status to return.",
+              "title": "Status"
+            },
+            "description": "Exact session status to return."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive session start boundary (ISO-8601).",
+              "title": "From"
+            },
+            "description": "Inclusive session start boundary (ISO-8601)."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exclusive session start boundary (ISO-8601).",
+              "title": "To"
+            },
+            "description": "Exclusive session start boundary (ISO-8601)."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Deprecated alias for `from`.",
+              "title": "After"
+            },
+            "description": "Deprecated alias for `from`."
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Deprecated alias for `to`.",
+              "title": "Before"
+            },
+            "description": "Deprecated alias for `to`."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Maximum rows returned (max 100).",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Maximum rows returned (max 100)."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Rows to skip for backward-compatible pagination.",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Rows to skip for backward-compatible pagination."
           },
           {
             "name": "include_drafts",
@@ -9314,6 +9482,57 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/internal/sessions/summaries/batch": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Session Summaries Batch",
+        "description": "Return display summaries for many session IDs in one database query.",
+        "operationId": "get_session_summaries_batch_internal_sessions_summaries_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionSummaryBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SessionListSummary"
+                  },
+                  "type": "array",
+                  "title": "Response Get Session Summaries Batch Internal Sessions Summaries Batch Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/internal/sessions/durations": {
@@ -10751,29 +10970,76 @@
           "attendance"
         ],
         "summary": "Get My Attendance History",
-        "description": "Get attendance history for the current member, enriched with session details.",
+        "description": "Get a bounded attendance-history page for the current member.",
         "operationId": "get_my_attendance_history_attendance_me_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "include_session",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include batched session display details.",
+              "default": true,
+              "title": "Include Session"
+            },
+            "description": "Include batched session display details."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/AttendanceResponse"
                   },
-                  "type": "array",
                   "title": "Response Get My Attendance History Attendance Me Get"
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/attendance/sessions/{session_id}/pool-list": {
@@ -14762,6 +15028,48 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/academy/cohorts/check-enrollments/batch": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Check Cohort Enrollments Batch Internal",
+        "description": "Resolve one member's access to many cohorts in one database query.",
+        "operationId": "check_cohort_enrollments_batch_internal_internal_academy_cohorts_check_enrollments_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CohortEnrollmentBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortEnrollmentBatchResponse"
+                }
               }
             }
           },
@@ -46739,6 +47047,79 @@
           }
         ]
       }
+    },
+    "/api/v1/calendar": {
+      "get": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Get Calendar",
+        "description": "Return only calendar items visible to the current visitor or member.",
+        "operationId": "get_calendar_api_v1_calendar_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -56785,6 +57166,40 @@
         "title": "PodMemberOut",
         "description": "One active assignment row."
       },
+      "PodRosterBatchRequest": {
+        "properties": {
+          "pod_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Pod Ids"
+          }
+        },
+        "type": "object",
+        "title": "PodRosterBatchRequest"
+      },
+      "PodRosterBatchResponse": {
+        "properties": {
+          "active_member_ids_by_pod": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Active Member Ids By Pod"
+          }
+        },
+        "type": "object",
+        "required": [
+          "active_member_ids_by_pod"
+        ],
+        "title": "PodRosterBatchResponse"
+      },
       "PodStatus": {
         "type": "string",
         "enum": [
@@ -60610,6 +61025,56 @@
         "title": "SessionDetailedStats",
         "description": "Extended session stats for quarterly reports."
       },
+      "SessionListSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "session_type": {
+            "type": "string",
+            "title": "Session Type"
+          },
+          "starts_at": {
+            "type": "string",
+            "title": "Starts At"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "session_type",
+          "starts_at"
+        ],
+        "title": "SessionListSummary"
+      },
       "SessionLocation": {
         "type": "string",
         "enum": [
@@ -60904,6 +61369,21 @@
           "cancelled"
         ],
         "title": "SessionStatus"
+      },
+      "SessionSummaryBatchRequest": {
+        "properties": {
+          "session_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Session Ids"
+          }
+        },
+        "type": "object",
+        "title": "SessionSummaryBatchRequest"
       },
       "SessionTemplateCreate": {
         "properties": {
@@ -63899,6 +64379,72 @@
           "program_id"
         ],
         "title": "CohortCreate"
+      },
+      "CohortEnrollmentAccess": {
+        "properties": {
+          "enrolled": {
+            "type": "boolean",
+            "title": "Enrolled",
+            "default": false
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "access_suspended": {
+            "type": "boolean",
+            "title": "Access Suspended",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "CohortEnrollmentAccess"
+      },
+      "CohortEnrollmentBatchRequest": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "cohort_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Cohort Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id"
+        ],
+        "title": "CohortEnrollmentBatchRequest"
+      },
+      "CohortEnrollmentBatchResponse": {
+        "properties": {
+          "enrollments": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CohortEnrollmentAccess"
+            },
+            "type": "object",
+            "title": "Enrollments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enrollments"
+        ],
+        "title": "CohortEnrollmentBatchResponse"
       },
       "CohortExtensionRequestCreate": {
         "properties": {
@@ -84492,6 +85038,30 @@
               }
             ],
             "title": "Preferred Roles"
+          },
+          "featured_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Featured From"
+          },
+          "featured_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Featured Until"
           }
         },
         "type": "object",
@@ -104067,6 +104637,167 @@
           "credit_minor"
         ],
         "title": "TrialBalanceRow"
+      },
+      "CalendarItemResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "session",
+              "event"
+            ],
+            "title": "Source"
+          },
+          "audience": {
+            "type": "string",
+            "enum": [
+              "community",
+              "club",
+              "academy"
+            ],
+            "title": "Audience"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "default": "Africa/Lagos"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "scheduled"
+          },
+          "href": {
+            "type": "string",
+            "title": "Href"
+          },
+          "bookable": {
+            "type": "boolean",
+            "title": "Bookable",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "audience",
+          "kind",
+          "title",
+          "starts_at",
+          "href"
+        ],
+        "title": "CalendarItemResponse",
+        "description": "One visible item from a domain-owned session or event."
+      },
+      "CalendarResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "range_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Range Start"
+          },
+          "range_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Range End"
+          },
+          "available_audiences": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "community",
+                "club",
+                "academy"
+              ]
+            },
+            "type": "array",
+            "title": "Available Audiences"
+          },
+          "errors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "range_start",
+          "range_end"
+        ],
+        "title": "CalendarResponse",
+        "description": "Calendar items plus range and partial-service status."
       }
     }
   }
