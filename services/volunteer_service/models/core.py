@@ -270,7 +270,8 @@ class VolunteerOpportunity(Base):
 
     # Relationships
     role: Mapped[Optional["VolunteerRole"]] = relationship(
-        back_populates="opportunities"
+        VolunteerRole,
+        back_populates="opportunities",
     )
     slots: Mapped[list["VolunteerSlot"]] = relationship(
         back_populates="opportunity", cascade="all, delete-orphan"
@@ -550,7 +551,7 @@ class SessionTemplateVolunteerSlot(Base):
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
-    role: Mapped[Optional["VolunteerRole"]] = relationship()
+    role: Mapped[Optional["VolunteerRole"]] = relationship(VolunteerRole)
 
     def __repr__(self) -> str:
         return (
@@ -629,7 +630,7 @@ class VolunteerOpportunityTemplate(Base):
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
-    role: Mapped[Optional["VolunteerRole"]] = relationship()
+    role: Mapped[Optional["VolunteerRole"]] = relationship(VolunteerRole)
 
     def __repr__(self) -> str:
         return f"<VolunteerOpportunityTemplate {self.title} dow={self.day_of_week}>"
