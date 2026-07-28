@@ -1,23 +1,26 @@
 """Listing endpoints: session attendance, cohort summary, my history."""
 
+import time
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends
-from libs.auth.dependencies import get_current_user
-from libs.auth.models import AuthUser
-from libs.common.config import get_settings
-from libs.common.service_client import (
-    get_confirmed_booking_member_ids,
-    get_members_bulk,
-    get_session_by_id,
-    get_session_ids_for_cohort,
-    internal_get,
-)
-from libs.db.session import get_async_db
+import httpx
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from libs.auth.dependencies import get_current_user
+from libs.auth.models import AuthUser
+from libs.common.config import get_settings
+from libs.common.logging import get_logger
+from libs.common.service_client import (
+    get_confirmed_booking_member_ids,
+    get_members_bulk,
+    get_session_ids_for_cohort,
+    get_sessions_by_ids,
+    internal_get,
+)
+from libs.db.session import get_async_db
 from services.attendance_service.models import (
     AttendanceRecord,
     AttendanceStatus,
@@ -32,6 +35,7 @@ from services.attendance_service.schemas import (
 from ._shared import get_current_member, require_admin_or_coach_for_session
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 @router.get(
@@ -190,33 +194,66 @@ async def get_cohort_attendance_summary(
 
 @router.get("/me", response_model=List[AttendanceResponse])
 async def get_my_attendance_history(
+    response: Response,
+    include_session: bool = Query(
+        default=True,
+        description="Include batched session display details.",
+    ),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     current_member: MemberRef = Depends(get_current_member),
     db: AsyncSession = Depends(get_async_db),
 ):
     """
-    Get attendance history for the current member, enriched with session details.
+    Get a bounded attendance-history page for the current member.
     """
+    started_at = time.perf_counter()
     query = (
         select(AttendanceRecord)
         .where(AttendanceRecord.member_id == current_member.id)
         .order_by(AttendanceRecord.created_at.desc())
+        .offset(offset)
+        .limit(limit + 1)
     )
+    db_started_at = time.perf_counter()
     result = await db.execute(query)
-    records = result.scalars().all()
+    rows = list(result.scalars().all())
+    db_ms = (time.perf_counter() - db_started_at) * 1000
+    has_more = len(rows) > limit
+    records = rows[:limit]
 
     if not records:
+        total_ms = (time.perf_counter() - started_at) * 1000
+        response.headers["X-Result-Count"] = "0"
+        response.headers["X-Has-More"] = "false"
+        response.headers["Server-Timing"] = (
+            f"attendance_db;dur={db_ms:.2f}, attendance_total;dur={total_ms:.2f}"
+        )
         return []
 
-    # Collect unique session IDs and fetch session details in parallel
-    unique_session_ids = list({str(r.session_id) for r in records})
+    # One cross-service request replaces the previous per-record HTTP loop.
     session_map: dict[str, dict] = {}
-    for sid in unique_session_ids:
+    session_batch_started_at = time.perf_counter()
+    if include_session:
+        unique_session_ids = list(dict.fromkeys(str(r.session_id) for r in records))
         try:
-            session_data = await get_session_by_id(sid, calling_service="attendance")
-            if session_data:
-                session_map[sid] = session_data
-        except Exception:
-            pass  # Best-effort — if session lookup fails, skip enrichment
+            sessions = await get_sessions_by_ids(
+                unique_session_ids,
+                calling_service="attendance",
+            )
+            session_map = {str(item["id"]): item for item in sessions if item.get("id")}
+        except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
+            logger.warning(
+                "Attendance history session enrichment failed",
+                extra={
+                    "extra_fields": {
+                        "member_id": str(current_member.id),
+                        "session_count": len(unique_session_ids),
+                        "error": str(exc),
+                    }
+                },
+            )
+    session_batch_ms = (time.perf_counter() - session_batch_started_at) * 1000
 
     # Build enriched response objects
     enriched: list[AttendanceResponse] = []
@@ -236,4 +273,28 @@ async def get_my_attendance_history(
             )
         enriched.append(resp)
 
+    total_ms = (time.perf_counter() - started_at) * 1000
+    response.headers["X-Result-Count"] = str(len(records))
+    response.headers["X-Has-More"] = str(has_more).lower()
+    if has_more:
+        response.headers["X-Next-Offset"] = str(offset + limit)
+    response.headers["Server-Timing"] = (
+        f"attendance_db;dur={db_ms:.2f}, "
+        f"session_batch;dur={session_batch_ms:.2f}, "
+        f"attendance_total;dur={total_ms:.2f}"
+    )
+    logger.info(
+        "Attendance history completed",
+        extra={
+            "extra_fields": {
+                "member_id": str(current_member.id),
+                "result_count": len(records),
+                "has_more": has_more,
+                "include_session": include_session,
+                "db_ms": round(db_ms, 2),
+                "session_batch_ms": round(session_batch_ms, 2),
+                "duration_ms": round(total_ms, 2),
+            }
+        },
+    )
     return enriched

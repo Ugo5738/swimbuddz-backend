@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from libs.common.session_access import SessionAccessDecision
 from tests.factories import MemberFactory, SessionCoachFactory, SessionFactory
 
@@ -26,10 +27,34 @@ def _stub_booking_attendance_sync():
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_get_session_by_id(sessions_client, db_session):
-    """Internal session lookup returns correct session data."""
+    """Internal session lookup returns operational email and capacity data."""
+    from services.sessions_service.models import (
+        BookingChannel,
+        SessionBooking,
+        SessionBookingStatus,
+    )
+
     pool_id = uuid.uuid4()
-    session = SessionFactory.create(pool_id=pool_id)
-    db_session.add(session)
+    member_id = uuid.uuid4()
+    coach_id = uuid.uuid4()
+    session = SessionFactory.create(
+        pool_id=pool_id,
+        description="Technique and pacing",
+    )
+    booking = SessionBooking(
+        session_id=session.id,
+        member_id=member_id,
+        member_auth_id="auth-member",
+        status=SessionBookingStatus.CONFIRMED,
+        channel=BookingChannel.MEMBER_SELF,
+        party_size=2,
+        fee_amount_kobo=4000,
+    )
+    coach = SessionCoachFactory.create(
+        session_id=session.id,
+        coach_id=coach_id,
+    )
+    db_session.add_all([session, booking, coach])
     await db_session.commit()
 
     response = await sessions_client.get(f"/internal/sessions/{session.id}")
@@ -42,6 +67,10 @@ async def test_get_session_by_id(sessions_client, db_session):
     assert data["status"] == "scheduled"
     assert data["capacity"] == 20
     assert data["pool_id"] == str(pool_id)
+    assert data["description"] == "Technique and pacing"
+    assert data["occupied_slots"] == 2
+    assert data["confirmed_booking_member_ids"] == [str(member_id)]
+    assert data["coach_member_ids"] == [str(coach_id)]
 
 
 @pytest.mark.asyncio
@@ -52,6 +81,40 @@ async def test_get_session_by_id_not_found(sessions_client):
 
     response = await sessions_client.get(f"/internal/sessions/{uuid.uuid4()}")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_get_session_summaries_batch_preserves_requested_order(
+    sessions_client, db_session
+):
+    first = SessionFactory.create(title="First summary")
+    second = SessionFactory.create(title="Second summary")
+    missing_id = uuid.uuid4()
+    db_session.add_all([first, second])
+    await db_session.commit()
+
+    response = await sessions_client.post(
+        "/internal/sessions/summaries/batch",
+        json={
+            "session_ids": [
+                str(second.id),
+                str(missing_id),
+                str(first.id),
+                str(second.id),
+            ]
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert [item["id"] for item in response.json()] == [
+        str(second.id),
+        str(first.id),
+    ]
+    assert [item["title"] for item in response.json()] == [
+        "Second summary",
+        "First summary",
+    ]
 
 
 @pytest.mark.asyncio

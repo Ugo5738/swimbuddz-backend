@@ -12,7 +12,11 @@ New code may import directly from a submodule
 
 from __future__ import annotations
 
-from .academy import check_cohort_enrollment, list_enrollment_progress
+from .academy import (
+    check_cohort_enrollment,
+    check_cohort_enrollments_batch,
+    list_enrollment_progress,
+)
 from .attendance import get_member_attendance
 from .communications import dispatch_notification
 from .core import (
@@ -42,6 +46,7 @@ from .members import (
     get_member_membership,
     get_members_bulk,
     get_pod_by_id,
+    get_pod_rosters_batch,
     list_pods,
     search_members,
 )
@@ -66,6 +71,7 @@ from .sessions import (
     get_next_session_for_cohort,
     get_session_by_id,
     get_session_ids_for_cohort,
+    get_sessions_by_ids,
 )
 from .transport import attach_session_ride_configs
 from .volunteer import (
@@ -74,8 +80,8 @@ from .volunteer import (
     materialise_opportunities_from_session_template,
 )
 from .wallet import (
-    check_wallet_balance,
     capture_wallet_hold,
+    check_wallet_balance,
     create_wallet_hold,
     credit_member_wallet,
     debit_member_wallet,
@@ -113,11 +119,13 @@ __all__ = [
     "get_admin_members",
     "get_eligible_coaches",
     "get_pod_by_id",
+    "get_pod_rosters_batch",
     "list_pods",
     # Pools
     "get_partner_pool",
     # Academy
     "check_cohort_enrollment",
+    "check_cohort_enrollments_batch",
     "list_enrollment_progress",
     # Attendance
     "get_member_attendance",
@@ -127,6 +135,7 @@ __all__ = [
     "get_completed_session_ids_for_cohort",
     "get_confirmed_booking_member_ids",
     "get_session_by_id",
+    "get_sessions_by_ids",
     "get_next_session_for_cohort",
     "get_session_ids_for_cohort",
     # Transport

@@ -7,12 +7,14 @@ importing them directly.
 from __future__ import annotations
 
 import re
+import time
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.gzip import GZipMiddleware
 
 from libs.common.error_handler import add_exception_handlers
 from libs.common.health import register_health_check
@@ -48,7 +50,18 @@ def create_app() -> FastAPI:
         # request). Enumerate the verbs and headers we actually use.
         allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "Accept"],
+        expose_headers=[
+            "Server-Timing",
+            "X-Request-ID",
+            "X-Result-Count",
+            "X-Has-More",
+            "X-Next-Offset",
+        ],
     )
+    # JSON-heavy list endpoints are commonly used on mobile connections.
+    # Compress at the public gateway so every domain service benefits without
+    # duplicating middleware or double-compressing internal traffic.
+    app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 
     # Add observability (structured logging + request tracing)
     add_observability_middleware(app)
@@ -681,11 +694,13 @@ def create_app() -> FastAPI:
     # ==================================================================
     # DASHBOARD (Gateway-specific aggregation)
     # ==================================================================
+    from services.gateway_service.app.routers.calendar import router as calendar_router
     from services.gateway_service.app.routers.cleanup import router as cleanup_router
     from services.gateway_service.app.routers.dashboard import (
         router as dashboard_router,
     )
 
+    app.include_router(calendar_router, prefix="/api/v1")
     app.include_router(dashboard_router, prefix="/api/v1")
     app.include_router(cleanup_router, prefix="/api/v1")
 
@@ -786,6 +801,7 @@ async def proxy_media_playback(path: str, request: Request):
 
 async def proxy_request(client: clients.ServiceClient, path: str, request: Request):
     """Generic proxy function to forward requests to microservices."""
+    proxy_started_at = time.perf_counter()
     try:
         # Get request body.
         #
@@ -848,6 +864,14 @@ async def proxy_request(client: clients.ServiceClient, path: str, request: Reque
             raise HTTPException(status_code=405, detail="Method not allowed")
 
         forward_headers = dict(_filter_service_headers(service_response.headers))
+        gateway_proxy_ms = (time.perf_counter() - proxy_started_at) * 1000
+        downstream_timing = forward_headers.get("server-timing")
+        gateway_timing = f"gateway_proxy;dur={gateway_proxy_ms:.2f}"
+        forward_headers["server-timing"] = (
+            f"{downstream_timing}, {gateway_timing}"
+            if downstream_timing
+            else gateway_timing
+        )
 
         if service_response.status_code == 204:
             return Response(status_code=204, headers=forward_headers)

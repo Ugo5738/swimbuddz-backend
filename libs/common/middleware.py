@@ -117,4 +117,6 @@ def add_observability_middleware(app: FastAPI) -> None:
     # Add request context middleware
     app.add_middleware(RequestContextMiddleware)
 
-    logger.info("Observability middleware initialized")
+    # Keep import-time schema generation stdout clean. Request lifecycle logs
+    # provide the useful operational signal once the app is serving traffic.
+    logger.debug("Observability middleware initialized")

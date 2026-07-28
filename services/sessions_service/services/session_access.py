@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime
 
@@ -11,8 +12,10 @@ from fastapi import HTTPException
 from libs.common.logging import get_logger
 from libs.common.service_client import (
     check_cohort_enrollment,
+    check_cohort_enrollments_batch,
     get_member_membership,
     get_pod_by_id,
+    get_pod_rosters_batch,
 )
 from libs.common.session_access import evaluate_session_access
 from services.sessions_service.models import Session
@@ -98,6 +101,91 @@ async def evaluate_session_access_for_member(
                 detail="Could not verify club pod access. Please try again.",
             )
         pod_member_ids = (pod or {}).get("active_member_ids") or []
+
+    return evaluate_session_access(
+        member_payload,
+        session,
+        now=now,
+        cohort_enrollment=cohort_enrollment,
+        pod_member_ids=pod_member_ids,
+        confirmed_booking=confirmed_booking,
+    )
+
+
+async def get_sessions_access_context(
+    *,
+    sessions: list[Session],
+    member_payload: dict,
+    confirmed_session_ids: set[uuid.UUID],
+    calling_service: str = "sessions",
+) -> tuple[dict[str, dict], dict[str, list[str]]]:
+    """Batch all cross-service context needed to evaluate a session list."""
+    cohort_ids = sorted(
+        {
+            str(session.cohort_id)
+            for session in sessions
+            if session.cohort_id is not None and session.id not in confirmed_session_ids
+        }
+    )
+    pod_ids = sorted(
+        {
+            str(session.pod_id)
+            for session in sessions
+            if session.pod_id is not None and session.id not in confirmed_session_ids
+        }
+    )
+    member_id = str(member_payload["member_id"])
+
+    try:
+        cohort_access, pod_rosters = await asyncio.gather(
+            check_cohort_enrollments_batch(
+                cohort_ids,
+                member_id,
+                calling_service=calling_service,
+            ),
+            get_pod_rosters_batch(
+                pod_ids,
+                calling_service=calling_service,
+            ),
+        )
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "Batch session access context failed for member=%s: %s",
+            member_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Could not verify session access. Please try again.",
+        ) from exc
+
+    return cohort_access, pod_rosters
+
+
+def evaluate_session_access_from_context(
+    *,
+    session: Session,
+    member_payload: dict,
+    now: datetime,
+    confirmed_booking: bool,
+    cohort_access: dict[str, dict],
+    pod_rosters: dict[str, list[str]],
+):
+    """Evaluate one list item using already-batched cross-service context."""
+    cohort_enrollment = None
+    if session.cohort_id is not None and not confirmed_booking:
+        cohort_enrollment = cohort_access.get(
+            str(session.cohort_id),
+            {
+                "enrolled": False,
+                "status": None,
+                "access_suspended": False,
+            },
+        )
+
+    pod_member_ids = None
+    if session.pod_id is not None and not confirmed_booking:
+        pod_member_ids = pod_rosters.get(str(session.pod_id), [])
 
     return evaluate_session_access(
         member_payload,

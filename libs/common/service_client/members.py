@@ -270,6 +270,27 @@ async def get_pod_by_id(pod_id: str, *, calling_service: str) -> Optional[dict]:
     return resp.json()
 
 
+async def get_pod_rosters_batch(
+    pod_ids: list[str], *, calling_service: str
+) -> dict[str, list[str]]:
+    """Fetch active member rosters for many pods in one request."""
+    if not pod_ids:
+        return {}
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.MEMBERS_SERVICE_URL,
+        path="/internal/members/pods/rosters/batch",
+        calling_service=calling_service,
+        json={"pod_ids": pod_ids},
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    if not isinstance(payload, dict):
+        return {}
+    rosters = payload.get("active_member_ids_by_pod", {})
+    return rosters if isinstance(rosters, dict) else {}
+
+
 async def list_pods(
     *,
     calling_service: str,

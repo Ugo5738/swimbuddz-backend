@@ -10,7 +10,7 @@ endpoint instead of direct factory insertion.
 """
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -55,6 +55,143 @@ async def test_list_sessions_with_type_filter(sessions_client, db_session):
     # All returned sessions should be club type
     for item in data:
         assert item["session_type"].lower() == "club"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_list_sessions_defaults_to_upcoming_and_reports_page_metadata(
+    sessions_client, db_session
+):
+    """The default contract excludes past/non-active rows and is bounded."""
+    now = datetime.now(timezone.utc)
+    past = SessionFactory.create(
+        title="Past scheduled",
+        starts_at=now - timedelta(days=2),
+        ends_at=now - timedelta(days=2) + timedelta(hours=1),
+    )
+    first = SessionFactory.create(
+        title="First upcoming",
+        starts_at=now + timedelta(days=1),
+        ends_at=now + timedelta(days=1, hours=1),
+    )
+    second = SessionFactory.create(
+        title="Second upcoming",
+        starts_at=now + timedelta(days=2),
+        ends_at=now + timedelta(days=2, hours=1),
+    )
+    completed = SessionFactory.create(
+        title="Future completed",
+        status="COMPLETED",
+        starts_at=now + timedelta(days=3),
+        ends_at=now + timedelta(days=3, hours=1),
+    )
+    db_session.add_all([past, first, second, completed])
+    await db_session.commit()
+
+    response = await sessions_client.get("/sessions/?limit=1")
+
+    assert response.status_code == 200
+    assert [item["title"] for item in response.json()] == ["First upcoming"]
+    assert response.headers["x-result-count"] == "1"
+    assert response.headers["x-has-more"] == "true"
+    assert response.headers["x-next-offset"] == "1"
+    assert "sessions_db" in response.headers["server-timing"]
+    assert "access_enrichment" in response.headers["server-timing"]
+
+    next_page = await sessions_client.get("/sessions/?limit=1&offset=1")
+    assert [item["title"] for item in next_page.json()] == ["Second upcoming"]
+    assert next_page.headers["x-has-more"] == "false"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_list_sessions_honors_status_and_half_open_date_window(
+    sessions_client, db_session
+):
+    """Explicit status/from/to filters return only the requested interval."""
+    window_start = datetime(2035, 1, 1, tzinfo=timezone.utc)
+    inside = SessionFactory.create(
+        title="Completed in window",
+        status="COMPLETED",
+        starts_at=window_start + timedelta(days=1),
+        ends_at=window_start + timedelta(days=1, hours=1),
+    )
+    at_end = SessionFactory.create(
+        title="Completed at exclusive end",
+        status="COMPLETED",
+        starts_at=window_start + timedelta(days=2),
+        ends_at=window_start + timedelta(days=2, hours=1),
+    )
+    scheduled = SessionFactory.create(
+        title="Scheduled in window",
+        starts_at=window_start + timedelta(days=1),
+        ends_at=window_start + timedelta(days=1, hours=1),
+    )
+    db_session.add_all([inside, at_end, scheduled])
+    await db_session.commit()
+
+    response = await sessions_client.get(
+        "/sessions/",
+        params={
+            "status": "completed",
+            "from": window_start.isoformat(),
+            "to": (window_start + timedelta(days=2)).isoformat(),
+        },
+    )
+
+    assert response.status_code == 200
+    assert [item["title"] for item in response.json()] == ["Completed in window"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_list_sessions_explicit_window_includes_published_statuses(
+    sessions_client, db_session
+):
+    """A historical window can return completed rows without extra requests."""
+    window_start = datetime(2036, 1, 1, tzinfo=timezone.utc)
+    scheduled = SessionFactory.create(
+        title="Historical scheduled",
+        starts_at=window_start + timedelta(hours=1),
+        ends_at=window_start + timedelta(hours=2),
+    )
+    completed = SessionFactory.create(
+        title="Historical completed",
+        status="COMPLETED",
+        starts_at=window_start + timedelta(hours=3),
+        ends_at=window_start + timedelta(hours=4),
+    )
+    db_session.add_all([scheduled, completed])
+    await db_session.commit()
+
+    response = await sessions_client.get(
+        "/sessions/",
+        params={
+            "from": window_start.isoformat(),
+            "to": (window_start + timedelta(days=1)).isoformat(),
+        },
+    )
+
+    assert response.status_code == 200
+    assert [item["title"] for item in response.json()] == [
+        "Historical scheduled",
+        "Historical completed",
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_list_sessions_rejects_inverted_date_window(sessions_client):
+    response = await sessions_client.get(
+        "/sessions/",
+        params={
+            "from": "2035-01-02T00:00:00Z",
+            "to": "2035-01-01T00:00:00Z",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "`from` must be earlier than `to`."
 
 
 # ---------------------------------------------------------------------------

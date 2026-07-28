@@ -128,6 +128,52 @@ async def test_get_enrollment_internal_not_found(academy_client):
     assert response.status_code == 404
 
 
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_check_cohort_enrollments_batch_returns_each_requested_id(
+    academy_client, db_session
+):
+    member = MemberFactory.create()
+    program = ProgramFactory.create()
+    enrolled_cohort = CohortFactory.create(program_id=program.id)
+    missing_cohort = CohortFactory.create(program_id=program.id)
+    db_session.add_all([member, program, enrolled_cohort, missing_cohort])
+    await db_session.flush()
+    db_session.add(
+        EnrollmentFactory.create(
+            cohort_id=enrolled_cohort.id,
+            member_id=member.id,
+            access_suspended=True,
+        )
+    )
+    await db_session.commit()
+
+    response = await academy_client.post(
+        "/internal/academy/cohorts/check-enrollments/batch",
+        json={
+            "member_id": str(member.id),
+            "cohort_ids": [
+                str(enrolled_cohort.id),
+                str(missing_cohort.id),
+                str(enrolled_cohort.id),
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    access = response.json()["enrollments"]
+    assert access[str(enrolled_cohort.id)] == {
+        "enrolled": True,
+        "status": "enrolled",
+        "access_suspended": True,
+    }
+    assert access[str(missing_cohort.id)] == {
+        "enrolled": False,
+        "status": None,
+        "access_suspended": False,
+    }
+
+
 # ---------------------------------------------------------------------------
 # GET /internal/academy/cohorts/{cohort_id}
 # ---------------------------------------------------------------------------

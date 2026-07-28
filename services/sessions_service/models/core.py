@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -57,6 +58,13 @@ class Session(Base):
             "AND cohort_id IS NULL AND event_id IS NULL AND pod_id IS NULL)",
             name="ck_sessions_discriminator",
         ),
+        Index(
+            "ix_sessions_status_type_starts_at",
+            "status",
+            "session_type",
+            "starts_at",
+        ),
+        Index("ix_sessions_starts_at", "starts_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

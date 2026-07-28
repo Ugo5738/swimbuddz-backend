@@ -2,6 +2,7 @@ from datetime import datetime as _datetime
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel as _BaseModel
+from pydantic import Field as _Field
 from sqlalchemy import func, or_
 
 from services.academy_service.models import StudentProgress
@@ -311,6 +312,59 @@ class MemberAcademySummary(_BaseModel):
     milestones_in_progress: int = 0
     programs_enrolled: int = 0
     certificates_earned: int = 0
+
+
+class CohortEnrollmentAccess(_BaseModel):
+    enrolled: bool = False
+    status: str | None = None
+    access_suspended: bool = False
+
+
+class CohortEnrollmentBatchRequest(_BaseModel):
+    member_id: uuid.UUID
+    cohort_ids: List[uuid.UUID] = _Field(default_factory=list, max_length=200)
+
+
+class CohortEnrollmentBatchResponse(_BaseModel):
+    enrollments: dict[str, CohortEnrollmentAccess]
+
+
+@router.post(
+    "/cohorts/check-enrollments/batch",
+    response_model=CohortEnrollmentBatchResponse,
+)
+async def check_cohort_enrollments_batch_internal(
+    payload: CohortEnrollmentBatchRequest,
+    db: AsyncSession = Depends(get_async_db),
+) -> CohortEnrollmentBatchResponse:
+    """Resolve one member's access to many cohorts in one database query."""
+    cohort_ids = list(dict.fromkeys(payload.cohort_ids))
+    access_by_cohort = {
+        str(cohort_id): CohortEnrollmentAccess() for cohort_id in cohort_ids
+    }
+    if not cohort_ids:
+        return CohortEnrollmentBatchResponse(enrollments=access_by_cohort)
+
+    enrollments = (
+        (
+            await db.execute(
+                select(Enrollment).where(
+                    Enrollment.member_id == payload.member_id,
+                    Enrollment.cohort_id.in_(cohort_ids),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for enrollment in enrollments:
+        access_by_cohort[str(enrollment.cohort_id)] = CohortEnrollmentAccess(
+            enrolled=enrollment.status == EnrollmentStatus.ENROLLED,
+            status=enrollment.status.value if enrollment.status else None,
+            access_suspended=enrollment.access_suspended or False,
+        )
+
+    return CohortEnrollmentBatchResponse(enrollments=access_by_cohort)
 
 
 class MemberCohortEnrollment(_BaseModel):
