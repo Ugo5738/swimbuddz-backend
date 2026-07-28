@@ -7,9 +7,6 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from libs.common.audit import AuditLogMixin
-from libs.common.datetime_utils import utc_now
-from libs.db.base import Base
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -26,6 +23,9 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from libs.common.audit import AuditLogMixin
+from libs.common.datetime_utils import utc_now
+from libs.db.base import Base
 from services.store_service.models.enums import (
     CartStatus,
     FulfillmentType,
@@ -267,7 +267,9 @@ class Order(Base):
     items = relationship(
         "OrderItem", back_populates="order", cascade="all, delete-orphan"
     )
-    pickup_location = relationship("PickupLocation")
+    pickup_location = relationship(
+        "services.store_service.models.commerce.PickupLocation"
+    )
 
     @staticmethod
     def generate_order_number() -> str:

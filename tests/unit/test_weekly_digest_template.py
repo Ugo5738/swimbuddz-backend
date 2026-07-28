@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+
 from services.communications_service.templates import session_notifications
 
 
@@ -46,6 +47,11 @@ async def test_weekly_digest_renders_operational_and_tier_details(monkeypatch):
         sessions=sessions,
         digest_configs=configs,
         preferences_url="https://api.example.test/preferences",
+        volunteer_spotlight={
+            "member_name": "Ada <Captain>",
+            "profile_photo_url": "https://cdn.example.test/ada.jpg",
+            "spotlight_quote": "Community first <always>",
+        },
     )
 
     assert success is True
@@ -59,6 +65,10 @@ async def test_weekly_digest_renders_operational_and_tier_details(monkeypatch):
         "Bring fins, paddles, goggles, and water.",
         "Book session",
         "club.jpg",
+        "Volunteer of the Month",
+        "Ada &lt;Captain&gt;",
+        "Community first &lt;always&gt;",
+        "ada.jpg",
     ):
         assert expected in html
     assert "Wini &lt;script&gt;" in html

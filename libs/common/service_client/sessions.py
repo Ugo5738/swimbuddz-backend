@@ -26,6 +26,24 @@ async def get_session_by_id(session_id: str, *, calling_service: str) -> Optiona
     return resp.json()
 
 
+async def get_sessions_by_ids(
+    session_ids: list[str], *, calling_service: str
+) -> list[dict]:
+    """Bulk-fetch list-view session summaries by ID."""
+    if not session_ids:
+        return []
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.SESSIONS_SERVICE_URL,
+        path="/internal/sessions/summaries/batch",
+        calling_service=calling_service,
+        json={"session_ids": session_ids},
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    return payload if isinstance(payload, list) else []
+
+
 async def get_next_session_for_cohort(
     cohort_id: str, *, calling_service: str
 ) -> Optional[dict]:

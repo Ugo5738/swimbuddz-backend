@@ -110,9 +110,19 @@ These are mounted on the members service directly (not exposed through the gatew
 
 ### `GET /api/v1/sessions/`
 
-- **Auth:** Public
-- **Description:** List upcoming sessions.
-- **Query Params:** `location`, `session_type`, `limit` (optional).
+- **Auth:** Public; authenticated members also receive their per-session access decision.
+- **Description:** List a bounded session window in ascending start-time order.
+  With no explicit date, status, or admin-draft filter, returns only upcoming
+  `scheduled` / `in_progress` sessions. An explicit date window without a
+  status includes every published status in that window.
+- **Query Params:** `types` (comma-separated), `cohort_id`, `status`, `from`
+  (inclusive ISO datetime), `to` (exclusive ISO datetime), `limit` (default 50,
+  maximum 100), `offset`, and admin-only `include_drafts`. `after` / `before`
+  remain supported as deprecated aliases for `from` / `to`.
+- **Pagination Headers:** `X-Result-Count`, `X-Has-More`, and
+  `X-Next-Offset` when another page exists.
+- **Diagnostics:** `Server-Timing` reports database, access-enrichment, and
+  total endpoint durations.
 - **Response 200:** `SessionRead[]`
 
 ### `GET /api/v1/sessions/{session_id}`
@@ -120,6 +130,20 @@ These are mounted on the members service directly (not exposed through the gatew
 - **Auth:** Public
 - **Description:** Retrieve details for a single session.
 - **Response 200:** `SessionRead`
+
+### `GET /api/v1/calendar`
+
+- **Auth:** Optional
+- **Description:** Gateway-owned calendar read model that combines sessions and
+  community events without duplicating their source records.
+- **Query Params:** `from` and `to` as ISO datetimes. The range must be positive
+  and cannot exceed 400 days.
+- **Access:** Public callers receive Community items only. Signed-in members
+  receive Community items plus Club, pod, and Academy cohort sessions that pass
+  the existing session-access rules. Tier-restricted events are filtered
+  against active membership entitlements.
+- **Response 200:** `CalendarResponse` with `items`, `available_audiences`,
+  `range_start`, `range_end`, and partial downstream `errors`.
 
 ### Make-up Scheduling
 
@@ -226,6 +250,19 @@ These are mounted on the members service directly (not exposed through the gatew
 - `attendance_status`: `registered` | `confirmed_paid` | `cancelled` | `no_show`.
 - `payment_status`: `unpaid` | `member_reported_paid` | `confirmed_paid`.
 - `payment_reference`: string reference members use for transfers.
+
+### `GET /api/v1/attendance/me`
+
+- **Auth:** Required
+- **Description:** Return a bounded page of the current member's attendance
+  records, newest first. Session display details are resolved in one batch.
+- **Query Params:** `include_session` (default `true`), `limit` (default 100,
+  maximum 200), and `offset`.
+- **Pagination Headers:** `X-Result-Count`, `X-Has-More`, and
+  `X-Next-Offset` when another page exists.
+- **Diagnostics:** `Server-Timing` reports database, session-batch, and total
+  endpoint durations.
+- **Response 200:** `AttendanceRead[]`
 
 ### `GET /api/v1/members/me/attendance`
 

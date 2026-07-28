@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from libs.common.health import register_health_check
+from libs.common.middleware import add_observability_middleware
 from services.sessions_service.routers.bookings import router as bookings_router
 from services.sessions_service.routers.bundles import router as bundles_router
 from services.sessions_service.routers.internal import router as internal_router
@@ -21,6 +22,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description="Session management service for SwimBuddz.",
     )
+    add_observability_middleware(app)
 
     # CORS
     app.add_middleware(

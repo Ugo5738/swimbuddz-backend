@@ -443,6 +443,8 @@ class SpotlightFeaturedVolunteer(BaseModel):
     recognition_tier: Optional[RecognitionTier] = None
     total_hours: float
     preferred_roles: Optional[list[str]] = None
+    featured_from: Optional[datetime] = None
+    featured_until: Optional[datetime] = None
 
 
 class SpotlightMilestone(BaseModel):

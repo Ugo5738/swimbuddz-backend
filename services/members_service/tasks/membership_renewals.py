@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
+from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
@@ -104,6 +105,8 @@ def _candidate_expiries(
 async def send_membership_renewal_reminders() -> int:
     """Send due reminders once per entitlement date and delivery channel."""
     sent = 0
+    frontend_url = get_settings().FRONTEND_URL.strip().rstrip("/")
+
     async for db in get_async_db():
         try:
             now = utc_now()
@@ -170,6 +173,7 @@ async def send_membership_renewal_reminders() -> int:
                         if tier == "academy"
                         else f"/account/billing?required={tier}"
                     )
+                    action_href = f"{frontend_url}{action_url}"
 
                     in_app_key = reminder_delivery_key(tier, expiry, days, "in_app")
                     if not reminder_state.get(in_app_key):
@@ -200,7 +204,7 @@ async def send_membership_renewal_reminders() -> int:
                             body=body,
                             html_body=(
                                 f"<p>{escape(body)}</p>"
-                                f'<p><a href="https://www.swimbuddz.com{action_url}">'
+                                f'<p><a href="{escape(action_href, quote=True)}">'
                                 "Manage membership</a></p>"
                             ),
                         )

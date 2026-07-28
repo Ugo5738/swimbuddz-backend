@@ -14,20 +14,14 @@ from datetime import time
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
-
-from services.members_service.models import (
-    DayOfWeek,
-    Pod,
-    PodAssignment,
-    PodStatus,
-)
+from services.members_service.models import DayOfWeek, Pod, PodAssignment, PodStatus
 
 router = APIRouter(prefix="/internal/members/pods", tags=["internal"])
 
@@ -66,6 +60,14 @@ class PodInternalDetail(PodInternalSummary):
     for?"."""
 
     active_member_ids: List[str]
+
+
+class PodRosterBatchRequest(BaseModel):
+    pod_ids: List[uuid.UUID] = Field(default_factory=list, max_length=200)
+
+
+class PodRosterBatchResponse(BaseModel):
+    active_member_ids_by_pod: dict[str, List[str]]
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +137,32 @@ def _to_summary(pod: Pod, active_count: int) -> PodInternalSummary:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+
+@router.post("/rosters/batch", response_model=PodRosterBatchResponse)
+async def get_pod_rosters_batch_internal(
+    payload: PodRosterBatchRequest,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+) -> PodRosterBatchResponse:
+    """Return active member rosters for many pods in one database query."""
+    pod_ids = list(dict.fromkeys(payload.pod_ids))
+    rosters: dict[str, List[str]] = {str(pod_id): [] for pod_id in pod_ids}
+    if not pod_ids:
+        return PodRosterBatchResponse(active_member_ids_by_pod=rosters)
+
+    rows = (
+        await db.execute(
+            select(PodAssignment.pod_id, PodAssignment.member_id).where(
+                PodAssignment.pod_id.in_(pod_ids),
+                PodAssignment.left_at.is_(None),
+            )
+        )
+    ).all()
+    for pod_id, member_id in rows:
+        rosters[str(pod_id)].append(str(member_id))
+
+    return PodRosterBatchResponse(active_member_ids_by_pod=rosters)
 
 
 @router.get("/{pod_id}", response_model=PodInternalDetail)

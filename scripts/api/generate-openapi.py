@@ -12,6 +12,8 @@ that service's paths/components.
 import json
 import sys
 
+from fastapi import FastAPI
+
 # Import all service apps to get their OpenAPI schemas
 from services.academy_service.app.main import app as academy_app
 from services.ai_service.app.main import app as ai_app
@@ -20,6 +22,7 @@ from services.chat_service.app.main import app as chat_app
 from services.communications_service.app.main import app as comms_app
 from services.corporate_service.app.main import app as corporate_app
 from services.events_service.app.main import app as events_app
+from services.gateway_service.app.routers.calendar import router as calendar_router
 from services.ledger_service.app.main import app as ledger_app
 from services.media_service.app.main import app as media_app
 from services.members_service.app.main import app as members_app
@@ -88,6 +91,25 @@ def merge_openapi_schemas():
 
         except Exception as e:
             print(f"Warning: Could not process {prefix}: {e}", file=sys.stderr)
+
+    # Gateway-owned orchestration endpoints have no equivalent domain-service
+    # app. Add them explicitly without importing the gateway's proxy catch-all
+    # routes, which would duplicate the service paths above.
+    try:
+        gateway_app = FastAPI()
+        gateway_app.include_router(calendar_router, prefix="/api/v1")
+        gateway_schema = gateway_app.openapi()
+        for path in ("/api/v1/calendar",):
+            if path in gateway_schema.get("paths", {}):
+                combined["paths"][path] = gateway_schema["paths"][path]
+        for name in ("CalendarItemResponse", "CalendarResponse"):
+            definition = (
+                gateway_schema.get("components", {}).get("schemas", {}).get(name)
+            )
+            if definition is not None:
+                combined["components"]["schemas"][name] = definition
+    except Exception as e:
+        print(f"Warning: Could not process gateway-owned routes: {e}", file=sys.stderr)
 
     return combined
 

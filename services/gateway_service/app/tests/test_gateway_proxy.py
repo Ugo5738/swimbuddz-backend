@@ -1,5 +1,6 @@
 import httpx
 import pytest
+
 from services.gateway_service.app import clients
 
 
@@ -75,6 +76,35 @@ async def test_gateway_proxies_non_json_payloads(client):
     assert response.text == csv_body
     assert response.headers["content-type"].startswith("text/csv")
     assert "content-disposition" in response.headers
+
+
+@pytest.mark.asyncio
+async def test_gateway_compresses_large_json_and_preserves_server_timing(client):
+    """Large list responses are compressed and expose downstream + gateway time."""
+    original_client = clients.sessions_client
+    payload = [{"id": str(i), "description": "x" * 400} for i in range(20)]
+    fake_response = httpx.Response(
+        200,
+        json=payload,
+        headers={"Server-Timing": "sessions_total;dur=12.5"},
+    )
+    fake_client = _FakeServiceClient(fake_response)
+    clients.sessions_client = fake_client
+
+    try:
+        response = await client.get(
+            "/api/v1/sessions?limit=50",
+            headers={"Accept-Encoding": "gzip"},
+        )
+    finally:
+        clients.sessions_client = original_client
+
+    assert response.status_code == 200
+    assert response.json() == payload
+    assert response.headers["content-encoding"] == "gzip"
+    assert "sessions_total;dur=12.5" in response.headers["server-timing"]
+    assert "gateway_proxy;dur=" in response.headers["server-timing"]
+    assert fake_client.calls[0][1] == "/sessions/?limit=50"
 
 
 MEDIA_ID = "f9f0d723-d888-40de-a953-6f637d194f53"

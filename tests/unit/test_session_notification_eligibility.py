@@ -5,12 +5,15 @@ from unittest.mock import AsyncMock
 import pytest
 
 import services.communications_service.tasks.session_notifications as notifications
+from services.communications_service.services import session_email_context
+from services.communications_service.services.session_weather import (
+    summarize_session_weather,
+)
 from services.communications_service.tasks.session_notifications import (
     _default_booking_prompt_tier,
     _get_session_announcement_members,
     _has_paid_session_access,
     _is_unpaid_community_prospect,
-    _summarize_session_weather,
 )
 
 NOW = datetime(2026, 7, 10, 8, 0, tzinfo=timezone.utc)
@@ -267,7 +270,7 @@ def test_summarize_session_weather_uses_session_hours_only():
         }
     }
 
-    summary = _summarize_session_weather(
+    summary = summarize_session_weather(
         forecast,
         starts_at=datetime(2026, 7, 18, 11, 0, tzinfo=timezone.utc),
         ends_at=datetime(2026, 7, 18, 13, 0, tzinfo=timezone.utc),
@@ -286,7 +289,7 @@ def test_summarize_session_weather_returns_none_without_matching_hours():
     forecast = {"hourly": {"time": ["2026-07-18T09:00"]}}
 
     assert (
-        _summarize_session_weather(
+        summarize_session_weather(
             forecast,
             starts_at=datetime(2026, 7, 18, 11, 0, tzinfo=timezone.utc),
             ends_at=datetime(2026, 7, 18, 13, 0, tzinfo=timezone.utc),
@@ -407,14 +410,19 @@ async def test_weekly_digest_excludes_suspended_cohort_enrollment(monkeypatch):
     monkeypatch.setattr(notifications, "utc_now", lambda: fixed_now)
     monkeypatch.setattr(notifications, "internal_get", fake_internal_get)
     monkeypatch.setattr(
-        notifications,
+        session_email_context,
         "internal_post",
         AsyncMock(side_effect=RuntimeError("transport unavailable")),
     )
     monkeypatch.setattr(notifications, "resolve_media_urls", AsyncMock(return_value={}))
     monkeypatch.setattr(
-        notifications,
-        "_get_session_weather_summary",
+        session_email_context,
+        "resolve_media_urls",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        session_email_context,
+        "get_session_weather_summary",
         AsyncMock(return_value=None),
     )
     monkeypatch.setattr(notifications, "get_async_db", fake_get_async_db)

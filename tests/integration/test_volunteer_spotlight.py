@@ -1,6 +1,8 @@
 """Integration tests for monthly volunteer spotlight rotation."""
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -73,6 +75,7 @@ async def test_monthly_spotlight_features_previous_month_top_volunteer(db_sessio
     assert result.monthly_hours == 4.0
     assert result.monthly_logs == 2
     assert result.featured_until == datetime(2026, 7, 1, tzinfo=timezone.utc)
+    assert result.announcement_required is True
 
     rows = (
         (
@@ -92,6 +95,16 @@ async def test_monthly_spotlight_features_previous_month_top_volunteer(db_sessio
     assert by_member[winner_member].featured_until == datetime(
         2026, 7, 1, tzinfo=timezone.utc
     )
+
+    repeated = await apply_monthly_volunteer_spotlight(
+        db_session,
+        now=now + timedelta(minutes=1),
+    )
+    assert repeated.member_id == winner_member
+    assert repeated.announcement_required is False
+
+    await db_session.refresh(by_member[winner_member])
+    assert by_member[winner_member].featured_from == now
 
 
 @pytest.mark.asyncio
@@ -113,6 +126,7 @@ async def test_monthly_spotlight_clears_feature_when_month_has_no_hours(db_sessi
 
     assert result.member_id is None
     assert result.monthly_hours == 0.0
+    assert result.announcement_required is False
 
     profile = (
         await db_session.execute(
@@ -158,3 +172,57 @@ async def test_monthly_spotlight_skips_excluded_members_and_coaches(db_session):
     assert result.member_id == winner
     assert result.monthly_hours == 3.0
     assert result.monthly_logs == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_volunteer_recognition_emails_winner_and_notifies_crew(
+    db_session, monkeypatch
+):
+    from services.volunteer_service.services import recognition
+
+    winner_id = await _seed_member(db_session, first_name="Ada")
+    teammate_id = await _seed_member(db_session, first_name="Tola")
+    db_session.add_all(
+        [
+            _profile(
+                winner_id,
+                is_featured=True,
+                spotlight_quote="Community first",
+            ),
+            _profile(teammate_id),
+        ]
+    )
+    await db_session.commit()
+
+    resolve = AsyncMock(
+        return_value={
+            str(winner_id): SimpleNamespace(
+                first_name="Ada",
+                full_name="Ada Volunteer",
+                email="ada@example.com",
+                profile_photo_url="https://cdn.example.test/ada.jpg",
+            )
+        }
+    )
+    dispatch = AsyncMock(return_value={"dispatched": 1})
+    monkeypatch.setattr(recognition, "resolve_members_with_photos", resolve)
+    monkeypatch.setattr(recognition, "dispatch_notification", dispatch)
+
+    await recognition.announce_volunteer_of_the_month(
+        db_session,
+        member_id=winner_id,
+        period_start=date(2026, 6, 1),
+        monthly_hours=7.5,
+    )
+
+    winner_call = dispatch.await_args_list[0].kwargs
+    assert winner_call["member_ids"] == [str(winner_id)]
+    assert winner_call["channels"] == ["in_app", "email"]
+    assert winner_call["email_data"]["to_email"] == "ada@example.com"
+    assert "ada.jpg" in winner_call["email_data"]["html_content"]
+    assert "7.5 volunteer hours" in winner_call["email_data"]["html_content"]
+
+    crew_call = dispatch.await_args_list[1].kwargs
+    assert crew_call["member_ids"] == [str(teammate_id)]
+    assert crew_call["channels"] == ["in_app"]

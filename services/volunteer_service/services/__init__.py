@@ -9,6 +9,9 @@ from services.volunteer_service.services.main import (
     next_recognition_hours_needed,
     update_profile_aggregates,
 )
+from services.volunteer_service.services.recognition import (
+    announce_volunteer_of_the_month,
+)
 from services.volunteer_service.services.spotlight import (
     SPOTLIGHT_EXCLUDED_MEMBER_IDS,
     VolunteerOfMonthResult,
@@ -27,5 +30,6 @@ __all__ = [
     "is_late_cancellation",
     "next_recognition_hours_needed",
     "select_volunteer_of_month",
+    "announce_volunteer_of_the_month",
     "update_profile_aggregates",
 ]

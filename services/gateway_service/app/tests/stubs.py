@@ -49,6 +49,9 @@ class StubUser:
         self.role = role
         self.token = token
 
+    def has_role(self, role: str) -> bool:
+        return self.role == role
+
 
 def make_response(
     status_code: int,

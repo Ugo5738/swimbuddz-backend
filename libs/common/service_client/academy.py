@@ -6,7 +6,7 @@ from typing import Optional
 
 from libs.common.config import get_settings
 
-from .core import internal_get
+from .core import internal_get, internal_post
 
 
 async def check_cohort_enrollment(
@@ -24,6 +24,24 @@ async def check_cohort_enrollment(
     )
     resp.raise_for_status()
     return resp.json()
+
+
+async def check_cohort_enrollments_batch(
+    cohort_ids: list[str], member_id: str, *, calling_service: str
+) -> dict[str, dict]:
+    """Check one member's enrollment access across many cohorts."""
+    if not cohort_ids:
+        return {}
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.ACADEMY_SERVICE_URL,
+        path="/internal/academy/cohorts/check-enrollments/batch",
+        calling_service=calling_service,
+        json={"member_id": member_id, "cohort_ids": cohort_ids},
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    return payload.get("enrollments", {}) if isinstance(payload, dict) else {}
 
 
 async def list_enrollment_progress(

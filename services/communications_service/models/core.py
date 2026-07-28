@@ -282,7 +282,7 @@ class ContentPostEmailLog(Base):
 
 
 class WeeklyDigestConfig(Base):
-    """Admin-managed presentation defaults for one digest tier section."""
+    """Admin-managed presentation defaults for one session-email audience."""
 
     __tablename__ = "weekly_digest_configs"
     __table_args__ = (

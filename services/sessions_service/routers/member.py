@@ -1,9 +1,10 @@
+import time
 import uuid
 from datetime import datetime
 from typing import List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,12 +19,12 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-from libs.common.session_access import denial_message
 from libs.common.service_client import (
     cancel_opportunities_for_context,
     get_member_by_auth_id,
     internal_post,
 )
+from libs.common.session_access import denial_message
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     Session,
@@ -43,7 +44,9 @@ from services.sessions_service.services.notifications import (
 )
 from services.sessions_service.services.session_access import (
     evaluate_session_access_for_member,
+    evaluate_session_access_from_context,
     get_member_session_access_payload,
+    get_sessions_access_context,
 )
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -119,6 +122,9 @@ async def _decorate_sessions_for_user(
     current_user: Optional[AuthUser],
     db: AsyncSession,
 ) -> list[dict] | list[Session]:
+    if not sessions:
+        return []
+
     member_payload = await _access_member_payload_for_user(current_user)
     if member_payload is None:
         return sessions
@@ -138,14 +144,21 @@ async def _decorate_sessions_for_user(
         .scalars()
         .all()
     )
+    cohort_access, pod_rosters = await get_sessions_access_context(
+        sessions=sessions,
+        member_payload=member_payload,
+        confirmed_session_ids=confirmed_session_ids,
+        calling_service="sessions",
+    )
     decorated: list[dict] = []
     for session in sessions:
-        access = await evaluate_session_access_for_member(
+        access = evaluate_session_access_from_context(
             session=session,
             member_payload=member_payload,
             now=now,
-            calling_service="sessions",
             confirmed_booking=session.id in confirmed_session_ids,
+            cohort_access=cohort_access,
+            pod_rosters=pod_rosters,
         )
         decorated.append(_session_payload(session, access))
     return decorated
@@ -181,8 +194,43 @@ async def _decorate_session_for_user(
 
 @router.get("/", response_model=List[SessionResponse])
 async def list_sessions(
+    response: Response,
     types: Optional[str] = None,
     cohort_id: Optional[uuid.UUID] = None,
+    status_filter: Optional[SessionStatus] = Query(
+        default=None,
+        alias="status",
+        description="Exact session status to return.",
+    ),
+    date_from: Optional[datetime] = Query(
+        default=None,
+        alias="from",
+        description="Inclusive session start boundary (ISO-8601).",
+    ),
+    date_to: Optional[datetime] = Query(
+        default=None,
+        alias="to",
+        description="Exclusive session start boundary (ISO-8601).",
+    ),
+    after: Optional[datetime] = Query(
+        default=None,
+        description="Deprecated alias for `from`.",
+    ),
+    before: Optional[datetime] = Query(
+        default=None,
+        description="Deprecated alias for `to`.",
+    ),
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=100,
+        description="Maximum rows returned (max 100).",
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+        description="Rows to skip for backward-compatible pagination.",
+    ),
     include_drafts: bool = Query(
         False, description="Include draft sessions (admin only)"
     ),
@@ -190,13 +238,20 @@ async def list_sessions(
     db: AsyncSession = Depends(get_async_db),
 ):
     """
-    List all upcoming sessions. Optional `types` filter is a comma-separated list
-    of SessionType values (e.g., "club,community"). Optional `cohort_id` filter
-    returns only sessions for that cohort.
+    List a bounded, chronologically sorted session window.
 
-    Draft sessions are only visible to admins with include_drafts=true.
+    With no explicit date/status/admin-draft filters, this endpoint returns
+    upcoming scheduled/in-progress sessions. An explicit date window without a
+    status returns every published status in that window. `from` is inclusive
+    and `to` is exclusive. `after`/`before` remain supported for older clients.
     """
-    query = select(Session).order_by(Session.starts_at.asc())
+    started_at = time.perf_counter()
+    query = select(Session)
+    effective_from = date_from or after
+    effective_to = date_to or before
+    has_explicit_window = any(
+        value is not None for value in (date_from, date_to, after, before)
+    )
 
     # Filter out DRAFT sessions unless an admin explicitly requests them.
     # Supabase user tokens typically have role=authenticated; custom roles
@@ -204,6 +259,13 @@ async def list_sessions(
     is_admin = bool(current_user and is_admin_or_service(current_user))
     if not (is_admin and include_drafts):
         query = query.where(Session.status != SessionStatus.DRAFT)
+
+    if status_filter is not None:
+        query = query.where(Session.status == status_filter)
+    elif not has_explicit_window and not (is_admin and include_drafts):
+        query = query.where(
+            Session.status.in_([SessionStatus.SCHEDULED, SessionStatus.IN_PROGRESS])
+        )
 
     if types:
         type_values = [t.strip() for t in types.split(",") if t.strip()]
@@ -213,9 +275,70 @@ async def list_sessions(
     if cohort_id:
         query = query.where(Session.cohort_id == cohort_id)
 
+    if (
+        effective_from is not None
+        and effective_to is not None
+        and effective_from >= effective_to
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="`from` must be earlier than `to`.",
+        )
+
+    if (
+        not has_explicit_window
+        and status_filter is None
+        and not (is_admin and include_drafts)
+    ):
+        effective_from = utc_now()
+
+    if effective_from is not None:
+        query = query.where(Session.starts_at >= effective_from)
+    if effective_to is not None:
+        query = query.where(Session.starts_at < effective_to)
+
+    query = (
+        query.order_by(Session.starts_at.asc(), Session.id.asc())
+        .offset(offset)
+        .limit(limit + 1)
+    )
+    db_started_at = time.perf_counter()
     result = await db.execute(query)
-    sessions = list(result.scalars().all())
-    return await _decorate_sessions_for_user(sessions, current_user, db)
+    rows = list(result.scalars().all())
+    db_ms = (time.perf_counter() - db_started_at) * 1000
+    has_more = len(rows) > limit
+    sessions = rows[:limit]
+
+    access_started_at = time.perf_counter()
+    decorated = await _decorate_sessions_for_user(sessions, current_user, db)
+    access_ms = (time.perf_counter() - access_started_at) * 1000
+    total_ms = (time.perf_counter() - started_at) * 1000
+
+    response.headers["X-Result-Count"] = str(len(sessions))
+    response.headers["X-Has-More"] = str(has_more).lower()
+    if has_more:
+        response.headers["X-Next-Offset"] = str(offset + limit)
+    response.headers["Server-Timing"] = (
+        f"sessions_db;dur={db_ms:.2f}, "
+        f"access_enrichment;dur={access_ms:.2f}, "
+        f"sessions_total;dur={total_ms:.2f}"
+    )
+
+    logger.info(
+        "Sessions list completed",
+        extra={
+            "extra_fields": {
+                "result_count": len(sessions),
+                "has_more": has_more,
+                "offset": offset,
+                "limit": limit,
+                "db_ms": round(db_ms, 2),
+                "access_ms": round(access_ms, 2),
+                "duration_ms": round(total_ms, 2),
+            }
+        },
+    )
+    return decorated
 
 
 @router.get("/stats")

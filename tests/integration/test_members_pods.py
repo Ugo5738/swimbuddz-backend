@@ -21,6 +21,8 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import select
+
 from libs.auth.dependencies import (
     get_current_user,
     get_optional_user,
@@ -30,10 +32,8 @@ from libs.auth.dependencies import (
     require_service_role,
 )
 from services.members_service.models import PodAssignment, PodAssignmentSource
-from sqlalchemy import select
 from tests.conftest import make_admin_user, make_member_user, override_auth
 from tests.factories import ClubFactory, MemberFactory, PodFactory
-
 
 # ---------------------------------------------------------------------------
 # Shared patches: chat-sync side effects.
@@ -777,6 +777,57 @@ async def test_internal_get_pod_returns_schedule_and_active_members(
     assert data["default_session_duration_minutes"] == 120
     assert data["active_member_count"] == 2
     assert set(data["active_member_ids"]) == {str(m1.id), str(m2.id)}
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_internal_batch_pod_rosters_returns_active_assignments_only(
+    members_client, db_session
+):
+    from datetime import datetime, timezone
+
+    from tests.factories import PodAssignmentFactory
+
+    club = ClubFactory.create()
+    lead = MemberFactory.create()
+    active_member = MemberFactory.create()
+    former_member = MemberFactory.create()
+    first_pod = PodFactory.create(club_id=club.id, pod_lead_id=lead.id)
+    second_pod = PodFactory.create(club_id=club.id, pod_lead_id=lead.id)
+    db_session.add_all(
+        [club, lead, active_member, former_member, first_pod, second_pod]
+    )
+    await db_session.flush()
+    db_session.add_all(
+        [
+            PodAssignmentFactory.create(
+                pod_id=first_pod.id,
+                member_id=active_member.id,
+            ),
+            PodAssignmentFactory.create(
+                pod_id=second_pod.id,
+                member_id=former_member.id,
+                left_at=datetime.now(timezone.utc),
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await members_client.post(
+        "/internal/members/pods/rosters/batch",
+        json={
+            "pod_ids": [
+                str(first_pod.id),
+                str(second_pod.id),
+                str(first_pod.id),
+            ]
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    rosters = response.json()["active_member_ids_by_pod"]
+    assert rosters[str(first_pod.id)] == [str(active_member.id)]
+    assert rosters[str(second_pod.id)] == []
 
 
 @pytest.mark.asyncio

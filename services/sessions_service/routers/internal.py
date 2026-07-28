@@ -31,6 +31,8 @@ from services.sessions_service.models import (
 )
 from services.sessions_service.schemas import (
     BookingConfirmRequest,
+    BulkBookingRequest,
+    BulkBookingResponse,
     BundleBookingConfirmRequest,
     BundleBookingConfirmResponse,
     BundleBookingLineResponse,
@@ -38,17 +40,15 @@ from services.sessions_service.schemas import (
     BundleBookingReleaseResponse,
     BundleBookingReserveRequest,
     BundleBookingReserveResponse,
-    BulkBookingRequest,
-    BulkBookingResponse,
     MemberSessionAccessResponse,
     SessionBookingResponse,
+)
+from services.sessions_service.services.booking_attendance import (
+    sync_booking_attendance,
 )
 from services.sessions_service.services.booking_capacity import (
     PENDING_TTL_MINUTES,
     assert_booking_capacity,
-)
-from services.sessions_service.services.booking_attendance import (
-    sync_booking_attendance,
 )
 from services.sessions_service.services.session_access import (
     evaluate_session_access_for_member,
@@ -128,6 +128,19 @@ class GenerateCohortSessionsResponse(BaseModel):
     skipped: int
     week_numbers: List[int]
     reason: Optional[str] = None
+
+
+class SessionSummaryBatchRequest(BaseModel):
+    session_ids: List[uuid.UUID] = Field(default_factory=list, max_length=200)
+
+
+class SessionListSummary(BaseModel):
+    id: str
+    title: str
+    session_type: str
+    starts_at: str
+    location_name: Optional[str] = None
+    location: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -485,6 +498,37 @@ async def list_member_session_commitments(
     ]
 
 
+@router.post("/summaries/batch", response_model=List[SessionListSummary])
+async def get_session_summaries_batch(
+    payload: SessionSummaryBatchRequest,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+) -> List[SessionListSummary]:
+    """Return display summaries for many session IDs in one database query."""
+    session_ids = list(dict.fromkeys(payload.session_ids))
+    if not session_ids:
+        return []
+
+    sessions = (
+        (await db.execute(select(Session).where(Session.id.in_(session_ids))))
+        .scalars()
+        .all()
+    )
+    by_id = {session.id: session for session in sessions}
+    return [
+        SessionListSummary(
+            id=str(session.id),
+            title=session.title,
+            session_type=session.session_type.value,
+            starts_at=session.starts_at.isoformat(),
+            location_name=session.location_name,
+            location=session.location.value if session.location else None,
+        )
+        for session_id in session_ids
+        if (session := by_id.get(session_id)) is not None
+    ]
+
+
 @router.get("/durations")
 async def get_session_durations(
     ids: str = Query(..., description="Comma-separated session UUIDs"),
@@ -538,9 +582,38 @@ async def get_session_by_id(
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    booking_rows = (
+        await db.execute(
+            select(
+                SessionBooking.member_id,
+                SessionBooking.party_size,
+            ).where(
+                SessionBooking.session_id == session.id,
+                SessionBooking.status == SessionBookingStatus.CONFIRMED,
+            )
+        )
+    ).all()
+    confirmed_member_ids = [str(member_id) for member_id, _ in booking_rows]
+    occupied_slots = sum(int(party_size or 1) for _, party_size in booking_rows)
+    coach_ids = (
+        (
+            await db.execute(
+                select(SessionCoach.coach_id).where(
+                    SessionCoach.session_id == session.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    coach_member_ids = [str(coach_id) for coach_id in coach_ids]
+
     return SessionBasic(
         id=str(session.id),
         title=session.title,
+        description=session.description,
+        notes=session.notes,
         session_type=session.session_type.value,
         status=session.status.value,
         starts_at=session.starts_at.isoformat(),
@@ -553,6 +626,10 @@ async def get_session_by_id(
         pod_id=str(session.pod_id) if session.pod_id else None,
         capacity=session.capacity,
         pool_fee=session.pool_fee,
+        ride_share_fee=session.ride_share_fee,
+        occupied_slots=occupied_slots,
+        confirmed_booking_member_ids=confirmed_member_ids,
+        coach_member_ids=coach_member_ids,
         week_number=session.week_number,
         lesson_title=session.lesson_title,
         timezone=session.timezone,

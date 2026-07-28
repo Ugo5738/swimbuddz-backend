@@ -3,8 +3,11 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
-from libs.common.member_utils import resolve_members_basic, resolve_members_with_photos
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.common.datetime_utils import utc_now
+from libs.common.member_utils import resolve_members_basic, resolve_members_with_photos
 from libs.db.session import get_async_db
 from services.volunteer_service.models import (
     RecognitionTier,
@@ -18,8 +21,6 @@ from services.volunteer_service.schemas import (
     SpotlightMilestone,
     SpotlightResponse,
 )
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -73,6 +74,8 @@ async def get_spotlight(db: AsyncSession = Depends(get_async_db)):
                     recognition_tier=featured_profile.recognition_tier,
                     total_hours=featured_profile.total_hours,
                     preferred_roles=featured_profile.preferred_roles,
+                    featured_from=featured_profile.featured_from,
+                    featured_until=featured_profile.featured_until,
                 )
 
     # 2. Aggregate stats

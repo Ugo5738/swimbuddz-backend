@@ -10,7 +10,6 @@ Handles:
 
 from datetime import date, datetime, timedelta
 from typing import Optional
-from urllib.parse import urlencode
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -28,7 +27,6 @@ from libs.common.service_client import (
     get_pod_by_id,
     get_session_by_id,
     internal_get,
-    internal_post,
 )
 from libs.common.session_access import (
     default_booking_prompt_tier as shared_default_booking_prompt_tier,
@@ -51,17 +49,20 @@ from services.communications_service.models import (
     ScheduledNotificationStatus,
     SessionNotificationLog,
     SessionNotificationType,
-    WeeklyDigestConfig,
     WeeklyDigestDispatch,
+)
+from services.communications_service.services.session_email_context import (
+    build_session_email_contexts,
+    with_booking_state,
+)
+from services.communications_service.tasks.content_publishing import (
+    _member_can_read_post,
 )
 from services.communications_service.templates.session_notifications import (
     send_session_announcement_email,
     send_session_cancelled_email,
     send_session_prospect_invite_email,
     send_session_reminder_email,
-)
-from services.communications_service.tasks.content_publishing import (
-    _member_can_read_post,
 )
 
 logger = get_logger(__name__)
@@ -72,38 +73,6 @@ BOOKING_PROMPT_WINDOW_DAYS = 7
 BOOKING_PROMPT_MAX_SENDS_PER_SESSION = 3
 BOOKING_PROMPT_SESSION_TYPES = {"community", "club", "cohort_class"}
 BOOKING_PROMPT_TZ = ZoneInfo("Africa/Lagos")
-WEATHER_FORECAST_HORIZON_DAYS = 14
-
-WMO_LABELS = {
-    0: "Clear",
-    1: "Mostly clear",
-    2: "Partly cloudy",
-    3: "Overcast",
-    45: "Fog",
-    48: "Fog",
-    51: "Light drizzle",
-    53: "Drizzle",
-    55: "Heavy drizzle",
-    56: "Freezing drizzle",
-    57: "Freezing drizzle",
-    61: "Light rain",
-    63: "Rain",
-    65: "Heavy rain",
-    66: "Freezing rain",
-    67: "Freezing rain",
-    71: "Light snow",
-    73: "Snow",
-    75: "Heavy snow",
-    77: "Snow grains",
-    80: "Light showers",
-    81: "Showers",
-    82: "Heavy showers",
-    85: "Snow showers",
-    86: "Snow showers",
-    95: "Thunderstorm",
-    96: "Thunderstorm",
-    99: "Thunderstorm",
-}
 
 
 async def _get_session_data(session_id: UUID) -> Optional[dict]:
@@ -119,187 +88,10 @@ def _parse_session_end(session: dict) -> datetime:
     return datetime.fromisoformat(session["ends_at"])
 
 
-def _session_fee_amount(session: dict) -> float:
-    """Return the member-facing pool fee amount from an internal session payload.
-
-    sessions-service returns pool_fee in kobo for internal calls; email templates
-    render naira amounts.
-    """
-    raw_fee = session.get("pool_fee") or 0
-    try:
-        return float(raw_fee) / 100
-    except (TypeError, ValueError):
-        return 0
-
-
 def _local_date(value: datetime) -> date:
     if value.tzinfo is None:
         value = value.replace(tzinfo=BOOKING_PROMPT_TZ)
     return value.astimezone(BOOKING_PROMPT_TZ).date()
-
-
-def _session_timezone(session: dict) -> ZoneInfo:
-    try:
-        return ZoneInfo(session.get("timezone") or "Africa/Lagos")
-    except Exception:
-        return BOOKING_PROMPT_TZ
-
-
-def _weather_num(values: object, index: int) -> float | None:
-    if not isinstance(values, list) or index >= len(values):
-        return None
-    value = values[index]
-    return value if isinstance(value, (int, float)) else None
-
-
-def _condition_label(code: int) -> str:
-    return WMO_LABELS.get(code, "Cloudy")
-
-
-def _weather_kind(code: int, max_prob: int) -> str:
-    if code >= 95:
-        return "storm"
-    if code >= 51 or max_prob >= 60:
-        return "rain"
-    if code >= 45 or max_prob >= 30:
-        return "cloudy"
-    if code >= 1:
-        return "partly"
-    return "clear"
-
-
-def _weather_explanation(kind: str, max_prob: int, total_mm: float) -> str:
-    if kind == "storm":
-        return "Thunderstorm possible - sessions pause if there is lightning."
-    if max_prob < 30:
-        return "Looks dry for your session."
-    if total_mm >= 5:
-        return "Steady rain likely during the session."
-    if kind == "rain" or total_mm >= 1:
-        return "Light rain likely - warm and swimmable."
-    return "Cloudy with a slight chance of drizzle."
-
-
-def _format_mm(value: float) -> str:
-    if value == int(value):
-        return str(int(value))
-    return f"{value:.1f}"
-
-
-def _summarize_session_weather(
-    forecast: dict,
-    *,
-    starts_at: datetime,
-    ends_at: datetime,
-) -> dict | None:
-    """Summarize cached hourly forecast data for the session's own hours."""
-    hourly = forecast.get("hourly") if isinstance(forecast, dict) else None
-    if not isinstance(hourly, dict):
-        return None
-
-    times = hourly.get("time")
-    if not isinstance(times, list):
-        return None
-
-    date_prefix = starts_at.strftime("%Y-%m-%d")
-    start_hour = starts_at.hour
-    end_hour = ends_at.hour
-    if ends_at.date() != starts_at.date() or end_hour < start_hour:
-        end_hour = 23
-
-    indices: list[int] = []
-    for i, value in enumerate(times):
-        if not isinstance(value, str) or not value.startswith(date_prefix):
-            continue
-        try:
-            hour = int(value[11:13])
-        except ValueError:
-            continue
-        if start_hour <= hour <= end_hour:
-            indices.append(i)
-
-    if not indices:
-        return None
-
-    max_prob = 0
-    total_precip = 0.0
-    temp_high: float | None = None
-    peak_idx = indices[0]
-    peak_prob = -1
-
-    for i in indices:
-        prob = int(_weather_num(hourly.get("precipitation_probability"), i) or 0)
-        if prob > max_prob:
-            max_prob = prob
-        if prob > peak_prob:
-            peak_prob = prob
-            peak_idx = i
-
-        total_precip += _weather_num(hourly.get("precipitation"), i) or 0
-
-        temp = _weather_num(hourly.get("temperature_2m"), i)
-        if temp is not None:
-            temp_high = temp if temp_high is None else max(temp_high, temp)
-
-    code = int(_weather_num(hourly.get("weather_code"), peak_idx) or 0)
-    total_mm = round(total_precip, 1)
-    kind = _weather_kind(code, max_prob)
-    return {
-        "condition_text": _condition_label(code),
-        "temperature_text": f"{round(temp_high)}°C" if temp_high is not None else "",
-        "rain_chance_text": f"{max_prob}% chance of rain",
-        "rainfall_text": f"~{_format_mm(total_mm)}mm during session",
-        "explanation": _weather_explanation(kind, max_prob, total_mm),
-    }
-
-
-async def _get_session_weather_summary(session: dict) -> dict | None:
-    """Fetch and summarize weather for a session, without blocking email delivery."""
-    pool_id = session.get("pool_id")
-    if not pool_id:
-        return None
-
-    local_tz = _session_timezone(session)
-    now = utc_now()
-    starts_at = _parse_session_start(session).astimezone(local_tz)
-    days_until = (starts_at.date() - now.astimezone(local_tz).date()).days
-    if days_until < 0 or days_until > WEATHER_FORECAST_HORIZON_DAYS:
-        return None
-
-    ends_at = _parse_session_end(session).astimezone(local_tz)
-    date_param = starts_at.strftime("%Y-%m-%d")
-    settings = get_settings()
-    try:
-        resp = await internal_get(
-            service_url=settings.POOLS_SERVICE_URL,
-            path=f"/weather/pools/{pool_id}",
-            calling_service="communications",
-            params={"date": date_param},
-            timeout=5.0,
-        )
-    except Exception as exc:
-        logger.warning(
-            "Failed to fetch weather for session %s: %s",
-            session.get("id"),
-            exc,
-        )
-        return None
-
-    if resp.status_code == 404:
-        return None
-    if resp.status_code != 200:
-        logger.warning(
-            "Weather lookup for session %s returned %s",
-            session.get("id"),
-            resp.status_code,
-        )
-        return None
-
-    return _summarize_session_weather(
-        resp.json(),
-        starts_at=starts_at,
-        ends_at=ends_at,
-    )
 
 
 def _is_booking_prompt_session(session: dict) -> bool:
@@ -534,6 +326,11 @@ async def send_session_booking_prompts() -> None:
                 return
 
             all_members = await _get_active_members()
+            email_contexts = await build_session_email_contexts(
+                db,
+                sessions,
+                known_people=all_members,
+            )
             total_sent = 0
             for session in sessions:
                 total_sent += await _send_booking_prompt_for_session(
@@ -541,6 +338,8 @@ async def send_session_booking_prompts() -> None:
                     session=session,
                     active_members=all_members,
                     send_prospect_invites=True,
+                    email_context=email_contexts.sessions.get(str(session["id"])),
+                    is_follow_up=True,
                 )
 
             await db.commit()
@@ -565,6 +364,8 @@ async def _send_booking_prompt_for_session(
     active_members: list[dict],
     short_notice_message: str = "",
     send_prospect_invites: bool = False,
+    email_context: dict | None = None,
+    is_follow_up: bool = False,
 ) -> int:
     session_id = UUID(session["id"])
     now = utc_now()
@@ -596,11 +397,14 @@ async def _send_booking_prompt_for_session(
         return 0
     prefs_map = await _get_notification_preferences_by_auth(db, accessible_members)
 
-    local_tz = _session_timezone(session)
-    local_start = session_start.astimezone(local_tz)
-    session_date = local_start.strftime("%A, %B %d, %Y")
-    session_time = local_start.strftime("%I:%M %p")
-    weather_summary = await _get_session_weather_summary(session)
+    if email_context is None:
+        context_batch = await build_session_email_contexts(
+            db,
+            [session],
+            known_people=[*active_members, *accessible_members],
+        )
+        email_context = context_batch.sessions[str(session_id)]
+    email_context = with_booking_state(email_context, is_booked=False)
 
     sent_member_ids: list[str] = []
     prospect_member_ids: list[str] = []
@@ -632,16 +436,7 @@ async def _send_booking_prompt_for_session(
                     success = await send_session_prospect_invite_email(
                         to_email=member["email"],
                         member_name=member["first_name"],
-                        session_id=str(session_id),
-                        session_title=session["title"],
-                        session_date=session_date,
-                        session_time=session_time,
-                        session_location=session.get("location_name")
-                        or session.get("location")
-                        or "TBD",
-                        session_address=session.get("location_address") or "",
-                        pool_fee=_session_fee_amount(session),
-                        weather_summary=weather_summary,
+                        session=email_context,
                     )
 
                     if success:
@@ -676,19 +471,10 @@ async def _send_booking_prompt_for_session(
             success = await send_session_announcement_email(
                 to_email=member["email"],
                 member_name=member["first_name"],
-                session_id=str(session_id),
-                session_title=session["title"],
-                session_type=session["session_type"],
-                session_date=session_date,
-                session_time=session_time,
-                session_location=session.get("location_name")
-                or session.get("location")
-                or "TBD",
-                session_address=session.get("location_address") or "",
-                pool_fee=_session_fee_amount(session),
+                session=email_context,
                 is_short_notice=is_short_notice,
                 short_notice_message=short_notice_message,
-                weather_summary=weather_summary,
+                is_follow_up=is_follow_up,
             )
 
             if success:
@@ -709,13 +495,15 @@ async def _send_booking_prompt_for_session(
 
     if sent_member_ids:
         short_notice_prefix = "⚡ " if is_short_notice else ""
-        location_name = session.get("location_name") or session.get("location") or "TBD"
         await dispatch_notification(
             type="session_booking_prompt",
             category="sessions",
             member_ids=sent_member_ids,
             title=f"{short_notice_prefix}Book Session: {session['title']}",
-            body=f"{session_date} at {session_time} — {location_name}",
+            body=(
+                f"{email_context['date']} at {email_context['time']} "
+                f"— {email_context['location']}"
+            ),
             action_url=f"/sessions/{session['id']}/book",
             icon="calendar",
             metadata={
@@ -726,13 +514,15 @@ async def _send_booking_prompt_for_session(
         )
 
     if prospect_member_ids:
-        location_name = session.get("location_name") or session.get("location") or "TBD"
         await dispatch_notification(
             type="community_session_prospect_invite",
             category="sessions",
             member_ids=prospect_member_ids,
             title=f"Choose your SwimBuddz path: {session['title']}",
-            body=f"{session_date} at {session_time} — {location_name}",
+            body=(
+                f"{email_context['date']} at {email_context['time']} "
+                f"— {email_context['location']}"
+            ),
             action_url="/account/billing?required=community",
             icon="calendar",
             metadata={
@@ -854,12 +644,16 @@ async def _process_single_notification(
 
     reminder_type = notification.notification_type.value.replace("reminder_", "")
 
-    # Format session details in the session's local timezone
-    local_tz = _session_timezone(session)
-    local_start = session_start.astimezone(local_tz)
-    session_date = local_start.strftime("%A, %B %d, %Y")
-    session_time = local_start.strftime("%I:%M %p")
-    weather_summary = await _get_session_weather_summary(session)
+    context_batch = await build_session_email_contexts(
+        db,
+        [session],
+        known_people=members,
+    )
+    email_context = context_batch.sessions[str(notification.session_id)]
+    booked_member_ids = {
+        str(member_id)
+        for member_id in (session.get("confirmed_booking_member_ids") or [])
+    }
 
     sent_count = 0
     for member in members:
@@ -881,20 +675,15 @@ async def _process_single_notification(
             continue
 
         try:
+            member_context = with_booking_state(
+                email_context,
+                is_booked=str(member["id"]) in booked_member_ids,
+            )
             success = await send_session_reminder_email(
                 to_email=member["email"],
                 member_name=member["first_name"],
-                session_id=str(notification.session_id),
-                session_title=session["title"],
-                session_date=session_date,
-                session_time=session_time,
-                session_location=session.get("location_name")
-                or session.get("location")
-                or "TBD",
-                session_address=session.get("location_address") or "",
+                session=member_context,
                 reminder_type=reminder_type,
-                pool_fee=_session_fee_amount(session),
-                weather_summary=weather_summary,
             )
 
             if success:
@@ -921,7 +710,7 @@ async def _process_single_notification(
             category="sessions",
             member_ids=reminder_member_ids,
             title=f"Reminder: {session['title']} {time_label}",
-            body=f"{session_date} at {session_time}",
+            body=f"{email_context['date']} at {email_context['time']}",
             action_url=f"/sessions/{session['id']}/book",
             icon="clock",
             metadata={
@@ -1330,15 +1119,6 @@ async def send_weekly_session_digest() -> None:
             all_members = members_resp.json()
 
             prefs_map = await _get_notification_preferences_by_auth(db, all_members)
-            config_rows = (
-                (
-                    await db.execute(
-                        select(WeeklyDigestConfig).order_by(WeeklyDigestConfig.audience)
-                    )
-                )
-                .scalars()
-                .all()
-            )
             articles_result = await db.execute(
                 select(ContentPost)
                 .where(
@@ -1352,54 +1132,50 @@ async def send_weekly_session_digest() -> None:
             )
             recent_articles = articles_result.scalars().all()
 
-            if not sessions and not recent_articles:
-                logger.info("No sessions or articles for weekly digest")
+            # Recognise a newly selected Volunteer of the Month in the first
+            # weekly digest after selection. The winner receives a direct
+            # congratulations email from volunteer_service; the digest is the
+            # lower-noise community announcement and can include their photo.
+            volunteer_spotlight = None
+            try:
+                spotlight_resp = await internal_get(
+                    service_url=settings.VOLUNTEER_SERVICE_URL,
+                    path="/volunteers/spotlight",
+                    calling_service="communications",
+                )
+                if spotlight_resp.status_code == 200:
+                    featured = spotlight_resp.json().get("featured_volunteer")
+                    if featured and featured.get("featured_from"):
+                        featured_from = datetime.fromisoformat(
+                            str(featured["featured_from"])
+                        )
+                        if featured_from.tzinfo is None:
+                            featured_from = featured_from.replace(
+                                tzinfo=ZoneInfo("UTC")
+                            )
+                        if now - timedelta(days=7) <= featured_from <= now:
+                            volunteer_spotlight = featured
+            except Exception as exc:
+                logger.warning("Digest volunteer spotlight lookup failed: %s", exc)
+
+            if not sessions and not recent_articles and not volunteer_spotlight:
+                logger.info(
+                    "No sessions, articles, or volunteer recognition for weekly digest"
+                )
                 return
 
-            media_ids = [config.featured_image_media_id for config in config_rows]
-            media_ids.extend(
-                article.featured_image_media_id for article in recent_articles
+            email_contexts = await build_session_email_contexts(
+                db,
+                sessions,
+                known_people=all_members,
             )
-            media_urls = await resolve_media_urls(media_ids)
-            digest_configs = {
-                config.audience: {
-                    "featured_image_url": media_urls.get(config.featured_image_media_id)
-                    or (
-                        f"{settings.FRONTEND_URL.rstrip('/')}"
-                        f"/email/digest/{config.audience}.webp"
-                    ),
-                    "image_alt": config.image_alt,
-                    "section_intro": config.section_intro,
-                    "default_gear_notes": config.default_gear_notes,
-                    "is_enabled": config.is_enabled,
-                }
-                for config in config_rows
-            }
-
-            session_ids = [str(session["id"]) for session in sessions]
-            transport_by_session: dict[str, list[dict]] = {}
-            if session_ids:
-                try:
-                    transport_resp = await internal_post(
-                        service_url=settings.TRANSPORT_SERVICE_URL,
-                        path="/transport/sessions/ride-configs/batch",
-                        calling_service="communications",
-                        json={"session_ids": session_ids},
-                    )
-                    if transport_resp.status_code == 200:
-                        transport_by_session = transport_resp.json().get("configs", {})
-                except Exception as exc:
-                    logger.warning("Digest transport lookup failed: %s", exc)
-
-            weather_by_session: dict[str, dict | None] = {}
-            for session in sessions:
-                weather_by_session[
-                    str(session["id"])
-                ] = await _get_session_weather_summary(session)
+            digest_configs = email_contexts.audience_configs
+            media_urls = await resolve_media_urls(
+                [article.featured_image_media_id for article in recent_articles]
+            )
 
             cohort_enrollments_by_session: dict[str, dict[str, dict]] = {}
-            pod_member_ids_by_session: dict[str, set[str]] = {}
-            pods_by_session: dict[str, dict] = {}
+            pod_member_ids_by_session = email_contexts.pod_member_ids_by_session
             for s in sessions:
                 session_id = str(s.get("id"))
                 session_type = str(s.get("session_type") or "").lower()
@@ -1433,52 +1209,6 @@ async def send_weekly_session_digest() -> None:
                         )
                         cohort_enrollments_by_session[session_id] = {}
 
-                if session_type == "club" and s.get("pod_id"):
-                    try:
-                        pod = await get_pod_by_id(
-                            s["pod_id"], calling_service="communications"
-                        )
-                    except Exception as exc:
-                        logger.error(
-                            "Failed to get pod %s for digest session %s: %s",
-                            s.get("pod_id"),
-                            session_id,
-                            exc,
-                        )
-                        pod = None
-                    pod_member_ids_by_session[session_id] = {
-                        str(mid) for mid in ((pod or {}).get("active_member_ids") or [])
-                    }
-                    if pod:
-                        pods_by_session[session_id] = pod
-
-            people_by_id = {
-                str(member["id"]): member for member in all_members if member.get("id")
-            }
-            related_people_ids: set[str] = set()
-            for session in sessions:
-                related_people_ids.update(
-                    str(member_id)
-                    for member_id in session.get("coach_member_ids") or []
-                )
-            for pod in pods_by_session.values():
-                if pod.get("pod_lead_id"):
-                    related_people_ids.add(str(pod["pod_lead_id"]))
-                if pod.get("assistant_pod_lead_id"):
-                    related_people_ids.add(str(pod["assistant_pod_lead_id"]))
-            missing_people_ids = related_people_ids - people_by_id.keys()
-            if missing_people_ids:
-                related_people = await get_members_bulk(
-                    sorted(missing_people_ids), calling_service="communications"
-                )
-                people_by_id.update(
-                    {
-                        str(person["id"]): person
-                        for person in related_people
-                        if person.get("id")
-                    }
-                )
-
             eligible_members = []
             for m in all_members:
                 pref = prefs_map.get(m.get("auth_id"))
@@ -1498,6 +1228,9 @@ async def send_weekly_session_digest() -> None:
                 if pref is None:
                     wants_session_digest = True
                 wants_content_digest = not (pref and pref.weekly_digest is False)
+                member_volunteer_spotlight = (
+                    volunteer_spotlight if wants_content_digest else None
+                )
                 if wants_session_digest:
                     for s in sessions:
                         session_id = str(s.get("id"))
@@ -1529,159 +1262,16 @@ async def send_weekly_session_digest() -> None:
                         if not access.digest_eligible:
                             continue
 
-                        tz = ZoneInfo(s.get("timezone", "Africa/Lagos"))
-                        local_dt = datetime.fromisoformat(s["starts_at"]).astimezone(tz)
-                        local_end = datetime.fromisoformat(s["ends_at"]).astimezone(tz)
-                        session_type = str(s.get("session_type") or "").lower()
-                        audience = (
-                            "academy"
-                            if session_type == "cohort_class"
-                            else "club"
-                            if session_type == "club"
-                            else "community"
-                        )
-                        if not (digest_configs.get(audience) or {}).get(
-                            "is_enabled", True
-                        ):
+                        base_context = email_contexts.sessions[session_id]
+                        if not base_context["audience_enabled"]:
                             continue
-
-                        pod = pods_by_session.get(session_id)
-                        scope_label = ""
-                        leader_labels: list[str] = []
-                        if audience == "club":
-                            if pod:
-                                pod_name = pod.get("handle") or pod.get("name") or "Pod"
-                                scope_label = f"{pod_name} Pod"
-                                lead = people_by_id.get(str(pod.get("pod_lead_id")))
-                                if lead:
-                                    leader_labels.append(
-                                        "Pod Lead: "
-                                        f"{lead.get('first_name', '')} "
-                                        f"{lead.get('last_name', '')}"
-                                    )
-                                assistant = people_by_id.get(
-                                    str(pod.get("assistant_pod_lead_id"))
-                                )
-                                if assistant:
-                                    leader_labels.append(
-                                        "Assistant Pod Lead: "
-                                        f"{assistant.get('first_name', '')} "
-                                        f"{assistant.get('last_name', '')}"
-                                    )
-                            else:
-                                scope_label = "General Club session"
-                        coach_names = []
-                        for coach_id in s.get("coach_member_ids") or []:
-                            coach = people_by_id.get(str(coach_id))
-                            if coach:
-                                coach_names.append(
-                                    f"{coach.get('first_name', '')} "
-                                    f"{coach.get('last_name', '')}".strip()
-                                )
-                        if coach_names:
-                            leader_labels.append(f"Coach: {', '.join(coach_names)}")
-
-                        weather = weather_by_session.get(session_id) or {}
-                        weather_text = " | ".join(
-                            str(weather.get(key))
-                            for key in (
-                                "condition_text",
-                                "temperature_text",
-                                "rain_chance_text",
-                            )
-                            if weather.get(key)
+                        member_context = with_booking_state(
+                            base_context,
+                            is_booked=is_booked,
                         )
-                        if weather.get("explanation"):
-                            weather_text = (
-                                f"{weather_text}. {weather['explanation']}".strip()
-                            )
-
-                        ride_configs = transport_by_session.get(session_id) or []
-                        transport_text = ""
-                        if ride_configs:
-                            areas = sorted(
-                                {
-                                    str(config.get("ride_area_name"))
-                                    for config in ride_configs
-                                    if config.get("ride_area_name")
-                                }
-                            )
-                            costs = [
-                                float(config.get("cost") or 0)
-                                for config in ride_configs
-                            ]
-                            price = min(costs) if costs else 0
-                            transport_text = f"Available from {', '.join(areas)}" + (
-                                f" from NGN {price:,.0f}" if price else ""
-                            )
-
-                        fee_kobo = int(s.get("pool_fee") or 0)
-                        remaining = max(
-                            0,
-                            int(s.get("capacity") or 0)
-                            - int(s.get("occupied_slots") or 0),
-                        )
-                        start_utc = datetime.fromisoformat(s["starts_at"]).astimezone(
-                            ZoneInfo("UTC")
-                        )
-                        end_utc = datetime.fromisoformat(s["ends_at"]).astimezone(
-                            ZoneInfo("UTC")
-                        )
-                        calendar_params = urlencode(
-                            {
-                                "action": "TEMPLATE",
-                                "text": s["title"],
-                                "dates": (
-                                    f"{start_utc.strftime('%Y%m%dT%H%M%SZ')}/"
-                                    f"{end_utc.strftime('%Y%m%dT%H%M%SZ')}"
-                                ),
-                                "location": s.get("location_name")
-                                or s.get("location")
-                                or "TBD",
-                            }
-                        )
-                        member_sessions.append(
-                            {
-                                "id": session_id,
-                                "title": s["title"],
-                                "audience": audience,
-                                "date": local_dt.strftime("%A, %B %d"),
-                                "time": (
-                                    f"{local_dt.strftime('%I:%M %p')} - "
-                                    f"{local_end.strftime('%I:%M %p')}"
-                                ),
-                                "location": s.get("location_name")
-                                or s.get("location")
-                                or "TBD",
-                                "scope_label": scope_label,
-                                "leader_label": " | ".join(
-                                    label.strip() for label in leader_labels
-                                ),
-                                "purpose": s.get("lesson_title")
-                                or s.get("description"),
-                                "weather_text": weather_text,
-                                "transport_text": transport_text,
-                                "fee_text": (
-                                    f"NGN {fee_kobo / 100:,.0f}"
-                                    if fee_kobo
-                                    else "No additional pool fee"
-                                ),
-                                "availability_text": f"{remaining} spots left",
-                                "is_booked": is_booked,
-                                "state_label": (
-                                    "You are booked"
-                                    if is_booked
-                                    else "Available for you to book"
-                                ),
-                                "action_label": (
-                                    "Manage booking" if is_booked else "Book session"
-                                ),
-                                "calendar_url": (
-                                    "https://calendar.google.com/calendar/render?"
-                                    f"{calendar_params}"
-                                ),
-                            }
-                        )
+                        member_context["date"] = base_context["digest_date"]
+                        member_context["time"] = base_context["time_range"]
+                        member_sessions.append(member_context)
 
                 if wants_content_digest:
                     for article in recent_articles:
@@ -1701,7 +1291,11 @@ async def send_weekly_session_digest() -> None:
                         if len(member_articles) >= 2:
                             break
 
-                if not member_sessions and not member_articles:
+                if (
+                    not member_sessions
+                    and not member_articles
+                    and not member_volunteer_spotlight
+                ):
                     continue
 
                 dispatch = (
@@ -1761,6 +1355,7 @@ async def send_weekly_session_digest() -> None:
                         articles=member_articles,
                         digest_configs=digest_configs,
                         preferences_url=preferences_url,
+                        volunteer_spotlight=member_volunteer_spotlight,
                     )
                     if success:
                         dispatch.delivery_status = "sent"

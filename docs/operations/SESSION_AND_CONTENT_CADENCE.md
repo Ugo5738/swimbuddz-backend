@@ -18,6 +18,12 @@ served by the frontend. Admins can replace each section image, description,
 introduction, and gear guidance from Community > Content; a Media-library image
 always overrides the packaged fallback.
 
+The same audience image, introduction, gear guidance, pod/leader details,
+weather, transport, fee, and capacity context powers individual booking prompts
+and timed reminders. Available-session emails use the full image-led treatment.
+The 24-hour reminder uses a compact image and preparation details; 3-hour and
+1-hour reminders omit the large image and keep only last-mile operational facts.
+
 Each recipient gets one combined email containing only the Community, Club,
 and Academy sections they can attend. The shared backend access decision owns
 that filtering, including cohort suspension and pod membership. A confirmed
