@@ -27,8 +27,8 @@ from services.payments_service.models import (
 )
 from services.payments_service.routers.intents import (
     _apply_entitlement_with_tracking,
-    _mark_paid_and_apply,
     _callback_url,
+    _mark_paid_and_apply,
     _paystack_enabled,
     _paystack_headers,
     _to_kobo,
@@ -41,10 +41,71 @@ from services.payments_service.schemas import (
     MakeupObligationResponse,
     MakeupScheduleRequest,
 )
+from services.payments_service.services.recurring_payout_extensions import (
+    extend_recurring_payout_schedules,
+)
 
 router = APIRouter(prefix="/internal/payments", tags=["internal"])
 settings = get_settings()
 logger = get_logger(__name__)
+
+
+class InternalRecurringPayoutExtensionRequest(BaseModel):
+    current_end_date: datetime
+    proposed_end_date: datetime
+
+
+class InternalRecurringPayoutExtensionResult(BaseModel):
+    config_id: uuid.UUID
+    previous_total_blocks: int
+    total_blocks: int
+    next_block_index: int
+    next_run_date: datetime
+    changed: bool
+
+
+class InternalRecurringPayoutExtensionResponse(BaseModel):
+    cohort_id: uuid.UUID
+    schedules: list[InternalRecurringPayoutExtensionResult]
+
+
+@router.post(
+    "/recurring-payouts/cohorts/{cohort_id}/extend",
+    response_model=InternalRecurringPayoutExtensionResponse,
+    dependencies=[Depends(require_service_role)],
+    tags=["internal-payments"],
+)
+async def internal_extend_recurring_payouts(
+    cohort_id: uuid.UUID,
+    payload: InternalRecurringPayoutExtensionRequest,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Add payout blocks for an admin-approved billable cohort extension."""
+    try:
+        schedules = await extend_recurring_payout_schedules(
+            db,
+            cohort_id=cohort_id,
+            current_end=payload.current_end_date,
+            proposed_end=payload.proposed_end_date,
+        )
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return InternalRecurringPayoutExtensionResponse(
+        cohort_id=cohort_id,
+        schedules=[
+            InternalRecurringPayoutExtensionResult(
+                config_id=item.config_id,
+                previous_total_blocks=item.previous_total_blocks,
+                total_blocks=item.total_blocks,
+                next_block_index=item.next_block_index,
+                next_run_date=item.next_run_date,
+                changed=item.changed,
+            )
+            for item in schedules
+        ],
+    )
 
 
 @router.post(

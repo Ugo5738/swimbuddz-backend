@@ -6,7 +6,30 @@ from typing import Optional
 
 from libs.common.config import get_settings
 
-from .core import internal_post
+from .core import internal_get, internal_post
+
+
+async def get_media_vault_assignments(
+    *,
+    calling_service: str,
+    session_id: Optional[str] = None,
+    event_id: Optional[str] = None,
+) -> list[dict]:
+    """Get media and gallery-support volunteer assignments for a context."""
+    settings = get_settings()
+    params = {
+        key: value
+        for key, value in {"session_id": session_id, "event_id": event_id}.items()
+        if value
+    }
+    resp = await internal_get(
+        service_url=settings.VOLUNTEER_SERVICE_URL,
+        path="/internal/volunteer/media-vault-assignments",
+        calling_service=calling_service,
+        params=params,
+    )
+    resp.raise_for_status()
+    return resp.json()
 
 
 async def grant_challenge_volunteer_hours(

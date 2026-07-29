@@ -1,14 +1,17 @@
 """Storage utilities for handling file uploads with Supabase/S3."""
 
+import math
 import uuid
+from datetime import timedelta
 from enum import Enum
 from io import BytesIO
 from typing import Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from PIL import Image, ImageOps
 
 from libs.common.config import get_settings
+from libs.common.datetime_utils import utc_now
 from libs.common.supabase import get_supabase_admin_client
 
 
@@ -31,6 +34,22 @@ AWS_REGION = getattr(settings, "AWS_REGION", "eu-west-1")
 AWS_BUCKET_PUBLIC = getattr(settings, "AWS_S3_BUCKET_PUBLIC", "")
 AWS_BUCKET_PRIVATE = getattr(settings, "AWS_S3_BUCKET_PRIVATE", "")
 CLOUDFRONT_URL = getattr(settings, "CLOUDFRONT_URL", "").rstrip("/")
+PRIVATE_CLOUDFRONT_URL = getattr(settings, "MEDIA_PRIVATE_CLOUDFRONT_URL", "").rstrip(
+    "/"
+)
+PRIVATE_CLOUDFRONT_KEY_PAIR_ID = getattr(
+    settings, "MEDIA_PRIVATE_CLOUDFRONT_KEY_PAIR_ID", ""
+)
+PRIVATE_CLOUDFRONT_PRIVATE_KEY = getattr(
+    settings, "MEDIA_PRIVATE_CLOUDFRONT_PRIVATE_KEY", ""
+)
+
+
+def attachment_content_disposition(filename: str) -> str:
+    """Build an RFC 5987 attachment header without allowing header injection."""
+    clean_name = filename.replace("\r", "").replace("\n", "") or "download"
+    return f"attachment; filename*=UTF-8''{quote(clean_name, safe='')}"
+
 
 # Map purposes to bucket types
 PURPOSE_BUCKET_MAP = {
@@ -291,6 +310,7 @@ class StorageService:
         bucket_type: Optional[BucketType] = None,
         *,
         is_key: bool = False,
+        strict: bool = False,
     ):
         """Delete media and thumbnail from storage.
 
@@ -312,6 +332,8 @@ class StorageService:
                     )
                     self.supabase.storage.from_(self.bucket).remove([thumb_path])
             except Exception:
+                if strict:
+                    raise
                 pass  # Ignore errors during deletion
 
         elif self.backend == "s3":
@@ -341,6 +363,8 @@ class StorageService:
                     if thumb_key:
                         self.s3_client.delete_object(Bucket=bucket, Key=thumb_key)
             except Exception:
+                if strict:
+                    raise
                 pass
 
     async def generate_presigned_url(
@@ -351,6 +375,7 @@ class StorageService:
         *,
         operation: str = "get_object",
         content_type: Optional[str] = None,
+        download_name: Optional[str] = None,
     ) -> str:
         """
         Generate a presigned URL for accessing or uploading private files.
@@ -373,6 +398,10 @@ class StorageService:
         params = {"Bucket": bucket, "Key": file_key}
         if operation == "put_object":
             params["ContentType"] = content_type or "application/octet-stream"
+        elif download_name:
+            params["ResponseContentDisposition"] = attachment_content_disposition(
+                download_name
+            )
         kwargs = {"Params": params, "ExpiresIn": expiration}
         if operation == "put_object":
             kwargs["HttpMethod"] = "PUT"
@@ -406,6 +435,237 @@ class StorageService:
             "content_type": None,
             "etag": None,
         }
+
+    def require_s3(self) -> None:
+        """Fail clearly when a direct-transfer feature is used without S3."""
+        if self.backend != "s3":
+            raise RuntimeError(
+                "The media vault requires STORAGE_BACKEND=s3 for multipart transfers"
+            )
+
+    async def create_multipart_upload(
+        self,
+        *,
+        file_key: str,
+        content_type: str,
+        metadata: Optional[dict[str, str]] = None,
+        download_name: Optional[str] = None,
+    ) -> str:
+        """Start an immutable full-quality upload in the private bucket."""
+        self.require_s3()
+        params = {
+            "Bucket": self.bucket_private,
+            "Key": file_key,
+            "ContentType": content_type,
+            "Metadata": metadata or {},
+            "ServerSideEncryption": "AES256",
+        }
+        if download_name:
+            params["ContentDisposition"] = attachment_content_disposition(download_name)
+        response = self.s3_client.create_multipart_upload(**params)
+        return str(response["UploadId"])
+
+    async def generate_private_download_url(
+        self,
+        *,
+        file_key: str,
+        expiration: int,
+        download_name: Optional[str] = None,
+    ) -> tuple[str, str]:
+        """Use private CloudFront when configured, otherwise signed S3."""
+        self.require_s3()
+        if PRIVATE_CLOUDFRONT_URL:
+            if not (PRIVATE_CLOUDFRONT_KEY_PAIR_ID and PRIVATE_CLOUDFRONT_PRIVATE_KEY):
+                raise RuntimeError(
+                    "Private CloudFront requires a key pair id and private key"
+                )
+            from botocore.signers import CloudFrontSigner
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import padding
+
+            private_key = serialization.load_pem_private_key(
+                PRIVATE_CLOUDFRONT_PRIVATE_KEY.replace("\\n", "\n").encode(),
+                password=None,
+            )
+
+            def rsa_signer(message: bytes) -> bytes:
+                return private_key.sign(
+                    message,
+                    padding.PKCS1v15(),
+                    hashes.SHA1(),
+                )
+
+            signer = CloudFrontSigner(
+                PRIVATE_CLOUDFRONT_KEY_PAIR_ID,
+                rsa_signer,
+            )
+            resource_url = f"{PRIVATE_CLOUDFRONT_URL}/{quote(file_key, safe='/')}"
+            return (
+                signer.generate_presigned_url(
+                    resource_url,
+                    date_less_than=utc_now() + timedelta(seconds=expiration),
+                ),
+                "cloudfront_signed",
+            )
+        return (
+            await self.generate_presigned_url(
+                file_key,
+                BucketType.PRIVATE,
+                expiration,
+                operation="get_object",
+                download_name=download_name,
+            ),
+            "s3_presigned",
+        )
+
+    async def sign_multipart_parts(
+        self,
+        *,
+        file_key: str,
+        upload_id: str,
+        part_numbers: list[int],
+        expiration: int,
+    ) -> list[dict[str, object]]:
+        """Presign only the part URLs the browser currently needs."""
+        self.require_s3()
+        return [
+            {
+                "part_number": part_number,
+                "url": self.s3_client.generate_presigned_url(
+                    "upload_part",
+                    Params={
+                        "Bucket": self.bucket_private,
+                        "Key": file_key,
+                        "UploadId": upload_id,
+                        "PartNumber": part_number,
+                    },
+                    ExpiresIn=expiration,
+                    HttpMethod="PUT",
+                ),
+            }
+            for part_number in part_numbers
+        ]
+
+    async def complete_multipart_upload(
+        self,
+        *,
+        file_key: str,
+        upload_id: str,
+        parts: list[dict[str, object]],
+    ) -> dict:
+        self.require_s3()
+        return self.s3_client.complete_multipart_upload(
+            Bucket=self.bucket_private,
+            Key=file_key,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts},
+        )
+
+    async def abort_multipart_upload(self, *, file_key: str, upload_id: str) -> None:
+        self.require_s3()
+        self.s3_client.abort_multipart_upload(
+            Bucket=self.bucket_private,
+            Key=file_key,
+            UploadId=upload_id,
+        )
+
+    async def list_multipart_parts(
+        self, *, file_key: str, upload_id: str
+    ) -> list[dict[str, object]]:
+        """List already-uploaded parts so interrupted browser uploads can resume."""
+        self.require_s3()
+        parts: list[dict[str, object]] = []
+        marker: Optional[int] = None
+        while True:
+            kwargs = {
+                "Bucket": self.bucket_private,
+                "Key": file_key,
+                "UploadId": upload_id,
+            }
+            if marker is not None:
+                kwargs["PartNumberMarker"] = marker
+            response = self.s3_client.list_parts(**kwargs)
+            parts.extend(
+                {
+                    "part_number": int(part["PartNumber"]),
+                    "etag": str(part["ETag"]).strip('"'),
+                    "size": int(part.get("Size") or 0),
+                }
+                for part in response.get("Parts", [])
+            )
+            if not response.get("IsTruncated"):
+                break
+            marker = int(response["NextPartNumberMarker"])
+        return parts
+
+    async def copy_private_to_public(
+        self,
+        *,
+        source_key: str,
+        destination_key: str,
+        content_type: str,
+    ) -> str:
+        """Publish an approved original without altering its bytes."""
+        self.require_s3()
+        self.s3_client.copy_object(
+            Bucket=self.bucket_public,
+            Key=destination_key,
+            CopySource={"Bucket": self.bucket_private, "Key": source_key},
+            ContentType=content_type,
+            CacheControl="public, max-age=300",
+            MetadataDirective="REPLACE",
+            ServerSideEncryption="AES256",
+        )
+        if CLOUDFRONT_URL:
+            return f"{CLOUDFRONT_URL}/{destination_key}"
+        return (
+            f"https://{self.bucket_public}.s3.{AWS_REGION}.amazonaws.com/"
+            f"{destination_key}"
+        )
+
+    async def download_private_object(self, file_key: str) -> bytes:
+        """Fetch an object for bounded background work such as ZIP assembly."""
+        self.require_s3()
+        response = self.s3_client.get_object(
+            Bucket=self.bucket_private,
+            Key=file_key,
+        )
+        return response["Body"].read()
+
+    async def upload_private_fileobj(
+        self,
+        *,
+        file_key: str,
+        fileobj,
+        content_type: str,
+        download_name: Optional[str] = None,
+    ) -> None:
+        """Stream a file-like object to private S3 using boto3's multipart manager."""
+        self.require_s3()
+        fileobj.seek(0)
+        extra_args = {
+            "ContentType": content_type,
+            "ServerSideEncryption": "AES256",
+        }
+        if download_name:
+            extra_args["ContentDisposition"] = attachment_content_disposition(
+                download_name
+            )
+        self.s3_client.upload_fileobj(
+            fileobj,
+            self.bucket_private,
+            file_key,
+            ExtraArgs=extra_args,
+        )
+
+
+def recommended_multipart_part_size(size_bytes: int) -> int:
+    """Choose a legal part size while staying below S3's 10,000-part limit."""
+    mib = 1024**2
+    minimum = 16 * mib
+    required = math.ceil(size_bytes / 9990)
+    aligned = math.ceil(required / mib) * mib
+    return max(minimum, aligned)
 
 
 # Singleton instance

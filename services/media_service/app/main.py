@@ -13,6 +13,7 @@ from services.media_service.routers.assets import router as assets_router
 from services.media_service.routers.audio import router as audio_router
 from services.media_service.routers.internal import router as internal_router
 from services.media_service.routers.media import router as media_router
+from services.media_service.routers.vaults import router as vaults_router
 
 settings = get_settings()
 
@@ -37,6 +38,7 @@ app.include_router(media_router)
 app.include_router(assets_router)
 app.include_router(audio_router)
 app.include_router(internal_router)
+app.include_router(vaults_router)
 # Admin-evidence router must be registered after the generic media
 # router so that ``/media/admin/...`` doesn't get caught by any
 # wildcard rule in ``media_router``.

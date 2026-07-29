@@ -1,0 +1,26 @@
+{
+  "Rules": [
+    {
+      "ID": "Abort-stale-multipart-uploads",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "vaults/" },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 2
+      }
+    },
+    {
+      "ID": "Expire-generated-vault-exports",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "vault-exports/" },
+      "Expiration": { "Days": 2 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 2 }
+    },
+    {
+      "ID": "Expire-review-derivatives",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "vault-derivatives/" },
+      "Expiration": { "Days": 90 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 7 }
+    }
+  ]
+}
