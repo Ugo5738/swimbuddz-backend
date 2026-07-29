@@ -3,6 +3,8 @@
 from services.events_service.schemas.main import (
     EventBase,
     EventCreate,
+    EventInviteCreate,
+    EventInviteResponse,
     EventResponse,
     EventUpdate,
     OpenSwimCreate,
@@ -14,6 +16,8 @@ from services.events_service.schemas.main import (
 __all__ = [
     "EventBase",
     "EventCreate",
+    "EventInviteCreate",
+    "EventInviteResponse",
     "EventResponse",
     "EventUpdate",
     "OpenSwimCreate",

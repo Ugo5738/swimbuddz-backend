@@ -28,10 +28,12 @@ class Response:
 @pytest.mark.asyncio
 async def test_content_publish_email_is_idempotent(db_session, monkeypatch):
     member_id = "11111111-1111-1111-1111-111111111111"
+    image_id = uuid.uuid4()
     post = ContentPostFactory.create(
         is_published=True,
         email_on_publish=True,
         tier_access="community",
+        featured_image_media_id=image_id,
     )
     db_session.add(post)
     await db_session.commit()
@@ -52,7 +54,15 @@ async def test_content_publish_email_is_idempotent(db_session, monkeypatch):
         )
 
     send_email = AsyncMock(return_value=True)
+    resolve_media_url = AsyncMock(
+        return_value="https://cdn.example.com/article-image.jpg"
+    )
     monkeypatch.setattr(content_publishing, "internal_get", fake_internal_get)
+    monkeypatch.setattr(
+        content_publishing,
+        "resolve_media_url",
+        resolve_media_url,
+    )
     monkeypatch.setattr(
         content_publishing,
         "send_content_post_published_email",
@@ -63,6 +73,11 @@ async def test_content_publish_email_is_idempotent(db_session, monkeypatch):
     assert await send_content_post_publish_emails(db_session, post) == 0
 
     send_email.assert_awaited_once()
+    resolve_media_url.assert_awaited_once_with(image_id)
+    assert (
+        send_email.await_args.kwargs["featured_image_url"]
+        == "https://cdn.example.com/article-image.jpg"
+    )
     logs = (
         (
             await db_session.execute(
@@ -78,6 +93,55 @@ async def test_content_publish_email_is_idempotent(db_session, monkeypatch):
     assert logs[0].member_id.hex == member_id.replace("-", "")
     assert logs[0].delivery_status == "sent"
     assert logs[0].attempt_count == 1
+
+
+@pytest.mark.asyncio
+async def test_content_publish_email_waits_when_featured_image_cannot_resolve(
+    db_session, monkeypatch
+):
+    post = ContentPostFactory.create(
+        is_published=True,
+        email_on_publish=True,
+        featured_image_media_id=uuid.uuid4(),
+    )
+    db_session.add(post)
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        content_publishing,
+        "internal_get",
+        AsyncMock(
+            return_value=Response(
+                [
+                    {
+                        "id": "11111111-1111-1111-1111-111111111111",
+                        "auth_id": "auth-member",
+                        "first_name": "Ada",
+                        "email": "ada@example.com",
+                    }
+                ]
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        content_publishing,
+        "resolve_media_url",
+        AsyncMock(return_value=None),
+    )
+    send_email = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        content_publishing,
+        "send_content_post_published_email",
+        send_email,
+    )
+
+    assert await send_content_post_publish_emails(db_session, post) == 0
+    send_email.assert_not_awaited()
+    await db_session.refresh(post)
+    assert post.email_dispatch_completed_at is None
+    assert post.email_dispatch_last_error == (
+        "Could not resolve the article featured image"
+    )
 
 
 @pytest.mark.asyncio

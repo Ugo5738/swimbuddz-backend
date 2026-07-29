@@ -4,14 +4,15 @@ from fastapi import FastAPI
 
 from libs.common.health import register_health_check
 from services.pools_service.routers import (
+    admin_pricing_router,
     admin_related_router,
     admin_router,
     admin_submissions_router,
     public_router,
     submissions_router,
 )
+from services.pools_service.weather.routers import admin_router as weather_admin_router
 from services.pools_service.weather.routers import (
-    admin_router as weather_admin_router,
     member_router as weather_member_router,
 )
 
@@ -36,6 +37,9 @@ def create_app() -> FastAPI:
 
     # Admin submissions (must be registered before /admin/pools/{pool_id})
     app.include_router(admin_submissions_router, prefix="/admin/pools/submissions")
+
+    # Static pricing paths must be registered before /admin/pools/{pool_id}.
+    app.include_router(admin_pricing_router, prefix="/admin/pools/pricing")
 
     # Admin CRUD for pool-related entities (contacts, visits, agreements, assets, status history)
     # Mounted under /admin/pools so routes become /admin/pools/{pool_id}/contacts etc.

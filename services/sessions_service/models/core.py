@@ -132,6 +132,35 @@ class Session(Base):
     capacity: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
     pool_fee: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     ride_share_fee: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Cost-plus pricing is optional. Existing sessions remain in manual mode;
+    # when enabled, editable cost lines and margin calculate pool_fee, which is
+    # the per-attendee booking price used by the existing booking flow.
+    pricing_mode: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="manual", server_default="manual"
+    )
+    pricing_expected_attendees: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    cost_lines: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    estimated_total_cost: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    estimated_cost_per_attendee: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    margin_type: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="fixed_per_attendee",
+        server_default="fixed_per_attendee",
+    )
+    # fixed_per_attendee: kobo; percentage: basis points (20% = 2000).
+    margin_value: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    margin_amount_per_attendee: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     # === Guest booking (docs/design/GUEST_AND_GROUP_BOOKING_DESIGN.md §5d) ===
     # Whether this session can host non-member guests / trial attendees.
