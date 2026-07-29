@@ -8,6 +8,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from services.pools_service.weather.summary import WeatherKind
+
 
 class WeatherSnapshotResponse(BaseModel):
     """A cached forecast for one location.
@@ -33,6 +35,25 @@ class WeatherSnapshotResponse(BaseModel):
     fetched_at: datetime
     expires_at: datetime
     stale: bool = False  # computed in the router: True when past TTL
+
+
+class WeatherWindowSummaryResponse(BaseModel):
+    """Canonical provider-independent weather summary for a requested window."""
+
+    pool_id: Optional[uuid.UUID] = None
+    timezone: str
+    forecast_days: int
+    stale: bool
+    window_start: datetime
+    window_end: datetime
+    max_precipitation_probability: int = Field(ge=0, le=100)
+    total_precipitation_mm: float = Field(ge=0)
+    temperature_high_c: Optional[float]
+    temperature_low_c: Optional[float]
+    representative_weather_code: int
+    kind: WeatherKind
+    condition_text: str
+    explanation: str
 
 
 class WeatherRefreshResult(BaseModel):

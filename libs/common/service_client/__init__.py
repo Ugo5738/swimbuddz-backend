@@ -54,6 +54,7 @@ from .payments import (
     PaystackProxyError,
     _proxy_error_from,
     complete_makeup_obligation,
+    extend_recurring_payouts_for_cohort,
     initialize_store_payment,
     paystack_create_recipient,
     paystack_list_banks,
@@ -76,6 +77,7 @@ from .sessions import (
 from .transport import attach_session_ride_configs
 from .volunteer import (
     cancel_opportunities_for_context,
+    get_media_vault_assignments,
     grant_challenge_volunteer_hours,
     materialise_opportunities_from_session_template,
 )
@@ -153,6 +155,7 @@ __all__ = [
     "emit_rewards_event",
     # Volunteer
     "grant_challenge_volunteer_hours",
+    "get_media_vault_assignments",
     "cancel_opportunities_for_context",
     "materialise_opportunities_from_session_template",
     # Payments / Paystack
@@ -161,6 +164,7 @@ __all__ = [
     "validate_discount_code",
     "schedule_makeup_obligation",
     "complete_makeup_obligation",
+    "extend_recurring_payouts_for_cohort",
     "PaystackProxyError",
     "_proxy_error_from",
     "paystack_list_banks",

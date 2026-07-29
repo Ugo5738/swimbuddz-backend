@@ -128,16 +128,27 @@ def _session_item(payload: dict[str, Any]) -> Optional[CalendarItemResponse]:
         source="session",
         audience=_session_audience(session_type),
         kind=session_type,
+        visibility=(
+            "invite_only"
+            if payload.get("pod_id")
+            else "members_only"
+            if session_type in {"club", "academy", "cohort_class"}
+            else "public"
+        ),
+        access_level=_session_audience(session_type),
+        location_type="physical",
         title=str(payload.get("title") or "SwimBuddz session"),
         description=payload.get("description"),
         starts_at=starts_at,
         ends_at=_parse_datetime(payload.get("ends_at")),
         timezone=str(payload.get("timezone") or "Africa/Lagos"),
         location_name=str(location_name) if location_name else None,
+        location_area=str(location_name) if location_name else None,
         pool_id=str(payload["pool_id"]) if payload.get("pool_id") else None,
         status=str(payload.get("status") or "scheduled").lower(),
         href=f"/sessions/{payload['id']}/book",
         bookable=bool(access.get("bookable")),
+        viewer_can_attend=bool(access.get("bookable")),
     )
 
 
@@ -149,18 +160,23 @@ def _event_item(payload: dict[str, Any]) -> Optional[CalendarItemResponse]:
     return CalendarItemResponse(
         id=str(payload["id"]),
         source="event",
-        audience=_event_audience(payload.get("tier_access")),
+        audience=_event_audience(payload.get("audience") or payload.get("tier_access")),
         kind=event_type,
+        visibility=str(payload.get("visibility") or "public"),
+        access_level=str(payload.get("tier_access") or "public"),
+        location_type=str(payload.get("location_type") or "physical"),
         title=str(payload.get("title") or "SwimBuddz event"),
         description=payload.get("description"),
         starts_at=starts_at,
         ends_at=_parse_datetime(payload.get("end_time")),
-        timezone="Africa/Lagos",
+        timezone=str(payload.get("timezone") or "Africa/Lagos"),
         location_name=payload.get("location"),
+        location_area=payload.get("location_area"),
         pool_id=str(payload["pool_id"]) if payload.get("pool_id") else None,
-        status="scheduled",
+        status=str(payload.get("status") or "published"),
         href=f"/community/events/{payload['id']}",
-        bookable=False,
+        bookable=bool(payload.get("viewer_can_attend")),
+        viewer_can_attend=bool(payload.get("viewer_can_attend")),
     )
 
 
@@ -264,8 +280,26 @@ async def get_calendar(
             continue
         if not _in_range(event.get("start_time"), start, end):
             continue
-        audience = _event_audience(event.get("tier_access"))
-        if audience not in allowed_event_audiences:
+        visibility = str(event.get("visibility") or "public").lower()
+        access_level = str(event.get("tier_access") or "community").lower()
+        if (
+            str(event.get("status") or "published").lower() != "published"
+            and not is_admin
+        ):
+            continue
+        if (
+            not is_admin
+            and visibility == "invite_only"
+            and not event.get("viewer_invited")
+        ):
+            continue
+        if not is_admin and visibility == "members_only" and not current_user:
+            continue
+        if (
+            not is_admin
+            and visibility == "members_only"
+            and access_level not in {"public", *allowed_event_audiences}
+        ):
             continue
         item = _event_item(event)
         if item is not None:

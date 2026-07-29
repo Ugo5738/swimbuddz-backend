@@ -4,7 +4,10 @@ import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from libs.auth.dependencies import require_admin
+from sqlalchemy import desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from libs.auth.dependencies import get_optional_user, is_admin_or_service, require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.media_service.models import Album, AlbumItem, MediaItem
@@ -20,8 +23,6 @@ from services.media_service.schemas import (
     AlbumUpdate,
     AlbumWithMedia,
 )
-from sqlalchemy import desc, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/media", tags=["media"])
 
@@ -47,10 +48,13 @@ async def create_album(
 async def list_albums(
     album_type: Optional[str] = None,
     linked_entity_id: Optional[uuid.UUID] = None,
+    current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all albums, optionally filtered by type or linked entity."""
     query = select(Album).order_by(desc(Album.created_at))
+    if not current_user or not is_admin_or_service(current_user):
+        query = query.where(Album.is_public.is_(True))
 
     if album_type:
         query = query.where(Album.album_type == album_type)
@@ -79,7 +83,10 @@ async def list_albums(
             MediaItem.created_at.label("created_at"),
         )
         .join(MediaItem, MediaItem.id == AlbumItem.media_item_id)
-        .where(AlbumItem.album_id.in_(album_ids))
+        .where(
+            AlbumItem.album_id.in_(album_ids),
+            MediaItem.soft_deleted_at.is_(None),
+        )
         .order_by(AlbumItem.album_id, AlbumItem.order, desc(MediaItem.created_at))
     )
     item_rows = items_result.fetchall()
@@ -129,7 +136,11 @@ async def list_albums(
 
 
 @router.get("/albums/{album_id}", response_model=AlbumWithMedia)
-async def get_album(album_id: uuid.UUID, db: AsyncSession = Depends(get_async_db)):
+async def get_album(
+    album_id: uuid.UUID,
+    current_user: Optional[AuthUser] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_async_db),
+):
     """Get album details with all media items."""
     query = select(Album).where(Album.id == album_id)
     result = await db.execute(query)
@@ -137,13 +148,20 @@ async def get_album(album_id: uuid.UUID, db: AsyncSession = Depends(get_async_db
 
     if not album:
         raise HTTPException(status_code=404, detail="Album not found")
+    if not album.is_public and (
+        not current_user or not is_admin_or_service(current_user)
+    ):
+        raise HTTPException(status_code=404, detail="Album not found")
 
     # Get media items in album via AlbumItem
     # Join AlbumItem and MediaItem, order by AlbumItem.order
     stmt = (
         select(MediaItem)
         .join(AlbumItem, AlbumItem.media_item_id == MediaItem.id)
-        .where(AlbumItem.album_id == album_id)
+        .where(
+            AlbumItem.album_id == album_id,
+            MediaItem.soft_deleted_at.is_(None),
+        )
         .order_by(AlbumItem.order, desc(MediaItem.created_at))
     )
 

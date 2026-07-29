@@ -20,6 +20,28 @@ from .core import internal_get, internal_post
 # ---------------------------------------------------------------------------
 
 
+async def extend_recurring_payouts_for_cohort(
+    cohort_id: str,
+    *,
+    current_end_date: str,
+    proposed_end_date: str,
+    calling_service: str,
+) -> dict:
+    """Add recurring payout blocks for an admin-billable cohort extension."""
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path=f"/internal/payments/recurring-payouts/cohorts/{cohort_id}/extend",
+        calling_service=calling_service,
+        json={
+            "current_end_date": current_end_date,
+            "proposed_end_date": proposed_end_date,
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 async def schedule_makeup_obligation(
     obligation_id: str,
     scheduled_session_id: str,

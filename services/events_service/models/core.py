@@ -4,11 +4,12 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from libs.common.datetime_utils import utc_now
-from libs.db.base import Base
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
+
+from libs.common.datetime_utils import utc_now
+from libs.db.base import Base
 
 
 class MemberRef(Base):
@@ -38,6 +39,28 @@ class Event(Base):
     event_type: Mapped[str] = mapped_column(
         String, nullable=False
     )  # social/volunteer/beach_day/watch_party/cleanup/training
+    # Audience describes the programme lane shown on the calendar. It is
+    # intentionally separate from tier_access: an Academy assessment can be
+    # public and open to prospects while still belonging to Academy.
+    audience: Mapped[str] = mapped_column(
+        String, nullable=False, default="community", server_default="community"
+    )
+    visibility: Mapped[str] = mapped_column(
+        String, nullable=False, default="public", server_default="public"
+    )  # public/members_only/invite_only
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, default="published", server_default="published"
+    )  # draft/published/cancelled
+    location_type: Mapped[str] = mapped_column(
+        String, nullable=False, default="physical", server_default="physical"
+    )  # physical/online/hybrid
+    timezone: Mapped[str] = mapped_column(
+        String, nullable=False, default="Africa/Lagos", server_default="Africa/Lagos"
+    )
+    location_area: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    is_location_private: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     location: Mapped[str] = mapped_column(
         String, nullable=True
     )  # "Federal Palace Hotel, VI", "Rowe Park, Yaba"
@@ -50,7 +73,7 @@ class Event(Base):
     cost_kobo: Mapped[int] = mapped_column(Integer, nullable=True)
     tier_access: Mapped[str] = mapped_column(
         String, default="community"
-    )  # minimum tier required: community/club/academy
+    )  # public/community/club/academy/invite_only
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
     # --- Member-created pool meets (event_type="open_swim") ---
@@ -103,3 +126,32 @@ class EventRSVP(Base):
 
     def __repr__(self):
         return f"<EventRSVP event={self.event_id} member={self.member_id} status={self.status}>"
+
+
+class EventInvite(Base):
+    """Explicit access grant for an invite-only event."""
+
+    __tablename__ = "event_invites"
+    __table_args__ = (
+        UniqueConstraint(
+            "event_id",
+            "member_id",
+            name="uq_event_invites_event_member",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("events.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )

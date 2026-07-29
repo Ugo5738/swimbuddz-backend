@@ -25,8 +25,10 @@ from services.volunteer_service.models import (
     VolunteerOpportunity,
     VolunteerProfile,
     VolunteerRole,
+    VolunteerSlot,
 )
 from services.volunteer_service.models.core import VolunteerHoursLog
+from services.volunteer_service.models.enums import SlotStatus, VolunteerRoleCategory
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/internal/volunteer", tags=["internal-volunteer"])
@@ -277,6 +279,80 @@ async def get_member_volunteer_summary(
     total = result.scalar() or 0.0
 
     return MemberVolunteerSummary(total_hours=float(total))
+
+
+# ---------------------------------------------------------------------------
+# Media-vault access assignments
+# ---------------------------------------------------------------------------
+
+
+class MediaVaultAssignment(BaseModel):
+    slot_id: uuid.UUID
+    opportunity_id: uuid.UUID
+    member_id: uuid.UUID
+    category: str
+    role: str
+
+
+@router.get(
+    "/media-vault-assignments",
+    response_model=list[MediaVaultAssignment],
+)
+async def get_media_vault_assignments(
+    session_id: Optional[uuid.UUID] = None,
+    event_id: Optional[uuid.UUID] = None,
+    _service: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return active media/gallery volunteer claims for one session or event."""
+    if bool(session_id) == bool(event_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Pass exactly one of session_id or event_id",
+        )
+    context_filter = (
+        VolunteerOpportunity.session_id == session_id
+        if session_id
+        else VolunteerOpportunity.event_id == event_id
+    )
+    rows = await db.execute(
+        select(VolunteerSlot, VolunteerOpportunity, VolunteerRole)
+        .join(
+            VolunteerOpportunity,
+            VolunteerOpportunity.id == VolunteerSlot.opportunity_id,
+        )
+        .join(VolunteerRole, VolunteerRole.id == VolunteerOpportunity.role_id)
+        .where(
+            context_filter,
+            VolunteerRole.category.in_(
+                [
+                    VolunteerRoleCategory.MEDIA,
+                    VolunteerRoleCategory.GALLERY_SUPPORT,
+                ]
+            ),
+            VolunteerSlot.status.in_(
+                [
+                    SlotStatus.CLAIMED,
+                    SlotStatus.APPROVED,
+                    SlotStatus.COMPLETED,
+                ]
+            ),
+        )
+    )
+    return [
+        MediaVaultAssignment(
+            slot_id=slot.id,
+            opportunity_id=opportunity.id,
+            member_id=slot.member_id,
+            category=role.category.value,
+            role=(
+                "curator"
+                if role.category == VolunteerRoleCategory.GALLERY_SUPPORT
+                else "contributor"
+            ),
+        )
+        for slot, opportunity, role in rows.all()
+    ]
 
 
 # ---------------------------------------------------------------------------

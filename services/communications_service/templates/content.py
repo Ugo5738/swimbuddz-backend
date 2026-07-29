@@ -28,6 +28,7 @@ async def send_content_post_published_email(
     title: str,
     summary: str | None = None,
     category: str | None = None,
+    featured_image_url: str | None = None,
 ) -> bool:
     """Send an email when a content post is published."""
     category_label = _category_label(category)
@@ -53,9 +54,19 @@ Read it here:
     safe_title = escape(title)
     safe_summary = escape(summary_text)
     safe_category = escape(category_label)
+    safe_image_alt = escape(f"{title} featured image", quote=True)
+    image_html = (
+        f'<img src="{escape(featured_image_url, quote=True)}" '
+        f'alt="{safe_image_alt}" '
+        'width="536" style="display:block;width:100%;max-width:536px;'
+        'max-height:320px;object-fit:cover;border-radius:6px;margin:16px 0 20px;"/>'
+        if featured_image_url
+        else ""
+    )
     body_html = (
         f"<p>Hi {escape(member_name)},</p>"
         f"<p>We published a new <strong>{safe_category}</strong> article.</p>"
+        f"{image_html}"
         f"<h3>{safe_title}</h3>"
         f"<p>{safe_summary}</p>"
         + cta_button("Read Article", article_url)

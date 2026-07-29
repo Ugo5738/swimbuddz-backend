@@ -207,6 +207,15 @@ class Settings(BaseSettings):
     )
     AWS_S3_BUCKET_PRIVATE: str = ""  # For private files (documents, payment proofs)
     CLOUDFRONT_URL: str = ""  # CDN URL for public bucket
+    # Optional private CloudFront distribution. Keep empty until the distribution
+    # has an origin access control and trusted key group; S3 presigned URLs remain
+    # the safe fallback.
+    MEDIA_PRIVATE_CLOUDFRONT_URL: str = ""
+    MEDIA_PRIVATE_CLOUDFRONT_KEY_PAIR_ID: str = ""
+    MEDIA_PRIVATE_CLOUDFRONT_PRIVATE_KEY: str = ""
+    MEDIA_VAULT_SIGNED_URL_TTL_SECONDS: int = 3600
+    MEDIA_VAULT_MULTIPART_URL_TTL_SECONDS: int = 3600
+    MEDIA_VAULT_EXPORT_TTL_HOURS: int = 24
     # Stroke Lab media is owned by media_service and stored in AWS_S3_BUCKET_PRIVATE
     # under Stroke Lab object prefixes.
 

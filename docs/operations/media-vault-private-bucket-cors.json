@@ -1,0 +1,13 @@
+[
+  {
+    "AllowedHeaders": ["*"],
+    "AllowedMethods": ["GET", "HEAD", "PUT"],
+    "AllowedOrigins": [
+      "http://localhost:3000",
+      "https://swimbuddz.com",
+      "https://www.swimbuddz.com"
+    ],
+    "ExposeHeaders": ["ETag", "x-amz-request-id", "x-amz-version-id"],
+    "MaxAgeSeconds": 3600
+  }
+]

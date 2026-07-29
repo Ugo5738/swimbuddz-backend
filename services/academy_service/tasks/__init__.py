@@ -14,6 +14,7 @@ from services.academy_service.tasks.enrollment import (
 from services.academy_service.tasks.membership import (
     reconcile_academy_membership_projections,
 )
+from services.academy_service.tasks.payouts import reconcile_extension_payout_schedules
 from services.academy_service.tasks.reporting import (
     check_and_issue_certificates,
     check_attendance_and_notify,
@@ -32,4 +33,5 @@ __all__ = [
     "check_attendance_and_notify",
     "reconcile_chat_memberships",
     "reconcile_academy_membership_projections",
+    "reconcile_extension_payout_schedules",
 ]

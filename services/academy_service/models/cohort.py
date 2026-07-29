@@ -291,6 +291,15 @@ class CohortExtensionRequest(Base):
     proposed_end_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+    # Admin-controlled: extension sessions only accrue coach pay when this is
+    # explicitly enabled during approval. Defaults off so extending learner
+    # access does not silently expand the coach payout schedule.
+    coach_payout_billable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    coach_payout_synced_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     status: Mapped[ExtensionRequestStatus] = mapped_column(
         SAEnum(

@@ -2,9 +2,15 @@
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+EventAudience = Literal["community", "club", "academy"]
+EventVisibility = Literal["public", "members_only", "invite_only"]
+EventStatus = Literal["draft", "published", "cancelled"]
+EventLocationType = Literal["physical", "online", "hybrid"]
+EventTierAccess = Literal["public", "community", "club", "academy", "invite_only"]
 
 
 class EventBase(BaseModel):
@@ -13,11 +19,19 @@ class EventBase(BaseModel):
     title: str
     description: Optional[str] = None
     event_type: str  # social/volunteer/beach_day/watch_party/cleanup/training
+    audience: EventAudience = "community"
+    visibility: EventVisibility = "public"
+    status: EventStatus = "published"
+    location_type: EventLocationType = "physical"
+    timezone: str = "Africa/Lagos"
+    location_area: Optional[str] = None
+    is_location_private: bool = False
     location: Optional[str] = None
     start_time: datetime
     end_time: Optional[datetime] = None
     max_capacity: Optional[int] = None
-    tier_access: str = "community"  # community/club/academy
+    tier_access: EventTierAccess = "community"
+    pool_id: Optional[uuid.UUID] = None
     # Optional entry fee — API accepts/returns naira (float). DB stores kobo (int).
     cost_naira: Optional[float] = None  # null = free
 
@@ -34,11 +48,19 @@ class EventUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     event_type: Optional[str] = None
+    audience: Optional[EventAudience] = None
+    visibility: Optional[EventVisibility] = None
+    status: Optional[EventStatus] = None
+    location_type: Optional[EventLocationType] = None
+    timezone: Optional[str] = None
+    location_area: Optional[str] = None
+    is_location_private: Optional[bool] = None
     location: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     max_capacity: Optional[int] = None
-    tier_access: Optional[str] = None
+    tier_access: Optional[EventTierAccess] = None
+    pool_id: Optional[uuid.UUID] = None
     cost_naira: Optional[float] = None  # null = free
 
 
@@ -49,11 +71,18 @@ class EventResponse(BaseModel):
     title: str
     description: Optional[str] = None
     event_type: str
+    audience: EventAudience
+    visibility: EventVisibility
+    status: EventStatus
+    location_type: EventLocationType
+    timezone: str
+    location_area: Optional[str] = None
+    is_location_private: bool
     location: Optional[str] = None
     start_time: datetime
     end_time: Optional[datetime] = None
     max_capacity: Optional[int] = None
-    tier_access: str
+    tier_access: EventTierAccess
     cost_naira: Optional[float] = None  # null = free
     # Member-created pool meets (event_type="open_swim"):
     pool_id: Optional[uuid.UUID] = None  # null = no pool / free meet
@@ -66,6 +95,8 @@ class EventResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     rsvp_count: Optional[dict] = None  # {"going": 5, "maybe": 2, "not_going": 1}
+    viewer_can_attend: bool = False
+    viewer_invited: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -84,7 +115,7 @@ class OpenSwimCreate(BaseModel):
     start_time: datetime
     end_time: Optional[datetime] = None
     max_capacity: Optional[int] = None
-    tier_access: str = "community"
+    tier_access: EventTierAccess = "community"
     pool_id: Optional[uuid.UUID] = None  # null = free / informal venue
     # Organizer's optional add-on per attendee (naira). Settled manually off-platform.
     organizer_surcharge_naira: Optional[float] = None
@@ -121,5 +152,20 @@ class RSVPResponse(BaseModel):
     wallet_transaction_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EventInviteCreate(BaseModel):
+    """Bulk invitation input for a private event."""
+
+    member_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
+class EventInviteResponse(BaseModel):
+    id: uuid.UUID
+    event_id: uuid.UUID
+    member_id: uuid.UUID
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

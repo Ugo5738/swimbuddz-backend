@@ -6,6 +6,19 @@ from services.pools_service.schemas.main import (
     PoolResponse,
     PoolUpdate,
 )
+from services.pools_service.schemas.pricing import (
+    CostQuoteRequest,
+    CostQuoteResponse,
+    OperatingAreaCreate,
+    OperatingAreaResponse,
+    OperatingAreaUpdate,
+    OperatingCostRateCreate,
+    OperatingCostRateResponse,
+    OperatingCostRateUpdate,
+    PoolRateCreate,
+    PoolRateResponse,
+    PoolRateUpdate,
+)
 from services.pools_service.schemas.related import (
     PoolAgreementCreate,
     PoolAgreementResponse,
@@ -35,6 +48,17 @@ __all__ = [
     "PoolListResponse",
     "PoolResponse",
     "PoolUpdate",
+    "CostQuoteRequest",
+    "CostQuoteResponse",
+    "OperatingAreaCreate",
+    "OperatingAreaResponse",
+    "OperatingAreaUpdate",
+    "OperatingCostRateCreate",
+    "OperatingCostRateResponse",
+    "OperatingCostRateUpdate",
+    "PoolRateCreate",
+    "PoolRateResponse",
+    "PoolRateUpdate",
     # submissions
     "PoolSubmissionApproveRequest",
     "PoolSubmissionCreate",

@@ -21,11 +21,19 @@ from services.pools_service.models.pool_submission import (
     PoolSubmissionStatus,
 )
 from services.pools_service.models.pool_visit import PoolVisit
+from services.pools_service.models.pricing import (
+    OperatingArea,
+    OperatingCostRate,
+    PoolRate,
+)
 
 __all__ = [
     "IndoorOutdoor",
     "PartnershipStatus",
+    "OperatingArea",
+    "OperatingCostRate",
     "Pool",
+    "PoolRate",
     "PoolAgreement",
     "PoolAgreementStatus",
     "PoolAsset",

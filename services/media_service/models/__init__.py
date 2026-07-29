@@ -13,6 +13,15 @@ from services.media_service.models.core import (
     MemberRef,
     SiteAsset,
 )
+from services.media_service.models.vault import (
+    MediaTakedownRequest,
+    MediaTransferLog,
+    MediaUploadBatch,
+    MediaVault,
+    MediaVaultExport,
+    MediaVaultGrant,
+    MediaVaultGuestLink,
+)
 
 __all__ = [
     "Album",
@@ -21,6 +30,13 @@ __all__ = [
     "AudioTrack",
     "LicenseType",
     "MediaAuditLog",
+    "MediaVault",
+    "MediaVaultGrant",
+    "MediaVaultGuestLink",
+    "MediaUploadBatch",
+    "MediaVaultExport",
+    "MediaTransferLog",
+    "MediaTakedownRequest",
     "MediaItem",
     "MediaTag",
     "MediaType",

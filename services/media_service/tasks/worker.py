@@ -4,6 +4,8 @@ Processes video uploads asynchronously: transcode, thumbnail, metadata extractio
 Run with: arq services.media_service.tasks.worker.WorkerSettings
 """
 
+from arq import cron
+
 from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
 
@@ -45,6 +47,27 @@ async def task_apply_audio(
     )
 
 
+async def task_build_vault_export(ctx: dict, export_id: str):
+    """Stream selected originals into a ZIP and put it back in private S3."""
+    from services.media_service.tasks.vault_exports import build_vault_export
+
+    return await build_vault_export(export_id)
+
+
+async def task_build_vault_preview(ctx: dict, media_item_id: str):
+    """Generate a review proxy only after a curator explicitly requests it."""
+    from services.media_service.tasks.vault_previews import build_vault_preview
+
+    return await build_vault_preview(media_item_id)
+
+
+async def task_cleanup_vault_exports(ctx: dict):
+    """Expire generated ZIPs; never modifies vault originals."""
+    from services.media_service.tasks.vault_exports import cleanup_expired_vault_exports
+
+    return await cleanup_expired_vault_exports()
+
+
 # ── Worker configuration ──
 
 
@@ -58,10 +81,17 @@ class WorkerSettings:
     max_jobs = 2
 
     # Long timeout for large video transcoding (15 minutes)
-    job_timeout = 900
+    job_timeout = 21600
 
     # Register task functions
-    functions = [task_process_video, task_apply_audio]
+    functions = [
+        task_process_video,
+        task_apply_audio,
+        task_build_vault_export,
+        task_build_vault_preview,
+        task_cleanup_vault_exports,
+    ]
 
-    # No scheduled cron jobs — all tasks are on-demand
-    cron_jobs = []
+    cron_jobs = [
+        cron(task_cleanup_vault_exports, hour={2}, minute=30),
+    ]

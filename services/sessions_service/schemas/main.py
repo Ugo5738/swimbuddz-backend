@@ -1,14 +1,30 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from services.sessions_service.models import SessionLocation, SessionStatus, SessionType
 from services.sessions_service.models._validators import (
     SessionDiscriminatorError,
     validate_session_discriminator,
 )
+
+
+class SessionCostLine(BaseModel):
+    category: str
+    description: str
+    charge_basis: Literal[
+        "per_attendee",
+        "per_staff",
+        "per_hour",
+        "per_lane",
+        "flat_session",
+    ]
+    unit_cost_naira: float = Field(ge=0)
+    quantity: float = Field(ge=0)
+    source_rate_type: Optional[str] = None
+    source_rate_id: Optional[uuid.UUID] = None
 
 
 class SessionBase(BaseModel):
@@ -35,6 +51,11 @@ class SessionBase(BaseModel):
     capacity: int = 20
     pool_fee: float = 0.0  # naira input/output
     ride_share_fee: float = 0.0  # naira input/output
+    pricing_mode: Literal["manual", "cost_plus"] = "manual"
+    pricing_expected_attendees: Optional[int] = Field(None, ge=1)
+    cost_lines: list[SessionCostLine] = Field(default_factory=list)
+    margin_type: Literal["fixed_per_attendee", "percentage"] = "fixed_per_attendee"
+    margin_value: float = Field(default=0, ge=0)
 
     # Guest booking — whether this session accepts non-member guests + the
     # per-booking cap. Defaults mirror the model (on; 4). Lets the booking UI
@@ -99,6 +120,11 @@ class SessionUpdate(BaseModel):
     capacity: Optional[int] = None
     pool_fee: Optional[float] = None  # naira — router converts to kobo on write
     ride_share_fee: Optional[float] = None  # naira — router converts to kobo on write
+    pricing_mode: Optional[Literal["manual", "cost_plus"]] = None
+    pricing_expected_attendees: Optional[int] = Field(None, ge=1)
+    cost_lines: Optional[list[SessionCostLine]] = None
+    margin_type: Optional[Literal["fixed_per_attendee", "percentage"]] = None
+    margin_value: Optional[float] = Field(None, ge=0)
 
     cohort_id: Optional[uuid.UUID] = None
     event_id: Optional[uuid.UUID] = None
@@ -137,6 +163,9 @@ class SessionResponse(SessionBase):
     template_id: Optional[uuid.UUID] = None
     is_recurring_instance: bool = False
     access: Optional[SessionAccessResponse] = None
+    estimated_total_cost: float = 0
+    estimated_cost_per_attendee: float = 0
+    margin_amount_per_attendee: float = 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -149,6 +178,9 @@ class SessionResponse(SessionBase):
         # ORM instance: read attributes and convert integer kobo → float naira
         pool_fee_kobo = getattr(obj, "pool_fee", 0) or 0
         ride_share_fee_kobo = getattr(obj, "ride_share_fee", 0) or 0
+        from services.sessions_service.services.pricing import pricing_response_fields
+
+        pricing = pricing_response_fields(obj)
         return {
             "id": obj.id,
             "title": obj.title,
@@ -166,6 +198,7 @@ class SessionResponse(SessionBase):
             "capacity": obj.capacity,
             "pool_fee": pool_fee_kobo / 100.0,
             "ride_share_fee": ride_share_fee_kobo / 100.0,
+            **pricing,
             "allows_guests": getattr(obj, "allows_guests", True),
             "max_guests_per_booking": getattr(obj, "max_guests_per_booking", 4),
             "cohort_id": obj.cohort_id,

@@ -3,17 +3,18 @@
 from datetime import timedelta
 from uuid import UUID, uuid4
 
-from libs.common.config import get_settings
-from libs.common.datetime_utils import utc_now
-from libs.common.emails.core import EmailDeliveryUnknownError
-from libs.common.logging import get_logger
-from libs.common.service_client import internal_get
-from libs.common.session_access import active_paid_tiers
-from libs.db.session import get_async_db
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from libs.common.config import get_settings
+from libs.common.datetime_utils import utc_now
+from libs.common.emails.core import EmailDeliveryUnknownError
+from libs.common.logging import get_logger
+from libs.common.media_utils import resolve_media_url
+from libs.common.service_client import internal_get
+from libs.common.session_access import active_paid_tiers
+from libs.db.session import get_async_db
 from services.communications_service.models import (
     ContentPost,
     ContentPostEmailLog,
@@ -327,6 +328,17 @@ async def send_content_post_publish_emails(
     )
     candidates = list(candidates_result.scalars().all())
 
+    featured_image_url = None
+    if candidates and post.featured_image_media_id:
+        featured_image_url = await resolve_media_url(post.featured_image_media_id)
+        if not featured_image_url:
+            await _record_dispatch_error(
+                db,
+                post,
+                "Could not resolve the article featured image",
+            )
+            return 0
+
     sent_count = 0
     for delivery in candidates:
         log_id = await _claim_article_email(
@@ -345,6 +357,7 @@ async def send_content_post_publish_emails(
                 title=post.title,
                 summary=post.summary,
                 category=post.category,
+                featured_image_url=featured_image_url,
             )
         except EmailDeliveryUnknownError as exc:
             logger.error(

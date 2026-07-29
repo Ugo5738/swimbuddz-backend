@@ -5,12 +5,22 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from libs.common.datetime_utils import utc_now
-from libs.db.base import Base
-from sqlalchemy import Boolean, DateTime, Float, Integer, Numeric, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+)
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from libs.common.datetime_utils import utc_now
+from libs.db.base import Base
 
 if TYPE_CHECKING:
     from services.pools_service.models.pool_agreement import PoolAgreement
@@ -47,6 +57,12 @@ class Pool(Base):
     location_area: Mapped[Optional[str]] = mapped_column(
         String(255), nullable=True, index=True
     )  # e.g., "Yaba", "Lekki Phase 1", "Victoria Island"
+    operating_area_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("operating_areas.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 

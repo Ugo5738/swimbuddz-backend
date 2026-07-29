@@ -24,6 +24,13 @@ from services.media_service.models import (  # noqa: F401
     MediaAuditLog,
     MediaItem,
     MediaTag,
+    MediaTakedownRequest,
+    MediaTransferLog,
+    MediaUploadBatch,
+    MediaVault,
+    MediaVaultExport,
+    MediaVaultGrant,
+    MediaVaultGuestLink,
     SiteAsset,
 )
 

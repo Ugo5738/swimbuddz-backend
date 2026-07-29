@@ -5,11 +5,21 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from libs.common.datetime_utils import utc_now
-from libs.db.base import Base
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from libs.common.datetime_utils import utc_now
+from libs.db.base import Base
 
 
 class MediaType(str, Enum):
@@ -78,6 +88,68 @@ class MediaItem(Base):
     is_processed: Mapped[bool] = mapped_column(Boolean, default=True)
 
     uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+    # Private Session Media Vault fields. Existing public-gallery rows leave
+    # these nullable, so the vault can evolve without breaking legacy albums.
+    vault_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media_vaults.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    upload_batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media_upload_batches.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    object_key: Mapped[str] = mapped_column(String(1024), nullable=True)
+    bucket_type: Mapped[str] = mapped_column(String(16), nullable=True)
+    original_filename: Mapped[str] = mapped_column(String(512), nullable=True)
+    content_type: Mapped[str] = mapped_column(String(255), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=True)
+    client_fingerprint: Mapped[str] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=True, index=True)
+    multipart_upload_id: Mapped[str] = mapped_column(String(1024), nullable=True)
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    processing_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="ready"
+    )
+    review_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="unreviewed", index=True
+    )
+    consent_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="unreviewed", index=True
+    )
+    rating: Mapped[int] = mapped_column(Integer, nullable=True)
+    review_notes: Mapped[str] = mapped_column(Text, nullable=True)
+    rejection_reason: Mapped[str] = mapped_column(Text, nullable=True)
+    reviewed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
+    reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    proxy_url: Mapped[str] = mapped_column(String(2048), nullable=True)
+    proxy_object_key: Mapped[str] = mapped_column(String(1024), nullable=True)
+    thumbnail_object_key: Mapped[str] = mapped_column(String(1024), nullable=True)
+    duplicate_of_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    published_media_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    published_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    soft_deleted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
+    vault = relationship("MediaVault", back_populates="media_items")
+    upload_batch = relationship("MediaUploadBatch", back_populates="media_items")
 
     album_items = relationship(
         "AlbumItem",

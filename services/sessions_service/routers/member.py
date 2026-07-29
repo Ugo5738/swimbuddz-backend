@@ -42,6 +42,11 @@ from services.sessions_service.schemas import (
 from services.sessions_service.services.notifications import (
     trigger_session_published_notifications,
 )
+from services.sessions_service.services.pricing import (
+    PRICING_KEYS,
+    normalize_pricing_payload,
+    pricing_payload_from_session,
+)
 from services.sessions_service.services.session_access import (
     evaluate_session_access_for_member,
     evaluate_session_access_from_context,
@@ -507,6 +512,10 @@ async def create_session(
     # Remove ride_share_areas if present in input, though schema should handle it
     session_data.pop("ride_share_areas", None)
 
+    # Freeze the editable cost lines and margin before converting the final
+    # per-attendee booking price to kobo.
+    session_data.update(normalize_pricing_payload(session_data))
+
     # Convert naira fee inputs (float) to kobo (int) for DB storage.
     session_data["pool_fee"] = round((session_data.get("pool_fee") or 0.0) * 100)
     session_data["ride_share_fee"] = round(
@@ -724,6 +733,18 @@ async def update_session(
 
     old_status = session.status
     update_data = session_in.model_dump(exclude_unset=True)
+
+    if PRICING_KEYS & set(update_data):
+        pricing_payload = pricing_payload_from_session(session)
+        pricing_payload.update(
+            {
+                key: value
+                for key, value in update_data.items()
+                if key in PRICING_KEYS or key == "capacity"
+            }
+        )
+        normalized_pricing = normalize_pricing_payload(pricing_payload)
+        update_data.update(normalized_pricing)
 
     # Convert naira fee inputs (float) to kobo (int) for DB storage.
     if "pool_fee" in update_data and update_data["pool_fee"] is not None:
