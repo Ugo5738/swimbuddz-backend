@@ -35,6 +35,9 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import List, Optional
 
+from sqlalchemy import bindparam, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.common.logging import get_logger
 from services.payments_service.models import (
     CohortMakeupObligation,
@@ -42,8 +45,6 @@ from services.payments_service.models import (
     MakeupStatus,
     RecurringPayoutConfig,
 )
-from sqlalchemy import bindparam, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -118,10 +119,24 @@ class BlockPayoutComputation:
 def _block_window(
     config: RecurringPayoutConfig, block_index: int
 ) -> tuple[datetime, datetime]:
-    """Return [start, end) for a given block index of a cohort."""
+    """Return [start, end) for a fixed-length, possibly partial final block."""
     delta = timedelta(days=config.block_length_days)
     start = config.cohort_start_date + delta * block_index
-    end = start + delta
+    if block_index == config.total_blocks - 1:
+        # Cohort end dates are calendar-inclusive (sessions may run during the
+        # stated end date), while payout queries use a half-open [start, end)
+        # range. Advance a midnight end boundary by one day so a class held on
+        # the final date is included.
+        end = config.cohort_end_date
+        if (
+            end.hour == 0
+            and end.minute == 0
+            and end.second == 0
+            and end.microsecond == 0
+        ):
+            end += timedelta(days=1)
+    else:
+        end = start + delta
     return start, end
 
 

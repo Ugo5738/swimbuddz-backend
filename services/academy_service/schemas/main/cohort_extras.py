@@ -40,6 +40,8 @@ class CohortExtensionRequestResponse(BaseModel):
     reason: str
     current_end_date: datetime
     proposed_end_date: datetime
+    coach_payout_billable: bool = False
+    coach_payout_synced_at: Optional[datetime] = None
     status: str
     reviewed_by_id: Optional[UUID] = None
     admin_notes: Optional[str] = None
@@ -53,3 +55,10 @@ class CohortExtensionRequestReview(BaseModel):
     """Admin action on an extension request."""
 
     admin_notes: Optional[str] = Field(None, max_length=500)
+    coach_payout_billable: bool = Field(
+        default=False,
+        description=(
+            "When approving, include extension classes in the coach's "
+            "recurring payout schedule. Defaults to false."
+        ),
+    )

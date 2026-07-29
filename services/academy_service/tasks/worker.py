@@ -5,6 +5,7 @@ Run with: arq services.academy_service.tasks.worker.WorkerSettings
 """
 
 from arq import cron
+
 from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
 
@@ -96,12 +97,18 @@ async def task_reconcile_chat_memberships(ctx: dict):
 
 async def task_reconcile_academy_membership_projections(ctx: dict):
     """Repair members_service Academy tier state from enrollment truth."""
-    from services.academy_service.tasks import (
-        reconcile_academy_membership_projections,
-    )
+    from services.academy_service.tasks import reconcile_academy_membership_projections
 
     logger.info("Running: reconcile_academy_membership_projections")
     await reconcile_academy_membership_projections()
+
+
+async def task_reconcile_extension_payout_schedules(ctx: dict):
+    """Repair billable cohort extensions that have not reached payments."""
+    from services.academy_service.tasks import reconcile_extension_payout_schedules
+
+    logger.info("Running: reconcile_extension_payout_schedules")
+    await reconcile_extension_payout_schedules()
 
 
 # ── Worker configuration ──
@@ -126,6 +133,7 @@ class WorkerSettings:
         task_check_attendance_and_notify,
         task_reconcile_chat_memberships,
         task_reconcile_academy_membership_projections,
+        task_reconcile_extension_payout_schedules,
     ]
 
     cron_jobs = [
@@ -203,6 +211,13 @@ class WorkerSettings:
         cron(
             task_reconcile_academy_membership_projections,
             minute=55,
+            run_at_startup=True,
+        ),
+        # Billable extension approvals are durable in Academy; retry the
+        # cross-service payout schedule sync hourly and on worker startup.
+        cron(
+            task_reconcile_extension_payout_schedules,
+            minute=57,
             run_at_startup=True,
         ),
     ]

@@ -11,10 +11,7 @@ from libs.auth.dependencies import get_current_user, require_admin, require_coac
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-from libs.common.service_client import (
-    generate_cohort_sessions,
-    get_member_by_auth_id,
-)
+from libs.common.service_client import generate_cohort_sessions, get_member_by_auth_id
 from libs.db.session import get_async_db
 from services.academy_service.models import (
     Cohort,
@@ -30,6 +27,9 @@ from services.academy_service.schemas import (
 )
 from services.academy_service.services.membership_projection import (
     project_member_academy_membership,
+)
+from services.academy_service.services.payout_extension_reconciliation import (
+    sync_billable_extension_payout,
 )
 
 logger = get_logger(__name__)
@@ -218,9 +218,31 @@ async def approve_extension_request(
     ext_request.reviewed_by_id = admin_member_id
     ext_request.admin_notes = body.admin_notes
     ext_request.reviewed_at = utc_now()
+    ext_request.coach_payout_billable = body.coach_payout_billable
+    ext_request.coach_payout_synced_at = None
 
     await db.commit()
     await db.refresh(ext_request)
+
+    # Coach payout is deliberately opt-in for extensions. Persist the admin's
+    # decision first, then sync payments. A transient cross-service failure
+    # leaves synced_at NULL so the hourly repair task retries idempotently.
+    if ext_request.coach_payout_billable:
+        extension_id = ext_request.id
+        extension_cohort_id = ext_request.cohort_id
+        try:
+            await sync_billable_extension_payout(db, ext_request)
+            await db.refresh(ext_request)
+        except Exception:
+            await db.rollback()
+            ext_request = await db.get(CohortExtensionRequest, extension_id)
+            logger.warning(
+                "Failed to sync billable extension payout; hourly "
+                "reconciliation will retry: extension=%s cohort=%s",
+                extension_id,
+                extension_cohort_id,
+                exc_info=True,
+            )
 
     # Recompute each enrolled member's exact projection from all active
     # cohorts. The hourly reconciliation task heals transient failures.
@@ -297,6 +319,7 @@ async def approve_extension_request(
                 "request_id": str(request_id),
                 "cohort_id": str(ext_request.cohort_id),
                 "new_end_date": str(ext_request.proposed_end_date),
+                "coach_payout_billable": ext_request.coach_payout_billable,
             }
         },
     )
