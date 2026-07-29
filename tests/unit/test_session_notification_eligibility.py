@@ -5,9 +5,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 import services.communications_service.tasks.session_notifications as notifications
-from services.communications_service.services import session_email_context
+from services.communications_service.services import (
+    session_email_context,
+    session_weather,
+)
 from services.communications_service.services.session_weather import (
-    summarize_session_weather,
+    format_session_weather_summary,
 )
 from services.communications_service.tasks.session_notifications import (
     _default_booking_prompt_tier,
@@ -253,49 +256,65 @@ def test_cohort_class_access_is_decided_by_enrollment_lookup():
     assert _has_paid_session_access(member, "cohort_class", NOW)
 
 
-def test_summarize_session_weather_uses_session_hours_only():
-    forecast = {
-        "hourly": {
-            "time": [
-                "2026-07-18T10:00",
-                "2026-07-18T11:00",
-                "2026-07-18T12:00",
-                "2026-07-18T13:00",
-                "2026-07-18T14:00",
-            ],
-            "precipitation_probability": [90, 20, 65, 40, 10],
-            "precipitation": [5.0, 0.0, 0.7, 0.5, 0.0],
-            "temperature_2m": [26.0, 27.0, 28.4, 29.0, 25.0],
-            "weather_code": [65, 3, 63, 61, 1],
-        }
+def test_format_session_weather_summary_formats_neutral_api_response():
+    summary = {
+        "max_precipitation_probability": 65,
+        "total_precipitation_mm": 1.2,
+        "temperature_high_c": 29.0,
+        "temperature_low_c": 27.0,
+        "representative_weather_code": 63,
+        "kind": "rain",
+        "condition_text": "Rain",
+        "explanation": "Light rain likely — warm and swimmable.",
     }
 
-    summary = summarize_session_weather(
-        forecast,
-        starts_at=datetime(2026, 7, 18, 11, 0, tzinfo=timezone.utc),
-        ends_at=datetime(2026, 7, 18, 13, 0, tzinfo=timezone.utc),
-    )
-
-    assert summary == {
+    assert format_session_weather_summary(summary) == {
         "condition_text": "Rain",
         "temperature_text": "29°C",
         "rain_chance_text": "65% chance of rain",
         "rainfall_text": "~1.2mm during session",
-        "explanation": "Light rain likely - warm and swimmable.",
+        "explanation": "Light rain likely — warm and swimmable.",
     }
 
 
-def test_summarize_session_weather_returns_none_without_matching_hours():
-    forecast = {"hourly": {"time": ["2026-07-18T09:00"]}}
+def test_format_session_weather_summary_rejects_incomplete_response():
+    assert format_session_weather_summary({"condition_text": "Rain"}) is None
 
-    assert (
-        summarize_session_weather(
-            forecast,
-            starts_at=datetime(2026, 7, 18, 11, 0, tzinfo=timezone.utc),
-            ends_at=datetime(2026, 7, 18, 13, 0, tzinfo=timezone.utc),
-        )
-        is None
+
+@pytest.mark.asyncio
+async def test_get_session_weather_summary_uses_canonical_window_endpoint(
+    monkeypatch,
+):
+    response = SimpleNamespace(
+        status_code=200,
+        json=lambda: {
+            "max_precipitation_probability": 65,
+            "total_precipitation_mm": 1.2,
+            "temperature_high_c": 29.0,
+            "condition_text": "Rain",
+            "explanation": "Light rain likely — warm and swimmable.",
+        },
     )
+    request = AsyncMock(return_value=response)
+    monkeypatch.setattr(session_weather, "internal_get", request)
+
+    result = await session_weather.get_session_weather_summary(
+        {
+            "id": "session-1",
+            "pool_id": "pool-1",
+            "timezone": "Africa/Lagos",
+            "starts_at": "2026-07-18T11:00:00+01:00",
+            "ends_at": "2026-07-18T13:00:00+01:00",
+        }
+    )
+
+    assert result is not None
+    assert result["condition_text"] == "Rain"
+    assert request.await_args.kwargs["path"] == ("/weather/pools/pool-1/window-summary")
+    assert request.await_args.kwargs["params"] == {
+        "starts_at": "2026-07-18T11:00:00+01:00",
+        "ends_at": "2026-07-18T13:00:00+01:00",
+    }
 
 
 @pytest.mark.asyncio

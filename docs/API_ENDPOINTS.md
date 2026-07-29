@@ -2077,17 +2077,20 @@ Outreach scheduler runs daily at 07:00 UTC via the `corporate-worker` ARQ contai
 
 ## Weather (pools_service module)
 
-Cached multi-day hourly forecasts for pool locations, to plan around Lagos rainy-season sessions. Served by `pools_service` (weather module) — no separate port. Provider is Open-Meteo by default (swappable behind an interface). A background ARQ worker (`pools-worker`) pre-fetches every active pool's 14-day forecast every 3 hours (the "snapshot"), reading the `Pool` table directly; read endpoints serve the stored copy and fall back to a live fetch (cache-aside) on a miss/stale. All read endpoints accept `?date=YYYY-MM-DD` to trim the payload to a single day.
+Cached multi-day hourly forecasts for pool locations, to plan around Lagos rainy-season sessions. Served by `pools_service` (weather module) — no separate port. Provider is Open-Meteo by default (swappable behind an interface). A background ARQ worker (`pools-worker`) pre-fetches every active pool's 14-day forecast every 3 hours (the "snapshot"), reading the `Pool` table directly; read endpoints serve the stored copy and fall back to a live fetch (cache-aside) on a miss/stale. Raw forecast endpoints accept `?date=YYYY-MM-DD` to trim the payload to a single day.
 
 **Member (authenticated):**
 - `GET /api/v1/weather?lat={lat}&lon={lon}[&date=YYYY-MM-DD]` — cached forecast for arbitrary coordinates.
 - `GET /api/v1/weather/pools/{pool_id}[?date=YYYY-MM-DD]` — cached forecast for a specific pool (resolves coordinates directly from the `Pool` table on a cache miss).
+- `GET /api/v1/weather/pools/{pool_id}/window-summary?starts_at={iso}&ends_at={iso}` — canonical provider-independent aggregation for a session-sized time window. Returns rain probability/amount, temperature range, representative WMO code, condition kind/text, and shared explanation; returns `null` when the requested window is outside the available forecast.
 
 **Admin:**
 - `POST /api/v1/admin/weather/refresh` — synchronously pre-fetch every active pool's forecast (same work the worker cron does; useful for first-run seeding or after adding a pool).
 - `GET  /api/v1/admin/weather/snapshots` — list cached snapshots (debug/health view).
 
 Response shape: `hourly` (Open-Meteo parallel arrays — `time`, `precipitation_probability`, `precipitation`, `temperature_2m`, `weather_code`), optional `daily`, plus `fetched_at`, `expires_at`, and a computed `stale` flag.
+
+The window-summary response deliberately owns weather interpretation centrally. Frontend cards and communications emails format this response instead of maintaining separate WMO maps, rain thresholds, or explanation rules.
 
 `pool_id` is stored as a plain UUID (no FK). Because the module lives in `pools_service`, the pre-fetch reads the `Pool` table in-process — no cross-service hop. Forecast horizon and cache TTL are configurable (`WEATHER_FORECAST_DAYS`, `WEATHER_CACHE_TTL_MINUTES`).
 
