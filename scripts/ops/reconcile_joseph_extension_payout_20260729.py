@@ -71,9 +71,7 @@ def _assert_original_config(config: RecurringPayoutConfig) -> None:
                 f"expected {wanted!r}"
             )
     if config.status != RecurringPayoutStatus.COMPLETED:
-        raise RuntimeError(
-            "Refusing reconciliation: recurring config is not completed"
-        )
+        raise RuntimeError("Refusing reconciliation: recurring config is not completed")
 
 
 def _assert_computation(computation) -> None:
@@ -131,9 +129,7 @@ async def reconcile(*, apply: bool) -> None:
         config.cohort_end_date = NEW_END
         config.status = RecurringPayoutStatus.ACTIVE
 
-        computation = await compute_block_payout(
-            db, config, EXTENSION_BLOCK_INDEX
-        )
+        computation = await compute_block_payout(db, config, EXTENSION_BLOCK_INDEX)
         _assert_computation(computation)
 
         created_payout = CoachPayout(
@@ -168,9 +164,7 @@ async def reconcile(*, apply: bool) -> None:
             "extension through 2026-08-08."
         )
         config.notes = (
-            f"{config.notes.rstrip()} | {audit_note}"
-            if config.notes
-            else audit_note
+            f"{config.notes.rstrip()} | {audit_note}" if config.notes else audit_note
         )
         await db.flush()
 
