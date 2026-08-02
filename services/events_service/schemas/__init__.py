@@ -12,6 +12,17 @@ from services.events_service.schemas.main import (
     RSVPCreate,
     RSVPResponse,
 )
+from services.events_service.schemas.planning import (
+    CalendarImportCommitRequest,
+    CalendarImportCommitResponse,
+    CalendarImportPreviewResponse,
+    EventGenerationResponse,
+    EventOccurrence,
+    EventOccurrenceRange,
+    EventTemplateCreate,
+    EventTemplateResponse,
+    EventTemplateUpdate,
+)
 
 __all__ = [
     "EventBase",
@@ -24,4 +35,13 @@ __all__ = [
     "OpenSwimUpdate",
     "RSVPCreate",
     "RSVPResponse",
+    "CalendarImportCommitRequest",
+    "CalendarImportCommitResponse",
+    "CalendarImportPreviewResponse",
+    "EventGenerationResponse",
+    "EventOccurrence",
+    "EventOccurrenceRange",
+    "EventTemplateCreate",
+    "EventTemplateResponse",
+    "EventTemplateUpdate",
 ]
