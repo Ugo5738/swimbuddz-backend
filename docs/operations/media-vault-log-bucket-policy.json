@@ -1,0 +1,45 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "S3ServerAccessLogsPolicy",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "logging.s3.amazonaws.com"
+      },
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::REPLACE_LOG_BUCKET/media-vault/s3/*",
+      "Condition": {
+        "ArnLike": {
+          "aws:SourceArn": "arn:aws:s3:::REPLACE_PRIVATE_BUCKET"
+        },
+        "StringEquals": {
+          "aws:SourceAccount": "REPLACE_AWS_ACCOUNT_ID"
+        }
+      }
+    },
+    {
+      "Sid": "MediaWorkerListAccessLogs",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "REPLACE_MEDIA_WORKER_PRINCIPAL_ARN"
+      },
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::REPLACE_LOG_BUCKET",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": "media-vault/s3/*"
+        }
+      }
+    },
+    {
+      "Sid": "MediaWorkerReadAccessLogs",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "REPLACE_MEDIA_WORKER_PRINCIPAL_ARN"
+      },
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::REPLACE_LOG_BUCKET/media-vault/s3/*"
+    }
+  ]
+}

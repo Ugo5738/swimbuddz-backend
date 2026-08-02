@@ -53,12 +53,14 @@ and measurement source.
 - Presigned download authorization is exact as a maximum and always recorded.
 - A browser completion callback can populate completed download bytes, but it
   cannot be treated as billing-grade because a signed S3 request bypasses the
-  application. Production billing-grade reconciliation should ingest S3 or
-  CloudFront standard access logs (or query the AWS Cost and Usage Report) and
-  update the ledger with `measurement_source=access_log`.
+  application. The scheduled media worker ingests S3 server access logs,
+  deduplicates AWS request IDs and updates matched ledger rows with
+  `measurement_source=s3_access_log` and the actual response bytes.
 
-The dashboard shows both authorized and client-confirmed bytes and does not
-claim that one vault's usage equals the AWS account-wide allowance.
+The dashboard shows reconciled bytes and pending authorized estimates. S3
+server access logs are best-effort, so AWS Billing/Cost and Usage Reports remain
+authoritative and one vault's usage is not presented as the account-wide
+allowance total.
 
 ## Production setup
 
@@ -69,10 +71,12 @@ claim that one vault's usage equals the AWS account-wide allowance.
    it to the media service/worker identity.
 4. Apply the lifecycle file. It only clears stale multipart uploads and
    generated exports/derivatives; it does not delete originals.
-5. Keep S3 Block Public Access enabled on the private bucket.
-6. Run the media Alembic migration.
-7. Deploy/restart both `media-service` and `media-worker`.
-8. Test with an iPhone HEIC photo and a multi-part MOV file from each production
+5. Follow `docs/operations/MEDIA_VAULT_BANDWIDTH_RECONCILIATION.md` to provision
+   the dedicated access-log bucket and enable logging on the private bucket.
+6. Keep S3 Block Public Access enabled on both private buckets.
+7. Run the media Alembic migration.
+8. Deploy/restart both `media-service` and `media-worker`.
+9. Test with an iPhone HEIC photo and a multi-part MOV file from each production
    frontend origin.
 
 Private CloudFront delivery is optional. Do not reuse a public distribution for

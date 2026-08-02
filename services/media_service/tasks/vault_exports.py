@@ -350,7 +350,7 @@ async def build_vault_export(export_id: str) -> dict:
                 member_ids=[str(member["id"])] if member else [],
                 title="Your media export is ready",
                 body="The full-quality ZIP is available for 24 hours.",
-                action_url=f"/admin/media-vault/{export.vault_id}",
+                action_url=f"/account/media-vault/{export.vault_id}",
                 calling_service="media",
                 metadata={
                     "requested_by_auth_id": str(export.requested_by),

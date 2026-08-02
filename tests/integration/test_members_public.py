@@ -106,6 +106,29 @@ async def test_list_members_with_pagination(members_client, db_session):
     assert len(data) <= 2
 
 
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_list_members_searches_name_and_email(members_client, db_session):
+    """Vault access search can find members beyond a preloaded first page."""
+    target = MemberFactory.create(
+        first_name="VaultSearch",
+        last_name="Curator",
+        email="vault-curator@example.com",
+    )
+    db_session.add_all([target, MemberFactory.create()])
+    await db_session.commit()
+
+    with patch(
+        "services.members_service.routers.members.resolve_media_urls",
+        new_callable=AsyncMock,
+        return_value={},
+    ):
+        response = await members_client.get("/members/?search=VaultSearch&limit=20")
+
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()] == [str(target.id)]
+
+
 # ---------------------------------------------------------------------------
 # GET /members/stats — Member statistics
 # ---------------------------------------------------------------------------

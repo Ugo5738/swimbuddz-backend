@@ -14,6 +14,8 @@ from services.media_service.models.core import (
     SiteAsset,
 )
 from services.media_service.models.vault import (
+    MediaAccessLogEvent,
+    MediaAccessLogObject,
     MediaTakedownRequest,
     MediaTransferLog,
     MediaUploadBatch,
@@ -36,6 +38,8 @@ __all__ = [
     "MediaUploadBatch",
     "MediaVaultExport",
     "MediaTransferLog",
+    "MediaAccessLogObject",
+    "MediaAccessLogEvent",
     "MediaTakedownRequest",
     "MediaItem",
     "MediaTag",

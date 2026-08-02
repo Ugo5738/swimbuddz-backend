@@ -30,6 +30,8 @@ from services.media_service.models import (
     Album,
     AlbumItem,
     AlbumType,
+    MediaAccessLogEvent,
+    MediaAccessLogObject,
     MediaItem,
     MediaTakedownRequest,
     MediaTransferLog,
@@ -496,6 +498,7 @@ async def _initiate_upload(
         MediaTransferLog(
             vault_id=vault.id,
             media_item_id=media_id,
+            object_key=key,
             actor_id=uploader_id,
             actor_member_id=actor_member_id,
             transfer_type="original",
@@ -666,7 +669,7 @@ async def _complete_upload(
             member_ids=[str(member_id) for member_id in curator_ids],
             title=f"New media is ready in {vault.title}",
             body=f"{batch.completed_files} full-quality files are ready to review.",
-            action_url=f"/admin/media-vault/{vault.id}",
+            action_url=f"/account/media-vault/{vault.id}",
             calling_service="media",
         )
     return await _media_response(item)
@@ -1007,7 +1010,7 @@ async def create_grant(
         member_ids=[str(payload.member_id)],
         title=f"You have {payload.role} access to {vault.title}",
         body=f"Access expires {payload.expires_at.isoformat()}.",
-        action_url=f"/media-vault/{vault.id}",
+        action_url=f"/account/media-vault/{vault.id}",
         calling_service="media",
         expires_at=payload.expires_at.isoformat(),
     )
@@ -1519,6 +1522,7 @@ async def authorize_item_download(
     transfer = MediaTransferLog(
         vault_id=vault_id,
         media_item_id=item.id,
+        object_key=item.object_key,
         actor_id=actor.auth_id,
         actor_member_id=actor.member_id,
         transfer_type="original",
@@ -1674,6 +1678,7 @@ async def authorize_export_download(
     transfer = MediaTransferLog(
         vault_id=vault_id,
         export_id=export.id,
+        object_key=export.object_key,
         actor_id=actor.auth_id,
         actor_member_id=actor.member_id,
         transfer_type="export",
@@ -1704,7 +1709,9 @@ async def bandwidth_summary(
     start = utc_now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     start = (start - timedelta(days=31 * (months - 1))).replace(day=1)
     month_expr = func.date_trunc("month", MediaTransferLog.created_at)
-    rows = await db.execute(
+    reconciled_sources = ("s3_access_log",)
+    is_reconciled = MediaTransferLog.measurement_source.in_(reconciled_sources)
+    transfer_rows = await db.execute(
         select(
             month_expr.label("month"),
             func.coalesce(
@@ -1743,6 +1750,18 @@ async def bandwidth_summary(
                 ),
                 0,
             ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            (MediaTransferLog.direction == "download") & ~is_reconciled,
+                            MediaTransferLog.bytes_authorized,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
         )
         .where(
             MediaTransferLog.created_at >= start,
@@ -1750,34 +1769,79 @@ async def bandwidth_summary(
         .group_by(month_expr)
         .order_by(month_expr)
     )
-    buckets = [
-        {
-            "month": month.astimezone(timezone.utc).strftime("%Y-%m"),
+    access_month_expr = func.date_trunc("month", MediaAccessLogEvent.occurred_at)
+    access_rows = await db.execute(
+        select(
+            access_month_expr.label("month"),
+            func.coalesce(func.sum(MediaAccessLogEvent.bytes_sent), 0),
+        )
+        .where(
+            MediaAccessLogEvent.occurred_at >= start,
+            MediaAccessLogEvent.provider == "s3",
+            MediaAccessLogEvent.match_status == "matched",
+        )
+        .group_by(access_month_expr)
+        .order_by(access_month_expr)
+    )
+    buckets_by_month: dict[str, dict[str, int | str]] = {}
+    for month, upload, authorized, completed, pending in transfer_rows.all():
+        month_key = month.astimezone(timezone.utc).strftime("%Y-%m")
+        buckets_by_month[month_key] = {
+            "month": month_key,
             "upload_bytes": int(upload),
             "download_authorized_bytes": int(authorized),
             "download_completed_bytes": int(completed),
+            "download_reconciled_bytes": 0,
+            "download_pending_estimate_bytes": int(pending),
+            "download_effective_bytes": int(pending),
         }
-        for month, upload, authorized, completed in rows.all()
-    ]
+    for month, reconciled in access_rows.all():
+        month_key = month.astimezone(timezone.utc).strftime("%Y-%m")
+        bucket = buckets_by_month.setdefault(
+            month_key,
+            {
+                "month": month_key,
+                "upload_bytes": 0,
+                "download_authorized_bytes": 0,
+                "download_completed_bytes": 0,
+                "download_reconciled_bytes": 0,
+                "download_pending_estimate_bytes": 0,
+                "download_effective_bytes": 0,
+            },
+        )
+        bucket["download_reconciled_bytes"] = int(reconciled)
+        bucket["download_effective_bytes"] = int(
+            bucket["download_pending_estimate_bytes"]
+        ) + int(reconciled)
+    buckets = [buckets_by_month[key] for key in sorted(buckets_by_month)]
     current_key = utc_now().strftime("%Y-%m")
-    current_authorized = next(
+    current_effective = next(
         (
-            bucket["download_authorized_bytes"]
+            bucket["download_effective_bytes"]
             for bucket in buckets
             if bucket["month"] == current_key
         ),
         0,
     )
+    last_processed_at = await db.scalar(
+        select(func.max(MediaAccessLogObject.processed_at)).where(
+            MediaAccessLogObject.provider == "s3",
+            MediaAccessLogObject.status == "completed",
+        )
+    )
     allowance = 100 * 1024**3
     return BandwidthSummary(
         months=buckets,
-        current_month_download_bytes=current_authorized,
-        allowance_remaining_bytes=max(0, allowance - current_authorized),
+        current_month_download_bytes=current_effective,
+        allowance_remaining_bytes=max(0, allowance - current_effective),
+        reconciliation_enabled=bool(settings.MEDIA_VAULT_ACCESS_LOG_BUCKET.strip()),
+        reconciliation_last_processed_at=last_processed_at,
         measurement_note=(
-            "This vault ledger uses authorized bytes as a conservative ceiling. "
-            "AWS's 100 GB allowance is shared by the whole account, so AWS Billing "
-            "remains authoritative. Completed bytes are browser-reported unless "
-            "measurement_source is s3_head/access_log."
+            "Effective download usage uses actual S3 bytes for reconciled requests, "
+            "and authorized bytes while reconciliation is pending or outside log "
+            "coverage. S3 access logs are best-effort and can be delayed or omitted. "
+            "AWS's 100 GB allowance is shared account-wide, so AWS Billing remains "
+            "authoritative."
         ),
     )
 

@@ -34,6 +34,23 @@
       "Effect": "Allow",
       "Action": ["s3:DeleteObject", "s3:PutObject"],
       "Resource": "arn:aws:s3:::REPLACE_PUBLIC_BUCKET/gallery/vaults/*"
+    },
+    {
+      "Sid": "ListVaultAccessLogs",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::REPLACE_LOG_BUCKET",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": "media-vault/s3/*"
+        }
+      }
+    },
+    {
+      "Sid": "ReadVaultAccessLogs",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::REPLACE_LOG_BUCKET/media-vault/s3/*"
     }
   ]
 }
