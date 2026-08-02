@@ -4,7 +4,7 @@ All times in this policy are West Africa Time (`Africa/Lagos`).
 
 ## Weekly Session Digest
 
-The weekly session digest runs on Sunday at 08:00 WAT and covers the following
+The weekly session digest runs on Sunday at 12:00 WAT and covers the following
 Monday through Sunday using a half-open date window. It is a summary of sessions
 that are already published; it is not the only way a session can be announced.
 
@@ -38,6 +38,15 @@ twice. Admin reporting shows delivery outcomes, tracked clicks, and attributed
 booking outcomes; ambiguous sends remain visible for review instead of being
 retried automatically.
 
+## Booking Prompt Cadence
+
+Booking prompts run at 09:00 WAT on Tuesday, Thursday, and Friday. Each run
+uses the same session-email context and backend eligibility decisions as the
+weekly digest, but excludes members who have already booked. Existing
+per-member and per-session caps still prevent duplicate or excessive prompts.
+This cadence spaces the prompts across the week without changing immediate
+new-session notices or the 24-hour, 3-hour, and 1-hour operational reminders.
+
 ## Session Publication
 
 Each session system has a different source and should not be forced into one
@@ -58,7 +67,7 @@ creation deadline:
   month. It can suspend access from 00:00 WAT on the second day. The compliance
   job reverses premature `MISSED` states while that grace remains active.
 - **Late changes:** publish or update them when confirmed. Immediate publication
-  notifications and daily booking prompts cover changes made after the weekly
+  notifications and scheduled booking prompts cover changes made after the weekly
   digest cutoff.
 
 The admin sessions screen reports next-week Community coverage, the Club

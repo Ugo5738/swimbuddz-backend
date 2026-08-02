@@ -89,6 +89,16 @@ class MediaItem(Base):
 
     uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
+    # Presentation variants remain ordinary MediaItems so every existing
+    # consumer can use them. This link keeps the unmodified upload available
+    # for a future crop without changing owner-service media contracts.
+    source_media_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media_items.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # Private Session Media Vault fields. Existing public-gallery rows leave
     # these nullable, so the vault can evolve without breaking legacy albums.
     vault_id: Mapped[uuid.UUID] = mapped_column(
@@ -165,6 +175,11 @@ class MediaItem(Base):
         "SiteAsset",
         back_populates="media_item",
         cascade="all, delete-orphan",
+    )
+    source_media = relationship(
+        "MediaItem",
+        remote_side="MediaItem.id",
+        foreign_keys=[source_media_id],
     )
 
     created_at: Mapped[datetime] = mapped_column(

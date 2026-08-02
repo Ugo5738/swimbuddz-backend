@@ -60,6 +60,8 @@ PURPOSE_BUCKET_MAP = {
     "category_image": BucketType.PUBLIC,
     "collection_image": BucketType.PUBLIC,
     "product_image": BucketType.PUBLIC,
+    "homepage_banner": BucketType.PUBLIC,
+    "homepage_community_photo": BucketType.PUBLIC,
     "product_video": BucketType.PUBLIC,
     "size_chart": BucketType.PUBLIC,
     "general": BucketType.PUBLIC,

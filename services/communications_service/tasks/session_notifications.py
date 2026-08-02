@@ -294,9 +294,9 @@ async def send_session_announcement(
 
 
 async def send_session_booking_prompts() -> None:
-    """Send daily booking prompts for upcoming sessions to unbooked members.
+    """Send scheduled booking prompts for upcoming sessions to unbooked members.
 
-    The ARQ worker runs this at the configured booking window. It catches
+    The ARQ worker runs this on Tuesday, Thursday, and Friday. It catches
     cohort sessions created before students enrolled, and follows up for any
     community/club/cohort session the member still has not booked.
     """
