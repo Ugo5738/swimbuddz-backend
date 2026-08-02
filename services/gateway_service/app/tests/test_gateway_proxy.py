@@ -107,6 +107,40 @@ async def test_gateway_compresses_large_json_and_preserves_server_timing(client)
     assert fake_client.calls[0][1] == "/sessions/?limit=50"
 
 
+DIGEST_TRACKING_TOKEN = "171d5fac-39d1-40d7-b40d-c08969f56b1f"
+ARTICLE_ID = "e0ae13a5-8adc-44da-9f88-8c7529a346fe"
+ARTICLE_URL = (
+    f"https://www.swimbuddz.com/community/tips/{ARTICLE_ID}"
+    "?source=weekly_digest&campaign=week-2026-08-03"
+)
+
+
+@pytest.mark.asyncio
+async def test_digest_click_relays_redirect_to_browser(client):
+    """The browser, not the gateway, must follow digest target redirects."""
+    original_client = clients.communications_client
+    fake_response = httpx.Response(302, headers={"Location": ARTICLE_URL})
+    fake_client = _FakeServiceClient(fake_response)
+    clients.communications_client = fake_client
+
+    try:
+        response = await client.get(
+            "/api/v1/communications/digest/click/"
+            f"{DIGEST_TRACKING_TOKEN}/article/{ARTICLE_ID}"
+        )
+    finally:
+        clients.communications_client = original_client
+
+    assert response.status_code == 302
+    assert response.headers["location"] == ARTICLE_URL
+    method, path, kwargs = fake_client.calls[0]
+    assert (method, path) == (
+        "GET",
+        f"/digest/click/{DIGEST_TRACKING_TOKEN}/article/{ARTICLE_ID}",
+    )
+    assert kwargs.get("follow_redirects") is False
+
+
 MEDIA_ID = "f9f0d723-d888-40de-a953-6f637d194f53"
 PRESIGNED_URL = (
     "https://swimbuddz-private.s3.eu-west-1.amazonaws.com/milestone-evidence/x.mp4"

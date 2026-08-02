@@ -328,6 +328,19 @@ def create_app() -> FastAPI:
     # COMMUNICATIONS SERVICE PROXY
     # ==================================================================
     @app.api_route(
+        "/api/v1/communications/digest/click/{path:path}",
+        methods=["GET"],
+    )
+    async def proxy_digest_click(path: str, request: Request):
+        """Relay digest click redirects so the browser reaches the target page."""
+        return await proxy_request(
+            clients.communications_client,
+            f"/digest/click/{path}",
+            request,
+            follow_redirects=False,
+        )
+
+    @app.api_route(
         "/api/v1/communications/{path:path}",
         methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
@@ -799,7 +812,13 @@ async def proxy_media_playback(path: str, request: Request):
     )
 
 
-async def proxy_request(client: clients.ServiceClient, path: str, request: Request):
+async def proxy_request(
+    client: clients.ServiceClient,
+    path: str,
+    request: Request,
+    *,
+    follow_redirects: bool = True,
+):
     """Generic proxy function to forward requests to microservices."""
     proxy_started_at = time.perf_counter()
     try:
@@ -836,7 +855,14 @@ async def proxy_request(client: clients.ServiceClient, path: str, request: Reque
 
         # Make request to service
         if request.method == "GET":
-            service_response = await client.get(path, headers=headers)
+            if follow_redirects:
+                service_response = await client.get(path, headers=headers)
+            else:
+                service_response = await client.get(
+                    path,
+                    headers=headers,
+                    follow_redirects=False,
+                )
         elif request.method == "POST":
             if content_body is not None:
                 service_response = await client.post(
