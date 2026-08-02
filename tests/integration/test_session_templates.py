@@ -88,7 +88,9 @@ async def test_club_template_generation_preserves_pod_type_and_ride_config(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_template_volunteer_sync_backfills_existing_future_sessions(sessions_client):
+async def test_template_volunteer_sync_backfills_existing_future_sessions(
+    sessions_client,
+):
     create_response = await sessions_client.post(
         "/sessions/templates",
         json={
