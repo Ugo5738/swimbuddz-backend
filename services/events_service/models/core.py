@@ -1,10 +1,19 @@
 """Events Service models for SwimBuddz."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Time,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -75,6 +84,15 @@ class Event(Base):
         String, default="community"
     )  # public/community/club/academy/invite_only
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("event_templates.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    external_key: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, unique=True, index=True
+    )
 
     # --- Member-created pool meets (event_type="open_swim") ---
     # Selected pool for a paid pool meet. Plain cross-service ref to pools_service
@@ -100,6 +118,67 @@ class Event(Base):
 
     def __repr__(self):
         return f"<Event {self.title}>"
+
+
+class EventTemplate(Base):
+    """Reusable rule for generating draft community calendar events."""
+
+    __tablename__ = "event_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    event_type: Mapped[str] = mapped_column(String, nullable=False)
+    audience: Mapped[str] = mapped_column(
+        String, nullable=False, default="community", server_default="community"
+    )
+    visibility: Mapped[str] = mapped_column(
+        String, nullable=False, default="public", server_default="public"
+    )
+    location_type: Mapped[str] = mapped_column(
+        String, nullable=False, default="physical", server_default="physical"
+    )
+    timezone: Mapped[str] = mapped_column(
+        String, nullable=False, default="Africa/Lagos", server_default="Africa/Lagos"
+    )
+    location_area: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    is_location_private: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    local_start_time: Mapped[time] = mapped_column(Time, nullable=False)
+    duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    max_capacity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tier_access: Mapped[str] = mapped_column(
+        String, nullable=False, default="community", server_default="community"
+    )
+    pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    cost_kobo: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    frequency: Mapped[str] = mapped_column(String, nullable=False)
+    interval: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    day_of_week: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    week_of_month: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    day_of_month: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    month_of_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    starts_on: Mapped[date] = mapped_column(Date, nullable=False)
+    ends_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
 
 
 class EventRSVP(Base):

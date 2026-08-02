@@ -2,6 +2,7 @@ import logging
 import uuid
 from datetime import datetime, timedelta
 from typing import List
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_, select
@@ -151,6 +152,72 @@ async def delete_template(
 
     await db.delete(template)
     await db.commit()
+
+
+@router.post("/{template_id}/sync-volunteer-opportunities")
+async def sync_template_volunteer_opportunities(
+    template_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+    _admin: AuthUser = Depends(require_admin),
+):
+    """Backfill volunteer needs onto future sessions already generated.
+
+    Adding a volunteer slot after a recurring session batch was generated used
+    to affect only the next batch. This explicit, idempotent sync makes the
+    template editor behave as admins expect: future instances immediately gain
+    any missing role opportunities.
+    """
+    template = await db.get(SessionTemplate, template_id)
+    if template is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+        )
+
+    result = await db.execute(
+        select(Session)
+        .where(
+            Session.template_id == template_id,
+            Session.starts_at >= utc_now(),
+            Session.status != SessionStatus.CANCELLED,
+        )
+        .order_by(Session.starts_at.asc())
+    )
+    sessions = result.scalars().all()
+    created_count = 0
+    warnings: list[str] = []
+
+    for session in sessions:
+        try:
+            timezone_name = session.timezone or "Africa/Lagos"
+            try:
+                timezone = ZoneInfo(timezone_name)
+            except Exception:
+                timezone = ZoneInfo("Africa/Lagos")
+            starts_at = session.starts_at.astimezone(timezone)
+            ends_at = session.ends_at.astimezone(timezone)
+            materialised = await materialise_opportunities_from_session_template(
+                calling_service="sessions",
+                session_id=str(session.id),
+                session_template_id=str(template_id),
+                date=starts_at.date().isoformat(),
+                start_time=starts_at.time().isoformat(),
+                end_time=ends_at.time().isoformat(),
+                location_name=session.location_name,
+            )
+            created_count += int(materialised.get("created_count") or 0)
+        except Exception as exc:
+            logger.error(
+                "Failed to sync volunteer opportunities for session %s: %s",
+                session.id,
+                exc,
+            )
+            warnings.append(f"Session {session.id}: {exc}")
+
+    return {
+        "sessions_checked": len(sessions),
+        "created_count": created_count,
+        "warnings": warnings,
+    }
 
 
 @router.post("/{template_id}/generate")

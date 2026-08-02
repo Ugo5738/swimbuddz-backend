@@ -1,0 +1,11 @@
+{
+  "Rules": [
+    {
+      "ID": "Expire-media-vault-access-logs",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "media-vault/s3/" },
+      "Expiration": { "Days": 400 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 30 }
+    }
+  ]
+}

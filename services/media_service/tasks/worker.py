@@ -68,6 +68,15 @@ async def task_cleanup_vault_exports(ctx: dict):
     return await cleanup_expired_vault_exports()
 
 
+async def task_reconcile_vault_bandwidth(ctx: dict):
+    """Replace vault download estimates with bytes delivered by S3."""
+    from services.media_service.tasks.vault_bandwidth import (
+        reconcile_vault_bandwidth,
+    )
+
+    return await reconcile_vault_bandwidth()
+
+
 # ── Worker configuration ──
 
 
@@ -90,8 +99,10 @@ class WorkerSettings:
         task_build_vault_export,
         task_build_vault_preview,
         task_cleanup_vault_exports,
+        task_reconcile_vault_bandwidth,
     ]
 
     cron_jobs = [
         cron(task_cleanup_vault_exports, hour={2}, minute=30),
+        cron(task_reconcile_vault_bandwidth, minute={0, 15, 30, 45}),
     ]

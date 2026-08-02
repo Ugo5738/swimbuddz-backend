@@ -216,6 +216,12 @@ class Settings(BaseSettings):
     MEDIA_VAULT_SIGNED_URL_TTL_SECONDS: int = 3600
     MEDIA_VAULT_MULTIPART_URL_TTL_SECONDS: int = 3600
     MEDIA_VAULT_EXPORT_TTL_HOURS: int = 24
+    # S3 server access logs for billing-grade vault download reconciliation.
+    # Keep the log bucket private and separate from the source media bucket.
+    MEDIA_VAULT_ACCESS_LOG_BUCKET: str = ""
+    MEDIA_VAULT_S3_ACCESS_LOG_PREFIX: str = "media-vault/s3/"
+    MEDIA_VAULT_ACCESS_LOG_LOOKBACK_DAYS: int = 7
+    MEDIA_VAULT_ACCESS_LOG_MAX_OBJECTS_PER_RUN: int = 500
     # Stroke Lab media is owned by media_service and stored in AWS_S3_BUCKET_PRIVATE
     # under Stroke Lab object prefixes.
 

@@ -1,0 +1,9 @@
+{
+  "LoggingEnabled": {
+    "TargetBucket": "REPLACE_LOG_BUCKET",
+    "TargetPrefix": "media-vault/s3/",
+    "TargetObjectKeyFormat": {
+      "SimplePrefix": {}
+    }
+  }
+}

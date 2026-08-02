@@ -3,10 +3,9 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
-
-from alembic import context
 
 # Ensure project root on sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -14,7 +13,7 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.events_service.models import Event, EventRSVP  # noqa: F401
+from services.events_service.models import Event, EventRSVP, EventTemplate  # noqa: F401
 
 settings = get_settings()
 config = context.config
@@ -24,7 +23,7 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 # Only migrate tables owned by this service
-SERVICE_TABLES = {"events", "event_rsvps"}
+SERVICE_TABLES = {"events", "event_rsvps", "event_invites", "event_templates"}
 
 url = settings.DATABASE_URL.replace("%", "%%")
 config.set_main_option("sqlalchemy.url", url)

@@ -607,6 +607,22 @@
               "default": 100,
               "title": "Limit"
             }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
           }
         ],
         "responses": {
@@ -6979,6 +6995,53 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/templates/{template_id}/sync-volunteer-opportunities": {
+      "post": {
+        "tags": [
+          "session-templates"
+        ],
+        "summary": "Sync Template Volunteer Opportunities",
+        "description": "Backfill volunteer needs onto future sessions already generated.\n\nAdding a volunteer slot after a recurring session batch was generated used\nto affect only the next batch. This explicit, idempotent sync makes the\ntemplate editor behave as admins expect: future instances immediately gain\nany missing role opportunities.",
+        "operationId": "sync_template_volunteer_opportunities_sessions_templates__template_id__sync_volunteer_opportunities_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -41174,6 +41237,411 @@
         }
       }
     },
+    "/api/v1/events/planning/templates": {
+      "get": {
+        "tags": [
+          "event-planning"
+        ],
+        "summary": "List Event Templates",
+        "operationId": "list_event_templates_events_planning_templates_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "active_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Active Only"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EventTemplateResponse"
+                  },
+                  "title": "Response List Event Templates Events Planning Templates Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "event-planning"
+        ],
+        "summary": "Create Event Template",
+        "operationId": "create_event_template_events_planning_templates_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventTemplateCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventTemplateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/planning/templates/{template_id}": {
+      "patch": {
+        "tags": [
+          "event-planning"
+        ],
+        "summary": "Update Event Template",
+        "operationId": "update_event_template_events_planning_templates__template_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventTemplateUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventTemplateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "event-planning"
+        ],
+        "summary": "Delete Event Template",
+        "operationId": "delete_event_template_events_planning_templates__template_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/planning/templates/{template_id}/preview": {
+      "post": {
+        "tags": [
+          "event-planning"
+        ],
+        "summary": "Preview Event Template",
+        "operationId": "preview_event_template_events_planning_templates__template_id__preview_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventOccurrenceRange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EventOccurrence"
+                  },
+                  "title": "Response Preview Event Template Events Planning Templates  Template Id  Preview Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/planning/templates/{template_id}/generate": {
+      "post": {
+        "tags": [
+          "event-planning"
+        ],
+        "summary": "Generate Event Drafts",
+        "operationId": "generate_event_drafts_events_planning_templates__template_id__generate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventOccurrenceRange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventGenerationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/planning/imports/xlsx/preview": {
+      "post": {
+        "tags": [
+          "event-planning"
+        ],
+        "summary": "Preview Calendar Workbook",
+        "operationId": "preview_calendar_workbook_events_planning_imports_xlsx_preview_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_preview_calendar_workbook_events_planning_imports_xlsx_preview_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarImportPreviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/events/planning/imports/commit": {
+      "post": {
+        "tags": [
+          "event-planning"
+        ],
+        "summary": "Import Calendar Drafts",
+        "operationId": "import_calendar_drafts_events_planning_imports_commit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarImportCommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarImportCommitResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/events/admin/tasks/reconcile-event-chat-memberships": {
       "post": {
         "tags": [
@@ -41694,6 +42162,53 @@
         ]
       }
     },
+    "/api/v1/media/uploads/adjusted-image": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Upload Adjusted Image",
+        "description": "Preserve an image upload and return its purpose-sized crop variant.",
+        "operationId": "upload_adjusted_image_media_uploads_adjusted_image_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_adjusted_image_media_uploads_adjusted_image_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaItemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/media/register-url": {
       "post": {
         "tags": [
@@ -41749,6 +42264,11 @@
         "summary": "Get Media Item",
         "description": "Get a single media item by ID.",
         "operationId": "get_media_item_media_media__media_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "media_id",
@@ -41895,6 +42415,11 @@
         "summary": "Head Media Item Playback",
         "description": "Answer browser HEAD probes for media playback.",
         "operationId": "head_media_item_playback",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "media_id",
@@ -41935,6 +42460,11 @@
         "summary": "Get Media Item Playback",
         "description": "Return a browser-stable playback URL for media.\n\nPrivate S3 video evidence is served via presigned GET URLs, but some\nbrowsers issue a HEAD probe first. A raw GET presign fails that HEAD\ncheck with 403, so this endpoint answers HEAD itself and only redirects\nGET requests to the signed object URL.",
         "operationId": "get_media_item_playback",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "media_id",
@@ -101229,6 +101759,323 @@
         ],
         "title": "TopSellingProduct"
       },
+      "Body_preview_calendar_workbook_events_planning_imports_xlsx_preview_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_preview_calendar_workbook_events_planning_imports_xlsx_preview_post"
+      },
+      "CalendarImportCommitRequest": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarImportEvent"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rows"
+        ],
+        "title": "CalendarImportCommitRequest"
+      },
+      "CalendarImportCommitResponse": {
+        "properties": {
+          "created": {
+            "type": "integer",
+            "title": "Created"
+          },
+          "skipped_existing": {
+            "type": "integer",
+            "title": "Skipped Existing"
+          },
+          "created_event_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Created Event Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created",
+          "skipped_existing",
+          "created_event_ids"
+        ],
+        "title": "CalendarImportCommitResponse"
+      },
+      "CalendarImportEvent": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "audience": {
+            "type": "string",
+            "enum": [
+              "community",
+              "club",
+              "academy"
+            ],
+            "title": "Audience",
+            "default": "community"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "public",
+              "members_only",
+              "invite_only"
+            ],
+            "title": "Visibility",
+            "default": "public"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "cancelled"
+            ],
+            "title": "Status",
+            "default": "published"
+          },
+          "location_type": {
+            "type": "string",
+            "enum": [
+              "physical",
+              "online",
+              "hybrid"
+            ],
+            "title": "Location Type",
+            "default": "physical"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "default": "Africa/Lagos"
+          },
+          "location_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Area"
+          },
+          "is_location_private": {
+            "type": "boolean",
+            "title": "Is Location Private",
+            "default": false
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "max_capacity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Capacity"
+          },
+          "tier_access": {
+            "type": "string",
+            "enum": [
+              "public",
+              "community",
+              "club",
+              "academy",
+              "invite_only"
+            ],
+            "title": "Tier Access",
+            "default": "community"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "cost_naira": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Naira"
+          },
+          "external_key": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "External Key"
+          },
+          "source_sheet": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Source Sheet"
+          },
+          "source_row": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Source Row"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "event_type",
+          "start_time",
+          "external_key",
+          "source_sheet",
+          "source_row"
+        ],
+        "title": "CalendarImportEvent"
+      },
+      "CalendarImportPreviewItem": {
+        "properties": {
+          "source_row": {
+            "type": "integer",
+            "title": "Source Row"
+          },
+          "selected": {
+            "type": "boolean",
+            "title": "Selected"
+          },
+          "event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CalendarImportEvent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_row",
+          "selected"
+        ],
+        "title": "CalendarImportPreviewItem"
+      },
+      "CalendarImportPreviewResponse": {
+        "properties": {
+          "sheet_name": {
+            "type": "string",
+            "title": "Sheet Name"
+          },
+          "valid_count": {
+            "type": "integer",
+            "title": "Valid Count"
+          },
+          "invalid_count": {
+            "type": "integer",
+            "title": "Invalid Count"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarImportPreviewItem"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sheet_name",
+          "valid_count",
+          "invalid_count",
+          "rows"
+        ],
+        "title": "CalendarImportPreviewResponse"
+      },
       "EventCreate": {
         "properties": {
           "title": {
@@ -101395,6 +102242,32 @@
         "title": "EventCreate",
         "description": "Schema for creating an event."
       },
+      "EventGenerationResponse": {
+        "properties": {
+          "created": {
+            "type": "integer",
+            "title": "Created"
+          },
+          "skipped_existing": {
+            "type": "integer",
+            "title": "Skipped Existing"
+          },
+          "occurrences": {
+            "items": {
+              "$ref": "#/components/schemas/EventOccurrence"
+            },
+            "type": "array",
+            "title": "Occurrences"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created",
+          "skipped_existing",
+          "occurrences"
+        ],
+        "title": "EventGenerationResponse"
+      },
       "EventInviteCreate": {
         "properties": {
           "member_ids": {
@@ -101446,6 +102319,57 @@
           "created_at"
         ],
         "title": "EventInviteResponse"
+      },
+      "EventOccurrence": {
+        "properties": {
+          "local_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Local Date"
+          },
+          "start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Time"
+          },
+          "end_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Time"
+          },
+          "external_key": {
+            "type": "string",
+            "title": "External Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "local_date",
+          "start_time",
+          "end_time",
+          "external_key"
+        ],
+        "title": "EventOccurrence"
+      },
+      "EventOccurrenceRange": {
+        "properties": {
+          "from_date": {
+            "type": "string",
+            "format": "date",
+            "title": "From Date"
+          },
+          "to_date": {
+            "type": "string",
+            "format": "date",
+            "title": "To Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_date",
+          "to_date"
+        ],
+        "title": "EventOccurrenceRange"
       },
       "EventResponse": {
         "properties": {
@@ -101691,6 +102615,859 @@
         ],
         "title": "EventResponse",
         "description": "Event response schema \u2014 cost_naira converted from cost_kobo on read."
+      },
+      "EventTemplateCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "event_type": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Event Type"
+          },
+          "audience": {
+            "type": "string",
+            "enum": [
+              "community",
+              "club",
+              "academy"
+            ],
+            "title": "Audience",
+            "default": "community"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "public",
+              "members_only",
+              "invite_only"
+            ],
+            "title": "Visibility",
+            "default": "public"
+          },
+          "location_type": {
+            "type": "string",
+            "enum": [
+              "physical",
+              "online",
+              "hybrid"
+            ],
+            "title": "Location Type",
+            "default": "physical"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "default": "Africa/Lagos"
+          },
+          "location_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Area"
+          },
+          "is_location_private": {
+            "type": "boolean",
+            "title": "Is Location Private",
+            "default": false
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "local_start_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Local Start Time"
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 15.0,
+            "title": "Duration Minutes",
+            "default": 60
+          },
+          "max_capacity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Capacity"
+          },
+          "tier_access": {
+            "type": "string",
+            "enum": [
+              "public",
+              "community",
+              "club",
+              "academy",
+              "invite_only"
+            ],
+            "title": "Tier Access",
+            "default": "community"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "cost_naira": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Naira"
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "weekly",
+              "monthly",
+              "quarterly",
+              "annual"
+            ],
+            "title": "Frequency"
+          },
+          "interval": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Interval",
+            "default": 1
+          },
+          "day_of_week": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 6.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Week"
+          },
+          "week_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": -1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week Of Month"
+          },
+          "day_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Month"
+          },
+          "month_of_year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month Of Year"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "event_type",
+          "local_start_time",
+          "frequency",
+          "starts_on"
+        ],
+        "title": "EventTemplateCreate"
+      },
+      "EventTemplateResponse": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "event_type": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Event Type"
+          },
+          "audience": {
+            "type": "string",
+            "enum": [
+              "community",
+              "club",
+              "academy"
+            ],
+            "title": "Audience",
+            "default": "community"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "public",
+              "members_only",
+              "invite_only"
+            ],
+            "title": "Visibility",
+            "default": "public"
+          },
+          "location_type": {
+            "type": "string",
+            "enum": [
+              "physical",
+              "online",
+              "hybrid"
+            ],
+            "title": "Location Type",
+            "default": "physical"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "default": "Africa/Lagos"
+          },
+          "location_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Area"
+          },
+          "is_location_private": {
+            "type": "boolean",
+            "title": "Is Location Private",
+            "default": false
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "local_start_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Local Start Time"
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 15.0,
+            "title": "Duration Minutes",
+            "default": 60
+          },
+          "max_capacity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Capacity"
+          },
+          "tier_access": {
+            "type": "string",
+            "enum": [
+              "public",
+              "community",
+              "club",
+              "academy",
+              "invite_only"
+            ],
+            "title": "Tier Access",
+            "default": "community"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "cost_naira": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Naira"
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "weekly",
+              "monthly",
+              "quarterly",
+              "annual"
+            ],
+            "title": "Frequency"
+          },
+          "interval": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Interval",
+            "default": 1
+          },
+          "day_of_week": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 6.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Week"
+          },
+          "week_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": -1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week Of Month"
+          },
+          "day_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Month"
+          },
+          "month_of_year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month Of Year"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "event_type",
+          "local_start_time",
+          "frequency",
+          "starts_on",
+          "id",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EventTemplateResponse"
+      },
+      "EventTemplateUpdate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "event_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Type"
+          },
+          "audience": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "community",
+                  "club",
+                  "academy"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "public",
+                  "members_only",
+                  "invite_only"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
+          },
+          "location_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "physical",
+                  "online",
+                  "hybrid"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Type"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "location_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Area"
+          },
+          "is_location_private": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Location Private"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "local_start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Start Time"
+          },
+          "duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1440.0,
+                "minimum": 15.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Minutes"
+          },
+          "max_capacity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Capacity"
+          },
+          "tier_access": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "public",
+                  "community",
+                  "club",
+                  "academy",
+                  "invite_only"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier Access"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "cost_naira": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Naira"
+          },
+          "frequency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "weekly",
+                  "monthly",
+                  "quarterly",
+                  "annual"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frequency"
+          },
+          "interval": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval"
+          },
+          "day_of_week": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 6.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Week"
+          },
+          "week_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": -1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week Of Month"
+          },
+          "day_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Month"
+          },
+          "month_of_year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month Of Year"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "title": "EventTemplateUpdate"
       },
       "EventUpdate": {
         "properties": {
@@ -102994,6 +104771,18 @@
           "download_completed_bytes": {
             "type": "integer",
             "title": "Download Completed Bytes"
+          },
+          "download_reconciled_bytes": {
+            "type": "integer",
+            "title": "Download Reconciled Bytes"
+          },
+          "download_pending_estimate_bytes": {
+            "type": "integer",
+            "title": "Download Pending Estimate Bytes"
+          },
+          "download_effective_bytes": {
+            "type": "integer",
+            "title": "Download Effective Bytes"
           }
         },
         "type": "object",
@@ -103001,7 +104790,10 @@
           "month",
           "upload_bytes",
           "download_authorized_bytes",
-          "download_completed_bytes"
+          "download_completed_bytes",
+          "download_reconciled_bytes",
+          "download_pending_estimate_bytes",
+          "download_effective_bytes"
         ],
         "title": "BandwidthBucket"
       },
@@ -103027,6 +104819,22 @@
             "type": "integer",
             "title": "Allowance Remaining Bytes"
           },
+          "reconciliation_enabled": {
+            "type": "boolean",
+            "title": "Reconciliation Enabled"
+          },
+          "reconciliation_last_processed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliation Last Processed At"
+          },
           "measurement_note": {
             "type": "string",
             "title": "Measurement Note"
@@ -103037,6 +104845,8 @@
           "months",
           "current_month_download_bytes",
           "allowance_remaining_bytes",
+          "reconciliation_enabled",
+          "reconciliation_last_processed_at",
           "measurement_note"
         ],
         "title": "BandwidthSummary"
@@ -103132,6 +104942,67 @@
           "member_id"
         ],
         "title": "Body_tag_member_in_media_media_media__media_id__tags_post"
+      },
+      "Body_upload_adjusted_image_media_uploads_adjusted_image_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "crop_x": {
+            "type": "number",
+            "title": "Crop X"
+          },
+          "crop_y": {
+            "type": "number",
+            "title": "Crop Y"
+          },
+          "crop_width": {
+            "type": "number",
+            "title": "Crop Width"
+          },
+          "crop_height": {
+            "type": "number",
+            "title": "Crop Height"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "purpose",
+          "crop_x",
+          "crop_y",
+          "crop_width",
+          "crop_height"
+        ],
+        "title": "Body_upload_adjusted_image_media_uploads_adjusted_image_post"
       },
       "Body_upload_audio_track_media_audio_tracks_post": {
         "properties": {

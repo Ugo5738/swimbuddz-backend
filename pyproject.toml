@@ -29,6 +29,8 @@ dependencies = [
     "Pillow>=10.0,<12.0",
     "qrcode[pil]>=7.4,<9.0",
     "python-multipart>=0.0.6,<0.1.0",
+    # Admin calendar workbook import
+    "openpyxl>=3.1,<4.0",
     # Cross-service validation cache
     "redis>=5.0,<6.0",
     # Rate limiting

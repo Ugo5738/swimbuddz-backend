@@ -330,6 +330,9 @@ class MediaTransferLog(Base):
         ForeignKey("media_vault_exports.id", ondelete="SET NULL"),
         nullable=True,
     )
+    object_key: Mapped[Optional[str]] = mapped_column(
+        String(1024), nullable=True, index=True
+    )
     actor_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
     )
@@ -359,6 +362,96 @@ class MediaTransferLog(Base):
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class MediaAccessLogObject(Base):
+    """One S3 server-access-log object consumed by the reconciler."""
+
+    __tablename__ = "media_access_log_objects"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "source_bucket",
+            "object_key",
+            name="uq_media_access_log_object_source",
+        ),
+        Index("ix_media_access_log_objects_processed_at", "processed_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    provider: Mapped[str] = mapped_column(String(24), nullable=False, default="s3")
+    source_bucket: Mapped[str] = mapped_column(String(255), nullable=False)
+    object_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    etag: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="processing", index=True
+    )
+    event_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    matched_event_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    processed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class MediaAccessLogEvent(Base):
+    """An actual object response reported by AWS access logging."""
+
+    __tablename__ = "media_access_log_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "target_bucket",
+            "request_id",
+            name="uq_media_access_log_event_request",
+        ),
+        Index(
+            "ix_media_access_log_events_occurred_match",
+            "occurred_at",
+            "match_status",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    source_log_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media_access_log_objects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    transfer_log_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media_transfer_logs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(24), nullable=False, default="s3")
+    target_bucket: Mapped[str] = mapped_column(String(255), nullable=False)
+    request_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    object_key: Mapped[str] = mapped_column(String(1024), nullable=False, index=True)
+    bytes_sent: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    status_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    match_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="unmatched", index=True
+    )
+    remote_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
     )
 
 

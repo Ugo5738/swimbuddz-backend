@@ -16,6 +16,7 @@ from services.media_service.services.storage import (
     recommended_multipart_part_size,
 )
 from services.media_service.tasks.vault_exports import S3MultipartArchiveWriter
+from services.media_service.tasks.vault_bandwidth import parse_s3_access_log_line
 
 
 class FakeMultipartS3:
@@ -127,3 +128,49 @@ def test_upload_batch_requires_consent_attestation():
             consent_attested=False,
             consent_attestation_text="Not accepted",
         )
+
+
+def _s3_log_line(
+    *,
+    operation: str = "REST.GET.OBJECT",
+    object_key: str = "vaults%2F2026-08-02%2Fvault-id%2Foriginals%2Fclip.mov",
+    status_code: int = 206,
+    bytes_sent: int = 1048576,
+    authentication_type: str = "QueryString",
+) -> str:
+    return (
+        "owner private-media [02/Aug/2026:12:34:56 +0000] "
+        "203.0.113.7 arn:aws:iam::123456789012:user/media ABC123 "
+        f'{operation} {object_key} "GET /private-media/{object_key} HTTP/1.1" '
+        f'{status_code} - {bytes_sent} 5368709120 100 90 "-" '
+        '"Mozilla/5.0 (iPhone)" - host-id SigV4 TLS_AES_128_GCM_SHA256 '
+        f"{authentication_type} private-media.s3.amazonaws.com TLSv1.3 - - us-east-1"
+    )
+
+
+def test_s3_access_log_parser_preserves_actual_range_bytes_and_object_key():
+    event = parse_s3_access_log_line(_s3_log_line())
+
+    assert event is not None
+    assert event.target_bucket == "private-media"
+    assert event.request_id == "ABC123"
+    assert event.object_key == "vaults/2026-08-02/vault-id/originals/clip.mov"
+    assert event.status_code == 206
+    assert event.bytes_sent == 1048576
+    assert event.user_agent == "Mozilla/5.0 (iPhone)"
+    assert event.authentication_type == "QueryString"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        _s3_log_line(authentication_type="AuthHeader"),
+        _s3_log_line(operation="REST.HEAD.OBJECT"),
+        _s3_log_line(object_key="unrelated%2Fclip.mov"),
+        _s3_log_line(status_code=403, bytes_sent=243),
+        _s3_log_line(bytes_sent=0),
+        "not a valid S3 access log line",
+    ],
+)
+def test_s3_access_log_parser_ignores_non_presigned_or_non_download_requests(line):
+    assert parse_s3_access_log_line(line) is None

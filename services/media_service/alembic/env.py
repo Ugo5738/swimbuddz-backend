@@ -21,6 +21,8 @@ from services.media_service.models import (  # noqa: F401
     Album,
     AlbumItem,
     AudioTrack,
+    MediaAccessLogEvent,
+    MediaAccessLogObject,
     MediaAuditLog,
     MediaItem,
     MediaTag,

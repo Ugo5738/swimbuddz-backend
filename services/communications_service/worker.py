@@ -32,7 +32,7 @@ async def task_send_weekly_session_digest(ctx: dict):
 
 
 async def task_send_session_booking_prompts(ctx: dict):
-    """Send daily booking prompts for upcoming unbooked sessions."""
+    """Send scheduled booking prompts for upcoming unbooked sessions."""
     from services.communications_service.tasks import send_session_booking_prompts
 
     logger.info("Running: send_session_booking_prompts")
@@ -89,19 +89,20 @@ class WorkerSettings:
             minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
             run_at_startup=False,
         ),
-        # Weekly session digest (Sunday 8 AM WAT / 7 AM UTC)
+        # Weekly session digest (Sunday 12 PM WAT / 11 AM UTC)
         cron(
             task_send_weekly_session_digest,
             weekday=6,  # Sunday
-            hour=7,
+            hour=11,
             minute=0,
             run_at_startup=False,
         ),
-        # Daily booking prompts (09:00 WAT / 08:00 UTC).
+        # Booking prompts (Tuesday, Thursday, Friday at 09:00 WAT / 08:00 UTC).
         # Sends only to eligible members who have not booked the session yet,
         # with per-member duplicate caps in session_notification_logs.
         cron(
             task_send_session_booking_prompts,
+            weekday={1, 3, 4},
             hour=8,
             minute=0,
             run_at_startup=False,

@@ -3,7 +3,7 @@
 """Core members router - CRUD operations for member profiles."""
 
 import uuid
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import require_admin
@@ -12,7 +12,7 @@ from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_urls
 from libs.common.supabase import get_supabase_admin_client
 from libs.db.session import get_async_db
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.members_service.models import (
@@ -76,16 +76,22 @@ async def create_member(
 async def list_members(
     skip: int = 0,
     limit: int = 100,
+    search: Optional[str] = None,
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all members (admin use)."""
-    query = (
-        select(Member)
-        .options(*member_eager_load_options())
-        .offset(skip)
-        .limit(limit)
-        .order_by(Member.created_at.desc())
-    )
+    query = select(Member).options(*member_eager_load_options())
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.where(
+            or_(
+                Member.first_name.ilike(pattern),
+                Member.last_name.ilike(pattern),
+                Member.email.ilike(pattern),
+                func.concat(Member.first_name, " ", Member.last_name).ilike(pattern),
+            )
+        )
+    query = query.offset(skip).limit(limit).order_by(Member.created_at.desc())
     result = await db.execute(query)
     members = result.scalars().all()
 

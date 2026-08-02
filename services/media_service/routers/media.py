@@ -15,15 +15,15 @@ from fastapi import (
     UploadFile,
     status,
 )
-from libs.auth.dependencies import get_current_user, require_admin
+from sqlalchemy import desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import RedirectResponse
+
+from libs.auth.dependencies import get_current_user, get_optional_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
-from starlette.responses import RedirectResponse
-from sqlalchemy import desc, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from services.media_service.models import (
     Album,
     AlbumItem,
@@ -39,6 +39,10 @@ from services.media_service.schemas import (
     MediaItemResponse,
     MediaItemUpdate,
     MediaTagResponse,
+)
+from services.media_service.services.image_variants import (
+    PRESENTATION_IMAGE_PRESETS,
+    generate_image_variant,
 )
 from services.media_service.services.storage import (
     BucketType,
@@ -93,6 +97,22 @@ def _private_s3_key(url: Optional[str]) -> Optional[str]:
     return key or None
 
 
+def _require_original_access(
+    item: MediaItem,
+    current_user: Optional[AuthUser],
+) -> None:
+    """Keep preserved crop sources private to their uploader and admins."""
+    metadata = item.metadata_info or {}
+    if not metadata.get("presentation_original"):
+        return
+    if current_user and (
+        current_user.has_role("admin")
+        or str(item.uploaded_by) == str(current_user.user_id)
+    ):
+        return
+    raise HTTPException(status_code=404, detail="Media item not found")
+
+
 # ── Upload size limits per purpose ──
 MAX_UPLOAD_SIZES: dict[str, int] = {
     # Images: 25 MB
@@ -102,6 +122,8 @@ MAX_UPLOAD_SIZES: dict[str, int] = {
     "category_image": 25 * 1024 * 1024,
     "collection_image": 25 * 1024 * 1024,
     "product_image": 25 * 1024 * 1024,
+    "homepage_banner": 25 * 1024 * 1024,
+    "homepage_community_photo": 25 * 1024 * 1024,
     # Videos: 2 GB (iPhone ProRes/4K can exceed 500MB for short clips;
     # the transcoding worker compresses to web-friendly H.264)
     "milestone_video": 2 * 1024 * 1024 * 1024,
@@ -123,6 +145,19 @@ MAX_UPLOAD_SIZES: dict[str, int] = {
 }
 
 _CHUNK_SIZE = 1024 * 1024  # 1 MB
+
+STORAGE_PREFIXES: dict[str, str] = {
+    "profile_photo": "profile-photos",
+    "cover_image": "cover-images",
+    "content_image": "content-images",
+    "category_image": "category-images",
+    "collection_image": "collection-images",
+    "product_image": "product-images",
+    "badge_image": "badge-images",
+    "challenge_example": "challenge-examples",
+    "homepage_banner": "homepage-banners",
+    "homepage_community_photo": "homepage-community-photos",
+}
 
 
 async def _read_file_with_limit(file: UploadFile, purpose: str) -> bytes:
@@ -449,6 +484,161 @@ async def upload_file(
     return await _build_media_item_response(db, db_media)
 
 
+@router.post("/uploads/adjusted-image", response_model=MediaItemResponse)
+async def upload_adjusted_image(
+    file: UploadFile = File(...),
+    purpose: str = Form(...),
+    crop_x: float = Form(...),
+    crop_y: float = Form(...),
+    crop_width: float = Form(...),
+    crop_height: float = Form(...),
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Preserve an image upload and return its purpose-sized crop variant."""
+    content_type = (file.content_type or "").split(";", 1)[0].lower()
+    if purpose not in PRESENTATION_IMAGE_PRESETS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This media purpose does not support image adjustment",
+        )
+    if not content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be an image",
+        )
+
+    file_data = await _read_file_with_limit(file, purpose)
+    generated = generate_image_variant(
+        file_data,
+        purpose=purpose,
+        crop_x=crop_x,
+        crop_y=crop_y,
+        crop_width=crop_width,
+        crop_height=crop_height,
+    )
+
+    prefix = STORAGE_PREFIXES[purpose]
+    original_name = file.filename or "image"
+    original_extension = _safe_image_extension(original_name, content_type)
+    original_key = f"{prefix}/originals/{uuid.uuid4()}.{original_extension}"
+    variant_key = f"{prefix}/variants/{uuid.uuid4()}.{generated.extension}"
+    original_bucket_type = BucketType.PRIVATE
+    variant_bucket_type = get_bucket_for_purpose(purpose)
+
+    original_url: Optional[str] = None
+    original_thumbnail_url: Optional[str] = None
+    variant_url: Optional[str] = None
+    variant_thumbnail_url: Optional[str] = None
+    try:
+        original_url, original_thumbnail_url = await storage_service.upload_media(
+            file_data,
+            original_key,
+            content_type,
+            bucket_type=original_bucket_type,
+            preserve_filename=True,
+            generate_thumbnail=False,
+        )
+        variant_url, variant_thumbnail_url = await storage_service.upload_media(
+            generated.data,
+            variant_key,
+            generated.content_type,
+            bucket_type=variant_bucket_type,
+            preserve_filename=True,
+        )
+
+        original_id = uuid.uuid4()
+        variant_id = uuid.uuid4()
+        source = MediaItem(
+            id=original_id,
+            media_type=MediaType.IMAGE,
+            file_url=original_url,
+            thumbnail_url=original_thumbnail_url,
+            title=f"{title or original_name} (original)",
+            description=description,
+            alt_text=original_name,
+            metadata_info={
+                "purpose": purpose,
+                "presentation_original": True,
+                "width": generated.source_width,
+                "height": generated.source_height,
+            },
+            uploaded_by=current_user.user_id,
+            object_key=original_key,
+            bucket_type=original_bucket_type.value,
+            original_filename=original_name,
+            content_type=content_type,
+            size_bytes=len(file_data),
+            is_processed=True,
+        )
+        variant = MediaItem(
+            id=variant_id,
+            media_type=MediaType.IMAGE,
+            file_url=variant_url,
+            thumbnail_url=variant_thumbnail_url,
+            title=title or original_name,
+            description=description,
+            alt_text=original_name,
+            metadata_info={
+                "purpose": purpose,
+                "presentation_variant": True,
+                "crop": {
+                    "x": crop_x,
+                    "y": crop_y,
+                    "width": crop_width,
+                    "height": crop_height,
+                },
+                "width": generated.output_width,
+                "height": generated.output_height,
+            },
+            uploaded_by=current_user.user_id,
+            source_media_id=original_id,
+            object_key=variant_key,
+            bucket_type=variant_bucket_type.value,
+            original_filename=original_name,
+            content_type=generated.content_type,
+            size_bytes=len(generated.data),
+            is_processed=True,
+        )
+        db.add_all([source, variant])
+        await db.flush()
+        response = await _build_media_item_response(db, variant)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        if variant_url:
+            await storage_service.delete_media(
+                variant_url,
+                variant_thumbnail_url,
+                variant_bucket_type,
+            )
+        if original_url:
+            await storage_service.delete_media(
+                original_url,
+                original_thumbnail_url,
+                original_bucket_type,
+            )
+        raise
+
+    return response
+
+
+def _safe_image_extension(filename: str, content_type: str) -> str:
+    content_type_extensions = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+        "image/gif": "gif",
+        "image/tiff": "tiff",
+    }
+    if content_type in content_type_extensions:
+        return content_type_extensions[content_type]
+    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else "img"
+    return suffix if suffix.isalnum() and len(suffix) <= 8 else "img"
+
+
 @router.post("/register-url", response_model=MediaItemResponse)
 async def register_external_url(
     url: str = Form(...),
@@ -543,7 +733,13 @@ async def list_media(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all media items."""
-    query = select(MediaItem).order_by(desc(MediaItem.created_at))
+    query = select(MediaItem).where(
+        func.coalesce(
+            MediaItem.metadata_info["presentation_original"].as_boolean(),
+            False,
+        ).is_(False)
+    )
+    query = query.order_by(desc(MediaItem.created_at))
 
     if media_type:
         query = query.where(MediaItem.media_type == media_type)
@@ -563,6 +759,7 @@ async def list_media(
 @router.get("/media/{media_id}", response_model=MediaItemResponse)
 async def get_media_item(
     media_id: uuid.UUID,
+    current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get a single media item by ID."""
@@ -573,12 +770,15 @@ async def get_media_item(
     if not item:
         raise HTTPException(status_code=404, detail="Media item not found")
 
+    _require_original_access(item, current_user)
+
     return await _build_media_item_response(db, item)
 
 
 async def _resolve_media_playback(
     media_id: uuid.UUID,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession,
+    current_user: Optional[AuthUser],
 ):
     """Resolve playback headers and redirect URL for a media item."""
     query = select(MediaItem).where(MediaItem.id == media_id)
@@ -587,6 +787,8 @@ async def _resolve_media_playback(
 
     if not item:
         raise HTTPException(status_code=404, detail="Media item not found")
+
+    _require_original_access(item, current_user)
 
     private_key = _private_s3_key(item.file_url)
     if private_key:
@@ -656,10 +858,11 @@ async def _resolve_media_playback(
 )
 async def head_media_item_playback(
     media_id: uuid.UUID,
+    current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Answer browser HEAD probes for media playback."""
-    headers, _ = await _resolve_media_playback(media_id, db)
+    headers, _ = await _resolve_media_playback(media_id, db, current_user)
     return Response(status_code=200, headers=headers)
 
 
@@ -669,6 +872,7 @@ async def head_media_item_playback(
 )
 async def get_media_item_playback(
     media_id: uuid.UUID,
+    current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Return a browser-stable playback URL for media.
@@ -678,7 +882,7 @@ async def get_media_item_playback(
     check with 403, so this endpoint answers HEAD itself and only redirects
     GET requests to the signed object URL.
     """
-    _, redirect_url = await _resolve_media_playback(media_id, db)
+    _, redirect_url = await _resolve_media_playback(media_id, db, current_user)
     return RedirectResponse(url=redirect_url, status_code=307)
 
 

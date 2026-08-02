@@ -338,6 +338,9 @@ class BandwidthBucket(BaseModel):
     upload_bytes: int
     download_authorized_bytes: int
     download_completed_bytes: int
+    download_reconciled_bytes: int
+    download_pending_estimate_bytes: int
+    download_effective_bytes: int
 
 
 class BandwidthSummary(BaseModel):
@@ -345,6 +348,8 @@ class BandwidthSummary(BaseModel):
     current_month_download_bytes: int
     global_free_allowance_bytes: int = 100 * 1024**3
     allowance_remaining_bytes: int
+    reconciliation_enabled: bool
+    reconciliation_last_processed_at: Optional[datetime]
     measurement_note: str
 
 
