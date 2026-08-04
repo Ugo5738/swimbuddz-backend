@@ -251,82 +251,45 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ------------------------------------------------------------------
-  # DEPLOY TO DIGITAL OCEAN
+  # DEPLOY TO PRODUCTION SERVER
   # ------------------------------------------------------------------
   deploy:
+    environment: production
     needs: [build-and-push]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     steps:
-      - name: Deploy to Digital Ocean
+      - name: Deploy to production server
         uses: appleboy/ssh-action@v1.0.3
+
+        env:
+          GPG_PASSPHRASE: ${{ secrets.ENV_FILE_GPG_PASSPHRASE }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          LE_EMAIL: ${{ secrets.LE_EMAIL }}
+          REPO_URL: ${{ secrets.REPO_URL }}
+          DEPLOY_BRANCH: main
+          API_HOST: api.swimbuddz.com
+          START_WORKERS: true
+
         with:
-          host: ${{ secrets.DO_HOST }}
-          username: ${{ secrets.DO_USERNAME }}
-          key: ${{ secrets.DO_SSH_KEY }}
+          # host: ${{ secrets.DO_HOST }}
+          # username: ${{ secrets.DO_USERNAME }}
+          # key: ${{ secrets.DO_SSH_KEY }}
+
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 30m
-          envs: GPG_PASSPHRASE
+
+          envs: GPG_PASSPHRASE,DOCKER_USERNAME,DOCKER_PASSWORD,LE_EMAIL,REPO_URL,DEPLOY_BRANCH,API_HOST,START_WORKERS
+
           script: |
-            set -euo pipefail
-            set -x
-
-              # Ensure project directory exists
-              mkdir -p "${{ env.DEPLOY_PATH }}"
-              cd "${{ env.DEPLOY_PATH }}"
-
-              # Clone repo if missing, otherwise fetch/reset to main
-              if [ ! -d .git ]; then
-                git clone "${{ env.REPO_URL }}" .
-              else
-                git remote set-url origin "${{ env.REPO_URL }}"
-                git fetch origin
-                git reset --hard origin/main
-              fi
-
-              # Decrypt .env.prod from repository (requires .env.prod.gpg and GPG_PASSPHRASE)
-              if [ ! -f .env.prod.gpg ]; then
-                echo "Missing .env.prod.gpg in repo. Aborting deploy." >&2
-                exit 1
-              fi
-              if [ -z "${GPG_PASSPHRASE:-}" ]; then
-                echo "GPG_PASSPHRASE not set. Aborting deploy." >&2
-                exit 1
-              fi
-              echo "$GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 -o .env.prod -d .env.prod.gpg
-
-              # Make DOCKER_USERNAME and LE_EMAIL available for compose
-              export DOCKER_USERNAME="${{ secrets.DOCKER_USERNAME }}"
-              export LE_EMAIL="${{ secrets.LE_EMAIL }}"
-              # Explicitly target a recent Docker API to satisfy the engine minimum supported version
-              export DOCKER_API_VERSION="1.52"
-
-              # Login to Docker Hub (to ensure we can pull private images if needed)
-              echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-
-              # Ensure external network exists for Traefik routing
-              docker network inspect swimbuddz_proxy >/dev/null 2>&1 || docker network create swimbuddz_proxy
-
-              # Prepare Traefik ACME storage (Let’s Encrypt)
-              mkdir -p letsencrypt
-              touch letsencrypt/acme.json
-              chmod 600 letsencrypt/acme.json
-
-              # Pull latest images
-              echo "==> pulling images"
-              COMPOSE_HTTP_TIMEOUT=600 docker compose -f docker-compose.prod.yml pull --no-parallel
-
-              # Apply migrations (production-safe)
-              echo "==> running migrations"
-              COMPOSE_HTTP_TIMEOUT=600 docker compose -f docker-compose.prod.yml run --rm --no-deps gateway ./scripts/db/migrate-prod.sh --all .env.prod
-
-              # Restart services
-              echo "==> bringing up services"
-              COMPOSE_HTTP_TIMEOUT=600 docker compose -f docker-compose.prod.yml up -d --wait
-
-              # Cleanup unused images
-              echo "==> pruning images"
-              docker image prune -f
+            set -Eeuo pipefail
+            cd /home/deploy/swimbuddz-backend
+            chmod +x scripts/deployment/*.sh
+            START_WORKERS=true ./scripts/deployment/deploy-production.sh
 
   # ------------------------------------------------------------------
   # DEPLOY TO STAGING (NO PROD IMPACT)
