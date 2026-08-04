@@ -1,0 +1,56 @@
+name: Deploy SwimBuddz Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: GitHub Environment containing this server's credentials
+        required: true
+        type: choice
+        options:
+          - candidate
+          - production
+      api_host:
+        description: API hostname routed by Traefik
+        required: true
+        default: api.swimbuddz.com
+        type: string
+      start_workers:
+        description: Start background workers on this server
+        required: true
+        default: false
+        type: boolean
+      branch:
+        description: Repository branch to deploy
+        required: true
+        default: main
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+
+    steps:
+      - name: Deploy selected server
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GPG_PASSPHRASE: ${{ secrets.ENV_FILE_GPG_PASSPHRASE }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          LE_EMAIL: ${{ secrets.LE_EMAIL }}
+          REPO_URL: ${{ secrets.REPO_URL }}
+          DEPLOY_BRANCH: ${{ inputs.branch }}
+          API_HOST: ${{ inputs.api_host }}
+          START_WORKERS: ${{ inputs.start_workers }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 30m
+          envs: GPG_PASSPHRASE,DOCKER_USERNAME,DOCKER_PASSWORD,LE_EMAIL,REPO_URL,DEPLOY_BRANCH,API_HOST,START_WORKERS
+          script: |
+            set -Eeuo pipefail
+            cd /home/deploy/swimbuddz-backend
+            chmod +x scripts/deployment/*.sh
+            ./scripts/deployment/deploy-production.sh
