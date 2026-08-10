@@ -14,7 +14,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from libs.common.datetime_utils import utc_now
@@ -80,6 +80,33 @@ class Event(Base):
     max_capacity: Mapped[int] = mapped_column(Integer, nullable=True)
     # Optional entry fee in kobo (null = free). API accepts/returns naira (float).
     cost_kobo: Mapped[int] = mapped_column(Integer, nullable=True)
+    pricing_mode: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="fixed", server_default="fixed"
+    )  # free/included/fixed/cost_plus
+    pricing_expected_attendees: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    cost_lines: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    estimated_total_cost: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    estimated_cost_per_attendee: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    margin_type: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="fixed_per_attendee",
+        server_default="fixed_per_attendee",
+    )
+    # fixed_per_attendee: kobo; percentage: basis points (20% = 2000).
+    margin_value: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    margin_amount_per_attendee: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    email_reminder_hours: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     tier_access: Mapped[str] = mapped_column(
         String, default="community"
     )  # public/community/club/academy/invite_only
@@ -158,6 +185,32 @@ class EventTemplate(Base):
         UUID(as_uuid=True), nullable=True
     )
     cost_kobo: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    pricing_mode: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="fixed", server_default="fixed"
+    )
+    pricing_expected_attendees: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    cost_lines: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    estimated_total_cost: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    estimated_cost_per_attendee: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    margin_type: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="fixed_per_attendee",
+        server_default="fixed_per_attendee",
+    )
+    margin_value: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    margin_amount_per_attendee: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    email_reminder_hours: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
 
     frequency: Mapped[str] = mapped_column(String, nullable=False)
     interval: Mapped[int] = mapped_column(
@@ -233,4 +286,35 @@ class EventInvite(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
+    )
+
+
+class EventReminderLog(Base):
+    """Idempotency record for one event reminder sent to one member."""
+
+    __tablename__ = "event_reminder_logs"
+    __table_args__ = (
+        UniqueConstraint(
+            "event_id",
+            "member_id",
+            "reminder_hours",
+            name="uq_event_reminder_event_member_offset",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("events.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    reminder_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
     )

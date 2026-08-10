@@ -23,6 +23,14 @@ async def task_reconcile_chat_memberships(ctx: dict):
     await reconcile_chat_memberships()
 
 
+async def task_send_due_event_reminders(ctx: dict):
+    """Email and surface reminders for registered event attendees."""
+    from services.events_service.tasks import send_due_event_reminders
+
+    logger.info("Running: send_due_event_reminders")
+    await send_due_event_reminders()
+
+
 # ── Worker configuration ──
 
 
@@ -34,6 +42,7 @@ class WorkerSettings:
 
     functions = [
         task_reconcile_chat_memberships,
+        task_send_due_event_reminders,
     ]
 
     cron_jobs = [
@@ -44,5 +53,10 @@ class WorkerSettings:
             task_reconcile_chat_memberships,
             minute=5,
             run_at_startup=True,
+        ),
+        cron(
+            task_send_due_event_reminders,
+            minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
+            run_at_startup=False,
         ),
     ]

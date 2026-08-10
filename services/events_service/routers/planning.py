@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-from libs.common.currency import naira_to_kobo
 from libs.db.session import get_async_db
 from services.events_service.models import Event, EventTemplate, MemberRef
 from services.events_service.schemas.planning import (
@@ -24,6 +23,11 @@ from services.events_service.schemas.planning import (
     EventTemplateUpdate,
 )
 from services.events_service.services.calendar_import import parse_calendar_import
+from services.events_service.services.pricing import (
+    PRICING_KEYS,
+    event_pricing_response,
+    normalize_event_pricing,
+)
 from services.events_service.services.recurrence import build_occurrences
 
 router = APIRouter(prefix="/events/planning", tags=["event-planning"])
@@ -57,9 +61,8 @@ def _template_dict(template: EventTemplate) -> dict:
         "max_capacity": template.max_capacity,
         "tier_access": template.tier_access,
         "pool_id": template.pool_id,
-        "cost_naira": (
-            template.cost_kobo / 100.0 if template.cost_kobo is not None else None
-        ),
+        **event_pricing_response(template),
+        "email_reminder_hours": template.email_reminder_hours or [],
         "frequency": template.frequency,
         "interval": template.interval,
         "day_of_week": template.day_of_week,
@@ -76,10 +79,9 @@ def _template_dict(template: EventTemplate) -> dict:
 
 
 def _template_values(payload: EventTemplateCreate) -> dict:
-    values = payload.model_dump(exclude={"cost_naira"})
-    values["cost_kobo"] = (
-        naira_to_kobo(payload.cost_naira) if payload.cost_naira is not None else None
-    )
+    data = payload.model_dump()
+    values = {key: value for key, value in data.items() if key not in PRICING_KEYS}
+    values.update(normalize_event_pricing(data))
     return values
 
 
@@ -251,6 +253,15 @@ async def generate_event_drafts(
                 end_time=occurrence.end_time,
                 max_capacity=template.max_capacity,
                 cost_kobo=template.cost_kobo,
+                pricing_mode=template.pricing_mode,
+                pricing_expected_attendees=template.pricing_expected_attendees,
+                cost_lines=template.cost_lines,
+                estimated_total_cost=template.estimated_total_cost,
+                estimated_cost_per_attendee=template.estimated_cost_per_attendee,
+                margin_type=template.margin_type,
+                margin_value=template.margin_value,
+                margin_amount_per_attendee=template.margin_amount_per_attendee,
+                email_reminder_hours=template.email_reminder_hours,
                 tier_access=template.tier_access,
                 pool_id=template.pool_id,
                 created_by=template.created_by,
@@ -334,13 +345,14 @@ async def import_calendar_drafts(
         ):
             skipped += 1
             continue
-        values = row.model_dump(
-            exclude={"cost_naira", "external_key", "source_sheet", "source_row"}
-        )
+        row_data = row.model_dump()
+        values = {
+            key: value
+            for key, value in row_data.items()
+            if key not in PRICING_KEYS | {"external_key", "source_sheet", "source_row"}
+        }
         values["status"] = "draft"
-        values["cost_kobo"] = (
-            naira_to_kobo(row.cost_naira) if row.cost_naira is not None else None
-        )
+        values.update(normalize_event_pricing(row_data))
         event = Event(
             **values,
             external_key=row.external_key,

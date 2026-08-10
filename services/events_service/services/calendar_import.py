@@ -139,6 +139,41 @@ def _map_location_type(value: Any) -> str:
     return mapping[text]
 
 
+def _map_pricing_mode(value: Any, attendee_price: Any) -> str:
+    text = _slug(value)
+    if not text:
+        return "fixed" if attendee_price not in {None, ""} else "free"
+    mapping = {
+        "free": "free",
+        "included": "included",
+        "included_in_membership": "included",
+        "fixed": "fixed",
+        "fixed_price": "fixed",
+        "cost_plus": "cost_plus",
+        "calculated": "cost_plus",
+    }
+    if text not in mapping:
+        raise ValueError("Pricing Mode must be Free, Included, Fixed, or Cost plus")
+    return mapping[text]
+
+
+def _map_reminder_hours(value: Any, event_type: str) -> list[int]:
+    text = _slug(value)
+    if not text:
+        return [168, 24, 1] if event_type == "online_talk" else []
+    profiles = {
+        "none": [],
+        "standard": [72, 24],
+        "online_talk": [168, 24, 1],
+        "major_event": [336, 168, 24],
+    }
+    if text not in profiles:
+        raise ValueError(
+            "Reminder Profile must be None, Standard, Online talk, or Major event"
+        )
+    return profiles[text]
+
+
 def parse_calendar_import(content: bytes) -> CalendarImportPreviewResponse:
     try:
         with ZipFile(BytesIO(content)) as archive:
@@ -228,10 +263,19 @@ def parse_calendar_import(content: bytes) -> CalendarImportPreviewResponse:
             if not external_key:
                 raise ValueError("External Key is required for duplicate protection")
 
+            event_type = _slug(value(row, "event type"))
+            attendee_price = value(row, "attendee price")
+            if attendee_price in {None, ""}:
+                cost_naira = None
+            else:
+                cost_naira = float(attendee_price)
+                if cost_naira < 0:
+                    raise ValueError("Attendee Price cannot be negative")
+
             event = CalendarImportEvent(
                 title=title,
                 description=str(value(row, "description") or "").strip() or None,
-                event_type=_slug(value(row, "event type")),
+                event_type=event_type,
                 audience=audience,
                 visibility=visibility,
                 status="draft",
@@ -245,7 +289,13 @@ def parse_calendar_import(content: bytes) -> CalendarImportPreviewResponse:
                 max_capacity=None,
                 tier_access=tier_access,
                 pool_id=None,
-                cost_naira=None,
+                cost_naira=cost_naira,
+                pricing_mode=_map_pricing_mode(
+                    value(row, "pricing mode"), attendee_price
+                ),
+                email_reminder_hours=_map_reminder_hours(
+                    value(row, "reminder profile"), event_type
+                ),
                 external_key=external_key,
                 source_sheet=str(value(row, "source sheet") or SHEET_NAME),
                 source_row=int(value(row, "source row") or row),

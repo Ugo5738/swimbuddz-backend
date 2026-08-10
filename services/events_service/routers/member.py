@@ -45,6 +45,12 @@ from services.events_service.services.chat_sync import (
     ensure_event_channel,
     reconcile_event_membership,
 )
+from services.events_service.services.pricing import (
+    PRICING_KEYS,
+    event_pricing_payload,
+    event_pricing_response,
+    normalize_event_pricing,
+)
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -175,9 +181,8 @@ def _event_response_dict(
         "end_time": event.end_time,
         "max_capacity": event.max_capacity,
         "tier_access": event.tier_access,
-        "cost_naira": (
-            (event.cost_kobo / 100.0) if event.cost_kobo is not None else None
-        ),
+        **event_pricing_response(event),
+        "email_reminder_hours": event.email_reminder_hours or [],
         "pool_id": None if hide_location else event.pool_id,
         "pool_fee_naira": (
             (event.pool_fee_kobo / 100.0) if event.pool_fee_kobo is not None else None
@@ -344,13 +349,15 @@ async def create_event(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Create a new event (admin only)."""
-    event_dict_in = event_data.model_dump(exclude={"cost_naira"})
-    # Convert naira → kobo for DB storage
-    cost_naira = event_data.cost_naira
-    event_dict_in["cost_kobo"] = (
-        naira_to_kobo(cost_naira) if cost_naira is not None else None
+    payload = event_data.model_dump()
+    event_dict_in = {
+        key: value for key, value in payload.items() if key not in PRICING_KEYS
+    }
+    event = Event(
+        **event_dict_in,
+        **normalize_event_pricing(payload),
+        created_by=current_member.id,
     )
-    event = Event(**event_dict_in, created_by=current_member.id)
 
     db.add(event)
     await db.commit()
@@ -728,13 +735,17 @@ async def update_event(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # Update only provided fields — convert cost_naira → cost_kobo
+    # Update only provided fields. Pricing values need Naira→kobo normalization.
     update_fields = event_data.model_dump(exclude_unset=True)
-    if "cost_naira" in update_fields:
-        cost_naira = update_fields.pop("cost_naira")
-        update_fields["cost_kobo"] = (
-            naira_to_kobo(cost_naira) if cost_naira is not None else None
-        )
+    pricing_updates = {
+        key: update_fields.pop(key)
+        for key in list(update_fields)
+        if key in PRICING_KEYS
+    }
+    if pricing_updates:
+        pricing_payload = event_pricing_payload(event)
+        pricing_payload.update(pricing_updates)
+        update_fields.update(normalize_event_pricing(pricing_payload))
     for field, value in update_fields.items():
         setattr(event, field, value)
 
