@@ -34,6 +34,7 @@ jobs:
     steps:
       - name: Deploy selected server
         uses: appleboy/ssh-action@v1.0.3
+
         env:
           GPG_PASSPHRASE: ${{ secrets.ENV_FILE_GPG_PASSPHRASE }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
@@ -43,14 +44,30 @@ jobs:
           DEPLOY_BRANCH: ${{ inputs.branch }}
           API_HOST: ${{ inputs.api_host }}
           START_WORKERS: ${{ inputs.start_workers }}
+
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 30m
+
           envs: GPG_PASSPHRASE,DOCKER_USERNAME,DOCKER_PASSWORD,LE_EMAIL,REPO_URL,DEPLOY_BRANCH,API_HOST,START_WORKERS
+
           script: |
             set -Eeuo pipefail
-            cd /home/deploy/swimbuddz-backend
+
+            DEPLOY_PATH=/home/deploy/swimbuddz-backend
+            mkdir -p "$DEPLOY_PATH"
+            cd "$DEPLOY_PATH"
+
+            # Pull the latest workflow deployment scripts before trying to run them.
+            if [ ! -d .git ]; then
+              git clone --branch "$DEPLOY_BRANCH" "$REPO_URL" .
+            else
+              git remote set-url origin "$REPO_URL"
+              git fetch origin "$DEPLOY_BRANCH"
+              git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+            fi
+
             chmod +x scripts/deployment/*.sh
             ./scripts/deployment/deploy-production.sh

@@ -269,15 +269,11 @@ jobs:
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
           LE_EMAIL: ${{ secrets.LE_EMAIL }}
           REPO_URL: ${{ secrets.REPO_URL }}
-          DEPLOY_BRANCH: main
-          API_HOST: api.swimbuddz.com
-          START_WORKERS: true
+          DEPLOY_BRANCH: "main"
+          API_HOST: "api.swimbuddz.com"
+          START_WORKERS: "true"
 
         with:
-          # host: ${{ secrets.DO_HOST }}
-          # username: ${{ secrets.DO_USERNAME }}
-          # key: ${{ secrets.DO_SSH_KEY }}
-
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
@@ -287,9 +283,21 @@ jobs:
 
           script: |
             set -Eeuo pipefail
-            cd /home/deploy/swimbuddz-backend
+
+            DEPLOY_PATH=/home/deploy/swimbuddz-backend
+            mkdir -p "$DEPLOY_PATH"
+            cd "$DEPLOY_PATH"
+
+            if [ ! -d .git ]; then
+              git clone --branch "$DEPLOY_BRANCH" "$REPO_URL" .
+            else
+              git remote set-url origin "$REPO_URL"
+              git fetch origin "$DEPLOY_BRANCH"
+              git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+            fi
+
             chmod +x scripts/deployment/*.sh
-            START_WORKERS=true ./scripts/deployment/deploy-production.sh
+            ./scripts/deployment/deploy-production.sh
 
   # ------------------------------------------------------------------
   # DEPLOY TO STAGING (NO PROD IMPACT)
