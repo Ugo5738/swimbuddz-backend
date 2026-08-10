@@ -9279,6 +9279,16 @@
               ],
               "title": "End Date"
             }
+          },
+          {
+            "name": "include_completed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Completed"
+            }
           }
         ],
         "responses": {
@@ -27930,7 +27940,7 @@
           "transport"
         ],
         "summary": "Create Ride Area",
-        "description": "Create a new ride area.",
+        "description": "Enable ride-share configuration for a canonical operating area.",
         "operationId": "create_ride_area_transport_areas_post",
         "requestBody": {
           "content": {
@@ -77894,6 +77904,17 @@
               }
             ],
             "title": "From Name"
+          },
+          "preference_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preference Category"
           }
         },
         "type": "object",
@@ -85078,19 +85099,15 @@
       },
       "RideAreaCreate": {
         "properties": {
-          "name": {
+          "operating_area_id": {
             "type": "string",
-            "title": "Name"
-          },
-          "slug": {
-            "type": "string",
-            "title": "Slug"
+            "format": "uuid",
+            "title": "Operating Area Id"
           }
         },
         "type": "object",
         "required": [
-          "name",
-          "slug"
+          "operating_area_id"
         ],
         "title": "RideAreaCreate"
       },
@@ -85100,6 +85117,18 @@
             "type": "string",
             "format": "uuid",
             "title": "Id"
+          },
+          "operating_area_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operating Area Id"
           },
           "name": {
             "type": "string",
@@ -85145,6 +85174,18 @@
       },
       "RideAreaUpdate": {
         "properties": {
+          "operating_area_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operating Area Id"
+          },
           "name": {
             "anyOf": [
               {
@@ -93405,6 +93446,18 @@
             ],
             "title": "Location Area"
           },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
           "operating_area_id": {
             "anyOf": [
               {
@@ -94430,6 +94483,18 @@
               }
             ],
             "title": "Location Area"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
           },
           "operating_area_id": {
             "anyOf": [
@@ -95638,6 +95703,18 @@
               }
             ],
             "title": "Location Area"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
           },
           "operating_area_id": {
             "anyOf": [
@@ -101974,6 +102051,61 @@
             ],
             "title": "Cost Naira"
           },
+          "pricing_mode": {
+            "type": "string",
+            "enum": [
+              "free",
+              "included",
+              "fixed",
+              "cost_plus"
+            ],
+            "title": "Pricing Mode",
+            "default": "fixed"
+          },
+          "pricing_expected_attendees": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Expected Attendees"
+          },
+          "cost_lines": {
+            "items": {
+              "$ref": "#/components/schemas/EventCostLine"
+            },
+            "type": "array",
+            "title": "Cost Lines"
+          },
+          "margin_type": {
+            "type": "string",
+            "enum": [
+              "fixed_per_attendee",
+              "percentage"
+            ],
+            "title": "Margin Type",
+            "default": "fixed_per_attendee"
+          },
+          "margin_value": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Margin Value",
+            "default": 0
+          },
+          "email_reminder_hours": {
+            "items": {
+              "type": "integer",
+              "maximum": 720.0,
+              "minimum": 1.0
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Email Reminder Hours"
+          },
           "external_key": {
             "type": "string",
             "maxLength": 255,
@@ -102075,6 +102207,64 @@
           "rows"
         ],
         "title": "CalendarImportPreviewResponse"
+      },
+      "EventCostLine": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "charge_basis": {
+            "type": "string",
+            "title": "Charge Basis"
+          },
+          "unit_cost_naira": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Unit Cost Naira"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Quantity"
+          },
+          "source_rate_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Rate Type"
+          },
+          "source_rate_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Rate Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "description",
+          "charge_basis",
+          "unit_cost_naira",
+          "quantity"
+        ],
+        "title": "EventCostLine"
       },
       "EventCreate": {
         "properties": {
@@ -102231,6 +102421,61 @@
               }
             ],
             "title": "Cost Naira"
+          },
+          "pricing_mode": {
+            "type": "string",
+            "enum": [
+              "free",
+              "included",
+              "fixed",
+              "cost_plus"
+            ],
+            "title": "Pricing Mode",
+            "default": "fixed"
+          },
+          "pricing_expected_attendees": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Expected Attendees"
+          },
+          "cost_lines": {
+            "items": {
+              "$ref": "#/components/schemas/EventCostLine"
+            },
+            "type": "array",
+            "title": "Cost Lines"
+          },
+          "margin_type": {
+            "type": "string",
+            "enum": [
+              "fixed_per_attendee",
+              "percentage"
+            ],
+            "title": "Margin Type",
+            "default": "fixed_per_attendee"
+          },
+          "margin_value": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Margin Value",
+            "default": 0
+          },
+          "email_reminder_hours": {
+            "items": {
+              "type": "integer",
+              "maximum": 720.0,
+              "minimum": 1.0
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Email Reminder Hours"
           }
         },
         "type": "object",
@@ -102513,6 +102758,73 @@
             ],
             "title": "Cost Naira"
           },
+          "pricing_mode": {
+            "type": "string",
+            "enum": [
+              "free",
+              "included",
+              "fixed",
+              "cost_plus"
+            ],
+            "title": "Pricing Mode",
+            "default": "fixed"
+          },
+          "pricing_expected_attendees": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Expected Attendees"
+          },
+          "cost_lines": {
+            "items": {
+              "$ref": "#/components/schemas/EventCostLine"
+            },
+            "type": "array",
+            "title": "Cost Lines"
+          },
+          "estimated_total_cost_naira": {
+            "type": "number",
+            "title": "Estimated Total Cost Naira",
+            "default": 0
+          },
+          "estimated_cost_per_attendee_naira": {
+            "type": "number",
+            "title": "Estimated Cost Per Attendee Naira",
+            "default": 0
+          },
+          "margin_type": {
+            "type": "string",
+            "enum": [
+              "fixed_per_attendee",
+              "percentage"
+            ],
+            "title": "Margin Type",
+            "default": "fixed_per_attendee"
+          },
+          "margin_value": {
+            "type": "number",
+            "title": "Margin Value",
+            "default": 0
+          },
+          "margin_amount_per_attendee_naira": {
+            "type": "number",
+            "title": "Margin Amount Per Attendee Naira",
+            "default": 0
+          },
+          "email_reminder_hours": {
+            "items": {
+              "type": "integer",
+              "maximum": 720.0,
+              "minimum": 1.0
+            },
+            "type": "array",
+            "title": "Email Reminder Hours"
+          },
           "pool_id": {
             "anyOf": [
               {
@@ -102763,6 +103075,61 @@
             ],
             "title": "Cost Naira"
           },
+          "pricing_mode": {
+            "type": "string",
+            "enum": [
+              "free",
+              "included",
+              "fixed",
+              "cost_plus"
+            ],
+            "title": "Pricing Mode",
+            "default": "fixed"
+          },
+          "pricing_expected_attendees": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Expected Attendees"
+          },
+          "cost_lines": {
+            "items": {
+              "$ref": "#/components/schemas/EventCostLine"
+            },
+            "type": "array",
+            "title": "Cost Lines"
+          },
+          "margin_type": {
+            "type": "string",
+            "enum": [
+              "fixed_per_attendee",
+              "percentage"
+            ],
+            "title": "Margin Type",
+            "default": "fixed_per_attendee"
+          },
+          "margin_value": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Margin Value",
+            "default": 0
+          },
+          "email_reminder_hours": {
+            "items": {
+              "type": "integer",
+              "maximum": 720.0,
+              "minimum": 1.0
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Email Reminder Hours"
+          },
           "frequency": {
             "type": "string",
             "enum": [
@@ -103011,6 +103378,61 @@
               }
             ],
             "title": "Cost Naira"
+          },
+          "pricing_mode": {
+            "type": "string",
+            "enum": [
+              "free",
+              "included",
+              "fixed",
+              "cost_plus"
+            ],
+            "title": "Pricing Mode",
+            "default": "fixed"
+          },
+          "pricing_expected_attendees": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Expected Attendees"
+          },
+          "cost_lines": {
+            "items": {
+              "$ref": "#/components/schemas/EventCostLine"
+            },
+            "type": "array",
+            "title": "Cost Lines"
+          },
+          "margin_type": {
+            "type": "string",
+            "enum": [
+              "fixed_per_attendee",
+              "percentage"
+            ],
+            "title": "Margin Type",
+            "default": "fixed_per_attendee"
+          },
+          "margin_value": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Margin Value",
+            "default": 0
+          },
+          "email_reminder_hours": {
+            "items": {
+              "type": "integer",
+              "maximum": 720.0,
+              "minimum": 1.0
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Email Reminder Hours"
           },
           "frequency": {
             "type": "string",
@@ -103347,6 +103769,93 @@
               }
             ],
             "title": "Cost Naira"
+          },
+          "pricing_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "free",
+                  "included",
+                  "fixed",
+                  "cost_plus"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Mode"
+          },
+          "pricing_expected_attendees": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Expected Attendees"
+          },
+          "cost_lines": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/EventCostLine"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Lines"
+          },
+          "margin_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "fixed_per_attendee",
+                  "percentage"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Type"
+          },
+          "margin_value": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Value"
+          },
+          "email_reminder_hours": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer",
+                  "maximum": 720.0,
+                  "minimum": 1.0
+                },
+                "type": "array",
+                "maxItems": 8
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Reminder Hours"
           },
           "frequency": {
             "anyOf": [
@@ -103687,6 +104196,93 @@
               }
             ],
             "title": "Cost Naira"
+          },
+          "pricing_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "free",
+                  "included",
+                  "fixed",
+                  "cost_plus"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Mode"
+          },
+          "pricing_expected_attendees": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Expected Attendees"
+          },
+          "cost_lines": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/EventCostLine"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Lines"
+          },
+          "margin_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "fixed_per_attendee",
+                  "percentage"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Type"
+          },
+          "margin_value": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Value"
+          },
+          "email_reminder_hours": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer",
+                  "maximum": 720.0,
+                  "minimum": 1.0
+                },
+                "type": "array",
+                "maxItems": 8
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Reminder Hours"
           }
         },
         "type": "object",
@@ -104954,20 +105550,59 @@
             "type": "string",
             "title": "Purpose"
           },
+          "recipe_json": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe Json"
+          },
           "crop_x": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Crop X"
           },
           "crop_y": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Crop Y"
           },
           "crop_width": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Crop Width"
           },
           "crop_height": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Crop Height"
           },
           "title": {
@@ -104996,11 +105631,7 @@
         "type": "object",
         "required": [
           "file",
-          "purpose",
-          "crop_x",
-          "crop_y",
-          "crop_width",
-          "crop_height"
+          "purpose"
         ],
         "title": "Body_upload_adjusted_image_media_uploads_adjusted_image_post"
       },
@@ -107102,6 +107733,11 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "notification_dispatched": {
+            "type": "boolean",
+            "title": "Notification Dispatched",
+            "default": false
           }
         },
         "type": "object",
