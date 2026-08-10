@@ -1,3 +1,4 @@
+import json
 import uuid
 from io import BytesIO
 from unittest.mock import AsyncMock
@@ -10,7 +11,14 @@ from starlette.datastructures import Headers
 from libs.auth.models import AuthUser
 from services.media_service.models import MediaItem, MediaType
 from services.media_service.routers import media as media_router
-from services.media_service.services.image_variants import generate_image_variant
+from services.media_service.services.image_variants import (
+    ImageAdjustments,
+    ImageFilter,
+    ImageTransformRecipe,
+    NormalizedCrop,
+    effective_adjustments,
+    generate_image_variant,
+)
 from services.media_service.services.storage import BucketType
 
 
@@ -66,6 +74,78 @@ def test_variant_rejects_crop_outside_source_bounds():
         )
 
 
+def test_variant_applies_flip_and_rotation_before_crop():
+    image = Image.new("RGB", (100, 200), "blue")
+    for x in range(100):
+        for y in range(100):
+            image.putpixel((x, y), (255, 0, 0))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+
+    generated = generate_image_variant(
+        buffer.getvalue(),
+        purpose="profile_photo",
+        recipe=ImageTransformRecipe(
+            crop=NormalizedCrop(x=0, y=0, width=0.5, height=1),
+            rotation=90,
+            flip_horizontal=True,
+        ),
+    )
+
+    with Image.open(BytesIO(generated.data)) as output:
+        red, green, blue = output.convert("RGB").getpixel((400, 400))
+        assert blue > 240
+        assert red < 20
+        assert green < 20
+
+
+def test_filter_and_manual_adjustments_are_combined_and_bounded():
+    combined = effective_adjustments(
+        ImageTransformRecipe(
+            crop=NormalizedCrop(x=0, y=0, width=1, height=1),
+            adjustments=ImageAdjustments(contrast=96, warmth=-10),
+            filter=ImageFilter(name="pool", strength=50),
+        )
+    )
+
+    assert combined.brightness == 1
+    assert combined.contrast == 100
+    assert combined.saturation == 6
+    assert combined.warmth == -13
+
+
+def test_variant_applies_tonal_adjustments():
+    image = Image.new("RGB", (100, 100), (80, 100, 140))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+
+    neutral = generate_image_variant(
+        buffer.getvalue(),
+        purpose="profile_photo",
+        recipe=ImageTransformRecipe(
+            crop=NormalizedCrop(x=0, y=0, width=1, height=1),
+            adjustments=ImageAdjustments(brightness=40),
+        ),
+    )
+    warm = generate_image_variant(
+        buffer.getvalue(),
+        purpose="profile_photo",
+        recipe=ImageTransformRecipe(
+            crop=NormalizedCrop(x=0, y=0, width=1, height=1),
+            adjustments=ImageAdjustments(brightness=40, warmth=50),
+        ),
+    )
+
+    with (
+        Image.open(BytesIO(neutral.data)) as neutral_output,
+        Image.open(BytesIO(warm.data)) as warm_output,
+    ):
+        neutral_pixel = neutral_output.convert("RGB").getpixel((400, 400))
+        warm_pixel = warm_output.convert("RGB").getpixel((400, 400))
+        assert warm_pixel[0] > neutral_pixel[0]
+        assert warm_pixel[2] < neutral_pixel[2]
+
+
 class _FakeDb:
     def __init__(self):
         self.items = []
@@ -109,10 +189,21 @@ async def test_adjusted_upload_preserves_original_and_returns_linked_variant(
     response = await media_router.upload_adjusted_image(
         file=upload_file,
         purpose="profile_photo",
-        crop_x=0,
-        crop_y=0,
-        crop_width=0.5,
-        crop_height=1,
+        recipe_json=json.dumps(
+            {
+                "version": 1,
+                "crop": {"x": 0, "y": 0, "width": 0.5, "height": 1},
+                "rotation": 0,
+                "flip_horizontal": True,
+                "flip_vertical": False,
+                "adjustments": {"brightness": 5},
+                "filter": {"name": "clean", "strength": 50},
+            }
+        ),
+        crop_x=None,
+        crop_y=None,
+        crop_width=None,
+        crop_height=None,
         title=None,
         description=None,
         current_user=AuthUser(
@@ -128,6 +219,15 @@ async def test_adjusted_upload_preserves_original_and_returns_linked_variant(
     assert variant.source_media_id == source.id
     assert source.metadata_info["presentation_original"] is True
     assert variant.metadata_info["presentation_variant"] is True
+    assert variant.metadata_info["transformation_recipe"]["version"] == 1
+    assert variant.metadata_info["transformation_recipe"]["flip_horizontal"] is True
+    assert (
+        variant.metadata_info["transformation_recipe"]["adjustments"]["brightness"] == 5
+    )
+    assert variant.metadata_info["transformation_recipe"]["filter"] == {
+        "name": "clean",
+        "strength": 50,
+    }
     assert db.flushed is True
     assert db.committed is True
     assert upload.await_count == 2

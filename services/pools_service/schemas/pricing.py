@@ -7,6 +7,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ActivityScope = Literal["all", "community", "club", "academy"]
+AreaType = Literal["country", "market", "commercial_band", "locality"]
 ChargeBasis = Literal[
     "per_attendee",
     "per_staff",
@@ -19,6 +20,7 @@ ChargeBasis = Literal[
 class OperatingAreaBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     slug: str = Field(min_length=1, max_length=255)
+    area_type: AreaType = "locality"
     parent_id: Optional[uuid.UUID] = None
     country_code: str = Field(default="NG", min_length=2, max_length=2)
     timezone: str = "Africa/Lagos"
@@ -33,6 +35,7 @@ class OperatingAreaCreate(OperatingAreaBase):
 class OperatingAreaUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     slug: Optional[str] = Field(None, min_length=1, max_length=255)
+    area_type: Optional[AreaType] = None
     parent_id: Optional[uuid.UUID] = None
     country_code: Optional[str] = Field(None, min_length=2, max_length=2)
     timezone: Optional[str] = None

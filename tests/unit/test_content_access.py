@@ -1,7 +1,8 @@
 import uuid
 
 from fastapi.routing import APIRoute
-from libs.auth.dependencies import get_optional_user, require_admin
+
+from libs.auth.dependencies import get_current_user, get_optional_user, require_admin
 from services.communications_service.routers.content import content_router
 from services.communications_service.services.content_access import (
     ContentActor,
@@ -72,3 +73,5 @@ def test_content_admin_mutations_require_admin_dependency():
 def test_public_content_reads_resolve_optional_identity():
     assert get_optional_user in _route_dependencies("list_content_posts")
     assert get_optional_user in _route_dependencies("get_content_post")
+    assert get_optional_user in _route_dependencies("list_content_comments")
+    assert get_current_user in _route_dependencies("create_content_comment")

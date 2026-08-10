@@ -11,6 +11,7 @@ POOL_PAYLOAD = {
     "name": "Sunfit Pool Yaba",
     "slug": "sunfit-pool-yaba",
     "location_area": "Yaba",
+    "address": "1 Herbert Macaulay Way, Yaba, Lagos",
     "pool_type": "club",
     "contact_person": "Mr Ade",
     "contact_phone": "08012345678",
@@ -43,10 +44,41 @@ async def test_create_pool(pools_client):
     assert data["name"] == POOL_PAYLOAD["name"]
     assert data["slug"] == POOL_PAYLOAD["slug"]
     assert data["location_area"] == "Yaba"
+    assert data["address"] == POOL_PAYLOAD["address"]
     assert data["partnership_status"] == "prospect"
     assert data["is_active"] is True
     assert "id" in data
     assert "created_at" in data
+
+
+@pytest.mark.asyncio
+async def test_structured_operating_area_overrides_free_text_snapshot(pools_client):
+    """A linked pool cannot persist a contradictory display area."""
+    area_response = await pools_client.post(
+        "/admin/pools/pricing/areas",
+        json={
+            "name": "Yaba",
+            "slug": "yaba",
+            "parent_id": None,
+            "country_code": "NG",
+            "timezone": "Africa/Lagos",
+            "currency": "NGN",
+            "is_active": True,
+        },
+    )
+    assert area_response.status_code == 201, area_response.text
+
+    response = await pools_client.post(
+        "/admin/pools",
+        json={
+            **POOL_PAYLOAD,
+            "slug": "canonical-area-pool",
+            "operating_area_id": area_response.json()["id"],
+            "location_area": "Victoria Island",
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["location_area"] == "Yaba"
 
 
 @pytest.mark.asyncio

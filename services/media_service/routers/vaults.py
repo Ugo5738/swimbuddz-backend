@@ -23,7 +23,6 @@ from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.service_client import (
     dispatch_notification,
-    get_media_vault_assignments,
 )
 from libs.db.session import get_async_db
 from services.media_service.models import (
@@ -78,6 +77,16 @@ from services.media_service.services.storage import (
     BucketType,
     recommended_multipart_part_size,
     storage_service,
+)
+from services.media_service.services.vault_grants import (
+    ensure_contributor_window,
+    notify_vault_access,
+    sync_volunteer_grants as sync_vault_volunteer_grants,
+)
+from services.media_service.services.vault_templates import (
+    DEFAULT_MEDIA_VAULT_CHECKLIST,
+    DEFAULT_MEDIA_VAULT_CONSENT_NOTICE,
+    default_media_coverage_settings,
 )
 from services.media_service.services.vault_access import (
     ROLE_RANK,
@@ -285,71 +294,6 @@ async def _create_batch(
     await db.commit()
     await db.refresh(batch)
     return batch
-
-
-async def _sync_volunteer_grants(
-    db: AsyncSession,
-    *,
-    vault: MediaVault,
-    created_by: uuid.UUID,
-) -> list[MediaVaultGrant]:
-    """Idempotently mirror media/gallery volunteer claims into vault grants."""
-    assignments = await get_media_vault_assignments(
-        calling_service="media",
-        session_id=str(vault.session_id) if vault.session_id else None,
-        event_id=str(vault.event_id) if vault.event_id else None,
-    )
-    grants: list[MediaVaultGrant] = []
-    active_keys: set[tuple[uuid.UUID, str]] = set()
-    for assignment in assignments:
-        member_id = uuid.UUID(str(assignment["member_id"]))
-        role = str(assignment["role"])
-        active_keys.add((member_id, role))
-        grant = await db.scalar(
-            select(MediaVaultGrant).where(
-                MediaVaultGrant.vault_id == vault.id,
-                MediaVaultGrant.member_id == member_id,
-                MediaVaultGrant.role == role,
-            )
-        )
-        expires_at = (
-            vault.upload_closes_at
-            if role == "contributor"
-            else vault.upload_closes_at + timedelta(days=30)
-        )
-        if grant:
-            grant.starts_at = vault.upload_opens_at
-            grant.expires_at = expires_at
-            grant.source = "volunteer_assignment"
-            grant.source_reference_id = str(assignment["slot_id"])
-            grant.can_download_originals = role == "curator"
-            grant.revoked_at = None
-        else:
-            grant = MediaVaultGrant(
-                vault_id=vault.id,
-                member_id=member_id,
-                role=role,
-                starts_at=vault.upload_opens_at,
-                expires_at=expires_at,
-                source="volunteer_assignment",
-                source_reference_id=str(assignment["slot_id"]),
-                can_download_originals=role == "curator",
-                created_by=created_by,
-            )
-            db.add(grant)
-        grants.append(grant)
-    existing_rows = await db.execute(
-        select(MediaVaultGrant).where(
-            MediaVaultGrant.vault_id == vault.id,
-            MediaVaultGrant.source == "volunteer_assignment",
-            MediaVaultGrant.revoked_at.is_(None),
-        )
-    )
-    for grant in existing_rows.scalars().all():
-        if (grant.member_id, grant.role) not in active_keys:
-            grant.revoked_at = utc_now()
-    await db.commit()
-    return grants
 
 
 async def _initiate_upload(
@@ -878,14 +822,22 @@ async def create_vault(
     db: AsyncSession = Depends(get_async_db),
 ):
     actor = await resolve_actor(current_user)
+    values = payload.model_dump()
+    if not values["shot_checklist"]:
+        values["shot_checklist"] = list(DEFAULT_MEDIA_VAULT_CHECKLIST)
+    if not values["consent_notice"]:
+        values["consent_notice"] = DEFAULT_MEDIA_VAULT_CONSENT_NOTICE
+    current = utc_now()
+    initial_status = "scheduled"
+    if payload.upload_opens_at <= current <= payload.upload_closes_at:
+        initial_status = "open"
+    elif current > payload.upload_closes_at:
+        initial_status = "review"
     vault = MediaVault(
-        **payload.model_dump(),
-        status=(
-            "open"
-            if payload.upload_opens_at <= utc_now() <= payload.upload_closes_at
-            else "scheduled"
-        ),
+        **values,
+        status=initial_status,
         auto_transcode=False,
+        settings_json=default_media_coverage_settings(),
         created_by=actor.auth_id,
     )
     db.add(vault)
@@ -899,7 +851,7 @@ async def create_vault(
         ) from exc
     await db.refresh(vault)
     try:
-        await _sync_volunteer_grants(db, vault=vault, created_by=actor.auth_id)
+        await sync_vault_volunteer_grants(db, vault=vault, created_by=actor.auth_id)
     except Exception:
         # Volunteer synchronization is retryable from the vault admin screen.
         await db.rollback()
@@ -968,7 +920,7 @@ async def sync_volunteer_grants(
     actor = await resolve_actor(current_user)
     vault = await get_vault_or_404(db, vault_id)
     await require_vault_role(db, vault=vault, actor=actor, minimum="admin")
-    return await _sync_volunteer_grants(db, vault=vault, created_by=actor.auth_id)
+    return await sync_vault_volunteer_grants(db, vault=vault, created_by=actor.auth_id)
 
 
 @router.post("/{vault_id}/grants", response_model=VaultGrantResponse, status_code=201)
@@ -981,6 +933,18 @@ async def create_grant(
     actor = await resolve_actor(current_user)
     vault = await get_vault_or_404(db, vault_id)
     await require_vault_role(db, vault=vault, actor=actor, minimum="admin")
+    if vault.status == "archived":
+        raise HTTPException(
+            status_code=409, detail="Archived vaults cannot be reopened"
+        )
+    starts_at = payload.starts_at
+    expires_at = payload.expires_at
+    if payload.role == "contributor":
+        starts_at, expires_at = ensure_contributor_window(
+            vault,
+            starts_at=payload.starts_at,
+            expires_at=payload.expires_at,
+        )
     existing = await db.scalar(
         select(MediaVaultGrant).where(
             MediaVaultGrant.vault_id == vault_id,
@@ -989,32 +953,35 @@ async def create_grant(
         )
     )
     if existing:
-        existing.starts_at = payload.starts_at
-        existing.expires_at = payload.expires_at
+        existing.starts_at = starts_at
+        existing.expires_at = expires_at
         existing.can_download_originals = payload.can_download_originals
         existing.revoked_at = None
         grant = existing
     else:
         grant = MediaVaultGrant(
             vault_id=vault_id,
-            **payload.model_dump(),
+            member_id=payload.member_id,
+            role=payload.role,
+            starts_at=starts_at,
+            expires_at=expires_at,
+            can_download_originals=payload.can_download_originals,
             source="manual",
             created_by=actor.auth_id,
         )
         db.add(grant)
     await db.commit()
     await db.refresh(grant)
-    await dispatch_notification(
-        type="media_vault_access_granted",
-        category="media",
-        member_ids=[str(payload.member_id)],
-        title=f"You have {payload.role} access to {vault.title}",
-        body=f"Access expires {payload.expires_at.isoformat()}.",
-        action_url=f"/account/media-vault/{vault.id}",
-        calling_service="media",
-        expires_at=payload.expires_at.isoformat(),
+    notification_result = await notify_vault_access(
+        vault=vault,
+        member_id=payload.member_id,
+        role=payload.role,
+        expires_at=expires_at,
     )
-    return grant
+    response = VaultGrantResponse.model_validate(grant)
+    return response.model_copy(
+        update={"notification_dispatched": notification_result is not None}
+    )
 
 
 @router.delete("/{vault_id}/grants/{grant_id}", status_code=204)
@@ -1051,8 +1018,15 @@ async def create_guest_link(
     actor = await resolve_actor(current_user)
     vault = await get_vault_or_404(db, vault_id)
     await require_vault_role(db, vault=vault, actor=actor, minimum="admin")
+    if vault.status == "archived":
+        raise HTTPException(
+            status_code=409, detail="Archived vaults cannot be reopened"
+        )
     if payload.expires_at <= utc_now():
         raise HTTPException(status_code=422, detail="Expiry must be in the future")
+    vault.upload_opens_at = min(vault.upload_opens_at, utc_now())
+    vault.upload_closes_at = max(vault.upload_closes_at, payload.expires_at)
+    vault.status = "open"
     raw_token = secrets.token_urlsafe(32)
     link = MediaVaultGuestLink(
         vault_id=vault_id,

@@ -216,6 +216,10 @@ class Settings(BaseSettings):
     MEDIA_VAULT_SIGNED_URL_TTL_SECONDS: int = 3600
     MEDIA_VAULT_MULTIPART_URL_TTL_SECONDS: int = 3600
     MEDIA_VAULT_EXPORT_TTL_HOURS: int = 24
+    MEDIA_VAULT_AUTO_CREATE_ENABLED: bool = True
+    MEDIA_VAULT_AUTO_CREATE_LOOKBACK_DAYS: int = 7
+    MEDIA_VAULT_AUTO_CREATE_HORIZON_DAYS: int = 14
+    MEDIA_VAULT_AUTO_CREATE_SESSION_TYPES: str = "club,community,cohort_class,event"
     # S3 server access logs for billing-grade vault download reconciliation.
     # Keep the log bucket private and separate from the source media bucket.
     MEDIA_VAULT_ACCESS_LOG_BUCKET: str = ""

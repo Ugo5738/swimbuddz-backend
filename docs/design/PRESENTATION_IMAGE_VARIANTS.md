@@ -7,17 +7,34 @@ not use this workflow.
 
 ## Storage Contract
 
-1. The frontend shows a purpose-locked crop frame with drag and zoom controls.
+1. The frontend shows one standard editor. The media purpose controls only the
+   crop aspect, crop shape, and output dimensions.
 2. Nothing uploads until the user confirms the composition.
-3. `media_service` validates the normalized crop, stores the unmodified source
-   in private storage, and creates the exact-size public derivative.
+3. `media_service` validates a versioned transformation recipe, stores the
+   unmodified source in private storage, and creates the exact-size derivative.
 4. The owning service stores the derivative `media_id`. The derivative links to
    its source through `media_items.source_media_id` for future re-cropping.
 5. Preserved sources are excluded from public media lists and can be resolved
    only by their uploader or an admin.
 
+The standard editor provides crop/reposition/zoom, 90-degree rotation, fine
+straightening, horizontal and vertical flips, tonal controls, restrained filter
+presets, undo/redo/reset, and press-and-hold original comparison. Processing is
+deterministic and follows this order: EXIF orientation, flip, rotation, crop,
+resize, adjustments/filter, encode.
+
+Every derivative stores `transformation_recipe` in `metadata_info`. Recipe
+version 1 contains the normalized crop, total rotation, flips, manual tonal
+adjustments, filter name, and filter strength. New recipe versions must be
+introduced rather than changing the meaning of existing fields.
+
 External URL registration is not available for crop-controlled purposes. This
 prevents an uncropped URL from bypassing the presentation contract.
+
+Article block images use this same workflow. Evidence, payment proofs,
+documents, private-vault originals, gallery originals, and source videos bypass
+the editor. A publishing derivative or video poster may use the editor without
+altering its protected original.
 
 ## Presets
 

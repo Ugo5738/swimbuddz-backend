@@ -10,9 +10,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from services.events_service.schemas.main import (
     EventAudience,
     EventBase,
+    EventCostLine,
     EventLocationType,
+    EventPricingMode,
     EventTierAccess,
     EventVisibility,
+    MarginType,
+    ReminderHour,
 )
 
 EventFrequency = Literal["weekly", "monthly", "quarterly", "annual"]
@@ -35,6 +39,12 @@ class EventTemplateBase(BaseModel):
     tier_access: EventTierAccess = "community"
     pool_id: Optional[uuid.UUID] = None
     cost_naira: Optional[float] = Field(None, ge=0)
+    pricing_mode: EventPricingMode = "fixed"
+    pricing_expected_attendees: Optional[int] = Field(None, ge=1)
+    cost_lines: list[EventCostLine] = Field(default_factory=list)
+    margin_type: MarginType = "fixed_per_attendee"
+    margin_value: float = Field(default=0, ge=0)
+    email_reminder_hours: list[ReminderHour] = Field(default_factory=list, max_length=8)
     frequency: EventFrequency
     interval: int = Field(1, ge=1, le=12)
     day_of_week: Optional[int] = Field(None, ge=0, le=6)
@@ -85,6 +95,12 @@ class EventTemplateUpdate(BaseModel):
     tier_access: Optional[EventTierAccess] = None
     pool_id: Optional[uuid.UUID] = None
     cost_naira: Optional[float] = Field(None, ge=0)
+    pricing_mode: Optional[EventPricingMode] = None
+    pricing_expected_attendees: Optional[int] = Field(None, ge=1)
+    cost_lines: Optional[list[EventCostLine]] = None
+    margin_type: Optional[MarginType] = None
+    margin_value: Optional[float] = Field(None, ge=0)
+    email_reminder_hours: Optional[list[ReminderHour]] = Field(None, max_length=8)
     frequency: Optional[EventFrequency] = None
     interval: Optional[int] = Field(None, ge=1, le=12)
     day_of_week: Optional[int] = Field(None, ge=0, le=6)

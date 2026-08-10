@@ -10,6 +10,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_service_role
@@ -17,12 +18,104 @@ from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.emails.core import send_email
 from libs.common.logging import get_logger
+from libs.common.service_client import search_members
 from libs.db.session import get_async_db
-from services.communications_service.models import MessageLog, MessageRecipientType
+from services.communications_service.models import (
+    MessageLog,
+    MessageRecipientType,
+    NotificationPreferences,
+)
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/email", tags=["email"])
+
+# Member-facing templates are centrally classified here so every service that
+# uses EmailClient.send_template() receives the same preference enforcement.
+# Account/security/admin mail is intentionally absent and always delivered.
+TEMPLATE_EMAIL_PREFERENCE: dict[str, str] = {
+    # Academy member updates
+    "enrollment_confirmation": "email_academy_updates",
+    "enrollment_reminder": "email_academy_updates",
+    "waitlist_promotion": "email_academy_updates",
+    "progress_report": "email_academy_updates",
+    "certificate": "email_academy_updates",
+    "academy_access_suspended": "email_academy_updates",
+    "withdrawal_confirmation": "email_academy_updates",
+    # Coach-to-member and coach operational messages
+    "attendance_summary": "email_coach_messages",
+    "coach_assignment": "email_coach_messages",
+    "low_attendance_alert": "email_coach_messages",
+    "coach_grade_change": "email_coach_messages",
+    "shadow_assignment": "email_coach_messages",
+    "coach_readiness": "email_coach_messages",
+    # Payments, booking receipts, and order status
+    "installment_payment_reminder": "email_payment_receipts",
+    "installment_payment_confirmation": "email_payment_receipts",
+    "tier_activated": "email_payment_receipts",
+    "payment_approved": "email_payment_receipts",
+    "session_confirmation": "email_payment_receipts",
+    "ride_share_confirmation": "email_payment_receipts",
+    "store_order_confirmation": "email_payment_receipts",
+    "store_order_ready": "email_payment_receipts",
+}
+
+PLAIN_EMAIL_PREFERENCE: dict[str, str] = {
+    "academy": "email_academy_updates",
+    "payments": "email_payment_receipts",
+    "store": "email_payment_receipts",
+    "coaching": "email_coach_messages",
+    "marketing": "email_marketing",
+    "announcements": "email_announcements",
+    "content": "email_content_updates",
+}
+
+
+async def _member_email_allowed(
+    *,
+    to_email: str,
+    preference_field: str,
+    db: AsyncSession,
+) -> bool:
+    """Return a member's preference, defaulting to delivery when unresolved."""
+    try:
+        members = await search_members(
+            to_email,
+            calling_service="communications",
+            limit=10,
+        )
+    except Exception:
+        # A member-directory outage must not drop transactional mail. The
+        # delivery can only be suppressed when we positively identify an opt-out.
+        logger.warning(
+            "Could not resolve email preference for %s; allowing delivery",
+            to_email,
+            exc_info=True,
+        )
+        return True
+
+    normalized_email = to_email.strip().lower()
+    member = next(
+        (
+            candidate
+            for candidate in members
+            if str(candidate.get("email") or "").strip().lower() == normalized_email
+        ),
+        None,
+    )
+    auth_id = member.get("auth_id") if member else None
+    if not auth_id:
+        return True
+
+    preference = (
+        await db.execute(
+            select(NotificationPreferences).where(
+                NotificationPreferences.member_auth_id == str(auth_id)
+            )
+        )
+    ).scalar_one_or_none()
+    return bool(getattr(preference, preference_field, True))
+
 
 # ===== SCHEMAS =====
 
@@ -36,6 +129,7 @@ class EmailRequest(BaseModel):
     html_body: Optional[str] = None
     from_email: Optional[str] = None
     from_name: Optional[str] = None
+    preference_category: Optional[str] = None
 
 
 class BulkEmailRequest(BaseModel):
@@ -74,12 +168,31 @@ class TemplatedEmailRequest(BaseModel):
 async def send_single_email(
     request: EmailRequest,
     current_user: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Send a single email.
 
     Requires service role authentication (internal service-to-service calls).
     """
+    if request.preference_category:
+        preference_field = PLAIN_EMAIL_PREFERENCE.get(request.preference_category)
+        if not preference_field:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown email preference category: {request.preference_category}",
+            )
+        if not await _member_email_allowed(
+            to_email=str(request.to_email),
+            preference_field=preference_field,
+            db=db,
+        ):
+            return EmailResponse(
+                success=True,
+                message="Email suppressed by recipient preference",
+                sent_count=0,
+            )
+
     success = await send_email(
         to_email=request.to_email,
         subject=request.subject,
@@ -161,6 +274,7 @@ async def send_bulk_emails(
 async def send_templated_email(
     request: TemplatedEmailRequest,
     current_user: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Send a templated email using predefined templates.
@@ -570,6 +684,26 @@ async def send_templated_email(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown template type: {request.template_type}. "
             f"Available: {list(template_handlers.keys())}",
+        )
+
+    preference_field = TEMPLATE_EMAIL_PREFERENCE.get(request.template_type)
+    if preference_field and not await _member_email_allowed(
+        to_email=str(request.to_email),
+        preference_field=preference_field,
+        db=db,
+    ):
+        logger.info(
+            "Suppressed templated email %s for %s due to %s",
+            request.template_type,
+            request.to_email,
+            preference_field,
+        )
+        return EmailResponse(
+            success=True,
+            message=(
+                f"Templated email '{request.template_type}' suppressed by recipient preference"
+            ),
+            sent_count=0,
         )
 
     try:

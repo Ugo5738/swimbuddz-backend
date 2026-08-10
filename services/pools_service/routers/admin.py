@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
-from services.pools_service.models import PartnershipStatus, Pool, PoolType
+from services.pools_service.models import (
+    OperatingArea,
+    PartnershipStatus,
+    Pool,
+    PoolType,
+)
 from services.pools_service.schemas import (
     PoolCreate,
     PoolListResponse,
@@ -20,6 +25,23 @@ from services.pools_service.schemas import (
 from services.pools_service.services import recompute_pool_score
 
 router = APIRouter(tags=["admin-pools"])
+
+
+async def _canonical_area_name(
+    operating_area_id: uuid.UUID,
+    db: AsyncSession,
+) -> str:
+    """Resolve the display snapshot from the structured geography source."""
+    area = (
+        await db.execute(
+            select(OperatingArea).where(OperatingArea.id == operating_area_id)
+        )
+    ).scalar_one_or_none()
+    if area is None:
+        raise HTTPException(status_code=400, detail="Operating area not found")
+    if not area.is_active:
+        raise HTTPException(status_code=400, detail="Operating area is inactive")
+    return area.name
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +113,12 @@ async def create_pool(
             detail=f"Pool with slug '{pool_in.slug}' already exists",
         )
 
-    pool = Pool(**pool_in.model_dump())
+    create_data = pool_in.model_dump()
+    if pool_in.operating_area_id is not None:
+        create_data["location_area"] = await _canonical_area_name(
+            pool_in.operating_area_id, db
+        )
+    pool = Pool(**create_data)
     # Compute weighted composite score from component scores + pool_type
     pool.computed_score = recompute_pool_score(pool)
     db.add(pool)
@@ -153,6 +180,12 @@ async def update_pool(
                 status_code=400,
                 detail=f"Pool with slug '{update_data['slug']}' already exists",
             )
+
+    # A linked operating area is authoritative. Keep location_area only as a
+    # denormalized display snapshot so a pool cannot become "Yaba + Island".
+    effective_area_id = update_data.get("operating_area_id", pool.operating_area_id)
+    if effective_area_id is not None:
+        update_data["location_area"] = await _canonical_area_name(effective_area_id, db)
 
     for field, value in update_data.items():
         setattr(pool, field, value)

@@ -40,6 +40,9 @@ class OperatingArea(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    area_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="locality", server_default="locality"
+    )  # country/market/commercial_band/locality
     parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("operating_areas.id", ondelete="RESTRICT"),

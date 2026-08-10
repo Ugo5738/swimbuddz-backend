@@ -157,11 +157,15 @@ async def get_scheduled_sessions(
     # datetime, not str: binds as timestamptz (str 500s the starts_at comparison)
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    include_completed: bool = False,
     _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get scheduled sessions within a date range."""
-    query = select(Session).where(Session.status == SessionStatus.SCHEDULED)
+    statuses = [SessionStatus.SCHEDULED]
+    if include_completed:
+        statuses.extend([SessionStatus.IN_PROGRESS, SessionStatus.COMPLETED])
+    query = select(Session).where(Session.status.in_(statuses))
     if start_date:
         query = query.where(Session.starts_at >= start_date)
     if end_date:

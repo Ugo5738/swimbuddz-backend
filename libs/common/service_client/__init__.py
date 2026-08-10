@@ -73,6 +73,7 @@ from .sessions import (
     get_session_by_id,
     get_session_ids_for_cohort,
     get_sessions_by_ids,
+    list_scheduled_sessions,
 )
 from .transport import attach_session_ride_configs
 from .volunteer import (
@@ -140,6 +141,7 @@ __all__ = [
     "get_sessions_by_ids",
     "get_next_session_for_cohort",
     "get_session_ids_for_cohort",
+    "list_scheduled_sessions",
     # Transport
     "attach_session_ride_configs",
     # Wallet

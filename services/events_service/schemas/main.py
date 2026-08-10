@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,6 +11,19 @@ EventVisibility = Literal["public", "members_only", "invite_only"]
 EventStatus = Literal["draft", "published", "cancelled"]
 EventLocationType = Literal["physical", "online", "hybrid"]
 EventTierAccess = Literal["public", "community", "club", "academy", "invite_only"]
+EventPricingMode = Literal["free", "included", "fixed", "cost_plus"]
+MarginType = Literal["fixed_per_attendee", "percentage"]
+ReminderHour = Annotated[int, Field(ge=1, le=720)]
+
+
+class EventCostLine(BaseModel):
+    category: str
+    description: str
+    charge_basis: str
+    unit_cost_naira: float = Field(ge=0)
+    quantity: float = Field(ge=0)
+    source_rate_type: Optional[str] = None
+    source_rate_id: Optional[uuid.UUID] = None
 
 
 class EventBase(BaseModel):
@@ -34,6 +47,12 @@ class EventBase(BaseModel):
     pool_id: Optional[uuid.UUID] = None
     # Optional entry fee — API accepts/returns naira (float). DB stores kobo (int).
     cost_naira: Optional[float] = None  # null = free
+    pricing_mode: EventPricingMode = "fixed"
+    pricing_expected_attendees: Optional[int] = Field(None, ge=1)
+    cost_lines: list[EventCostLine] = Field(default_factory=list)
+    margin_type: MarginType = "fixed_per_attendee"
+    margin_value: float = Field(default=0, ge=0)
+    email_reminder_hours: list[ReminderHour] = Field(default_factory=list, max_length=8)
 
 
 class EventCreate(EventBase):
@@ -62,6 +81,12 @@ class EventUpdate(BaseModel):
     tier_access: Optional[EventTierAccess] = None
     pool_id: Optional[uuid.UUID] = None
     cost_naira: Optional[float] = None  # null = free
+    pricing_mode: Optional[EventPricingMode] = None
+    pricing_expected_attendees: Optional[int] = Field(None, ge=1)
+    cost_lines: Optional[list[EventCostLine]] = None
+    margin_type: Optional[MarginType] = None
+    margin_value: Optional[float] = Field(None, ge=0)
+    email_reminder_hours: Optional[list[ReminderHour]] = Field(None, max_length=8)
 
 
 class EventResponse(BaseModel):
@@ -84,6 +109,15 @@ class EventResponse(BaseModel):
     max_capacity: Optional[int] = None
     tier_access: EventTierAccess
     cost_naira: Optional[float] = None  # null = free
+    pricing_mode: EventPricingMode = "fixed"
+    pricing_expected_attendees: Optional[int] = None
+    cost_lines: list[EventCostLine] = Field(default_factory=list)
+    estimated_total_cost_naira: float = 0
+    estimated_cost_per_attendee_naira: float = 0
+    margin_type: MarginType = "fixed_per_attendee"
+    margin_value: float = 0
+    margin_amount_per_attendee_naira: float = 0
+    email_reminder_hours: list[ReminderHour] = Field(default_factory=list)
     # Member-created pool meets (event_type="open_swim"):
     pool_id: Optional[uuid.UUID] = None  # null = no pool / free meet
     pool_fee_naira: Optional[float] = None  # snapshotted per-swimmer pool fee

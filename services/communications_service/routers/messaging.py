@@ -8,6 +8,9 @@ import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import is_admin_or_service, require_coach
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
@@ -18,7 +21,11 @@ from libs.common.service_client import (
     internal_get,
 )
 from libs.db.session import get_async_db
-from services.communications_service.models import MessageLog, MessageRecipientType
+from services.communications_service.models import (
+    MessageLog,
+    MessageRecipientType,
+    NotificationPreferences,
+)
 from services.communications_service.schemas import (
     CohortMessageCreate,
     MessageLogResponse,
@@ -26,8 +33,6 @@ from services.communications_service.schemas import (
     StudentMessageCreate,
 )
 from services.communications_service.templates.messaging import send_message_email
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/messages", tags=["messaging"])
 
@@ -105,6 +110,7 @@ async def get_cohort_enrolled_students(
             {
                 "enrollment_id": e["enrollment_id"],
                 "member_id": e["member_id"],
+                "auth_id": m.get("auth_id"),
                 "email": m.get("email"),
                 "first_name": m.get("first_name"),
                 "last_name": m.get("last_name"),
@@ -149,6 +155,7 @@ async def get_enrollment_student(enrollment_id: uuid.UUID) -> dict:
         "enrollment_id": str(enrollment.get("id", enrollment_id)),
         "member_id": enrollment.get("member_id"),
         "cohort_id": enrollment.get("cohort_id"),
+        "auth_id": (member or {}).get("auth_id") or enrollment.get("member_auth_id"),
         "email": member.get("email") if member else None,
         "first_name": member.get("first_name") if member else None,
         "last_name": member.get("last_name") if member else None,
@@ -188,7 +195,26 @@ async def send_cohort_message(
 
     # Send branded emails to all students
     success_count = 0
+    auth_ids = [
+        str(student["auth_id"]) for student in students if student.get("auth_id")
+    ]
+    preference_map: dict[str, NotificationPreferences] = {}
+    if auth_ids:
+        preference_result = await db.execute(
+            select(NotificationPreferences).where(
+                NotificationPreferences.member_auth_id.in_(auth_ids)
+            )
+        )
+        preference_map = {
+            preference.member_auth_id: preference
+            for preference in preference_result.scalars().all()
+        }
     for student in students:
+        preference = preference_map.get(str(student.get("auth_id")))
+        if preference and preference.email_coach_messages is False:
+            continue
+        if not student.get("email"):
+            continue
         email_sent = await send_message_email(
             to_email=student["email"],
             subject=message.subject,
@@ -238,9 +264,30 @@ async def send_student_message(
 
     # If not admin, validate coach owns the cohort
     if not is_admin_or_service(current_user):
-        await validate_coach_owns_cohort(sender_member_id, student["cohort_id"], db)
+        await validate_coach_owns_cohort(sender_member_id, student["cohort_id"])
 
     # Send branded email
+    preference = None
+    if student.get("auth_id"):
+        preference = (
+            await db.execute(
+                select(NotificationPreferences).where(
+                    NotificationPreferences.member_auth_id == str(student["auth_id"])
+                )
+            )
+        ).scalar_one_or_none()
+    if preference and preference.email_coach_messages is False:
+        return MessageResponse(
+            success=True,
+            recipients_count=0,
+            message="Message not emailed because the recipient disabled coach messages",
+        )
+    if not student.get("email"):
+        return MessageResponse(
+            success=False,
+            recipients_count=0,
+            message="Student email address is unavailable",
+        )
     email_sent = await send_message_email(
         to_email=student["email"],
         subject=message.subject,

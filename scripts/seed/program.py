@@ -102,6 +102,7 @@ async def seed_program(json_file_path):
                 price_amount=naira_to_kobo(program_data.get("price_amount", 0)),
                 billing_type=BillingType(program_data.get("billing_type", "one_time")),
                 prep_materials=program_data.get("prep_materials"),
+                faq_json=program_data.get("faq_json"),
                 # Populate curriculum_json for Admin UI display (UI expects 'week' key, seed has 'week_number')
                 curriculum_json={
                     "weeks": [{**w, "week": w["week_number"]} for w in curriculum_data]

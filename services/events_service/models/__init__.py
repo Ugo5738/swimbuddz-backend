@@ -3,6 +3,7 @@
 from services.events_service.models.core import (
     Event,
     EventInvite,
+    EventReminderLog,
     EventRSVP,
     EventTemplate,
     MemberRef,
@@ -11,6 +12,7 @@ from services.events_service.models.core import (
 __all__ = [
     "Event",
     "EventInvite",
+    "EventReminderLog",
     "EventRSVP",
     "EventTemplate",
     "MemberRef",

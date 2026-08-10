@@ -78,6 +78,8 @@ async def test_content_publish_email_is_idempotent(db_session, monkeypatch):
         send_email.await_args.kwargs["featured_image_url"]
         == "https://cdn.example.com/article-image.jpg"
     )
+    assert send_email.await_args.kwargs["reading_time_minutes"] >= 1
+    assert send_email.await_args.kwargs["tier_access"] == "community"
     logs = (
         (
             await db_session.execute(
