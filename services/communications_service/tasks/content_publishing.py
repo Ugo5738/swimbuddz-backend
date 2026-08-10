@@ -21,6 +21,7 @@ from services.communications_service.models import (
     NotificationPreferences,
 )
 from services.communications_service.templates.content import (
+    estimate_article_reading_time,
     send_content_post_published_email,
 )
 
@@ -340,6 +341,7 @@ async def send_content_post_publish_emails(
             return 0
 
     sent_count = 0
+    reading_time_minutes = estimate_article_reading_time(post.body)
     for delivery in candidates:
         log_id = await _claim_article_email(
             db,
@@ -358,6 +360,8 @@ async def send_content_post_publish_emails(
                 summary=post.summary,
                 category=post.category,
                 featured_image_url=featured_image_url,
+                reading_time_minutes=reading_time_minutes,
+                tier_access=post.tier_access,
             )
         except EmailDeliveryUnknownError as exc:
             logger.error(

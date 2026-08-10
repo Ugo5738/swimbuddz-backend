@@ -11,6 +11,80 @@
     "price_amount": 150000,
     "billing_type": "one_time",
     "session_duration_minutes": 90,
+    "faq_json": [
+      {
+        "question": "Do I need any previous swimming experience?",
+        "answer": "No. This programme is designed for complete beginners. We'll start with water confidence, breathing and floating before gradually teaching you to swim independently."
+      },
+      {
+        "question": "What is the goal of the programme?",
+        "answer": "The goal is to help you confidently swim up to 50 metres using proper freestyle technique while building the confidence to enjoy swimming safely."
+      },
+      {
+        "question": "How long is the programme?",
+        "answer": "The programme runs for 12 weekly sessions.\n\nEach session is approximately two hours long."
+      },
+      {
+        "question": "What happens if I miss a class?",
+        "answer": "We understand that life happens.\n\nIf you miss a session for a genuine reason, you'll be able to make it up. We allow up to three make-up sessions during the programme so you don't fall behind."
+      },
+      {
+        "question": "What happens after I complete the programme?",
+        "answer": "Graduation isn't the end of your swimming journey.\n\nAfter completing the Academy, you'll receive one month of complimentary SwimBuddz Club access, giving you the opportunity to continue practising with the community before deciding whether you'd like to become a Club member."
+      },
+      {
+        "question": "Where are classes held?",
+        "answer": "We currently run beginner cohorts at selected SwimBuddz partner pools across Lagos including Yaba, Festac, Ikeja, Victoria Island, Ikoyi.\n\nThe available locations for each cohort will be shown during registration."
+      },
+      {
+        "question": "How much does the programme cost?",
+        "answer": "The regular tuition is ₦150,000.\n\nThe 22nd August cohort is currently available at an introductory tuition of ₦120,000.\n\nPool access is charged separately because fees vary by location.\n\nFor example, the current Yaba pool fee is ₦3,500 per session (₦42,000 for 12 sessions)."
+      },
+      {
+        "question": "Can I pay in instalments?",
+        "answer": "Yes.\n\nTo make the programme more accessible, payment can be spread across three instalments instead of paying everything upfront."
+      },
+      {
+        "question": "Why isn't the pool fee included?",
+        "answer": "Keeping them separate allows us to use different pools across Lagos without charging everyone the same amount regardless of location."
+      },
+      {
+        "question": "What should I bring?",
+        "answer": "You'll need:\n\nSwimwear\nSwimming cap\nGoggles (recommended)\nTowel\nSlippers\nWater\n\nIf you don't already have swimming gear, you can order it through the SwimBuddz Store."
+      },
+      {
+        "question": "What if I'm afraid of water?",
+        "answer": "That's perfectly okay.\n\nMany of our learners begin with little confidence around water.\n\nThe programme starts by helping you become comfortable in the water before moving on to swimming skills."
+      },
+      {
+        "question": "Will I definitely learn to swim?",
+        "answer": "Everyone progresses at a different pace.\n\nIf you attend consistently, practise what you're taught and participate fully in the programme, you should make significant progress towards swimming independently."
+      },
+      {
+        "question": "Is there an age limit?",
+        "answer": "The programme is designed primarily for adults and older teenagers.\n\nIf you're looking for children's lessons, please contact us so we can recommend the appropriate option."
+      },
+      {
+        "question": "Is this programme suitable if I already know how to swim?",
+        "answer": "If you can already swim confidently, this beginner programme may not be the best fit.\n\nDepending on your current level, we'll recommend either:\n- technique improvement through the Academy, or\n- the SwimBuddz Club for regular swimming and continued progress."
+      },
+      {
+        "question": "Do I automatically become a Club member after graduating?",
+        "answer": "No.\n\nYour graduation includes one month of complimentary Club access so you can experience regular swimming with the community.\n\nAfter that month, you can decide whether you'd like to continue as a Club member."
+      },
+      {
+        "question": "What if I can't keep up with everyone else?",
+        "answer": "Don't worry.\n\nEveryone starts at a different level, and our coaches work with each learner based on their current ability. The focus is on steady progress, not competing with others."
+      },
+      {
+        "question": "Why should I learn with SwimBuddz instead of taking private lessons?",
+        "answer": "Private lessons can teach you how to swim.\n\nSwimBuddz is designed to help you keep swimming.\n\nBeyond learning the skill, you'll become part of a community where you can continue practising, stay consistent and build a lifelong swimming habit through the SwimBuddz Club."
+      },
+      {
+        "question": "What makes SwimBuddz different from other swimming schools?",
+        "answer": "Many swimming schools help you learn to swim. At SwimBuddz, our goal is to help you become a confident, lifelong swimmer.\n\nOur Beginner Academy teaches you the fundamentals, but your journey doesn't stop there. After graduation, you'll receive one month of complimentary access to the SwimBuddz Club so you can continue practising with other swimmers, build confidence and develop consistency before deciding whether to continue as a Club member.\n\nBeyond the Academy and Club, you'll also become part of the wider SwimBuddz Community, where you'll have opportunities to meet other swimmers, participate in events and enjoy swimming as part of a healthy lifestyle.\n\nOur goal isn't just to help you complete a course—it's to help you become someone who swims for life."
+      }
+    ],
     "prep_materials": {
       "required_equipment": [
         "Swim goggles (anti-fog recommended)",
