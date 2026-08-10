@@ -5,28 +5,29 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import delete, or_, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
-from pydantic import BaseModel, ConfigDict
 from services.transport_service.models import (
     PickupLocation,
     RideArea,
     RideBooking,
     SessionRideConfig,
 )
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/transport", tags=["transport"])
 
 
 class RideAreaCreate(BaseModel):
-    name: str
-    slug: str
+    operating_area_id: uuid.UUID
 
 
 class RideAreaUpdate(BaseModel):
+    operating_area_id: Optional[uuid.UUID] = None
     name: Optional[str] = None
     slug: Optional[str] = None
     is_active: Optional[bool] = None
@@ -60,6 +61,7 @@ class PickupLocationResponse(PickupLocationBase):
 
 class RideAreaResponse(BaseModel):
     id: uuid.UUID
+    operating_area_id: Optional[uuid.UUID] = None
     name: str
     slug: str
     is_active: bool
@@ -68,6 +70,47 @@ class RideAreaResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+async def _get_operating_area(
+    operating_area_id: uuid.UUID,
+    db: AsyncSession,
+    *,
+    require_active: bool = True,
+) -> dict:
+    """Read canonical geography without importing another service's models."""
+    row = (
+        (
+            await db.execute(
+                text(
+                    """
+                SELECT id, name, slug, is_active
+                FROM operating_areas
+                WHERE id = :area_id
+                """
+                ),
+                {"area_id": operating_area_id},
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        raise HTTPException(status_code=400, detail="Operating area not found")
+    if require_active and not row["is_active"]:
+        raise HTTPException(status_code=400, detail="Operating area is inactive")
+    return dict(row)
+
+
+async def _canonical_identity(area: RideArea, db: AsyncSession) -> tuple[str, str]:
+    if area.operating_area_id is None:
+        return area.name, area.slug
+    canonical = await _get_operating_area(
+        area.operating_area_id,
+        db,
+        require_active=False,
+    )
+    return canonical["name"], canonical["slug"]
 
 
 @router.get("/areas", response_model=List[RideAreaResponse])
@@ -82,6 +125,7 @@ async def list_ride_areas(
     # Fetch pickup locations for each area
     responses = []
     for area in areas:
+        name, slug = await _canonical_identity(area, db)
         locs_query = select(PickupLocation).where(
             PickupLocation.area_id == area.id, PickupLocation.is_active.is_(True)
         )
@@ -91,8 +135,9 @@ async def list_ride_areas(
         responses.append(
             RideAreaResponse(
                 id=area.id,
-                name=area.name,
-                slug=area.slug,
+                operating_area_id=area.operating_area_id,
+                name=name,
+                slug=slug,
                 is_active=area.is_active,
                 pickup_locations=[
                     PickupLocationResponse.model_validate(loc) for loc in locations
@@ -126,14 +171,73 @@ async def create_ride_area(
     area_in: RideAreaCreate,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Create a new ride area."""
-    area = RideArea(name=area_in.name, slug=area_in.slug, is_active=True)
+    """Enable ride-share configuration for a canonical operating area."""
+    canonical = await _get_operating_area(area_in.operating_area_id, db)
+    existing = (
+        await db.execute(
+            select(RideArea).where(
+                RideArea.operating_area_id == area_in.operating_area_id
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Ride share is already configured for this operating area",
+        )
+    legacy = (
+        await db.execute(
+            select(RideArea).where(
+                RideArea.operating_area_id.is_(None),
+                or_(
+                    RideArea.name == canonical["name"],
+                    RideArea.slug == canonical["slug"],
+                ),
+            )
+        )
+    ).scalar_one_or_none()
+    if legacy is not None:
+        legacy.operating_area_id = area_in.operating_area_id
+        legacy.name = canonical["name"]
+        legacy.slug = canonical["slug"]
+        legacy.is_active = True
+        await db.commit()
+        await db.refresh(legacy)
+        locations = (
+            (
+                await db.execute(
+                    select(PickupLocation).where(PickupLocation.area_id == legacy.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return RideAreaResponse(
+            id=legacy.id,
+            operating_area_id=legacy.operating_area_id,
+            name=legacy.name,
+            slug=legacy.slug,
+            is_active=legacy.is_active,
+            pickup_locations=[
+                PickupLocationResponse.model_validate(location)
+                for location in locations
+            ],
+            created_at=legacy.created_at,
+            updated_at=legacy.updated_at,
+        )
+    area = RideArea(
+        operating_area_id=area_in.operating_area_id,
+        name=canonical["name"],
+        slug=canonical["slug"],
+        is_active=True,
+    )
     db.add(area)
     await db.commit()
     await db.refresh(area)
 
     return RideAreaResponse(
         id=area.id,
+        operating_area_id=area.operating_area_id,
         name=area.name,
         slug=area.slug,
         is_active=area.is_active,
@@ -159,11 +263,13 @@ async def get_ride_area(
     locs_query = select(PickupLocation).where(PickupLocation.area_id == area_id)
     locs_result = await db.execute(locs_query)
     locations = locs_result.scalars().all()
+    name, slug = await _canonical_identity(area, db)
 
     return RideAreaResponse(
         id=area.id,
-        name=area.name,
-        slug=area.slug,
+        operating_area_id=area.operating_area_id,
+        name=name,
+        slug=slug,
         is_active=area.is_active,
         pickup_locations=[
             PickupLocationResponse.model_validate(loc) for loc in locations
@@ -188,6 +294,15 @@ async def update_ride_area(
         raise HTTPException(status_code=404, detail="Ride area not found")
 
     update_data = area_in.model_dump(exclude_unset=True)
+    if "operating_area_id" in update_data:
+        canonical = await _get_operating_area(update_data["operating_area_id"], db)
+        update_data["name"] = canonical["name"]
+        update_data["slug"] = canonical["slug"]
+    elif area.operating_area_id is not None:
+        # Linked records cannot fork their canonical identity through this API.
+        canonical = await _get_operating_area(area.operating_area_id, db)
+        update_data["name"] = canonical["name"]
+        update_data["slug"] = canonical["slug"]
     for field, value in update_data.items():
         setattr(area, field, value)
 
@@ -200,6 +315,7 @@ async def update_ride_area(
 
     return RideAreaResponse(
         id=area.id,
+        operating_area_id=area.operating_area_id,
         name=area.name,
         slug=area.slug,
         is_active=area.is_active,

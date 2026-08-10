@@ -57,6 +57,7 @@ class Pool(Base):
     location_area: Mapped[Optional[str]] = mapped_column(
         String(255), nullable=True, index=True
     )  # e.g., "Yaba", "Lekki Phase 1", "Victoria Island"
+    address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     operating_area_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("operating_areas.id", ondelete="SET NULL"),

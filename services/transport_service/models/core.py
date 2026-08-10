@@ -37,6 +37,12 @@ class RideArea(Base):
     )
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     slug: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    # Canonical geography is owned by pools_service. This cross-service UUID
+    # intentionally has no database FK; RideArea retains transport-specific
+    # pickup/config records while anchoring them to one operating area.
+    operating_area_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, unique=True, index=True
+    )
     is_active: Mapped[bool] = mapped_column(default=True)
 
     created_at: Mapped[datetime] = mapped_column(
