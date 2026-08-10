@@ -1,6 +1,7 @@
 """Media service media router: media items, uploads, and tag management."""
 
 import uuid
+from json import JSONDecodeError
 from typing import List, Optional
 from urllib.parse import urlparse
 
@@ -42,6 +43,8 @@ from services.media_service.schemas import (
 )
 from services.media_service.services.image_variants import (
     PRESENTATION_IMAGE_PRESETS,
+    ImageTransformRecipe,
+    NormalizedCrop,
     generate_image_variant,
 )
 from services.media_service.services.storage import (
@@ -488,10 +491,11 @@ async def upload_file(
 async def upload_adjusted_image(
     file: UploadFile = File(...),
     purpose: str = Form(...),
-    crop_x: float = Form(...),
-    crop_y: float = Form(...),
-    crop_width: float = Form(...),
-    crop_height: float = Form(...),
+    recipe_json: Optional[str] = Form(None),
+    crop_x: Optional[float] = Form(None),
+    crop_y: Optional[float] = Form(None),
+    crop_width: Optional[float] = Form(None),
+    crop_height: Optional[float] = Form(None),
     title: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     current_user: AuthUser = Depends(get_current_user),
@@ -510,14 +514,18 @@ async def upload_adjusted_image(
             detail="File must be an image",
         )
 
-    file_data = await _read_file_with_limit(file, purpose)
-    generated = generate_image_variant(
-        file_data,
-        purpose=purpose,
+    recipe = _parse_image_recipe(
+        recipe_json,
         crop_x=crop_x,
         crop_y=crop_y,
         crop_width=crop_width,
         crop_height=crop_height,
+    )
+    file_data = await _read_file_with_limit(file, purpose)
+    generated = generate_image_variant(
+        file_data,
+        purpose=purpose,
+        recipe=recipe,
     )
 
     prefix = STORAGE_PREFIXES[purpose]
@@ -584,12 +592,8 @@ async def upload_adjusted_image(
             metadata_info={
                 "purpose": purpose,
                 "presentation_variant": True,
-                "crop": {
-                    "x": crop_x,
-                    "y": crop_y,
-                    "width": crop_width,
-                    "height": crop_height,
-                },
+                "crop": recipe.crop.model_dump(),
+                "transformation_recipe": recipe.model_dump(mode="json"),
                 "width": generated.output_width,
                 "height": generated.output_height,
             },
@@ -623,6 +627,44 @@ async def upload_adjusted_image(
         raise
 
     return response
+
+
+def _parse_image_recipe(
+    recipe_json: Optional[str],
+    *,
+    crop_x: Optional[float],
+    crop_y: Optional[float],
+    crop_width: Optional[float],
+    crop_height: Optional[float],
+) -> ImageTransformRecipe:
+    if recipe_json:
+        try:
+            return ImageTransformRecipe.model_validate_json(recipe_json)
+        except (ValueError, JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Image transformation recipe is invalid",
+            ) from exc
+
+    if None in (crop_x, crop_y, crop_width, crop_height):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Image transformation recipe is required",
+        )
+    try:
+        return ImageTransformRecipe(
+            crop=NormalizedCrop(
+                x=crop_x,
+                y=crop_y,
+                width=crop_width,
+                height=crop_height,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Image crop is invalid",
+        ) from exc
 
 
 def _safe_image_extension(filename: str, content_type: str) -> str:
