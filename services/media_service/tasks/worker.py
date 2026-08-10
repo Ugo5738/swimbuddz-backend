@@ -77,6 +77,13 @@ async def task_reconcile_vault_bandwidth(ctx: dict):
     return await reconcile_vault_bandwidth()
 
 
+async def task_sync_session_vaults(ctx: dict):
+    """Provision missing private vaults for recent and upcoming sessions."""
+    from services.media_service.tasks.vault_lifecycle import sync_session_vaults
+
+    return await sync_session_vaults()
+
+
 # ── Worker configuration ──
 
 
@@ -100,9 +107,11 @@ class WorkerSettings:
         task_build_vault_preview,
         task_cleanup_vault_exports,
         task_reconcile_vault_bandwidth,
+        task_sync_session_vaults,
     ]
 
     cron_jobs = [
         cron(task_cleanup_vault_exports, hour={2}, minute=30),
         cron(task_reconcile_vault_bandwidth, minute={0, 15, 30, 45}),
+        cron(task_sync_session_vaults, minute=5),
     ]

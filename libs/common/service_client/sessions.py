@@ -26,6 +26,30 @@ async def get_session_by_id(session_id: str, *, calling_service: str) -> Optiona
     return resp.json()
 
 
+async def list_scheduled_sessions(
+    *,
+    start_date: str,
+    end_date: str,
+    calling_service: str,
+) -> list[dict]:
+    """Return scheduled sessions in a half-open time range."""
+
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.SESSIONS_SERVICE_URL,
+        path="/internal/sessions/scheduled",
+        calling_service=calling_service,
+        params={
+            "start_date": start_date,
+            "end_date": end_date,
+            "include_completed": "true",
+        },
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    return payload if isinstance(payload, list) else []
+
+
 async def get_sessions_by_ids(
     session_ids: list[str], *, calling_service: str
 ) -> list[dict]:

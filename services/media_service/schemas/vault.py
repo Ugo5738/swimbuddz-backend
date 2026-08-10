@@ -134,6 +134,7 @@ class VaultGrantResponse(BaseModel):
     can_download_originals: bool
     revoked_at: Optional[datetime]
     created_at: datetime
+    notification_dispatched: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

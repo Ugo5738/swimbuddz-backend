@@ -1,6 +1,9 @@
 import io
+import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import ValidationError
@@ -15,8 +18,18 @@ from services.media_service.services.storage import (
     attachment_content_disposition,
     recommended_multipart_part_size,
 )
+from services.media_service.services.vault_grants import (
+    CONTRIBUTOR_REOPEN_DAYS,
+    ensure_contributor_window,
+    notify_vault_access,
+)
+from services.media_service.services.vault_templates import (
+    DEFAULT_MEDIA_VAULT_CHECKLIST,
+)
 from services.media_service.tasks.vault_exports import S3MultipartArchiveWriter
 from services.media_service.tasks.vault_bandwidth import parse_s3_access_log_line
+from services.media_service.tasks.vault_lifecycle import vault_fields_from_session
+from services.media_service.tasks.worker import WorkerSettings, task_sync_session_vaults
 
 
 class FakeMultipartS3:
@@ -128,6 +141,88 @@ def test_upload_batch_requires_consent_attestation():
             consent_attested=False,
             consent_attestation_text="Not accepted",
         )
+
+
+def test_expired_contributor_assignment_reopens_vault_for_seven_days():
+    now = datetime(2026, 8, 10, 12, tzinfo=timezone.utc)
+    vault = SimpleNamespace(
+        upload_opens_at=now - timedelta(days=3),
+        upload_closes_at=now - timedelta(days=1),
+        status="review",
+    )
+
+    starts_at, expires_at = ensure_contributor_window(
+        vault,
+        starts_at=now - timedelta(days=3),
+        expires_at=now - timedelta(days=1),
+        now=now,
+    )
+
+    assert starts_at == now - timedelta(days=3)
+    assert expires_at == now + timedelta(days=CONTRIBUTOR_REOPEN_DAYS)
+    assert vault.upload_closes_at == expires_at
+    assert vault.status == "open"
+
+
+def test_session_vault_defaults_use_local_date_and_coverage_standard():
+    now = datetime(2026, 8, 7, 12, tzinfo=timezone.utc)
+    fields = vault_fields_from_session(
+        {
+            "id": "273f49ba-5f04-4d6a-8dcb-e9dc1a1d1b08",
+            "title": "Saturday Club Swim",
+            "description": "Practice",
+            "session_type": "club",
+            "starts_at": "2026-08-08T23:30:00+00:00",
+            "ends_at": "2026-08-09T02:30:00+00:00",
+            "timezone": "Africa/Lagos",
+            "location_name": "Rowe Park Pool",
+        },
+        now=now,
+    )
+
+    assert fields["capture_date"].isoformat() == "2026-08-09"
+    assert fields["upload_closes_at"] == datetime(
+        2026, 8, 12, 2, 30, tzinfo=timezone.utc
+    )
+    assert fields["auto_transcode"] is False
+    assert fields["shot_checklist"] == DEFAULT_MEDIA_VAULT_CHECKLIST
+    assert fields["settings_json"]["story"] == [
+        "prepare",
+        "practise",
+        "coach",
+        "progress",
+        "belong",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_assignment_notification_requests_in_app_and_email(monkeypatch):
+    from services.media_service.services import vault_grants
+
+    dispatch = AsyncMock(return_value={"dispatched": 1})
+    monkeypatch.setattr(vault_grants, "dispatch_notification", dispatch)
+    vault = SimpleNamespace(
+        id=uuid.UUID("f61fb341-8e27-4134-a6f9-9050ed7ef22e"),
+        title="Saturday Club Swim",
+    )
+    expires_at = datetime(2026, 8, 17, 12, tzinfo=timezone.utc)
+
+    await notify_vault_access(
+        vault=vault,
+        member_id=uuid.UUID("90d305c8-1ff6-486d-8293-0acc06f49ac0"),
+        role="contributor",
+        expires_at=expires_at,
+    )
+
+    payload = dispatch.await_args.kwargs
+    assert payload["channels"] == ["in_app", "email"]
+    assert payload["email_template"] == "media_vault_access_granted"
+    assert payload["expires_at"] is None
+    assert payload["action_url"] == f"/account/media-vault/{vault.id}"
+
+
+def test_media_worker_registers_automatic_session_vault_sync():
+    assert task_sync_session_vaults in WorkerSettings.functions
 
 
 def _s3_log_line(

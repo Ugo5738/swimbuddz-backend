@@ -50,3 +50,38 @@ async def test_dispatch_email_uses_resolved_member_address_and_email_body(
         body="Plain-text congratulations",
         html_body="<h1>Congratulations</h1>",
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_email_directory_failure_does_not_suppress_in_app_notification(
+    communications_client,
+    monkeypatch,
+):
+    from services.communications_service.routers import notifications
+
+    member_id = "a7816ad1-9d2f-4b39-92e9-9da0baa9176a"
+    monkeypatch.setattr(
+        notifications,
+        "get_members_bulk",
+        AsyncMock(side_effect=RuntimeError("members service unavailable")),
+    )
+
+    response = await communications_client.post(
+        "/notifications/dispatch",
+        json={
+            "type": "media_vault_access_granted",
+            "category": "media",
+            "member_ids": [member_id],
+            "title": "Media vault assignment",
+            "body": "You can now upload originals.",
+            "channels": ["in_app", "email"],
+            "email_template": "media_vault_access_granted",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json() == {"dispatched": 1}
+    listing = await communications_client.get(f"/notifications/?member_id={member_id}")
+    assert listing.status_code == 200
+    assert listing.json()["items"][0]["type"] == "media_vault_access_granted"

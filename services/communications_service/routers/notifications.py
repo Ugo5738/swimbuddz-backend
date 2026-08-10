@@ -31,8 +31,12 @@ CATEGORY_TO_EMAIL_PREF: dict[str, str] = {
     "payments": "email_payment_receipts",
     "store": "email_payment_receipts",  # reuse payment receipts pref for now
     "coaching": "email_coach_messages",
+    "content": "email_content_updates",
+    "marketing": "email_marketing",
     "announcements": "email_announcements",
+    "events": "email_session_reminders",
     "volunteer": "email_announcements",
+    "media": "email_announcements",
 }
 
 # ============================================================================
@@ -200,15 +204,23 @@ async def dispatch_notification(
     created_count = 0
     member_details_by_id: dict[str, dict] = {}
     if "email" in payload.channels and payload.email_template:
-        member_details = await get_members_bulk(
-            [str(member_id) for member_id in payload.member_ids],
-            calling_service="communications",
-        )
-        member_details_by_id = {
-            str(member.get("id")): member
-            for member in member_details
-            if member.get("id")
-        }
+        try:
+            member_details = await get_members_bulk(
+                [str(member_id) for member_id in payload.member_ids],
+                calling_service="communications",
+            )
+            member_details_by_id = {
+                str(member.get("id")): member
+                for member in member_details
+                if member.get("id")
+            }
+        except Exception:
+            # Member-directory or email lookup failure must never suppress the
+            # in-app notification, which is persisted below.
+            logger.warning(
+                "Could not resolve notification email recipients; continuing in-app",
+                exc_info=True,
+            )
 
     for member_id in payload.member_ids:
         # 1. Always create in-app notification

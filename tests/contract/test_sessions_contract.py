@@ -165,7 +165,8 @@ async def test_confirm_unknown_booking_is_404_contract(sessions_client):
 async def test_scheduled_sessions_contract(sessions_client, db_session):
     """Communications service uses scheduled sessions for notifications."""
     session = SessionFactory.create(status="SCHEDULED")
-    db_session.add(session)
+    completed = SessionFactory.create(status="COMPLETED")
+    db_session.add_all([session, completed])
     await db_session.commit()
 
     response = await sessions_client.get("/internal/sessions/scheduled")
@@ -173,9 +174,19 @@ async def test_scheduled_sessions_contract(sessions_client, db_session):
     data = response.json()
 
     assert isinstance(data, list)
+    assert str(session.id) in {item["id"] for item in data}
+    assert str(completed.id) not in {item["id"] for item in data}
     if data:
         required_fields = ["id", "title", "starts_at", "ends_at", "session_type"]
         for field in required_fields:
             assert (
                 field in data[0]
             ), f"Missing contract field '{field}' in scheduled sessions response."
+
+    media_response = await sessions_client.get(
+        "/internal/sessions/scheduled?include_completed=true"
+    )
+    assert media_response.status_code == 200
+    media_ids = {item["id"] for item in media_response.json()}
+    assert str(session.id) in media_ids
+    assert str(completed.id) in media_ids
