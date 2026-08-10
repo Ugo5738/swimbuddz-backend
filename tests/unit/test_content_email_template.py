@@ -48,6 +48,8 @@ async def test_published_article_email_renders_featured_image(monkeypatch):
     assert "4 min read" in html_body
     plain_body = send_email.await_args.args[2]
     assert "Estimated reading time: 4 min" in plain_body
+    assert "/tips/article-id" in plain_body
+    assert "/community/tips/article-id" not in plain_body
 
 
 @pytest.mark.asyncio
@@ -65,3 +67,20 @@ async def test_published_article_email_still_renders_without_image(monkeypatch):
     html_body = send_email.await_args.args[3]
     assert "featured image" not in html_body
     assert "max-height:320px" not in html_body
+
+
+@pytest.mark.asyncio
+async def test_member_only_article_email_uses_protected_route(monkeypatch):
+    send_email = AsyncMock(return_value=True)
+    monkeypatch.setattr(content_template, "send_email", send_email)
+
+    await content_template.send_content_post_published_email(
+        to_email="ada@example.com",
+        member_name="Ada",
+        post_id="club-article",
+        title="Club Training",
+        tier_access="club",
+    )
+
+    plain_body = send_email.await_args.args[2]
+    assert "/community/tips/club-article" in plain_body

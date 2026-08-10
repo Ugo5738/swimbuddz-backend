@@ -10,6 +10,10 @@ import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
@@ -43,9 +47,6 @@ from services.academy_service.schemas import (
     CohortTimelineShiftPreviewResponse,
     CohortTimelineShiftRequest,
 )
-from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -361,6 +362,7 @@ async def apply_cohort_timeline_shift(
                         new_end=new_end_utc,
                         reason=shift_in.reason,
                     ),
+                    preference_category="academy",
                 )
 
             send_coroutines = []

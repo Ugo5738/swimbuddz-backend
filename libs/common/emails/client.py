@@ -45,6 +45,7 @@ import uuid
 from typing import Any, Optional
 
 import httpx
+
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
 
@@ -92,6 +93,7 @@ class EmailClient:
         html_body: Optional[str] = None,
         from_email: Optional[str] = None,
         from_name: Optional[str] = None,
+        preference_category: Optional[str] = None,
     ) -> bool:
         """
         Send a single email through the Communications Service.
@@ -103,6 +105,8 @@ class EmailClient:
             html_body: Optional HTML body
             from_email: Optional sender email (defaults to no-reply@swimbuddz.com)
             from_name: Optional sender name (defaults to SwimBuddz)
+            preference_category: Optional member preference category. When set,
+                Communications suppresses delivery for opted-out members.
 
         Returns:
             True if email was sent successfully, False otherwise
@@ -118,6 +122,8 @@ class EmailClient:
             payload["from_email"] = from_email
         if from_name:
             payload["from_name"] = from_name
+        if preference_category:
+            payload["preference_category"] = preference_category
 
         try:
             headers = self._get_auth_headers()
@@ -137,6 +143,10 @@ class EmailClient:
                     return False
         except httpx.RequestError as e:
             logger.error(f"Failed to connect to Communications Service: {e}")
+            if preference_category:
+                # A direct SMTP fallback cannot verify the member's opt-out.
+                # Fail closed for preference-controlled mail.
+                return False
             # Fall back to direct send if comms service unavailable
             return await self._fallback_send(
                 to_email, subject, body, html_body, from_email, from_name

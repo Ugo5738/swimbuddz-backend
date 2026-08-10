@@ -207,6 +207,9 @@ async def send_membership_renewal_reminders() -> int:
                                 f'<p><a href="{escape(action_href, quote=True)}">'
                                 "Manage membership</a></p>"
                             ),
+                            preference_category=(
+                                "academy" if tier == "academy" else "payments"
+                            ),
                         )
                         if delivered:
                             reminder_state[email_key] = True

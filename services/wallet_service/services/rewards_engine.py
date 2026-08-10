@@ -16,13 +16,15 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from libs.common.datetime_utils import utc_now
+from libs.common.service_client import dispatch_notification, get_member_by_auth_id
 from services.wallet_service.models.enums import TransactionType
 from services.wallet_service.models.rewards import (
     MemberRewardHistory,
+    RewardNotificationPreference,
     RewardRule,
     WalletEvent,
 )
-from libs.common.datetime_utils import utc_now
 from services.wallet_service.services.abuse_detector import check_for_abuse
 from services.wallet_service.services.cap_checker import (
     check_lifetime_cap,
@@ -32,6 +34,100 @@ from services.wallet_service.services.cap_checker import (
 from services.wallet_service.services.wallet_ops import credit_wallet
 
 logger = logging.getLogger(__name__)
+
+
+def _reward_preference_field(event_type: str) -> str:
+    if event_type == "referral.qualified":
+        return "notify_on_referral_qualified"
+    if event_type == "referral.milestone":
+        return "notify_on_ambassador_milestone"
+    if event_type == "attendance.streak":
+        return "notify_on_streak_milestone"
+    return "notify_on_reward"
+
+
+def _reward_notification_copy(event_type: str, bubbles: int) -> tuple[str, str]:
+    if event_type == "referral.qualified":
+        return (
+            "Referral reward earned",
+            f"Your referral qualified and you earned {bubbles} Bubbles.",
+        )
+    if event_type == "referral.milestone":
+        return (
+            "Ambassador milestone reached",
+            f"You reached a referral milestone and earned {bubbles} Bubbles.",
+        )
+    if event_type == "attendance.streak":
+        return (
+            "Attendance streak reward",
+            f"Your swimming streak earned you {bubbles} Bubbles.",
+        )
+    return (
+        "You earned Bubbles",
+        f"A new reward added {bubbles} Bubbles to your wallet.",
+    )
+
+
+async def _dispatch_reward_notification(
+    event: WalletEvent,
+    grants: list[dict],
+    db: AsyncSession,
+) -> None:
+    """Send one preference-aware in-app notification for a rewarded event."""
+    if not grants:
+        return
+
+    try:
+        preference = (
+            await db.execute(
+                select(RewardNotificationPreference).where(
+                    RewardNotificationPreference.member_auth_id == event.member_auth_id
+                )
+            )
+        ).scalar_one_or_none()
+        preference_field = _reward_preference_field(event.event_type)
+        if preference and (
+            preference.notify_channel != "in_app"
+            or not getattr(preference, preference_field)
+        ):
+            return
+
+        member_id = str(event.member_id) if event.member_id else None
+        if not member_id:
+            member = await get_member_by_auth_id(
+                event.member_auth_id,
+                calling_service="wallet",
+            )
+            member_id = str(member.get("id")) if member and member.get("id") else None
+        if not member_id:
+            logger.warning(
+                "Could not resolve member for reward notification auth_id=%s",
+                event.member_auth_id,
+            )
+            return
+
+        bubbles = sum(int(grant.get("bubbles") or 0) for grant in grants)
+        title, body = _reward_notification_copy(event.event_type, bubbles)
+        await dispatch_notification(
+            type="reward_earned",
+            category="rewards",
+            member_ids=[member_id],
+            title=title,
+            body=body,
+            action_url="/account/wallet",
+            icon="award",
+            metadata={
+                "event_id": str(event.event_id),
+                "event_type": event.event_type,
+                "bubbles": bubbles,
+            },
+            channels=["in_app"],
+            calling_service="wallet",
+        )
+    except Exception:
+        # Rewards must never be rolled back because notification delivery or
+        # member lookup is temporarily unavailable.
+        logger.exception("Reward notification failed for event %s", event.event_id)
 
 
 def evaluate_conditions(trigger_config: Optional[dict], event_data: dict) -> bool:
@@ -222,5 +318,7 @@ async def process_event(event: WalletEvent, db: AsyncSession) -> list[dict]:
     event.processed_at = utc_now()
     event.rewards_granted = len(grants)
     await db.flush()
+
+    await _dispatch_reward_notification(event, grants, db)
 
     return grants

@@ -14,11 +14,12 @@ from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
-from libs.common.media_utils import resolve_media_url
 from libs.common.logging import get_logger
+from libs.common.media_utils import resolve_media_url
 from libs.common.service_client import internal_get
 from libs.db.session import get_async_db
 from services.communications_service.models import (
+    ContentPost,
     WeeklyDigestConfig,
     WeeklyDigestDispatch,
 )
@@ -31,6 +32,11 @@ from services.communications_service.schemas import (
 router = APIRouter(prefix="/digest", tags=["weekly-digest"])
 AUDIENCES = {"community", "club", "academy"}
 logger = get_logger(__name__)
+
+
+def article_frontend_path(tier_access: str) -> str:
+    """Return the canonical frontend collection for an article tier."""
+    return "/tips" if tier_access == "community" else "/community/tips"
 
 
 async def _config_response(config: WeeklyDigestConfig) -> WeeklyDigestConfigResponse:
@@ -192,10 +198,21 @@ async def track_digest_click(
         target = f"{frontend}{session_path}?{campaign_query}"
     elif kind == "article":
         try:
-            uuid.UUID(resource_id)
+            article_id = uuid.UUID(resource_id)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail="Article not found") from exc
-        target = f"{frontend}/community/tips/{quote(resource_id)}?{campaign_query}"
+        article = (
+            await db.execute(
+                select(ContentPost).where(
+                    ContentPost.id == article_id,
+                    ContentPost.is_published.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+        if article is None:
+            raise HTTPException(status_code=404, detail="Article not found")
+        article_path = article_frontend_path(article.tier_access)
+        target = f"{frontend}{article_path}/{quote(resource_id)}?{campaign_query}"
     elif kind == "preferences" and resource_id == "me":
         target = f"{frontend}/account/settings?{campaign_query}"
     else:

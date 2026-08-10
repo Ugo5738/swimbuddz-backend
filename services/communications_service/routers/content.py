@@ -4,17 +4,17 @@ import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from libs.auth.dependencies import get_current_user, get_optional_user, require_admin
-from libs.auth.models import AuthUser
-from libs.common.media_utils import resolve_media_url, resolve_media_urls
-from libs.common.member_utils import resolve_members_basic
-from libs.common.datetime_utils import utc_now
-from libs.common.logging import get_logger
-from libs.common.service_client import emit_rewards_event, get_member_by_id
-from libs.db.session import get_async_db
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from libs.auth.dependencies import get_current_user, get_optional_user, require_admin
+from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
+from libs.common.logging import get_logger
+from libs.common.media_utils import resolve_media_url, resolve_media_urls
+from libs.common.member_utils import resolve_members_basic
+from libs.common.service_client import emit_rewards_event, get_member_by_id
+from libs.db.session import get_async_db
 from services.communications_service.models import (
     ContentComment,
     ContentPost,
@@ -28,14 +28,14 @@ from services.communications_service.schemas import (
     ContentPostResponse,
     ContentPostUpdate,
 )
-from services.communications_service.services.content_ai import (
-    ContentAIDraftError,
-    generate_content_draft,
-)
 from services.communications_service.services.content_access import (
     allowed_content_tiers,
     require_content_read_access,
     resolve_content_actor,
+)
+from services.communications_service.services.content_ai import (
+    ContentAIDraftError,
+    generate_content_draft,
 )
 from services.communications_service.tasks.content_publishing import (
     send_content_post_publish_emails,
@@ -573,7 +573,7 @@ async def create_content_comment(
 @content_router.get("/{post_id}/comments", response_model=List[ContentCommentResponse])
 async def list_content_comments(
     post_id: uuid.UUID,
-    current_user: AuthUser = Depends(get_current_user),
+    current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all comments for a content post."""

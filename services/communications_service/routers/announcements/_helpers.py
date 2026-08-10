@@ -94,6 +94,8 @@ def _pref_allows_email(
         return True
     if category == AnnouncementCategory.ACADEMY_UPDATE:
         return pref.email_academy_updates
+    if category == AnnouncementCategory.GENERAL:
+        return pref.email_marketing
     return pref.email_announcements
 
 
