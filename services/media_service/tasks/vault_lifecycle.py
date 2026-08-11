@@ -19,6 +19,7 @@ from services.media_service.services.vault_grants import sync_volunteer_grants
 from services.media_service.services.vault_templates import (
     DEFAULT_MEDIA_VAULT_CHECKLIST,
     DEFAULT_MEDIA_VAULT_CONSENT_NOTICE,
+    MEDIA_VAULT_UPLOAD_WINDOW_HOURS,
     default_media_coverage_settings,
 )
 
@@ -38,9 +39,7 @@ def vault_fields_from_session(session: dict, *, now: datetime) -> dict:
         timezone_name = "Africa/Lagos"
         local_timezone = ZoneInfo(timezone_name)
     upload_opens_at = starts_at - timedelta(hours=4)
-    # The operating standard asks for upload within 24 hours; the extra two
-    # days are a practical recovery window for weak poolside connectivity.
-    upload_closes_at = ends_at + timedelta(hours=72)
+    upload_closes_at = ends_at + timedelta(hours=MEDIA_VAULT_UPLOAD_WINDOW_HOURS)
     status = "scheduled"
     if upload_opens_at <= now <= upload_closes_at:
         status = "open"
@@ -65,6 +64,21 @@ def vault_fields_from_session(session: dict, *, now: datetime) -> dict:
         "settings_json": default_media_coverage_settings(),
         "created_by": None,
     }
+
+
+def extend_existing_session_vault_window(
+    vault: MediaVault, session: dict, *, now: datetime
+) -> bool:
+    """Apply the 72-hour minimum to an existing auto-managed session vault."""
+
+    expected = vault_fields_from_session(session, now=now)
+    expected_close = expected["upload_closes_at"]
+    if vault.upload_closes_at >= expected_close:
+        return False
+    vault.upload_closes_at = expected_close
+    if vault.status in {"scheduled", "open", "review"}:
+        vault.status = str(expected["status"])
+    return True
 
 
 async def sync_session_vaults() -> dict[str, int | str]:
@@ -108,6 +122,8 @@ async def sync_session_vaults() -> dict[str, int | str]:
             if vault:
                 existing += 1
                 try:
+                    if extend_existing_session_vault_window(vault, session, now=now):
+                        await db.commit()
                     await sync_volunteer_grants(db, vault=vault, created_by=None)
                 except Exception:
                     await db.rollback()

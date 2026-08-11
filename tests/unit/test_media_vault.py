@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from services.media_service.routers.vaults import _media_type_for, _safe_filename
@@ -18,6 +19,7 @@ from services.media_service.services.storage import (
     attachment_content_disposition,
     recommended_multipart_part_size,
 )
+from services.media_service.services.vault_access import require_upload_window
 from services.media_service.services.vault_grants import (
     CONTRIBUTOR_REOPEN_DAYS,
     ensure_contributor_window,
@@ -28,7 +30,10 @@ from services.media_service.services.vault_templates import (
 )
 from services.media_service.tasks.vault_exports import S3MultipartArchiveWriter
 from services.media_service.tasks.vault_bandwidth import parse_s3_access_log_line
-from services.media_service.tasks.vault_lifecycle import vault_fields_from_session
+from services.media_service.tasks.vault_lifecycle import (
+    extend_existing_session_vault_window,
+    vault_fields_from_session,
+)
 from services.media_service.tasks.worker import WorkerSettings, task_sync_session_vaults
 
 
@@ -164,6 +169,25 @@ def test_expired_contributor_assignment_reopens_vault_for_seven_days():
     assert vault.status == "open"
 
 
+@pytest.mark.asyncio
+async def test_admin_can_bypass_closed_upload_window_but_not_archive():
+    now = datetime.now(timezone.utc)
+    vault = SimpleNamespace(
+        upload_opens_at=now - timedelta(days=4),
+        upload_closes_at=now - timedelta(days=1),
+        status="review",
+    )
+
+    with pytest.raises(HTTPException, match="upload window has closed"):
+        await require_upload_window(vault)
+
+    await require_upload_window(vault, bypass_time_window=True)
+
+    vault.status = "archived"
+    with pytest.raises(HTTPException, match="vault is archived"):
+        await require_upload_window(vault, bypass_time_window=True)
+
+
 def test_session_vault_defaults_use_local_date_and_coverage_standard():
     now = datetime(2026, 8, 7, 12, tzinfo=timezone.utc)
     fields = vault_fields_from_session(
@@ -187,12 +211,36 @@ def test_session_vault_defaults_use_local_date_and_coverage_standard():
     assert fields["auto_transcode"] is False
     assert fields["shot_checklist"] == DEFAULT_MEDIA_VAULT_CHECKLIST
     assert fields["settings_json"]["story"] == [
+        "set a goal",
         "prepare",
         "practise",
         "coach",
+        "reflect",
         "progress",
         "belong",
     ]
+
+
+def test_existing_session_vault_is_extended_to_72_hours_after_swim():
+    now = datetime(2026, 8, 10, 12, tzinfo=timezone.utc)
+    session = {
+        "id": "273f49ba-5f04-4d6a-8dcb-e9dc1a1d1b08",
+        "title": "Saturday Club Swim",
+        "session_type": "club",
+        "starts_at": "2026-08-08T08:00:00+00:00",
+        "ends_at": "2026-08-08T12:00:00+00:00",
+        "timezone": "Africa/Lagos",
+    }
+    vault = SimpleNamespace(
+        upload_closes_at=datetime(2026, 8, 9, 12, tzinfo=timezone.utc),
+        status="review",
+    )
+
+    changed = extend_existing_session_vault_window(vault, session, now=now)
+
+    assert changed is True
+    assert vault.upload_closes_at == datetime(2026, 8, 11, 12, tzinfo=timezone.utc)
+    assert vault.status == "open"
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,7 @@
-"""Explicitly requested review derivatives for vault media.
+"""Lightweight review derivatives for vault media.
 
-Original objects are never modified, replaced, or automatically transcoded.
+Original objects are never modified or replaced. Small thumbnails are built
+automatically; playable video proxies remain curator-requested.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from services.media_service.services.storage import storage_service
 logger = get_logger(__name__)
 
 
-def _run_ffmpeg(input_path: str, proxy_path: str, thumbnail_path: str) -> None:
+def _run_video_proxy(input_path: str, proxy_path: str) -> None:
     proxy = subprocess.run(
         [
             "ffmpeg",
@@ -49,6 +50,9 @@ def _run_ffmpeg(input_path: str, proxy_path: str, thumbnail_path: str) -> None:
     )
     if proxy.returncode != 0:
         raise RuntimeError(f"ffmpeg proxy failed: {proxy.stderr[-800:]}")
+
+
+def _run_video_thumbnail(input_path: str, thumbnail_path: str) -> None:
     thumbnail = subprocess.run(
         [
             "ffmpeg",
@@ -73,25 +77,39 @@ def _run_ffmpeg(input_path: str, proxy_path: str, thumbnail_path: str) -> None:
         )
 
 
-async def build_vault_preview(media_item_id: str) -> dict:
+async def build_vault_preview(
+    media_item_id: str, generate_video_proxy: bool = True
+) -> dict:
     item_uuid = uuid.UUID(media_item_id)
     async with AsyncSessionLocal() as db:
         item = await db.get(MediaItem, item_uuid)
         if not item or not item.vault_id or not item.object_key:
             return {"status": "missing"}
-        if item.proxy_object_key or item.thumbnail_object_key:
+        is_video = item.media_type == MediaType.VIDEO
+        derivative_exists = (
+            item.proxy_object_key
+            if is_video and generate_video_proxy
+            else item.thumbnail_object_key
+        )
+        if derivative_exists:
             return {"status": "ready"}
         metadata = dict(item.metadata_info or {})
-        metadata["proxy_status"] = "processing"
+        status_key = (
+            "proxy_status" if is_video and generate_video_proxy else "thumbnail_status"
+        )
+        metadata[status_key] = "processing"
         item.metadata_info = metadata
         await db.commit()
         object_key = item.object_key
         media_type = item.media_type
         vault_id = item.vault_id
+        original_filename = item.original_filename
+        existing_proxy_key = item.proxy_object_key
+        existing_thumbnail_key = item.thumbnail_object_key
 
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
-            suffix = Path(item.original_filename or "").suffix or ".bin"
+            suffix = Path(original_filename or "").suffix or ".bin"
             input_path = str(Path(temp_dir) / f"original{suffix}")
             storage_service.s3_client.download_file(
                 storage_service.bucket_private,
@@ -99,27 +117,29 @@ async def build_vault_preview(media_item_id: str) -> dict:
                 input_path,
             )
             derivative_prefix = f"vault-derivatives/{vault_id}/{item_uuid}"
-            proxy_key = None
-            thumbnail_key = None
+            proxy_key = existing_proxy_key
+            thumbnail_key = existing_thumbnail_key
 
             if media_type == MediaType.VIDEO:
-                proxy_path = str(Path(temp_dir) / "review-proxy.mp4")
-                thumbnail_path = str(Path(temp_dir) / "thumbnail.jpg")
-                _run_ffmpeg(input_path, proxy_path, thumbnail_path)
-                proxy_key = f"{derivative_prefix}/review-proxy.mp4"
-                with open(proxy_path, "rb") as proxy_file:
-                    await storage_service.upload_private_fileobj(
-                        file_key=proxy_key,
-                        fileobj=proxy_file,
-                        content_type="video/mp4",
-                    )
-                if Path(thumbnail_path).exists():
+                if not thumbnail_key:
+                    thumbnail_path = str(Path(temp_dir) / "thumbnail.jpg")
+                    _run_video_thumbnail(input_path, thumbnail_path)
                     thumbnail_key = f"{derivative_prefix}/thumbnail.jpg"
                     with open(thumbnail_path, "rb") as thumbnail_file:
                         await storage_service.upload_private_fileobj(
                             file_key=thumbnail_key,
                             fileobj=thumbnail_file,
                             content_type="image/jpeg",
+                        )
+                if generate_video_proxy and not proxy_key:
+                    proxy_path = str(Path(temp_dir) / "review-proxy.mp4")
+                    _run_video_proxy(input_path, proxy_path)
+                    proxy_key = f"{derivative_prefix}/review-proxy.mp4"
+                    with open(proxy_path, "rb") as proxy_file:
+                        await storage_service.upload_private_fileobj(
+                            file_key=proxy_key,
+                            fileobj=proxy_file,
+                            content_type="video/mp4",
                         )
             elif media_type == MediaType.IMAGE:
                 thumbnail_path = str(Path(temp_dir) / "thumbnail.jpg")
@@ -168,7 +188,9 @@ async def build_vault_preview(media_item_id: str) -> dict:
             item.proxy_object_key = proxy_key
             item.thumbnail_object_key = thumbnail_key
             metadata = dict(item.metadata_info or {})
-            metadata["proxy_status"] = "ready"
+            metadata[status_key] = "ready"
+            if thumbnail_key:
+                metadata["thumbnail_status"] = "ready"
             metadata["original_preserved"] = True
             item.metadata_info = metadata
             await db.commit()
@@ -179,8 +201,8 @@ async def build_vault_preview(media_item_id: str) -> dict:
             item = await db.get(MediaItem, item_uuid)
             if item:
                 metadata = dict(item.metadata_info or {})
-                metadata["proxy_status"] = "failed"
-                metadata["proxy_error"] = str(exc)[:1000]
+                metadata[status_key] = "failed"
+                metadata[f"{status_key}_error"] = str(exc)[:1000]
                 item.metadata_info = metadata
                 await db.commit()
         raise

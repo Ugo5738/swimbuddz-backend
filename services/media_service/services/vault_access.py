@@ -82,10 +82,14 @@ async def require_vault_role(
     return role
 
 
-async def require_upload_window(vault: MediaVault) -> None:
+async def require_upload_window(
+    vault: MediaVault, *, bypass_time_window: bool = False
+) -> None:
     now = utc_now()
     if vault.status == "archived":
         raise HTTPException(status_code=409, detail="This vault is archived")
+    if bypass_time_window:
+        return
     if now < vault.upload_opens_at:
         raise HTTPException(status_code=409, detail="The upload window is not open yet")
     if now > vault.upload_closes_at:
