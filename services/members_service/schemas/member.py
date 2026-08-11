@@ -676,6 +676,13 @@ class ActivateClubRequest(BaseModel):
         default=False,
         description="Skip community active check (for bundle activations where community was just activated)",
     )
+    extend_community_membership: bool = Field(
+        default=True,
+        description=(
+            "Preserve the legacy policy that extends Community to one year. "
+            "Location-plan purchases set this false because annual Community is paid separately."
+        ),
+    )
 
 
 class ActivateAcademyRequest(BaseModel):

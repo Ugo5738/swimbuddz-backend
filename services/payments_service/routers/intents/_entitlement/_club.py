@@ -20,6 +20,7 @@ settings = get_settings()
 
 async def apply_club(payment: Payment) -> None:
     months = int((payment.payment_metadata or {}).get("months") or 1)
+    application_id = (payment.payment_metadata or {}).get("club_application_id")
     community_extension_months = int(
         (payment.payment_metadata or {}).get("community_extension_months") or 0
     )
@@ -54,6 +55,9 @@ async def apply_club(payment: Payment) -> None:
                 "months": months,
                 "idempotency_key": f"payment:{payment.id}:club-activate",
                 "source_reference": payment.reference,
+                # New location plans charge annual Community separately. The
+                # legacy checkout retains its existing one-year extension.
+                "extend_community_membership": not bool(application_id),
             },
             headers=headers,
         )
@@ -62,3 +66,24 @@ async def apply_club(payment: Payment) -> None:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Failed to apply club entitlement via members_service ({club_resp.status_code}): {club_resp.text}",
             )
+
+        if application_id:
+            enrollment_resp = await client.post(
+                f"{settings.MEMBERS_SERVICE_URL}/clubs/internal/applications/{application_id}/activate",
+                json={
+                    "payment_reference": payment.reference,
+                    "starts_at": (
+                        payment.paid_at.isoformat() if payment.paid_at else None
+                    ),
+                    "months": months,
+                },
+                headers=headers,
+            )
+            if enrollment_resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=(
+                        "Club access was paid but location enrollment could not be "
+                        f"applied ({enrollment_resp.status_code}): {enrollment_resp.text}"
+                    ),
+                )

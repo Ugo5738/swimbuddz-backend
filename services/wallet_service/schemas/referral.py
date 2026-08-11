@@ -72,6 +72,13 @@ class ReferralCodeValidateResponse(BaseModel):
     message: str | None = None
 
 
+class ReferralCodeResolveResponse(BaseModel):
+    """Internal attribution result used before recording a referred guest."""
+
+    code: str
+    referrer_auth_id: str
+
+
 class AdminReferralListResponse(BaseModel):
     items: list[ReferralHistoryItem]
     total: int

@@ -20,13 +20,16 @@ from sqlalchemy import DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Float,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, validates
@@ -156,6 +159,68 @@ class Payment(Base):
 
     def __repr__(self):
         return f"<Payment {self.reference}>"
+
+
+class AdditionalChargePolicy(Base):
+    """Admin-managed fee added to selected payment types.
+
+    The stored policy is intentionally provider-neutral. For example, an admin
+    may label a policy "Online payment processing" and mirror Paystack's
+    current pricing without incorrectly presenting the charge as VAT.
+    """
+
+    __tablename__ = "additional_charge_policies"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    purpose: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    payment_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    label: Mapped[str] = mapped_column(String(120), nullable=False)
+    rate_basis_points: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    fixed_amount_kobo: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    cap_amount_kobo: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    waive_fixed_below_kobo: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    created_by_auth_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "rate_basis_points >= 0", name="ck_charge_policy_rate_nonnegative"
+        ),
+        CheckConstraint(
+            "fixed_amount_kobo >= 0", name="ck_charge_policy_fixed_nonnegative"
+        ),
+        CheckConstraint(
+            "cap_amount_kobo IS NULL OR cap_amount_kobo >= 0",
+            name="ck_charge_policy_cap_nonnegative",
+        ),
+        UniqueConstraint(
+            "purpose",
+            "payment_method",
+            "label",
+            name="uq_charge_policy_scope_label",
+        ),
+        Index(
+            "uq_charge_policy_scope_label_nullsafe",
+            "purpose",
+            text("COALESCE(payment_method, '')"),
+            "label",
+            unique=True,
+        ),
+    )
 
 
 class PaymentAdminEmailLog(Base):

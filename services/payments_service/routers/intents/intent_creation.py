@@ -39,6 +39,9 @@ from services.payments_service.schemas import (
     CreatePaymentIntentRequest,
     PaymentIntentResponse,
 )
+from services.payments_service.services.additional_charges import (
+    calculate_additional_charges,
+)
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -85,6 +88,27 @@ async def _member_for_payment_quote(member_auth_id: str) -> dict:
             detail="Member profile not found. Complete registration first.",
         )
     return member
+
+
+async def _approved_club_application_context(application_id: uuid.UUID) -> dict:
+    headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(
+            f"{settings.MEMBERS_SERVICE_URL}/clubs/internal/applications/{application_id}/payment-context",
+            headers=headers,
+        )
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=(
+                response.status_code
+                if response.status_code in {400, 403, 404, 409}
+                else 502
+            ),
+            detail=_service_error_detail(
+                response, "Could not price this Club application"
+            ),
+        )
+    return response.json()
 
 
 async def _quote_ride_selection(
@@ -593,66 +617,96 @@ async def create_payment_intent(
 
     # Club add-on - check if community extension needed
     elif payload.purpose == PaymentPurpose.CLUB:
-        amount, months, cycle = _resolve_club_amount(payload)
-
-        # Check if Club would exceed Community membership
         community_extension_months = 0
         community_extension_amount = 0.0
         requires_community_extension = False
-
-        # Fetch member's community_paid_until from members_service
-        try:
-            headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.get(
-                    f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{current_user.user_id}",
-                    headers=headers,
+        if payload.club_application_id:
+            context = await _approved_club_application_context(
+                payload.club_application_id
+            )
+            if context.get("member_auth_id") != current_user.user_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="This Club application belongs to another member",
                 )
-                if resp.status_code == 200:
-                    member_data = resp.json()
-                    membership = member_data.get("membership") or {}
-                    community_until_str = membership.get("community_paid_until")
+            if context.get("currency") != payload.currency:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Currency does not match the selected Club plan",
+                )
+            amount = kobo_to_naira(int(context["subtotal_kobo"]))
+            months = int(context.get("months") or 3)
+            cycle = context.get("billing_cycle") or "quarterly"
+            payment_metadata = {
+                **(payload.payment_metadata or {}),
+                "months": months,
+                "club_billing_cycle": cycle,
+                "club_application_id": str(payload.club_application_id),
+                "club_id": context["club_id"],
+                "club_name": context["club_name"],
+                "plan_version_id": context["plan_version_id"],
+                "community_experience_selected": context[
+                    "community_experience_selected"
+                ],
+                "components_kobo": {
+                    "club": int(context["club_fee_kobo"]),
+                    "community_experience": int(
+                        context["community_experience_fee_kobo"]
+                    ),
+                },
+            }
+        else:
+            amount, months, cycle = _resolve_club_amount(payload)
 
-                    if community_until_str:
-                        from dateutil.relativedelta import relativedelta
+            # Backwards-compatible checkout for members who pre-date the
+            # location-specific Club application flow.
+            try:
+                headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.get(
+                        f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{current_user.user_id}",
+                        headers=headers,
+                    )
+                    if resp.status_code == 200:
+                        member_data = resp.json()
+                        membership = member_data.get("membership") or {}
+                        community_until_str = membership.get("community_paid_until")
+                        if community_until_str:
+                            from dateutil.relativedelta import relativedelta
 
-                        community_until = datetime.fromisoformat(
-                            community_until_str.replace("Z", "+00:00")
-                        )
-                        club_end = utc_now() + relativedelta(months=months)
-
-                        if club_end > community_until:
-                            # Calculate months needed to extend Community
-                            diff_days = (club_end - community_until).days
-                            community_extension_months = max(
-                                1, (diff_days + 29) // 30
-                            )  # Round up
-                            community_monthly_rate = (
-                                getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20000)
-                                / 12
+                            community_until = datetime.fromisoformat(
+                                community_until_str.replace("Z", "+00:00")
                             )
-                            community_extension_amount = round(
-                                community_monthly_rate * community_extension_months, 2
-                            )
-                            requires_community_extension = True
-        except Exception as e:
-            logger.warning(f"Could not check community status: {e}")
-
-        # If extension required and user opted in, add to total
-        if requires_community_extension and payload.include_community_extension:
-            amount += community_extension_amount
-
-        payment_metadata = {
-            **(payload.payment_metadata or {}),
-            "months": months,
-            "club_billing_cycle": str(cycle),
-            "community_extension_months": (
-                community_extension_months if payload.include_community_extension else 0
-            ),
-            "community_extension_amount": (
-                community_extension_amount if payload.include_community_extension else 0
-            ),
-        }
+                            club_end = utc_now() + relativedelta(months=months)
+                            if club_end > community_until:
+                                diff_days = (club_end - community_until).days
+                                community_extension_months = max(
+                                    1, (diff_days + 29) // 30
+                                )
+                                community_monthly_rate = (
+                                    getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20000)
+                                    / 12
+                                )
+                                community_extension_amount = round(
+                                    community_monthly_rate * community_extension_months,
+                                    2,
+                                )
+                                requires_community_extension = True
+            except Exception as exc:
+                logger.warning("Could not check community status: %s", exc)
+            if requires_community_extension and payload.include_community_extension:
+                amount += community_extension_amount
+            payment_metadata = {
+                **(payload.payment_metadata or {}),
+                "months": months,
+                "club_billing_cycle": str(cycle),
+                "community_extension_months": community_extension_months
+                if payload.include_community_extension
+                else 0,
+                "community_extension_amount": community_extension_amount
+                if payload.include_community_extension
+                else 0,
+            }
 
     # Club bundle - Community + Club together
     elif payload.purpose == PaymentPurpose.CLUB_BUNDLE:
@@ -1178,6 +1232,25 @@ async def create_payment_intent(
                 "discount_applies_to_component": applies_to_component,
             }
 
+    # Additional charges are calculated after discounts against the amount the
+    # provider will process. Policies are optional and independently scoped by
+    # payment purpose and method; inactive/missing policies add nothing.
+    subtotal_amount = amount
+    charge_lines, charge_total_kobo = await calculate_additional_charges(
+        db,
+        purpose=payload.purpose,
+        payment_method=payload.payment_method,
+        subtotal_kobo=naira_to_kobo(subtotal_amount),
+    )
+    if charge_total_kobo:
+        amount = subtotal_amount + kobo_to_naira(charge_total_kobo)
+        payment_metadata = {
+            **payment_metadata,
+            "subtotal_kobo": naira_to_kobo(subtotal_amount),
+            "additional_charges": charge_lines,
+            "additional_charges_total_kobo": charge_total_kobo,
+        }
+
     bubbles_purposes = {
         PaymentPurpose.SESSION_FEE,
         PaymentPurpose.SESSION_BOOKING,
@@ -1417,5 +1490,8 @@ async def create_payment_intent(
         original_amount=original_amount if discount_applied else None,
         discount_applied=discount_applied,
         discount_code=discount_code_used,
+        subtotal_amount=subtotal_amount,
+        additional_charges=charge_lines,
+        additional_charges_total=kobo_to_naira(charge_total_kobo),
         **response_extension_info,
     )

@@ -51,6 +51,9 @@ class CreatePaymentIntentRequest(BaseModel):
     years: int = Field(default=1, ge=1, le=5)
     months: int = Field(default=1, ge=1, le=24)
     club_billing_cycle: Optional[ClubBillingCycle] = None
+    # New location-aware Club checkout. When supplied, the amount is fetched
+    # server-to-server from the approved Club application; client prices are ignored.
+    club_application_id: Optional[uuid.UUID] = None
 
     cohort_id: Optional[uuid.UUID] = None
     enrollment_id: Optional[uuid.UUID] = None  # For ACADEMY_COHORT payments
@@ -122,6 +125,9 @@ class PaymentIntentResponse(BaseModel):
     community_extension_months: int = 0
     community_extension_amount: float = 0
     total_with_extension: Optional[float] = None
+    subtotal_amount: Optional[float] = None
+    additional_charges: List[dict] = Field(default_factory=list)
+    additional_charges_total: float = 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -335,6 +341,8 @@ class InternalInitializeResponse(BaseModel):
     reference: str
     authorization_url: Optional[str] = None
     access_code: Optional[str] = None
+    amount_kobo: Optional[int] = None
+    additional_charges: List[dict] = Field(default_factory=list)
 
 
 class InternalPaystackVerifyResponse(BaseModel):

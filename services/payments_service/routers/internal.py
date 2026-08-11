@@ -44,6 +44,9 @@ from services.payments_service.schemas import (
 from services.payments_service.services.recurring_payout_extensions import (
     extend_recurring_payout_schedules,
 )
+from services.payments_service.services.additional_charges import (
+    calculate_additional_charges,
+)
 
 router = APIRouter(prefix="/internal/payments", tags=["internal"])
 settings = get_settings()
@@ -225,6 +228,18 @@ async def internal_initialize_payment(
     except ValueError:
         purpose_enum = None
 
+    final_amount = req.amount
+    charge_lines: list[dict] = []
+    charge_total_kobo = 0
+    if purpose_enum is not None:
+        charge_lines, charge_total_kobo = await calculate_additional_charges(
+            db,
+            purpose=purpose_enum,
+            payment_method="paystack",
+            subtotal_kobo=_to_kobo(req.amount),
+        )
+        final_amount = req.amount + (charge_total_kobo / 100)
+
     payment: Payment | None = None
     if purpose_enum:
         session_booking_id = None
@@ -245,7 +260,7 @@ async def internal_initialize_payment(
                 member_auth_id=req.member_auth_id,
                 payer_email=payer_email,
                 purpose=purpose_enum,
-                amount=req.amount,
+                amount=final_amount,
                 currency=req.currency,
                 status=PaymentStatus.PENDING,
                 provider="paystack",
@@ -257,6 +272,9 @@ async def internal_initialize_payment(
                     "internal_reference": req.reference,
                     "purpose": req.purpose,
                     "member_auth_id": req.member_auth_id,
+                    "subtotal_kobo": _to_kobo(req.amount),
+                    "additional_charges": charge_lines,
+                    "additional_charges_total_kobo": charge_total_kobo,
                 },
             )
             db.add(payment)
@@ -272,7 +290,7 @@ async def internal_initialize_payment(
     paystack_email = payer_email or (payment.payer_email if payment else None)
     payload = {
         "email": paystack_email or settings.ADMIN_EMAIL or "noreply@swimbuddz.com",
-        "amount": _to_kobo(req.amount),
+        "amount": _to_kobo(final_amount),
         "currency": req.currency,
         "reference": req.reference,
         "callback_url": callback,
@@ -320,6 +338,8 @@ async def internal_initialize_payment(
         reference=req.reference,
         authorization_url=data.get("authorization_url"),
         access_code=data.get("access_code"),
+        amount_kobo=_to_kobo(final_amount),
+        additional_charges=charge_lines,
     )
 
 

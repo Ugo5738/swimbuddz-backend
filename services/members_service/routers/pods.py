@@ -23,9 +23,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.members_service.models import (
+    ClubEnrollment,
     Member,
     MemberMembership,
     Pod,
@@ -425,6 +427,28 @@ async def member_join_pod(
     member_id = await _resolve_member_id(current_user, db)
     await _require_effective_club(member_id, db)
     pod = await pod_ops.get_pod_or_404(db, pod_id)
+
+    active_enrollments = list(
+        (
+            await db.execute(
+                select(ClubEnrollment).where(
+                    ClubEnrollment.member_id == member_id,
+                    ClubEnrollment.status == "active",
+                    ClubEnrollment.ends_at > utc_now(),
+                )
+            )
+        ).scalars()
+    )
+    # Legacy Club entitlements have no enrollment row and retain the old
+    # behaviour. New registrations are location-bound and may only join a pod
+    # at the location they purchased.
+    if active_enrollments and not any(
+        enrollment.club_id == pod.club_id for enrollment in active_enrollments
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Choose a pod at your enrolled Club location",
+        )
 
     if pod.visibility.value != "public":
         raise HTTPException(

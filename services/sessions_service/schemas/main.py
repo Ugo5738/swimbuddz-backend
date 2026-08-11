@@ -50,6 +50,9 @@ class SessionBase(BaseModel):
     # Capacity & Fees — API layer uses Naira (float); DB stores kobo (int).
     capacity: int = 20
     pool_fee: float = 0.0  # naira input/output
+    guest_fee: Optional[float] = None
+    community_dropin_fee: Optional[float] = None
+    guest_referral_reward: float = Field(default=1000, ge=0)
     ride_share_fee: float = 0.0  # naira input/output
     pricing_mode: Literal["manual", "cost_plus"] = "manual"
     pricing_expected_attendees: Optional[int] = Field(None, ge=1)
@@ -119,6 +122,9 @@ class SessionUpdate(BaseModel):
 
     capacity: Optional[int] = None
     pool_fee: Optional[float] = None  # naira — router converts to kobo on write
+    guest_fee: Optional[float] = None
+    community_dropin_fee: Optional[float] = None
+    guest_referral_reward: Optional[float] = Field(default=None, ge=0)
     ride_share_fee: Optional[float] = None  # naira — router converts to kobo on write
     pricing_mode: Optional[Literal["manual", "cost_plus"]] = None
     pricing_expected_attendees: Optional[int] = Field(None, ge=1)
@@ -178,6 +184,9 @@ class SessionResponse(SessionBase):
         # ORM instance: read attributes and convert integer kobo → float naira
         pool_fee_kobo = getattr(obj, "pool_fee", 0) or 0
         ride_share_fee_kobo = getattr(obj, "ride_share_fee", 0) or 0
+        guest_fee_kobo = getattr(obj, "guest_fee_kobo", None)
+        community_dropin_fee_kobo = getattr(obj, "community_dropin_fee_kobo", None)
+        guest_referral_reward_kobo = getattr(obj, "guest_referral_reward_kobo", 100_000)
         from services.sessions_service.services.pricing import pricing_response_fields
 
         pricing = pricing_response_fields(obj)
@@ -197,6 +206,13 @@ class SessionResponse(SessionBase):
             "timezone": obj.timezone,
             "capacity": obj.capacity,
             "pool_fee": pool_fee_kobo / 100.0,
+            "guest_fee": guest_fee_kobo / 100.0 if guest_fee_kobo is not None else None,
+            "community_dropin_fee": (
+                community_dropin_fee_kobo / 100.0
+                if community_dropin_fee_kobo is not None
+                else None
+            ),
+            "guest_referral_reward": guest_referral_reward_kobo / 100.0,
             "ride_share_fee": ride_share_fee_kobo / 100.0,
             **pricing,
             "allows_guests": getattr(obj, "allows_guests", True),

@@ -18,14 +18,26 @@ use case demands them.
 """
 
 import uuid
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Optional
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
-from sqlalchemy import Boolean, DateTime, Integer, String, Time
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    Time,
+)
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from services.members_service.models.enums import DayOfWeek, enum_values
@@ -76,6 +88,12 @@ class Club(Base):
     default_pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+    # Cross-service ref -> pools_service.operating_areas.id. Registration uses
+    # the area to filter location-specific Club packages; pricing remains on a
+    # versioned plan instead of being inferred from geography at checkout.
+    operating_area_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
@@ -86,3 +104,219 @@ class Club(Base):
 
     def __repr__(self) -> str:
         return f"<Club {self.slug}>"
+
+
+class ClubPlanVersion(Base):
+    """An approved, purchasable Club package for one location and period.
+
+    Pool/refreshment rate catalogues are operational cost inputs. This row is
+    the commercial snapshot members actually buy, so a later supplier-rate
+    edit never changes an in-flight registration or historical enrollment.
+    """
+
+    __tablename__ = "club_plan_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    club_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("clubs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    billing_cycle: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="quarterly"
+    )
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="NGN")
+    club_fee_kobo: Mapped[int] = mapped_column(Integer, nullable=False)
+    community_experience_fee_kobo: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3_000_000, server_default="3000000"
+    )
+    community_experience_default_selected: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    sessions_included: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=12, server_default="12"
+    )
+    refreshments_included: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    capacity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    premium_venue_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("club_fee_kobo >= 0", name="ck_club_plan_fee_nonnegative"),
+        CheckConstraint(
+            "community_experience_fee_kobo >= 0",
+            name="ck_club_plan_experience_fee_nonnegative",
+        ),
+        CheckConstraint("sessions_included > 0", name="ck_club_plan_sessions_positive"),
+        Index(
+            "ix_club_plan_versions_active_period",
+            "club_id",
+            "is_active",
+            "effective_from",
+        ),
+    )
+
+
+class ClubApplication(Base):
+    """A member's location choice and readiness/payment lifecycle."""
+
+    __tablename__ = "club_applications"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("members.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    club_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("clubs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    plan_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("club_plan_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="assessment_required",
+        server_default="assessment_required",
+    )
+    community_experience_selected: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    preferred_pod_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pods.id", ondelete="SET NULL"), nullable=True
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    quote_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_club_applications_member_status", "member_id", "status"),
+    )
+
+
+class ClubReadinessAssessment(Base):
+    """Self-reported pre-screen plus an assessor-owned observed decision."""
+
+    __tablename__ = "club_readiness_assessments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("club_applications.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    self_report: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    observed_checks: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    assessor_member_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("members.id", ondelete="SET NULL"), nullable=True
+    )
+    outcome: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pending", server_default="pending"
+    )
+    nonstop_distance_m: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    deep_water_comfort: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    primary_technique_focus: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    first_club_milestone: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    assessor_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    result_email_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
+class ClubEnrollment(Base):
+    """Location-specific Club entitlement created from a paid application."""
+
+    __tablename__ = "club_enrollments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("members.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    club_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("clubs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    plan_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("club_plan_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("club_applications.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+    )
+    payment_reference: Mapped[str] = mapped_column(
+        String(128), nullable=False, index=True
+    )
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    assigned_pod_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pods.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="active", server_default="active"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("ends_at > starts_at", name="ck_club_enrollment_period"),
+        Index("ix_club_enrollments_member_active", "member_id", "status", "ends_at"),
+    )

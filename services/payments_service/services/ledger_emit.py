@@ -37,6 +37,7 @@ PURPOSE_TO_CREDIT_REF: dict[PaymentPurpose, str] = {
     PaymentPurpose.SESSION_BUNDLE: "deferred_revenue_session_bundle",
     # Single-session pre-booking: recognised at payment in Phase 1 (like a fee).
     PaymentPurpose.SESSION_BOOKING: "revenue_club_session",
+    PaymentPurpose.GUEST_PASS: "revenue_club_session",
     PaymentPurpose.STORE_ORDER: "revenue_store",
     PaymentPurpose.WALLET_TOPUP: "bubbles_liability",
     PaymentPurpose.RIDE_SHARE: "revenue_transport",
@@ -51,6 +52,7 @@ PURPOSE_TO_DOMAIN: dict[PaymentPurpose, str] = {
     PaymentPurpose.SESSION_FEE: "club",
     PaymentPurpose.SESSION_BUNDLE: "club",
     PaymentPurpose.SESSION_BOOKING: "club",
+    PaymentPurpose.GUEST_PASS: "club",
     PaymentPurpose.STORE_ORDER: "store",
     PaymentPurpose.WALLET_TOPUP: "wallet",
     PaymentPurpose.RIDE_SHARE: "transport",

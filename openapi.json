@@ -2943,6 +2943,568 @@
         }
       }
     },
+    "/api/v1/clubs/plans": {
+      "get": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "List Club Plans",
+        "description": "Return the currently purchasable, location-specific Club packages.",
+        "operationId": "list_club_plans_clubs_plans_get",
+        "parameters": [
+          {
+            "name": "operating_area_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Operating Area Id"
+            }
+          },
+          {
+            "name": "club_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Club Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClubPlanResponse"
+                  },
+                  "title": "Response List Club Plans Clubs Plans Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/admin/plans": {
+      "get": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "List All Club Plans",
+        "operationId": "list_all_club_plans_clubs_admin_plans_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "club_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Club Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClubPlanResponse"
+                  },
+                  "title": "Response List All Club Plans Clubs Admin Plans Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/{club_id}/plans": {
+      "post": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "Create Club Plan",
+        "operationId": "create_club_plan_clubs__club_id__plans_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "club_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Club Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubPlanCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubPlanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/applications": {
+      "post": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "Create Club Application",
+        "operationId": "create_club_application_clubs_applications_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubApplicationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubApplicationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/clubs/applications/me": {
+      "get": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "List My Club Applications",
+        "operationId": "list_my_club_applications_clubs_applications_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClubApplicationResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List My Club Applications Clubs Applications Me Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/clubs/applications/{application_id}/pre-assessment": {
+      "put": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "Submit Club Pre Assessment",
+        "operationId": "submit_club_pre_assessment_clubs_applications__application_id__pre_assessment_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubPreAssessmentUpsert"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubApplicationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/admin/applications": {
+      "get": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "List Club Applications For Review",
+        "operationId": "list_club_applications_for_review_clubs_admin_applications_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "club_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Club Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClubApplicationResponse"
+                  },
+                  "title": "Response List Club Applications For Review Clubs Admin Applications Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/admin/applications/{application_id}/assessment": {
+      "put": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "Complete Observed Club Assessment",
+        "operationId": "complete_observed_club_assessment_clubs_admin_applications__application_id__assessment_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubObservedAssessmentUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubApplicationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/internal/applications/{application_id}/payment-context": {
+      "get": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "Get Club Application Payment Context",
+        "operationId": "get_club_application_payment_context_clubs_internal_applications__application_id__payment_context_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubPaymentContext"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/internal/applications/{application_id}/activate": {
+      "post": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "Activate Club Application",
+        "operationId": "activate_club_application_clubs_internal_applications__application_id__activate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateClubApplicationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubApplicationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/clubs/{club_id}": {
       "get": {
         "tags": [
@@ -7972,6 +8534,379 @@
                     "$ref": "#/components/schemas/SessionBookingResponse"
                   },
                   "title": "Response List Session Bookings Sessions  Session Id  Bookings Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/guest-pass": {
+      "get": {
+        "tags": [
+          "guest-passes"
+        ],
+        "summary": "Guest Pass Offer",
+        "operationId": "guest_pass_offer_sessions__session_id__guest_pass_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestPassOffer"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/guest-passes": {
+      "post": {
+        "tags": [
+          "guest-passes"
+        ],
+        "summary": "Create Guest Pass",
+        "operationId": "create_guest_pass_sessions__session_id__guest_passes_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuestPassCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestPassPublicResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/guest-passes/{guest_pass_id}": {
+      "get": {
+        "tags": [
+          "guest-passes"
+        ],
+        "summary": "Get Guest Pass Status",
+        "description": "Redacted public receipt; identity and assessment data are never returned.",
+        "operationId": "get_guest_pass_status_guest_passes__guest_pass_id__get",
+        "parameters": [
+          {
+            "name": "guest_pass_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guest Pass Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestPassPublicResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/sessions/guest-passes/{guest_pass_id}/confirm": {
+      "post": {
+        "tags": [
+          "guest-passes"
+        ],
+        "summary": "Confirm Guest Pass",
+        "operationId": "confirm_guest_pass_internal_sessions_guest_passes__guest_pass_id__confirm_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "guest_pass_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guest Pass Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuestPassConfirm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestPassPublicResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/guest-passes": {
+      "get": {
+        "tags": [
+          "guest-passes"
+        ],
+        "summary": "List Guest Passes",
+        "operationId": "list_guest_passes_admin_guest_passes_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GuestPassAdminResponse"
+                  },
+                  "title": "Response List Guest Passes Admin Guest Passes Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/guest-passes/{guest_pass_id}/attendance": {
+      "post": {
+        "tags": [
+          "guest-passes"
+        ],
+        "summary": "Mark Guest Pass Attended",
+        "operationId": "mark_guest_pass_attended_admin_guest_passes__guest_pass_id__attendance_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "guest_pass_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guest Pass Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuestPassAttendanceUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestPassAdminResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/guest-passes/{guest_pass_id}/referral-reward/paid": {
+      "post": {
+        "tags": [
+          "guest-passes"
+        ],
+        "summary": "Mark Guest Referral Reward Paid",
+        "operationId": "mark_guest_referral_reward_paid_admin_guest_passes__guest_pass_id__referral_reward_paid_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "guest_pass_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guest Pass Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuestReferralRewardPaid"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestPassAdminResponse"
                 }
               }
             }
@@ -17180,6 +18115,184 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/payments/charges": {
+      "get": {
+        "tags": [
+          "payment-charges"
+        ],
+        "summary": "List Charge Policies",
+        "operationId": "list_charge_policies_payments_charges_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChargePolicyResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Charge Policies Payments Charges Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "payment-charges"
+        ],
+        "summary": "Create Charge Policy",
+        "operationId": "create_charge_policy_payments_charges_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChargePolicyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChargePolicyResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/payments/charges/{policy_id}": {
+      "patch": {
+        "tags": [
+          "payment-charges"
+        ],
+        "summary": "Update Charge Policy",
+        "operationId": "update_charge_policy_payments_charges__policy_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "policy_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Policy Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChargePolicyUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChargePolicyResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/charges/preview": {
+      "post": {
+        "tags": [
+          "payment-charges"
+        ],
+        "summary": "Preview Additional Charges",
+        "operationId": "preview_additional_charges_payments_charges_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChargePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChargePreviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/payments/webhooks/paystack": {
@@ -27134,6 +28247,56 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RewardAnalyticsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/wallet/referral-code/resolve": {
+      "get": {
+        "tags": [
+          "internal-wallet"
+        ],
+        "summary": "Resolve Referral Code For Attribution",
+        "description": "Resolve an active code to its owner without creating a member referral.",
+        "operationId": "resolve_referral_code_for_attribution_internal_wallet_referral_code_resolve_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "title": "Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralCodeResolveResponse"
                 }
               }
             }
@@ -51448,6 +52611,40 @@
         "title": "ActivateAcademyRequest",
         "description": "Request to activate (or extend) academy tier until a specific date.\n\nThe caller passes the cohort end_date. The endpoint sets academy_paid_until\nto whichever is later: the current value or the supplied cohort_end_date,\nso that a member enrolled in multiple overlapping cohorts always retains\naccess until their last cohort finishes."
       },
+      "ActivateClubApplicationRequest": {
+        "properties": {
+          "payment_reference": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Payment Reference"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "months": {
+            "type": "integer",
+            "maximum": 24.0,
+            "minimum": 1.0,
+            "title": "Months",
+            "default": 3
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_reference"
+        ],
+        "title": "ActivateClubApplicationRequest"
+      },
       "ActivateClubRequest": {
         "properties": {
           "months": {
@@ -51486,6 +52683,12 @@
             "title": "Skip Community Check",
             "description": "Skip community active check (for bundle activations where community was just activated)",
             "default": false
+          },
+          "extend_community_membership": {
+            "type": "boolean",
+            "title": "Extend Community Membership",
+            "description": "Preserve the legacy policy that extends Community to one year. Location-plan purchases set this false because annual Community is paid separately.",
+            "default": true
           }
         },
         "type": "object",
@@ -53610,6 +54813,326 @@
         "title": "ChallengeWinnerPublicInfo",
         "description": "Winner summary shown on the public landing page.\n\nOnly populated when format='competition' AND winner_submission_id is set.\nMember emails / auth_ids are NEVER included \u2014 only display names.\nproof_media is only populated when show_winner_media_publicly is true on\nthe challenge."
       },
+      "ClubApplicationCreate": {
+        "properties": {
+          "plan_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Plan Version Id"
+          },
+          "community_experience_selected": {
+            "type": "boolean",
+            "title": "Community Experience Selected",
+            "default": true
+          },
+          "preferred_pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred Pod Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_version_id"
+        ],
+        "title": "ClubApplicationCreate"
+      },
+      "ClubApplicationResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "member_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Name"
+          },
+          "member_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Email"
+          },
+          "club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Club Id"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Plan Version Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "community_experience_selected": {
+            "type": "boolean",
+            "title": "Community Experience Selected"
+          },
+          "preferred_pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred Pod Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "quote_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote Id"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClubPlanResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assessment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClubAssessmentResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "member_id",
+          "club_id",
+          "plan_version_id",
+          "status",
+          "community_experience_selected",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ClubApplicationResponse"
+      },
+      "ClubAssessmentResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "application_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Application Id"
+          },
+          "self_report": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Self Report"
+          },
+          "observed_checks": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Checks"
+          },
+          "assessor_member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assessor Member Id"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "nonstop_distance_m": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nonstop Distance M"
+          },
+          "deep_water_comfort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deep Water Comfort"
+          },
+          "primary_technique_focus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Technique Focus"
+          },
+          "first_club_milestone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Club Milestone"
+          },
+          "assessor_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assessor Notes"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "result_email_sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Email Sent At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "application_id",
+          "self_report",
+          "outcome",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ClubAssessmentResponse"
+      },
       "ClubChallengeCreate": {
         "properties": {
           "title": {
@@ -54597,6 +56120,18 @@
             ],
             "title": "Default Pool Id"
           },
+          "operating_area_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operating Area Id"
+          },
           "is_active": {
             "type": "boolean",
             "title": "Is Active",
@@ -54609,6 +56144,535 @@
           "slug"
         ],
         "title": "ClubCreate"
+      },
+      "ClubObservedAssessmentUpdate": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "club_ready",
+              "club_ready_modified",
+              "academy_first"
+            ],
+            "title": "Outcome"
+          },
+          "observed_checks": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Observed Checks"
+          },
+          "nonstop_distance_m": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nonstop Distance M"
+          },
+          "deep_water_comfort": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deep Water Comfort"
+          },
+          "primary_technique_focus": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Technique Focus"
+          },
+          "first_club_milestone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Club Milestone"
+          },
+          "assessor_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assessor Notes"
+          },
+          "send_result_email": {
+            "type": "boolean",
+            "title": "Send Result Email",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome"
+        ],
+        "title": "ClubObservedAssessmentUpdate"
+      },
+      "ClubPaymentContext": {
+        "properties": {
+          "application_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Application Id"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "title": "Member Auth Id"
+          },
+          "club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Club Id"
+          },
+          "club_name": {
+            "type": "string",
+            "title": "Club Name"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Plan Version Id"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "title": "Billing Cycle"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "club_fee_kobo": {
+            "type": "integer",
+            "title": "Club Fee Kobo"
+          },
+          "community_experience_selected": {
+            "type": "boolean",
+            "title": "Community Experience Selected"
+          },
+          "community_experience_fee_kobo": {
+            "type": "integer",
+            "title": "Community Experience Fee Kobo"
+          },
+          "subtotal_kobo": {
+            "type": "integer",
+            "title": "Subtotal Kobo"
+          },
+          "months": {
+            "type": "integer",
+            "title": "Months",
+            "default": 3
+          }
+        },
+        "type": "object",
+        "required": [
+          "application_id",
+          "member_auth_id",
+          "club_id",
+          "club_name",
+          "plan_version_id",
+          "billing_cycle",
+          "currency",
+          "club_fee_kobo",
+          "community_experience_selected",
+          "community_experience_fee_kobo",
+          "subtotal_kobo"
+        ],
+        "title": "ClubPaymentContext"
+      },
+      "ClubPlanCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "const": "quarterly",
+            "title": "Billing Cycle",
+            "default": "quarterly"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 8,
+            "minLength": 3,
+            "title": "Currency",
+            "default": "NGN"
+          },
+          "club_fee_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Club Fee Kobo"
+          },
+          "community_experience_fee_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Community Experience Fee Kobo",
+            "default": 3000000
+          },
+          "community_experience_default_selected": {
+            "type": "boolean",
+            "title": "Community Experience Default Selected",
+            "default": true
+          },
+          "sessions_included": {
+            "type": "integer",
+            "maximum": 52.0,
+            "minimum": 1.0,
+            "title": "Sessions Included",
+            "default": 12
+          },
+          "refreshments_included": {
+            "type": "boolean",
+            "title": "Refreshments Included",
+            "default": true
+          },
+          "capacity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity"
+          },
+          "premium_venue_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Premium Venue Note"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "club_fee_kobo",
+          "effective_from"
+        ],
+        "title": "ClubPlanCreate"
+      },
+      "ClubPlanResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "const": "quarterly",
+            "title": "Billing Cycle",
+            "default": "quarterly"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 8,
+            "minLength": 3,
+            "title": "Currency",
+            "default": "NGN"
+          },
+          "club_fee_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Club Fee Kobo"
+          },
+          "community_experience_fee_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Community Experience Fee Kobo",
+            "default": 3000000
+          },
+          "community_experience_default_selected": {
+            "type": "boolean",
+            "title": "Community Experience Default Selected",
+            "default": true
+          },
+          "sessions_included": {
+            "type": "integer",
+            "maximum": 52.0,
+            "minimum": 1.0,
+            "title": "Sessions Included",
+            "default": 12
+          },
+          "refreshments_included": {
+            "type": "boolean",
+            "title": "Refreshments Included",
+            "default": true
+          },
+          "capacity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity"
+          },
+          "premium_venue_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Premium Venue Note"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Club Id"
+          },
+          "club_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Name"
+          },
+          "club_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Slug"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "operating_area_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operating Area Id"
+          },
+          "default_pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Pool Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "club_fee_kobo",
+          "effective_from",
+          "id",
+          "club_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ClubPlanResponse"
+      },
+      "ClubPreAssessmentUpsert": {
+        "properties": {
+          "can_swim_25m_continuously": {
+            "type": "boolean",
+            "title": "Can Swim 25M Continuously"
+          },
+          "controlled_breathing": {
+            "type": "boolean",
+            "title": "Controlled Breathing"
+          },
+          "comfortable_in_deep_water": {
+            "type": "boolean",
+            "title": "Comfortable In Deep Water"
+          },
+          "can_float_or_tread_30_seconds": {
+            "type": "boolean",
+            "title": "Can Float Or Tread 30 Seconds"
+          },
+          "can_stop_and_recover": {
+            "type": "boolean",
+            "title": "Can Stop And Recover"
+          },
+          "last_swim_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Swim Date"
+          },
+          "current_nonstop_distance_m": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Nonstop Distance M"
+          },
+          "injuries_or_accommodations": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injuries Or Accommodations"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "can_swim_25m_continuously",
+          "controlled_breathing",
+          "comfortable_in_deep_water",
+          "can_float_or_tread_30_seconds",
+          "can_stop_and_recover"
+        ],
+        "title": "ClubPreAssessmentUpsert"
       },
       "ClubResponse": {
         "properties": {
@@ -54669,6 +56733,18 @@
               }
             ],
             "title": "Default Pool Id"
+          },
+          "operating_area_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operating Area Id"
           },
           "id": {
             "type": "string",
@@ -54811,6 +56887,18 @@
               }
             ],
             "title": "Default Pool Id"
+          },
+          "operating_area_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operating Area Id"
           }
         },
         "type": "object",
@@ -63757,6 +65845,468 @@
         "title": "GuestLeadResponse",
         "description": "An unconverted guest prospect, deduped by phone (Phase 3 funnel)."
       },
+      "GuestPassAdminResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "price_kobo": {
+            "type": "integer",
+            "title": "Price Kobo"
+          },
+          "additional_charges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Additional Charges"
+          },
+          "total_kobo": {
+            "type": "integer",
+            "title": "Total Kobo"
+          },
+          "payment_reference": {
+            "type": "string",
+            "title": "Payment Reference"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "checkout_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Url"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone"
+          },
+          "referral_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referral Code"
+          },
+          "referrer_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referrer Auth Id"
+          },
+          "referral_reward_kobo": {
+            "type": "integer",
+            "title": "Referral Reward Kobo"
+          },
+          "referral_reward_status": {
+            "type": "string",
+            "title": "Referral Reward Status"
+          },
+          "referral_reward_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referral Reward Reference"
+          },
+          "marketing_consent": {
+            "type": "boolean",
+            "title": "Marketing Consent"
+          },
+          "attended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attended At"
+          },
+          "actual_swim_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Swim Minutes"
+          },
+          "assessment_result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assessment Result"
+          },
+          "converted_member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converted Member Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "session_id",
+          "price_kobo",
+          "additional_charges",
+          "total_kobo",
+          "payment_reference",
+          "status",
+          "created_at",
+          "full_name",
+          "email",
+          "phone",
+          "referral_reward_kobo",
+          "referral_reward_status",
+          "marketing_consent"
+        ],
+        "title": "GuestPassAdminResponse"
+      },
+      "GuestPassAttendanceUpdate": {
+        "properties": {
+          "actual_swim_minutes": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 0.0,
+            "title": "Actual Swim Minutes"
+          },
+          "assessment_result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assessment Result"
+          },
+          "send_assessment_email": {
+            "type": "boolean",
+            "title": "Send Assessment Email",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "actual_swim_minutes"
+        ],
+        "title": "GuestPassAttendanceUpdate"
+      },
+      "GuestPassConfirm": {
+        "properties": {
+          "payment_reference": {
+            "type": "string",
+            "title": "Payment Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_reference"
+        ],
+        "title": "GuestPassConfirm"
+      },
+      "GuestPassCreate": {
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Full Name"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 7,
+            "title": "Phone"
+          },
+          "date_of_birth": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Of Birth"
+          },
+          "guardian_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guardian Name"
+          },
+          "guardian_phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guardian Phone"
+          },
+          "waiver_accepted": {
+            "type": "boolean",
+            "title": "Waiver Accepted"
+          },
+          "marketing_consent": {
+            "type": "boolean",
+            "title": "Marketing Consent",
+            "default": false
+          },
+          "referral_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referral Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "full_name",
+          "email",
+          "phone",
+          "waiver_accepted"
+        ],
+        "title": "GuestPassCreate"
+      },
+      "GuestPassOffer": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "NGN"
+          },
+          "guest_fee_kobo": {
+            "type": "integer",
+            "title": "Guest Fee Kobo"
+          },
+          "community_dropin_fee_kobo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Dropin Fee Kobo"
+          },
+          "allows_guests": {
+            "type": "boolean",
+            "title": "Allows Guests"
+          },
+          "spaces_remaining": {
+            "type": "integer",
+            "title": "Spaces Remaining"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "title",
+          "starts_at",
+          "ends_at",
+          "guest_fee_kobo",
+          "allows_guests",
+          "spaces_remaining"
+        ],
+        "title": "GuestPassOffer"
+      },
+      "GuestPassPublicResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "price_kobo": {
+            "type": "integer",
+            "title": "Price Kobo"
+          },
+          "additional_charges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Additional Charges"
+          },
+          "total_kobo": {
+            "type": "integer",
+            "title": "Total Kobo"
+          },
+          "payment_reference": {
+            "type": "string",
+            "title": "Payment Reference"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "checkout_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Url"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "session_id",
+          "price_kobo",
+          "additional_charges",
+          "total_kobo",
+          "payment_reference",
+          "status",
+          "created_at"
+        ],
+        "title": "GuestPassPublicResponse"
+      },
+      "GuestReferralRewardPaid": {
+        "properties": {
+          "transfer_reference": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Transfer Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transfer_reference"
+        ],
+        "title": "GuestReferralRewardPaid"
+      },
       "MakeupBlockKind": {
         "type": "string",
         "enum": [
@@ -65199,6 +67749,34 @@
             "title": "Pool Fee",
             "default": 0.0
           },
+          "guest_fee": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Fee"
+          },
+          "community_dropin_fee": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Dropin Fee"
+          },
+          "guest_referral_reward": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Guest Referral Reward",
+            "default": 1000
+          },
           "ride_share_fee": {
             "type": "number",
             "title": "Ride Share Fee",
@@ -65610,6 +68188,34 @@
             "type": "number",
             "title": "Pool Fee",
             "default": 0.0
+          },
+          "guest_fee": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Fee"
+          },
+          "community_dropin_fee": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Dropin Fee"
+          },
+          "guest_referral_reward": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Guest Referral Reward",
+            "default": 1000
           },
           "ride_share_fee": {
             "type": "number",
@@ -66476,6 +69082,40 @@
               }
             ],
             "title": "Pool Fee"
+          },
+          "guest_fee": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Fee"
+          },
+          "community_dropin_fee": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Dropin Fee"
+          },
+          "guest_referral_reward": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Referral Reward"
           },
           "ride_share_fee": {
             "anyOf": [
@@ -73283,6 +75923,337 @@
         "title": "AnnotateRefundRequest",
         "description": "Refund obligation written to a payment's metadata by the academy service.\n\nThe Nigerian payment-flow reality: most refunds are settled via direct bank\ntransfer, not Paystack API. This endpoint records the *obligation*; an admin\ndisburses and stamps the payment via a separate manual step."
       },
+      "ChargePolicyCreate": {
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Purpose"
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Method"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "rate_basis_points": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Rate Basis Points",
+            "default": 0
+          },
+          "fixed_amount_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Fixed Amount Kobo",
+            "default": 0
+          },
+          "cap_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Amount Kobo"
+          },
+          "waive_fixed_below_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waive Fixed Below Kobo"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "purpose",
+          "label"
+        ],
+        "title": "ChargePolicyCreate"
+      },
+      "ChargePolicyResponse": {
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Purpose"
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Method"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "rate_basis_points": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Rate Basis Points",
+            "default": 0
+          },
+          "fixed_amount_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Fixed Amount Kobo",
+            "default": 0
+          },
+          "cap_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Amount Kobo"
+          },
+          "waive_fixed_below_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waive Fixed Below Kobo"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "created_by_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Auth Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "purpose",
+          "label",
+          "id"
+        ],
+        "title": "ChargePolicyResponse"
+      },
+      "ChargePolicyUpdate": {
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "rate_basis_points": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Basis Points"
+          },
+          "fixed_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Amount Kobo"
+          },
+          "cap_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Amount Kobo"
+          },
+          "waive_fixed_below_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waive Fixed Below Kobo"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "title": "ChargePolicyUpdate"
+      },
+      "ChargePreviewRequest": {
+        "properties": {
+          "purpose": {
+            "$ref": "#/components/schemas/PaymentPurpose"
+          },
+          "payment_method": {
+            "type": "string",
+            "title": "Payment Method",
+            "default": "paystack"
+          },
+          "club_application_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Application Id"
+          },
+          "subtotal_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtotal Kobo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "purpose"
+        ],
+        "title": "ChargePreviewRequest"
+      },
+      "ChargePreviewResponse": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "NGN"
+          },
+          "subtotal_kobo": {
+            "type": "integer",
+            "title": "Subtotal Kobo"
+          },
+          "additional_charges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Additional Charges"
+          },
+          "additional_charges_total_kobo": {
+            "type": "integer",
+            "title": "Additional Charges Total Kobo"
+          },
+          "total_kobo": {
+            "type": "integer",
+            "title": "Total Kobo"
+          },
+          "components": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Components"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subtotal_kobo",
+          "additional_charges",
+          "additional_charges_total_kobo",
+          "total_kobo"
+        ],
+        "title": "ChargePreviewResponse"
+      },
       "ClubBillingCycle": {
         "type": "string",
         "enum": [
@@ -73749,6 +76720,18 @@
                 "type": "null"
               }
             ]
+          },
+          "club_application_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Application Id"
           },
           "cohort_id": {
             "anyOf": [
@@ -74581,6 +77564,25 @@
               }
             ],
             "title": "Access Code"
+          },
+          "amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Kobo"
+          },
+          "additional_charges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Additional Charges"
           }
         },
         "type": "object",
@@ -75210,6 +78212,30 @@
               }
             ],
             "title": "Total With Extension"
+          },
+          "subtotal_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtotal Amount"
+          },
+          "additional_charges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Additional Charges"
+          },
+          "additional_charges_total": {
+            "type": "number",
+            "title": "Additional Charges Total",
+            "default": 0
           }
         },
         "type": "object",
@@ -75236,6 +78262,7 @@
           "wallet_topup",
           "ride_share",
           "session_booking",
+          "guest_pass",
           "strokelab_founding"
         ],
         "title": "PaymentPurpose"
@@ -82862,6 +85889,25 @@
           "message"
         ],
         "title": "ReferralApplyResponse"
+      },
+      "ReferralCodeResolveResponse": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "referrer_auth_id": {
+            "type": "string",
+            "title": "Referrer Auth Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "referrer_auth_id"
+        ],
+        "title": "ReferralCodeResolveResponse",
+        "description": "Internal attribution result used before recording a referred guest."
       },
       "ReferralCodeResponse": {
         "properties": {

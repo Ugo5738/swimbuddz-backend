@@ -304,7 +304,7 @@ async def admin_activate_club_membership_by_auth(
     # year out from this club purchase so members on a swimming break stay
     # in the network. Skipped for bundles since the caller already activated
     # community via /community/activate (years param).
-    if not payload.skip_community_check:
+    if not payload.skip_community_check and payload.extend_community_membership:
         one_year_out = now + relativedelta(years=1)
         current_community = member.membership.community_paid_until
         if current_community is None or current_community < one_year_out:
