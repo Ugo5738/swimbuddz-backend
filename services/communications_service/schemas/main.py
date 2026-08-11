@@ -255,10 +255,20 @@ class ContentCommentResponse(BaseModel):
     member_id: uuid.UUID
     member_name: Optional[str] = None
     content: str
+    like_count: int = 0
+    liked_by_me: bool = False
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ContentCommentReactionResponse(BaseModel):
+    """Current reaction state for one content comment and member."""
+
+    comment_id: uuid.UUID
+    like_count: int
+    liked_by_me: bool
 
 
 class AnnouncementCommentResponse(BaseModel):

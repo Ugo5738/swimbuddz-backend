@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user, get_optional_user, require_admin
@@ -17,6 +18,7 @@ from libs.common.service_client import emit_rewards_event, get_member_by_id
 from libs.db.session import get_async_db
 from services.communications_service.models import (
     ContentComment,
+    ContentCommentLike,
     ContentPost,
     ContentPostEmailLog,
 )
@@ -24,6 +26,7 @@ from services.communications_service.schemas import (
     CommentCreate,
     ContentAIDraftCreate,
     ContentCommentResponse,
+    ContentCommentReactionResponse,
     ContentPostCreate,
     ContentPostResponse,
     ContentPostUpdate,
@@ -593,6 +596,37 @@ async def list_content_comments(
     result = await db.execute(query)
     comments_list = result.scalars().all()
 
+    comment_ids = [comment.id for comment in comments_list]
+    like_counts: dict[uuid.UUID, int] = {}
+    liked_comment_ids: set[uuid.UUID] = set()
+    if comment_ids:
+        like_count_rows = (
+            await db.execute(
+                select(
+                    ContentCommentLike.comment_id,
+                    func.count(ContentCommentLike.id),
+                )
+                .where(ContentCommentLike.comment_id.in_(comment_ids))
+                .group_by(ContentCommentLike.comment_id)
+            )
+        ).all()
+        like_counts = {
+            comment_id: int(like_count) for comment_id, like_count in like_count_rows
+        }
+        if actor.member_id is not None:
+            liked_comment_ids = set(
+                (
+                    await db.execute(
+                        select(ContentCommentLike.comment_id).where(
+                            ContentCommentLike.comment_id.in_(comment_ids),
+                            ContentCommentLike.member_id == actor.member_id,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
     # Resolve member names via HTTP to members service
     member_ids = [c.member_id for c in comments_list]
     member_map = await resolve_members_basic(member_ids) if member_ids else {}
@@ -602,6 +636,156 @@ async def list_content_comments(
         resp = ContentCommentResponse.model_validate(comment)
         info = member_map.get(str(comment.member_id))
         resp.member_name = info.full_name if info else None
+        resp.like_count = like_counts.get(comment.id, 0)
+        resp.liked_by_me = comment.id in liked_comment_ids
         comments.append(resp)
 
     return comments
+
+
+async def _content_comment_for_member(
+    *,
+    post_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    current_user: AuthUser,
+    db: AsyncSession,
+) -> tuple[ContentComment, uuid.UUID]:
+    post = (
+        await db.execute(select(ContentPost).where(ContentPost.id == post_id))
+    ).scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Content post not found")
+
+    actor = await resolve_content_actor(current_user, require_member=True)
+    require_content_read_access(post, actor)
+    assert actor.member_id is not None
+
+    comment = (
+        await db.execute(
+            select(ContentComment).where(
+                ContentComment.id == comment_id,
+                ContentComment.post_id == post_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    return comment, actor.member_id
+
+
+async def _content_comment_reaction_response(
+    *,
+    comment_id: uuid.UUID,
+    member_id: uuid.UUID,
+    db: AsyncSession,
+) -> ContentCommentReactionResponse:
+    like_count = (
+        await db.execute(
+            select(func.count(ContentCommentLike.id)).where(
+                ContentCommentLike.comment_id == comment_id
+            )
+        )
+    ).scalar_one()
+    liked_by_me = (
+        await db.execute(
+            select(ContentCommentLike.id).where(
+                ContentCommentLike.comment_id == comment_id,
+                ContentCommentLike.member_id == member_id,
+            )
+        )
+    ).scalar_one_or_none()
+    return ContentCommentReactionResponse(
+        comment_id=comment_id,
+        like_count=int(like_count or 0),
+        liked_by_me=liked_by_me is not None,
+    )
+
+
+@content_router.put(
+    "/{post_id}/comments/{comment_id}/like",
+    response_model=ContentCommentReactionResponse,
+)
+async def like_content_comment(
+    post_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Like an article comment. Repeated requests are idempotent."""
+    comment, member_id = await _content_comment_for_member(
+        post_id=post_id,
+        comment_id=comment_id,
+        current_user=current_user,
+        db=db,
+    )
+    await db.execute(
+        insert(ContentCommentLike)
+        .values(
+            id=uuid.uuid4(),
+            comment_id=comment.id,
+            member_id=member_id,
+            created_at=utc_now(),
+        )
+        .on_conflict_do_nothing(
+            index_elements=[
+                ContentCommentLike.comment_id,
+                ContentCommentLike.member_id,
+            ]
+        )
+    )
+    await db.commit()
+    return await _content_comment_reaction_response(
+        comment_id=comment.id,
+        member_id=member_id,
+        db=db,
+    )
+
+
+@content_router.delete(
+    "/{post_id}/comments/{comment_id}/like",
+    response_model=ContentCommentReactionResponse,
+)
+async def unlike_content_comment(
+    post_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Remove the current member's like from an article comment."""
+    comment, member_id = await _content_comment_for_member(
+        post_id=post_id,
+        comment_id=comment_id,
+        current_user=current_user,
+        db=db,
+    )
+    await db.execute(
+        delete(ContentCommentLike).where(
+            ContentCommentLike.comment_id == comment.id,
+            ContentCommentLike.member_id == member_id,
+        )
+    )
+    await db.commit()
+    return await _content_comment_reaction_response(
+        comment_id=comment.id,
+        member_id=member_id,
+        db=db,
+    )
+
+
+@content_router.delete("/{post_id}/comments/{comment_id}", status_code=204)
+async def delete_content_comment(
+    post_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    _: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Delete one article comment (admin only)."""
+    result = await db.execute(
+        delete(ContentComment).where(
+            ContentComment.id == comment_id,
+            ContentComment.post_id == post_id,
+        )
+    )
+    if not result.rowcount:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    await db.commit()
