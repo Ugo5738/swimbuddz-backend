@@ -21044,6 +21044,174 @@
         }
       }
     },
+    "/api/v1/content/{post_id}/comments/{comment_id}/like": {
+      "put": {
+        "tags": [
+          "content"
+        ],
+        "summary": "Like Content Comment",
+        "description": "Like an article comment. Repeated requests are idempotent.",
+        "operationId": "like_content_comment_content__post_id__comments__comment_id__like_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "post_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Post Id"
+            }
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Comment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentCommentReactionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "content"
+        ],
+        "summary": "Unlike Content Comment",
+        "description": "Remove the current member's like from an article comment.",
+        "operationId": "unlike_content_comment_content__post_id__comments__comment_id__like_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "post_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Post Id"
+            }
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Comment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentCommentReactionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/content/{post_id}/comments/{comment_id}": {
+      "delete": {
+        "tags": [
+          "content"
+        ],
+        "summary": "Delete Content Comment",
+        "description": "Delete one article comment (admin only).",
+        "operationId": "delete_content_comment_content__post_id__comments__comment_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "post_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Post Id"
+            }
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Comment Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/categories/": {
       "get": {
         "tags": [
@@ -77311,6 +77479,31 @@
         "title": "ContentAIDraftCreate",
         "description": "Schema for generating a content post draft with AI."
       },
+      "ContentCommentReactionResponse": {
+        "properties": {
+          "comment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Comment Id"
+          },
+          "like_count": {
+            "type": "integer",
+            "title": "Like Count"
+          },
+          "liked_by_me": {
+            "type": "boolean",
+            "title": "Liked By Me"
+          }
+        },
+        "type": "object",
+        "required": [
+          "comment_id",
+          "like_count",
+          "liked_by_me"
+        ],
+        "title": "ContentCommentReactionResponse",
+        "description": "Current reaction state for one content comment and member."
+      },
       "ContentCommentResponse": {
         "properties": {
           "id": {
@@ -77342,6 +77535,16 @@
           "content": {
             "type": "string",
             "title": "Content"
+          },
+          "like_count": {
+            "type": "integer",
+            "title": "Like Count",
+            "default": 0
+          },
+          "liked_by_me": {
+            "type": "boolean",
+            "title": "Liked By Me",
+            "default": false
           },
           "created_at": {
             "type": "string",
@@ -89104,6 +89307,30 @@
             ],
             "title": "Description Override"
           },
+          "start_time_override": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time Override"
+          },
+          "end_time_override": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Override"
+          },
           "cancellation_deadline_hours": {
             "type": "integer",
             "title": "Cancellation Deadline Hours",
@@ -89175,6 +89402,30 @@
               }
             ],
             "title": "Description Override"
+          },
+          "start_time_override": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time Override"
+          },
+          "end_time_override": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Override"
           },
           "cancellation_deadline_hours": {
             "type": "integer",
@@ -89318,6 +89569,30 @@
               }
             ],
             "title": "Description Override"
+          },
+          "start_time_override": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time Override"
+          },
+          "end_time_override": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time Override"
           },
           "cancellation_deadline_hours": {
             "anyOf": [
@@ -108031,6 +108306,11 @@
               }
             ],
             "title": "Thumbnail Url"
+          },
+          "preview_status": {
+            "type": "string",
+            "title": "Preview Status",
+            "default": "pending"
           }
         },
         "type": "object",
