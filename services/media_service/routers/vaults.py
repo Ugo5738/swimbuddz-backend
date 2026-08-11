@@ -21,6 +21,7 @@ from libs.auth.models import AuthUser
 from libs.common.arq_config import get_redis_settings
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
+from libs.common.logging import get_logger
 from libs.common.service_client import (
     dispatch_notification,
 )
@@ -86,6 +87,7 @@ from services.media_service.services.vault_grants import (
 from services.media_service.services.vault_templates import (
     DEFAULT_MEDIA_VAULT_CHECKLIST,
     DEFAULT_MEDIA_VAULT_CONSENT_NOTICE,
+    MEDIA_VAULT_UPLOAD_WINDOW_HOURS,
     default_media_coverage_settings,
 )
 from services.media_service.services.vault_access import (
@@ -100,6 +102,7 @@ from services.media_service.services.vault_access import (
 
 router = APIRouter(prefix="/media/vaults", tags=["media-vaults"])
 settings = get_settings()
+logger = get_logger(__name__)
 _redis_pool = None
 _FILENAME_SAFE = re.compile(r"[^A-Za-z0-9._()\- ]+")
 _SUPPORTED_FALLBACK_EXTENSIONS = {
@@ -213,8 +216,35 @@ async def _media_response(item: MediaItem) -> VaultMediaResponse:
         )
         if item.media_type == MediaType.IMAGE:
             preview_url = thumbnail_url
+    metadata = dict(item.metadata_info or {})
+    if preview_url:
+        preview_status = "ready"
+    elif thumbnail_url:
+        preview_status = "thumbnail_ready"
+    else:
+        preview_status = str(
+            metadata.get("thumbnail_status")
+            or metadata.get("proxy_status")
+            or "pending"
+        )
     return response.model_copy(
-        update={"preview_url": preview_url, "thumbnail_url": thumbnail_url}
+        update={
+            "preview_url": preview_url,
+            "thumbnail_url": thumbnail_url,
+            "preview_status": preview_status,
+        }
+    )
+
+
+async def _enqueue_default_thumbnail(item: MediaItem) -> None:
+    """Queue a small review thumbnail without modifying the original."""
+
+    pool = await _get_redis_pool()
+    await pool.enqueue_job(
+        "task_build_vault_preview",
+        str(item.id),
+        False,
+        _queue_name="arq:media",
     )
 
 
@@ -270,8 +300,9 @@ async def _create_batch(
     auth_id: Optional[uuid.UUID],
     member_id: Optional[uuid.UUID],
     guest_link: Optional[MediaVaultGuestLink],
+    bypass_upload_window: bool = False,
 ) -> MediaUploadBatch:
-    await require_upload_window(vault)
+    await require_upload_window(vault, bypass_time_window=bypass_upload_window)
     if payload.expected_bytes > vault.max_total_bytes - vault.used_bytes:
         raise HTTPException(status_code=413, detail="Vault storage allowance exceeded")
     if guest_link and payload.expected_bytes > (
@@ -304,13 +335,14 @@ async def _initiate_upload(
     uploader_id: uuid.UUID,
     actor_member_id: Optional[uuid.UUID],
     request: Request,
+    bypass_upload_window: bool = False,
 ) -> MultipartInitiateResponse:
     vault = await db.scalar(
         select(MediaVault).where(MediaVault.id == batch.vault_id).with_for_update()
     )
     if not vault:
         raise HTTPException(status_code=404, detail="Media vault not found")
-    await require_upload_window(vault)
+    await require_upload_window(vault, bypass_time_window=bypass_upload_window)
     if batch.status != "open":
         raise HTTPException(status_code=409, detail="Upload batch is not open")
     if payload.size_bytes > vault.max_file_bytes:
@@ -557,6 +589,7 @@ async def _complete_upload(
         "etag": metadata.get("etag"),
         "original_preserved": True,
         "auto_transcoded": False,
+        "thumbnail_status": "pending",
     }
     batch.completed_files += 1
     batch.completed_bytes += actual_size
@@ -592,6 +625,16 @@ async def _complete_upload(
         transfer.completed_at = utc_now()
     await db.commit()
     await db.refresh(item)
+    try:
+        await _enqueue_default_thumbnail(item)
+    except Exception:
+        # A derivative must never make a successful original upload fail. The
+        # item list retries missing thumbnails when a curator opens the vault.
+        logger.exception("Could not queue default vault thumbnail for %s", item.id)
+        metadata = dict(item.metadata_info or {})
+        metadata["thumbnail_status"] = "failed"
+        item.metadata_info = metadata
+        await db.commit()
     if batch.status == "complete":
         curator_ids = list(
             (
@@ -823,15 +866,20 @@ async def create_vault(
 ):
     actor = await resolve_actor(current_user)
     values = payload.model_dump()
+    if payload.ends_at:
+        values["upload_closes_at"] = max(
+            payload.upload_closes_at,
+            payload.ends_at + timedelta(hours=MEDIA_VAULT_UPLOAD_WINDOW_HOURS),
+        )
     if not values["shot_checklist"]:
         values["shot_checklist"] = list(DEFAULT_MEDIA_VAULT_CHECKLIST)
     if not values["consent_notice"]:
         values["consent_notice"] = DEFAULT_MEDIA_VAULT_CONSENT_NOTICE
     current = utc_now()
     initial_status = "scheduled"
-    if payload.upload_opens_at <= current <= payload.upload_closes_at:
+    if values["upload_opens_at"] <= current <= values["upload_closes_at"]:
         initial_status = "open"
-    elif current > payload.upload_closes_at:
+    elif current > values["upload_closes_at"]:
         initial_status = "review"
     vault = MediaVault(
         **values,
@@ -1105,6 +1153,7 @@ async def create_member_batch(
         auth_id=actor.auth_id,
         member_id=actor.member_id,
         guest_link=None,
+        bypass_upload_window=actor.is_admin,
     )
 
 
@@ -1133,6 +1182,7 @@ async def initiate_member_upload(
         uploader_id=actor.auth_id,
         actor_member_id=actor.member_id,
         request=request,
+        bypass_upload_window=actor.is_admin,
     )
 
 
@@ -1256,8 +1306,33 @@ async def list_vault_items(
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
+    items = list(result.scalars())
+    missing_thumbnails: list[MediaItem] = []
+    for item in items:
+        if item.thumbnail_object_key:
+            continue
+        metadata = dict(item.metadata_info or {})
+        if metadata.get("thumbnail_status") in {"pending", "processing"}:
+            continue
+        metadata["thumbnail_status"] = "pending"
+        item.metadata_info = metadata
+        missing_thumbnails.append(item)
+    if missing_thumbnails:
+        await db.commit()
+        queue_failed = False
+        for item in missing_thumbnails:
+            try:
+                await _enqueue_default_thumbnail(item)
+            except Exception:
+                logger.exception("Could not queue vault thumbnail for %s", item.id)
+                metadata = dict(item.metadata_info or {})
+                metadata["thumbnail_status"] = "failed"
+                item.metadata_info = metadata
+                queue_failed = True
+        if queue_failed:
+            await db.commit()
     return VaultMediaListResponse(
-        items=[await _media_response(item) for item in result.scalars()],
+        items=[await _media_response(item) for item in items],
         total=total,
         page=page,
         page_size=page_size,
@@ -1444,20 +1519,25 @@ async def request_item_preview(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Vault media not found")
-    if item.proxy_object_key or item.thumbnail_object_key:
+    is_video = item.media_type == MediaType.VIDEO
+    if (is_video and item.proxy_object_key) or (
+        not is_video and item.thumbnail_object_key
+    ):
         return {"status": "ready"}
     metadata = dict(item.metadata_info or {})
-    if metadata.get("proxy_status") not in {"pending", "processing"}:
-        metadata["proxy_status"] = "pending"
+    status_key = "proxy_status" if is_video else "thumbnail_status"
+    if metadata.get(status_key) not in {"pending", "processing"}:
+        metadata[status_key] = "pending"
         item.metadata_info = metadata
         await db.commit()
         pool = await _get_redis_pool()
         await pool.enqueue_job(
             "task_build_vault_preview",
             str(item.id),
+            is_video,
             _queue_name="arq:media",
         )
-    return {"status": metadata.get("proxy_status", "pending")}
+    return {"status": metadata.get(status_key, "pending")}
 
 
 @router.post(

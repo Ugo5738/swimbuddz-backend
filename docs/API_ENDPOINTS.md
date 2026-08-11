@@ -1075,6 +1075,8 @@ Two template surfaces, see [VOLUNTEER_OPPORTUNITY_CONTEXT_DESIGN.md](../../docs/
 
 Session-template volunteer slots — fan out automatically when sessions_service generates a session from the parent template:
 
+Slot payloads may override the volunteer title, description, start time, and end time. Omitted shift times inherit the generated session's full time range.
+
 | Method   | Endpoint                                                                           | Description                                 |
 | -------- | ---------------------------------------------------------------------------------- | ------------------------------------------- |
 | `GET`    | `/api/v1/admin/volunteers/session-templates/{session_template_id}/slots`           | List volunteer needs for a session template |

@@ -63,6 +63,7 @@ def test_content_admin_mutations_require_admin_dependency():
         "publish_content_post",
         "unpublish_content_post",
         "retry_failed_content_post_emails",
+        "delete_content_comment",
         "delete_content_post",
     }
 
@@ -75,3 +76,5 @@ def test_public_content_reads_resolve_optional_identity():
     assert get_optional_user in _route_dependencies("get_content_post")
     assert get_optional_user in _route_dependencies("list_content_comments")
     assert get_current_user in _route_dependencies("create_content_comment")
+    assert get_current_user in _route_dependencies("like_content_comment")
+    assert get_current_user in _route_dependencies("unlike_content_comment")

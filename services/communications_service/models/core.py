@@ -5,6 +5,7 @@ from typing import Optional
 from sqlalchemy import (
     Boolean,
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -384,6 +385,33 @@ class ContentComment(Base):
 
     def __repr__(self):
         return f"<ContentComment post={self.post_id} member={self.member_id}>"
+
+
+class ContentCommentLike(Base):
+    """One member's like on an article comment."""
+
+    __tablename__ = "content_comment_likes"
+    __table_args__ = (
+        UniqueConstraint(
+            "comment_id",
+            "member_id",
+            name="uq_content_comment_likes_comment_member",
+        ),
+        Index("ix_content_comment_likes_comment_id", "comment_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("content_comments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
 
 
 class AnnouncementComment(Base):

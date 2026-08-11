@@ -270,6 +270,7 @@ class VaultMediaResponse(BaseModel):
     created_at: datetime
     preview_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
+    preview_status: str = "pending"
 
     model_config = ConfigDict(from_attributes=True)
 

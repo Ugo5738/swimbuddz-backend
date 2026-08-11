@@ -478,6 +478,17 @@ class MaterialiseFromSessionTemplateResp(BaseModel):
     created_count: int
 
 
+def _materialised_source_slot_ids(
+    metadata_rows: list[tuple[Optional[dict]]],
+) -> set[str]:
+    """Return stable template-slot ids already materialised for a session."""
+    return {
+        str(metadata["source_template_slot_id"])
+        for (metadata,) in metadata_rows
+        if metadata and metadata.get("source_template_slot_id")
+    }
+
+
 @router.post(
     "/opportunities/from-session-template",
     response_model=MaterialiseFromSessionTemplateResp,
@@ -537,22 +548,22 @@ async def materialise_from_session_template(
     if not slots:
         return MaterialiseFromSessionTemplateResp(success=True, created_count=0)
 
-    # Pull existing opportunities for this session in one query — cheap
-    # idempotency guard.
-    existing_role_ids = {
-        row[0]
-        for row in (
+    # Pull existing source-slot ids for this session in one query. A role id
+    # is not an idempotency key: one session can legitimately need two shifts
+    # for the same role. Each configured template slot is the stable source.
+    existing_source_slot_ids = _materialised_source_slot_ids(
+        (
             await db.execute(
-                select(VolunteerOpportunity.role_id).where(
+                select(VolunteerOpportunity.metadata_json).where(
                     VolunteerOpportunity.session_id == session_uuid
                 )
             )
         ).all()
-    }
+    )
 
     created = 0
     for slot in slots:
-        if slot.role_id in existing_role_ids:
+        if str(slot.id) in existing_source_slot_ids:
             continue
         title = slot.title_override or (slot.role.title if slot.role else "Volunteer")
         description = slot.description_override
@@ -561,8 +572,8 @@ async def materialise_from_session_template(
             description=description,
             role_id=slot.role_id,
             date=opp_date,
-            start_time=start_t,
-            end_time=end_t,
+            start_time=slot.start_time_override or start_t,
+            end_time=slot.end_time_override or end_t,
             session_id=session_uuid,
             location_name=body.location_name,
             slots_needed=slot.slots_needed,

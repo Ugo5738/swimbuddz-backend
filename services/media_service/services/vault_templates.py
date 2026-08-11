@@ -11,15 +11,19 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+MEDIA_VAULT_UPLOAD_WINDOW_HOURS = 72
+
 
 DEFAULT_MEDIA_VAULT_CHECKLIST = [
     "Establishing shot and preparation or arrival",
+    "Featured member states their goal before the swim, with permission",
     "Warm-up wide shot and two drill close-ups",
     "Side-angle footage showing complete movement",
     "Coaching sequence: instruction, attempt, correction, improved attempt",
     "Two members completing meaningful parts of the main set",
     "One uninterrupted complete-length swim",
     "Cool-down or coach, peer, or pod review",
+    "Featured member reflects on progress against their goal after the swim",
     "Progress, reaction, or encouragement moment",
     "Group or pod photo and a candid community moment",
     "At least two useful horizontal clips for the website or YouTube",
@@ -33,8 +37,16 @@ DEFAULT_MEDIA_VAULT_CONSENT_NOTICE = (
 
 _DEFAULT_MEDIA_COVERAGE_SETTINGS: dict[str, Any] = {
     "coverage_standard": "club-session-media-v1",
-    "story": ["prepare", "practise", "coach", "progress", "belong"],
-    "upload_deadline_hours": 24,
+    "story": [
+        "set a goal",
+        "prepare",
+        "practise",
+        "coach",
+        "reflect",
+        "progress",
+        "belong",
+    ],
+    "upload_deadline_hours": MEDIA_VAULT_UPLOAD_WINDOW_HOURS,
     "output_targets": {
         "vertical_video": "12-18 usable clips",
         "horizontal_video": "2-4 useful clips",

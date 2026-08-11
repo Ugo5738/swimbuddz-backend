@@ -478,6 +478,8 @@ class SessionTemplateVolunteerSlotBase(BaseModel):
     qr_checkin_enabled: bool = False
     title_override: Optional[str] = Field(default=None, max_length=200)
     description_override: Optional[str] = None
+    start_time_override: Optional[time] = None
+    end_time_override: Optional[time] = None
     cancellation_deadline_hours: int = 24
     is_active: bool = True
 
@@ -494,6 +496,8 @@ class SessionTemplateVolunteerSlotUpdate(BaseModel):
     qr_checkin_enabled: Optional[bool] = None
     title_override: Optional[str] = Field(default=None, max_length=200)
     description_override: Optional[str] = None
+    start_time_override: Optional[time] = None
+    end_time_override: Optional[time] = None
     cancellation_deadline_hours: Optional[int] = None
     is_active: Optional[bool] = None
 

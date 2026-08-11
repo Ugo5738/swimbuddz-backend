@@ -539,6 +539,12 @@ class SessionTemplateVolunteerSlot(Base):
     )
     title_override: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     description_override: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Optional shift times. When omitted, materialisation inherits the
+    # generated session's full start/end time. Keeping these on the volunteer
+    # side preserves service ownership while still allowing roles such as
+    # check-in or setup to cover only part of a session.
+    start_time_override: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
+    end_time_override: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
     cancellation_deadline_hours: Mapped[int] = mapped_column(Integer, default=24)
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true")
