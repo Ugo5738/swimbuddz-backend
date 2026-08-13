@@ -6,8 +6,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
-from libs.common.service_client import get_member_by_auth_id
 from libs.common.datetime_utils import utc_now
+from libs.common.logging import get_logger
+from libs.common.service_client import (
+    get_member_by_auth_id,
+    sync_media_vault_volunteer_grants,
+)
 from libs.db.session import get_async_db
 from services.volunteer_service.models import (
     OpportunityStatus,
@@ -23,6 +27,26 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
+logger = get_logger(__name__)
+
+
+async def _sync_media_assignment(opp: VolunteerOpportunity | None) -> None:
+    if not opp or (not opp.session_id and not opp.event_id):
+        return
+    try:
+        await sync_media_vault_volunteer_grants(
+            calling_service="volunteer",
+            session_id=str(opp.session_id) if opp.session_id else None,
+            event_id=str(opp.event_id) if opp.event_id else None,
+        )
+    except Exception:
+        # A scheduled media-vault reconciliation remains the durable fallback;
+        # claiming a volunteer role must not fail because media is unavailable.
+        logger.warning(
+            "Could not immediately sync media-vault grant for opportunity %s",
+            opp.id,
+            exc_info=True,
+        )
 
 
 @router.post(
@@ -117,6 +141,7 @@ async def claim_slot(
 
     await db.commit()
     await db.refresh(slot)
+    await _sync_media_assignment(opp)
     return slot
 
 
@@ -172,3 +197,4 @@ async def cancel_my_claim(
             opp.status = OpportunityStatus.OPEN
 
     await db.commit()
+    await _sync_media_assignment(opp)

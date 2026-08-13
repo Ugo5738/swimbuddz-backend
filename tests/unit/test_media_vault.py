@@ -267,6 +267,18 @@ async def test_assignment_notification_requests_in_app_and_email(monkeypatch):
     assert payload["email_template"] == "media_vault_access_granted"
     assert payload["expires_at"] is None
     assert payload["action_url"] == f"/account/media-vault/{vault.id}"
+    assert payload["email_data"]["vault_title"] == "Saturday Club Swim"
+    assert payload["email_data"]["role_label"] == "media uploader"
+    assert (
+        payload["email_data"]["responsibility"]
+        == "upload full-quality session photos and videos"
+    )
+    assert payload["email_data"]["expires_at"] == (
+        "Monday, 17 August 2026 at 12:00 UTC"
+    )
+    assert payload["email_data"]["action_url"].endswith(
+        f"/account/media-vault/{vault.id}"
+    )
 
 
 def test_media_worker_registers_automatic_session_vault_sync():

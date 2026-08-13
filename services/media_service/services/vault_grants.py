@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta
-from html import escape
 from typing import Optional
 
 from sqlalchemy import select
@@ -73,12 +72,6 @@ async def notify_vault_access(
         f"You have been assigned as the {role_label} for {vault.title}. "
         f"You can {responsibility}. Access ends {expiry_label}."
     )
-    html_body = (
-        f"<p>You have been assigned as the <strong>{escape(role_label)}</strong> for "
-        f"<strong>{escape(vault.title)}</strong>.</p>"
-        f"<p>You can {escape(responsibility)}. Access ends {escape(expiry_label)}.</p>"
-        f'<p><a href="{escape(action_url, quote=True)}">Open the media vault</a></p>'
-    )
     return await dispatch_notification(
         type="media_vault_access_granted",
         category="media",
@@ -90,7 +83,13 @@ async def notify_vault_access(
         metadata={"vault_id": str(vault.id), "role": role},
         channels=["in_app", "email"],
         email_template="media_vault_access_granted",
-        email_data={"body": body, "html_content": html_body},
+        email_data={
+            "vault_title": vault.title,
+            "role_label": role_label,
+            "responsibility": responsibility,
+            "expires_at": expiry_label,
+            "action_url": action_url,
+        },
         calling_service="media",
         # Assignment notifications are history.  The access itself still
         # expires, but the alert should not disappear at the same instant.

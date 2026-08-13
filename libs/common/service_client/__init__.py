@@ -31,6 +31,7 @@ from .media import (
     create_media_direct_upload,
     delete_media_object,
     sign_media_object,
+    sync_media_vault_volunteer_grants,
     upload_media_object,
     verify_media_object,
 )
@@ -107,6 +108,7 @@ __all__ = [
     "create_media_direct_upload",
     "verify_media_object",
     "sign_media_object",
+    "sync_media_vault_volunteer_grants",
     "upload_media_object",
     "delete_media_object",
     # Members

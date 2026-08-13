@@ -7,8 +7,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-from libs.common.service_client import get_member_by_auth_id
 from libs.common.datetime_utils import utc_now
+from libs.common.logging import get_logger
+from libs.common.service_client import (
+    get_member_by_auth_id,
+    sync_media_vault_volunteer_grants,
+)
 from libs.db.session import get_async_db
 from services.volunteer_service.models import (
     SlotStatus,
@@ -34,6 +38,24 @@ from sqlalchemy.orm import selectinload
 from ._helpers import _auto_checkout_if_past, _emit_volunteer_reward, _enrich_slot
 
 router = APIRouter()
+logger = get_logger(__name__)
+
+
+async def _sync_media_assignment(opp: VolunteerOpportunity | None) -> None:
+    if not opp or (not opp.session_id and not opp.event_id):
+        return
+    try:
+        await sync_media_vault_volunteer_grants(
+            calling_service="volunteer",
+            session_id=str(opp.session_id) if opp.session_id else None,
+            event_id=str(opp.event_id) if opp.event_id else None,
+        )
+    except Exception:
+        logger.warning(
+            "Could not immediately sync media-vault grant for opportunity %s",
+            opp.id,
+            exc_info=True,
+        )
 
 
 @router.get("/opportunities/{opp_id}/slots", response_model=list[VolunteerSlotResponse])
@@ -84,6 +106,14 @@ async def update_slot(
     if not slot:
         raise HTTPException(status_code=404, detail="Slot not found")
 
+    opp = (
+        await db.execute(
+            select(VolunteerOpportunity).where(
+                VolunteerOpportunity.id == slot.opportunity_id
+            )
+        )
+    ).scalar_one_or_none()
+
     if data.status == SlotStatus.APPROVED:
         slot.status = SlotStatus.APPROVED
         slot.approved_at = utc_now()
@@ -93,13 +123,6 @@ async def update_slot(
     elif data.status == SlotStatus.REJECTED:
         slot.status = SlotStatus.REJECTED
         # Decrement filled count
-        opp = (
-            await db.execute(
-                select(VolunteerOpportunity).where(
-                    VolunteerOpportunity.id == slot.opportunity_id
-                )
-            )
-        ).scalar_one_or_none()
         if opp and opp.slots_filled > 0:
             opp.slots_filled -= 1
     elif data.status:
@@ -110,6 +133,8 @@ async def update_slot(
 
     await db.commit()
     await db.refresh(slot)
+    if data.status in (SlotStatus.APPROVED, SlotStatus.REJECTED, SlotStatus.CANCELLED):
+        await _sync_media_assignment(opp)
     return await _enrich_slot(slot)
 
 
