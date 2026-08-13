@@ -10,9 +10,14 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, model_validator
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
+from libs.db.session import get_async_db
+from services.media_service.models import MediaVault
 from services.media_service.schemas import (
     InternalDirectUploadCreateRequest,
     InternalDirectUploadCreateResponse,
@@ -28,6 +33,7 @@ from services.media_service.services.storage import (
     get_bucket_for_purpose,
     storage_service,
 )
+from services.media_service.services.vault_grants import sync_volunteer_grants
 
 router = APIRouter(prefix="/internal/media", tags=["media-internal"])
 
@@ -38,6 +44,17 @@ _PURPOSE_PREFIX = {
     "strokelab_evidence": "strokelab/evidence",
     "strokelab_share": "strokelab/share",
 }
+
+
+class InternalVaultGrantSyncRequest(BaseModel):
+    session_id: uuid.UUID | None = None
+    event_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def require_one_context(self):
+        if bool(self.session_id) == bool(self.event_id):
+            raise ValueError("Provide exactly one of session_id or event_id")
+        return self
 
 
 def _safe_segment(value: str | None, fallback: str) -> str:
@@ -65,6 +82,28 @@ def _bucket_type(raw: str) -> BucketType:
         return BucketType(raw)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid bucket_type") from exc
+
+
+@router.post("/vaults/sync-volunteer-grants")
+async def sync_existing_vault_volunteer_grants(
+    req: InternalVaultGrantSyncRequest,
+    _current_user: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict[str, int | str]:
+    """Reconcile media/gallery claims immediately when a vault already exists."""
+
+    context_clause = (
+        MediaVault.session_id == req.session_id
+        if req.session_id
+        else MediaVault.event_id == req.event_id
+    )
+    vault = await db.scalar(select(MediaVault).where(context_clause))
+    if vault is None:
+        # Session-vault lifecycle remains the fallback. It creates the vault
+        # and performs the same idempotent sync on its next pass.
+        return {"status": "vault_not_found", "grants_synced": 0}
+    grants = await sync_volunteer_grants(db, vault=vault, created_by=None)
+    return {"status": "synced", "grants_synced": len(grants)}
 
 
 @router.post(

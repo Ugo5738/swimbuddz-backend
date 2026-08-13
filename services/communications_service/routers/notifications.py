@@ -258,9 +258,6 @@ async def dispatch_notification(
                     should_email = getattr(prefs, pref_field, True)
 
                 if should_email:
-                    # Use the existing email router's send_email function
-                    from libs.common.emails.core import send_email
-
                     # Build email from template data
                     email_data = payload.email_data or {}
                     # A dispatch may target several members. Default to the
@@ -269,12 +266,50 @@ async def dispatch_notification(
                     # one-recipient, pre-rendered template.
                     to_email = email_data.get("to_email") or member_detail.get("email")
                     if to_email:
-                        await send_email(
-                            to_email=to_email,
-                            subject=payload.title,
-                            body=email_data.get("body", payload.body or ""),
-                            html_body=email_data.get("html_content"),
-                        )
+                        if payload.email_template == "media_vault_access_granted":
+                            from services.communications_service.templates.media import (
+                                send_media_vault_access_email,
+                            )
+
+                            member_name = " ".join(
+                                part
+                                for part in [
+                                    member_detail.get("first_name"),
+                                    member_detail.get("last_name"),
+                                ]
+                                if part
+                            ) or member_detail.get("name", "SwimBuddz member")
+                            await send_media_vault_access_email(
+                                to_email=to_email,
+                                member_name=member_name,
+                                vault_title=email_data.get(
+                                    "vault_title", payload.title
+                                ),
+                                role_label=email_data.get(
+                                    "role_label", "media volunteer"
+                                ),
+                                responsibility=email_data.get(
+                                    "responsibility", "work with the session media"
+                                ),
+                                expires_at=email_data.get(
+                                    "expires_at", "the stated access window"
+                                ),
+                                action_url=email_data.get(
+                                    "action_url", payload.action_url or ""
+                                ),
+                            )
+                        else:
+                            # Some older notification types still provide
+                            # already-rendered content. Keep that compatibility
+                            # path while dedicated branded templates migrate in.
+                            from libs.common.emails.core import send_email
+
+                            await send_email(
+                                to_email=to_email,
+                                subject=payload.title,
+                                body=email_data.get("body", payload.body or ""),
+                                html_body=email_data.get("html_content"),
+                            )
             except Exception as e:
                 logger.warning(
                     "Failed to send notification email for member %s: %s",

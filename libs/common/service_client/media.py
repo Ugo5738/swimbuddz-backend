@@ -118,3 +118,24 @@ async def delete_media_object(
         json={"object_key": object_key, "bucket_type": bucket_type},
     )
     resp.raise_for_status()
+
+
+async def sync_media_vault_volunteer_grants(
+    *,
+    calling_service: str,
+    session_id: str | None = None,
+    event_id: str | None = None,
+) -> dict[str, Any]:
+    """Immediately reconcile volunteer claims into an existing media vault."""
+
+    if bool(session_id) == bool(event_id):
+        raise ValueError("Provide exactly one of session_id or event_id")
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.MEDIA_SERVICE_URL,
+        path="/internal/media/vaults/sync-volunteer-grants",
+        calling_service=calling_service,
+        json={"session_id": session_id, "event_id": event_id},
+    )
+    resp.raise_for_status()
+    return resp.json()
