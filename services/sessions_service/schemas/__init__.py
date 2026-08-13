@@ -48,7 +48,6 @@ from services.sessions_service.schemas.guest_pass import (
     GuestPassCreate,
     GuestPassOffer,
     GuestPassPublicResponse,
-    GuestReferralRewardPaid,
 )
 from services.sessions_service.schemas.templates import (
     GenerateSessionsRequest,
@@ -65,7 +64,6 @@ __all__ = [
     "GuestPassCreate",
     "GuestPassOffer",
     "GuestPassPublicResponse",
-    "GuestReferralRewardPaid",
     "AdminPoolFeeRefundRequest",
     "AdminWalkInRequest",
     "BookableSlotResponse",

@@ -54,6 +54,7 @@ class CreatePaymentIntentRequest(BaseModel):
     # New location-aware Club checkout. When supplied, the amount is fetched
     # server-to-server from the approved Club application; client prices are ignored.
     club_application_id: Optional[uuid.UUID] = None
+    community_experience_offering_id: Optional[uuid.UUID] = None
 
     cohort_id: Optional[uuid.UUID] = None
     enrollment_id: Optional[uuid.UUID] = None  # For ACADEMY_COHORT payments

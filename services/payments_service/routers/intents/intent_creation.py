@@ -19,7 +19,6 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.currency import (
     KOBO_PER_BUBBLE,
-    KOBO_PER_NAIRA,
     bubbles_to_naira,
     kobo_to_naira,
     naira_to_kobo,
@@ -41,6 +40,9 @@ from services.payments_service.schemas import (
 )
 from services.payments_service.services.additional_charges import (
     calculate_additional_charges,
+)
+from services.payments_service.services.academy_pricing import (
+    academy_payment_context,
 )
 
 settings = get_settings()
@@ -107,6 +109,32 @@ async def _approved_club_application_context(application_id: uuid.UUID) -> dict:
             detail=_service_error_detail(
                 response, "Could not price this Club application"
             ),
+        )
+    return response.json()
+
+
+async def _community_experience_context(
+    offering_id: uuid.UUID, member_auth_id: str
+) -> dict:
+    headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(
+            (
+                f"{settings.MEMBERS_SERVICE_URL}/clubs/community-experiences/"
+                f"internal/{offering_id}/payment-context"
+            ),
+            params={"member_auth_id": member_auth_id},
+            headers=headers,
+        )
+    if response.status_code >= 400:
+        detail = "Could not price this Community Experience"
+        try:
+            detail = response.json().get("detail") or detail
+        except ValueError:
+            pass
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=detail,
         )
     return response.json()
 
@@ -645,11 +673,23 @@ async def create_payment_intent(
                 "club_id": context["club_id"],
                 "club_name": context["club_name"],
                 "plan_version_id": context["plan_version_id"],
+                "plan_version_ids": context.get("plan_version_ids")
+                or [context["plan_version_id"]],
                 "community_experience_selected": context[
                     "community_experience_selected"
                 ],
+                "community_extension_months": int(
+                    context.get("annual_membership_months") or 0
+                ),
+                "community_extension_amount": kobo_to_naira(
+                    int(context.get("annual_membership_fee_kobo") or 0)
+                ),
                 "components_kobo": {
                     "club": int(context["club_fee_kobo"]),
+                    "club_items": context.get("club_items") or [],
+                    "annual_swimbuddz_membership": int(
+                        context.get("annual_membership_fee_kobo") or 0
+                    ),
                     "community_experience": int(
                         context["community_experience_fee_kobo"]
                     ),
@@ -726,6 +766,37 @@ async def create_payment_intent(
             },
         }
 
+    elif payload.purpose == PaymentPurpose.COMMUNITY_EXPERIENCE:
+        if not payload.community_experience_offering_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="community_experience_offering_id is required",
+            )
+        context = await _community_experience_context(
+            payload.community_experience_offering_id,
+            current_user.user_id,
+        )
+        amount = kobo_to_naira(int(context["subtotal_kobo"]))
+        payment_metadata = {
+            **(payload.payment_metadata or {}),
+            "community_experience_offering_id": str(
+                payload.community_experience_offering_id
+            ),
+            "community_experience_price_context": context["price_context"],
+            "community_extension_months": int(
+                context.get("annual_membership_months") or 0
+            ),
+            "community_extension_amount": kobo_to_naira(
+                int(context.get("annual_membership_fee_kobo") or 0)
+            ),
+            "components_kobo": {
+                "community_experience": int(context["amount_kobo"]),
+                "annual_swimbuddz_membership": int(
+                    context.get("annual_membership_fee_kobo") or 0
+                ),
+            },
+        }
+
     # Academy cohort enrollment
     elif payload.purpose == PaymentPurpose.ACADEMY_COHORT:
         if not payload.enrollment_id:
@@ -733,112 +804,28 @@ async def create_payment_intent(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="enrollment_id is required for ACADEMY_COHORT payments",
             )
-        # Lookup enrollment and next payable installment from academy_service.
-        # Pass use_installments so the academy service can build the schedule on-demand
-        # if the member opted in and no schedule exists yet.
-        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{settings.ACADEMY_SERVICE_URL}/internal/academy/enrollments/{payload.enrollment_id}",
-                params={"use_installments": str(payload.use_installments).lower()},
-                headers=headers,
-            )
-            if resp.status_code >= 400:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Failed to fetch enrollment: {resp.text}",
-                )
-            enrollment_data = resp.json()
-            cohort_id = enrollment_data.get("cohort_id")
-            installments = sorted(
-                enrollment_data.get("installments") or [],
-                key=lambda i: i.get("installment_number", 0),
-            )
-
-        paid_statuses = {"paid", "waived"}
-        next_installment = next(
-            (
-                i
-                for i in installments
-                if str(i.get("status") or "").lower() not in paid_statuses
-            ),
-            None,
+        context = await academy_payment_context(
+            enrollment_id=payload.enrollment_id,
+            member_auth_id=current_user.user_id,
+            use_installments=payload.use_installments,
+            amount_override_kobo=payload.amount_override_kobo,
         )
-
-        if next_installment:
-            # Academy returns installment amounts in kobo; convert to NGN for payment intent.
-            amount = float(next_installment.get("amount") or 0) / KOBO_PER_NAIRA
-        else:
-            # Backward-compatible fallback for older enrollments without an installment plan.
-            program = enrollment_data.get("program") or {}
-            cohort = enrollment_data.get("cohort") or {}
-            amount = float(
-                cohort.get("price_override")
-                if cohort.get("price_override") is not None
-                else (program.get("price_amount") or 0)
-            )
-            if str(enrollment_data.get("payment_status") or "").lower() == "paid":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="All required academy installments are already paid",
-                )
-
-        # Member-initiated custom amount: must be >= next installment amount
-        # and <= remaining balance (founder policy May 2026). Default behavior
-        # without an override is unchanged — charge exactly the stipulated amount.
-        if (
-            payload.amount_override_kobo is not None
-            and payload.amount_override_kobo > 0
-        ):
-            override_naira = payload.amount_override_kobo / KOBO_PER_NAIRA
-            if override_naira < amount:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Custom amount NGN {override_naira:,.2f} is less than the "
-                        f"next stipulated installment NGN {amount:,.2f}"
-                    ),
-                )
-            remaining_balance_kobo = sum(
-                int(i.get("amount") or 0)
-                for i in installments
-                if str(i.get("status") or "").lower() not in paid_statuses
-            )
-            remaining_balance_naira = remaining_balance_kobo / KOBO_PER_NAIRA
-            if override_naira > remaining_balance_naira:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Custom amount NGN {override_naira:,.2f} exceeds remaining "
-                        f"balance NGN {remaining_balance_naira:,.2f}"
-                    ),
-                )
-            amount = override_naira
-
-        if amount <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No payable installment is available for this enrollment",
-            )
-
+        amount = kobo_to_naira(int(context["subtotal_kobo"]))
         payment_metadata = {
             **(payload.payment_metadata or {}),
-            "enrollment_id": str(payload.enrollment_id),
-            "cohort_id": str(cohort_id) if cohort_id else None,
-            "installment_id": (
-                str(next_installment.get("id")) if next_installment else None
-            ),
-            "installment_number": (
-                int(next_installment.get("installment_number"))
-                if next_installment and next_installment.get("installment_number")
-                else None
-            ),
-            "installment_due_at": (
-                next_installment.get("due_at") if next_installment else None
-            ),
-            "total_installments": (
-                int(enrollment_data.get("total_installments") or 0) or None
-            ),
+            "enrollment_id": context["enrollment_id"],
+            "cohort_id": context["cohort_id"],
+            "installment_id": context["installment_id"],
+            "installment_number": context["installment_number"],
+            "installment_due_at": context["installment_due_at"],
+            "total_installments": context["total_installments"],
+            "academy_membership_policy": context["membership_policy"],
+            "community_extension_months": context["annual_membership_months"],
+            "academy_payment_amount_kobo": context["academy_amount_kobo"],
+            "components_kobo": {
+                "academy": context["academy_amount_kobo"],
+                "annual_swimbuddz_membership": context["annual_membership_fee_kobo"],
+            },
         }
 
     # Store order payment

@@ -1,7 +1,6 @@
 """Public self-paying guest passes and protected operations follow-up."""
 
 import uuid
-import re
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,7 +13,7 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.emails.client import get_email_client
-from libs.common.service_client import internal_get, internal_post
+from libs.common.service_client import emit_rewards_event, internal_get, internal_post
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     GuestPass,
@@ -30,24 +29,13 @@ from services.sessions_service.schemas import (
     GuestPassCreate,
     GuestPassOffer,
     GuestPassPublicResponse,
-    GuestReferralRewardPaid,
+)
+from services.sessions_service.services.guest_identity import (
+    normalize_guest_phone as _normalize_guest_phone,
 )
 
 router = APIRouter(tags=["guest-passes"])
 settings = get_settings()
-
-
-def _normalize_guest_phone(phone: str) -> str:
-    """Store a stable Nigerian/E.164-like value for repeat-guest deduplication."""
-    stripped = phone.strip()
-    digits = re.sub(r"\D", "", stripped)
-    if stripped.startswith("+"):
-        return f"+{digits}"
-    if digits.startswith("234"):
-        return f"+{digits}"
-    if len(digits) == 11 and digits.startswith("0"):
-        return f"+234{digits[1:]}"
-    return digits
 
 
 async def _resolve_referrer_auth_id(referral_code: str) -> str:
@@ -167,7 +155,7 @@ async def create_guest_pass(
         referrer_auth_id=referrer_auth_id,
         price_kobo=price_kobo,
         total_kobo=price_kobo,
-        referral_reward_kobo=session.guest_referral_reward_kobo,
+        referral_reward_bubbles=10,
         payment_reference=f"GUEST-{uuid.uuid4().hex[:20].upper()}",
     )
     db.add(guest_pass)
@@ -298,10 +286,40 @@ async def mark_guest_pass_attended(
     guest_pass.attended_at = guest_pass.attended_at or utc_now()
     guest_pass.actual_swim_minutes = body.actual_swim_minutes
     guest_pass.assessment_result = body.assessment_result
-    if guest_pass.referrer_auth_id and first_attended:
-        guest_pass.referral_reward_status = "eligible"
+    should_reward_referrer = bool(
+        guest_pass.referrer_auth_id
+        and first_attended
+        and guest_pass.referral_reward_status != "granted"
+    )
+    if should_reward_referrer:
+        guest_pass.referral_reward_status = "pending"
     await db.commit()
     await db.refresh(guest_pass)
+
+    if should_reward_referrer and guest_pass.referrer_auth_id:
+        reward_result = await emit_rewards_event(
+            event_type="referral.guest_attended",
+            member_auth_id=guest_pass.referrer_auth_id,
+            service_source="sessions",
+            event_data={
+                "guest_name": guest_pass.full_name,
+                "guest_pass_id": str(guest_pass.id),
+                "session_id": str(guest_pass.session_id),
+            },
+            idempotency_key=f"guest-referral-attended-{guest_pass.id}",
+            calling_service="sessions",
+            occurred_at=guest_pass.attended_at.isoformat(),
+        )
+        if reward_result is not None:
+            granted = int(reward_result.get("rewards_granted") or 0) or sum(
+                int(reward.get("bubbles", 0))
+                for reward in reward_result.get("rewards", [])
+            )
+            if granted:
+                guest_pass.referral_reward_bubbles = granted
+                guest_pass.referral_reward_status = "granted"
+            await db.commit()
+            await db.refresh(guest_pass)
     if body.assessment_result and body.send_assessment_email:
         summary = "\n".join(
             f"{key.replace('_', ' ').title()}: {value}"
@@ -315,28 +333,4 @@ async def mark_guest_pass_attended(
                 f"{summary}\n\nKeep swimming,\nSwimBuddz"
             ),
         )
-    return guest_pass
-
-
-@router.post(
-    "/admin/guest-passes/{guest_pass_id}/referral-reward/paid",
-    response_model=GuestPassAdminResponse,
-)
-async def mark_guest_referral_reward_paid(
-    guest_pass_id: uuid.UUID,
-    body: GuestReferralRewardPaid,
-    _admin: AuthUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_async_db),
-):
-    guest_pass = await db.get(GuestPass, guest_pass_id)
-    if guest_pass is None:
-        raise HTTPException(status_code=404, detail="Guest pass not found")
-    if guest_pass.referral_reward_status not in {"eligible", "paid"}:
-        raise HTTPException(
-            status_code=409, detail="This referral reward is not eligible"
-        )
-    guest_pass.referral_reward_status = "paid"
-    guest_pass.referral_reward_reference = body.transfer_reference
-    await db.commit()
-    await db.refresh(guest_pass)
     return guest_pass

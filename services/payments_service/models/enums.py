@@ -29,6 +29,7 @@ class PaymentPurpose(str, enum.Enum):
     # flip the PENDING SessionBooking to CONFIRMED once payment clears.
     SESSION_BOOKING = "session_booking"
     GUEST_PASS = "guest_pass"
+    COMMUNITY_EXPERIENCE = "community_experience"
     # Stroke Lab founding-member lifetime pre-sale (₦20k, capped at 100).
     # ai_service initializes + verifies through payments_service so the
     # revenue lands in the unified Payment ledger like every other purpose.

@@ -76,6 +76,18 @@ async def apply_club(payment: Payment) -> None:
                         payment.paid_at.isoformat() if payment.paid_at else None
                     ),
                     "months": months,
+                    "community_experience_selected": bool(
+                        (payment.payment_metadata or {}).get(
+                            "community_experience_selected"
+                        )
+                    ),
+                    "community_experience_fee_kobo": int(
+                        (
+                            (payment.payment_metadata or {}).get("components_kobo")
+                            or {}
+                        ).get("community_experience")
+                        or 0
+                    ),
                 },
                 headers=headers,
             )

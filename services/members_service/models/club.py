@@ -34,6 +34,7 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    UniqueConstraint,
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
@@ -137,8 +138,22 @@ class ClubPlanVersion(Base):
     community_experience_default_selected: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
+    community_experience_offering_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("community_experience_offerings.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     sessions_included: Mapped[int] = mapped_column(
         Integer, nullable=False, default=12, server_default="12"
+    )
+    # The service period is deliberately separate from effective_from/to.
+    # Effective dates version the published price; period dates identify the
+    # actual quarter entitlement being purchased.
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    minimum_entry_sessions: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=5, server_default="5"
     )
     refreshments_included: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
@@ -164,11 +179,72 @@ class ClubPlanVersion(Base):
             name="ck_club_plan_experience_fee_nonnegative",
         ),
         CheckConstraint("sessions_included > 0", name="ck_club_plan_sessions_positive"),
+        CheckConstraint(
+            "minimum_entry_sessions > 0 AND minimum_entry_sessions <= sessions_included",
+            name="ck_club_plan_minimum_entry_sessions",
+        ),
+        CheckConstraint(
+            "period_end >= period_start", name="ck_club_plan_service_period"
+        ),
         Index(
             "ix_club_plan_versions_active_period",
             "club_id",
             "is_active",
             "effective_from",
+        ),
+    )
+
+
+class CommunityExperienceOffering(Base):
+    """Quarter-specific Community Experience with contextual member prices."""
+
+    __tablename__ = "community_experience_offerings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="NGN")
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    standard_member_fee_kobo: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=5_000_000, server_default="5000000"
+    )
+    club_member_fee_kobo: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=4_000_000, server_default="4000000"
+    )
+    club_bundle_fee_kobo: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3_000_000, server_default="3000000"
+    )
+    purchase_opens_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    purchase_closes_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "period_end >= period_start", name="ck_community_experience_period"
+        ),
+        CheckConstraint(
+            "standard_member_fee_kobo >= 0 AND club_member_fee_kobo >= 0 "
+            "AND club_bundle_fee_kobo >= 0",
+            name="ck_community_experience_fees_nonnegative",
+        ),
+        CheckConstraint(
+            "club_bundle_fee_kobo <= club_member_fee_kobo "
+            "AND club_member_fee_kobo <= standard_member_fee_kobo",
+            name="ck_community_experience_price_ladder",
         ),
     )
 
@@ -223,6 +299,41 @@ class ClubApplication(Base):
 
     __table_args__ = (
         Index("ix_club_applications_member_status", "member_id", "status"),
+    )
+
+
+class ClubApplicationPlan(Base):
+    """One independently entitled quarter selected in a Club application."""
+
+    __tablename__ = "club_application_plans"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("club_applications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    plan_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("club_plan_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    sort_order: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "application_id",
+            "plan_version_id",
+            name="uq_club_application_plan_selection",
+        ),
     )
 
 
@@ -296,7 +407,6 @@ class ClubEnrollment(Base):
         UUID(as_uuid=True),
         ForeignKey("club_applications.id", ondelete="RESTRICT"),
         nullable=False,
-        unique=True,
     )
     payment_reference: Mapped[str] = mapped_column(
         String(128), nullable=False, index=True
@@ -318,5 +428,57 @@ class ClubEnrollment(Base):
 
     __table_args__ = (
         CheckConstraint("ends_at > starts_at", name="ck_club_enrollment_period"),
+        UniqueConstraint(
+            "application_id",
+            "plan_version_id",
+            name="uq_club_enrollment_application_plan",
+        ),
         Index("ix_club_enrollments_member_active", "member_id", "status", "ends_at"),
+    )
+
+
+class CommunityExperiencePurchase(Base):
+    """A paid, quarter-specific Community Experience entitlement."""
+
+    __tablename__ = "community_experience_purchases"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("members.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    offering_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("community_experience_offerings.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    club_enrollment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("club_enrollments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    price_context: Mapped[str] = mapped_column(String(32), nullable=False)
+    amount_paid_kobo: Mapped[int] = mapped_column(Integer, nullable=False)
+    payment_reference: Mapped[str] = mapped_column(
+        String(128), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="active", server_default="active"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "member_id", "offering_id", name="uq_community_experience_member_offering"
+        ),
+        CheckConstraint(
+            "amount_paid_kobo >= 0", name="ck_community_experience_purchase_amount"
+        ),
     )

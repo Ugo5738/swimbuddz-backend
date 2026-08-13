@@ -61,17 +61,14 @@ class GuestPass(Base):
         default="pending_payment",
         server_default="pending_payment",
     )
-    referral_reward_kobo: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=100_000, server_default="100000"
+    referral_reward_bubbles: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=10, server_default="10"
     )
     referral_reward_status: Mapped[str] = mapped_column(
         String(24),
         nullable=False,
         default="not_eligible",
         server_default="not_eligible",
-    )
-    referral_reward_reference: Mapped[Optional[str]] = mapped_column(
-        String(128), nullable=True
     )
     attended_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True

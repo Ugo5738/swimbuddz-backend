@@ -52,6 +52,7 @@ from libs.db.session import get_async_db
 from services.sessions_service.models import (
     BookingChannel,
     BookingGuest,
+    GuestPass,
     Session,
     SessionBooking,
     SessionBookingStatus,
@@ -74,6 +75,7 @@ from services.sessions_service.schemas import (
 from services.sessions_service.services.session_access import (
     evaluate_member_session_access,
 )
+from services.sessions_service.services.guest_identity import normalize_guest_phone
 from services.sessions_service.services.booking_capacity import (
     PENDING_TTL_MINUTES,
     assert_booking_capacity,
@@ -317,7 +319,7 @@ async def _replace_guests(
             BookingGuest(
                 booking_id=booking_id,
                 full_name=(g.full_name or None),
-                phone=(g.phone or None),
+                phone=(normalize_guest_phone(g.phone) if g.phone else None),
                 intent=getattr(g.intent, "value", str(g.intent)),
                 date_of_birth=g.date_of_birth,
                 guardian_name=(g.guardian_name or None),
@@ -607,7 +609,7 @@ async def add_trial_guest(
     )
 
     # One trial per prospect — a phone can sample a class only once.
-    phone = (payload.phone or "").strip()
+    phone = normalize_guest_phone(payload.phone) if payload.phone else ""
     if phone:
         prior = (
             await db.execute(
@@ -708,7 +710,7 @@ async def name_booking_guest(
     )
 
     guest.full_name = payload.full_name.strip() if payload.full_name else None
-    guest.phone = payload.phone or None
+    guest.phone = normalize_guest_phone(payload.phone) if payload.phone else None
     guest.date_of_birth = payload.date_of_birth
     guest.guardian_name = payload.guardian_name or None
     guest.guardian_phone = payload.guardian_phone or None
@@ -770,8 +772,8 @@ async def convert_guest_to_member(
     """Close the funnel loop: link a guest's prior appearances to the member
     account they just created. Sets converted_member_id on every unconverted
     BookingGuest row sharing the phone. Returns how many were linked."""
-    phone = payload.phone.strip()
-    result = await db.execute(
+    phone = normalize_guest_phone(payload.phone)
+    guest_result = await db.execute(
         update(BookingGuest)
         .where(
             BookingGuest.phone == phone,
@@ -779,11 +781,19 @@ async def convert_guest_to_member(
         )
         .values(converted_member_id=payload.member_id)
     )
+    pass_result = await db.execute(
+        update(GuestPass)
+        .where(
+            GuestPass.phone == phone,
+            GuestPass.converted_member_id.is_(None),
+        )
+        .values(converted_member_id=payload.member_id)
+    )
     await db.commit()
     return GuestConvertResponse(
         phone=phone,
         member_id=payload.member_id,
-        converted=result.rowcount or 0,
+        converted=(guest_result.rowcount or 0) + (pass_result.rowcount or 0),
     )
 
 

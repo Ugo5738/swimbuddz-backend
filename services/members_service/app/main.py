@@ -9,6 +9,7 @@ from services.members_service.routers import (
     assessments_router,
     challenge_router,
     clubs_router,
+    community_experiences_router,
     coach_agreements_admin_router,
     coach_agreements_router,
     coach_application_admin_router,
@@ -49,6 +50,8 @@ def create_app() -> FastAPI:
     app.include_router(admin_tasks_router)  # Admin-triggered manual tasks
     # NOTE: volunteer_router removed — now handled by volunteer_service (port 8012)
     app.include_router(challenge_router)
+    # Static Community Experience routes must precede /clubs/{club_id}.
+    app.include_router(community_experiences_router)
     app.include_router(clubs_router)
     app.include_router(volunteer_router)
 

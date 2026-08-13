@@ -14,22 +14,25 @@ existing.
 """
 
 import uuid
-from datetime import date
+from datetime import date, datetime, time, timezone
 from typing import List, Optional
 
-from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.auth.dependencies import get_current_user, require_admin, require_service_role
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
+from libs.common.config import get_settings
 from libs.common.emails.client import get_email_client
 from libs.db.session import get_async_db
 from services.members_service.models import (
     Club,
     ClubApplication,
+    ClubApplicationPlan,
     ClubEnrollment,
     ClubPlanVersion,
     ClubReadinessAssessment,
+    CommunityExperienceOffering,
+    CommunityExperiencePurchase,
     Member,
     MemberMembership,
     Pod,
@@ -38,7 +41,6 @@ from services.members_service.schemas import (
     ActivateClubApplicationRequest,
     ClubApplicationCreate,
     ClubApplicationResponse,
-    ClubAssessmentResponse,
     ClubCreate,
     ClubObservedAssessmentUpdate,
     ClubPaymentContext,
@@ -48,11 +50,17 @@ from services.members_service.schemas import (
     ClubResponse,
     ClubUpdate,
 )
+from services.members_service.routers._club_pricing import (
+    application_response as _application_out,
+    plan_price as _plan_price,
+    plan_response as _plan_out,
+)
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/clubs", tags=["clubs"])
+settings = get_settings()
 
 
 async def _member_for_user(current_user: AuthUser, db: AsyncSession) -> Member:
@@ -62,47 +70,6 @@ async def _member_for_user(current_user: AuthUser, db: AsyncSession) -> Member:
     if member is None:
         raise HTTPException(status_code=403, detail="Member profile not found")
     return member
-
-
-def _plan_out(plan: ClubPlanVersion, club: Club) -> ClubPlanResponse:
-    return ClubPlanResponse(
-        **{
-            column.name: getattr(plan, column.name)
-            for column in ClubPlanVersion.__table__.columns
-        },
-        club_name=club.name,
-        club_slug=club.slug,
-        location=club.location,
-        operating_area_id=club.operating_area_id,
-        default_pool_id=club.default_pool_id,
-    )
-
-
-async def _application_out(
-    application: ClubApplication, db: AsyncSession
-) -> ClubApplicationResponse:
-    plan = await db.get(ClubPlanVersion, application.plan_version_id)
-    club = await db.get(Club, application.club_id)
-    member = await db.get(Member, application.member_id)
-    assessment = (
-        await db.execute(
-            select(ClubReadinessAssessment).where(
-                ClubReadinessAssessment.application_id == application.id
-            )
-        )
-    ).scalar_one_or_none()
-    return ClubApplicationResponse(
-        **{
-            column.name: getattr(application, column.name)
-            for column in ClubApplication.__table__.columns
-        },
-        plan=_plan_out(plan, club) if plan and club else None,
-        member_name=(f"{member.first_name} {member.last_name}" if member else None),
-        member_email=(member.email if member else None),
-        assessment=(
-            ClubAssessmentResponse.model_validate(assessment) if assessment else None
-        ),
-    )
 
 
 @router.get("/", response_model=List[ClubResponse])
@@ -137,6 +104,7 @@ async def list_club_plans(
             ClubPlanVersion.effective_from <= today,
             (ClubPlanVersion.effective_to.is_(None))
             | (ClubPlanVersion.effective_to >= today),
+            ClubPlanVersion.period_end >= today,
         )
     )
     if operating_area_id:
@@ -144,7 +112,7 @@ async def list_club_plans(
     if club_id:
         query = query.where(Club.id == club_id)
     rows = (
-        await db.execute(query.order_by(Club.name, ClubPlanVersion.club_fee_kobo))
+        await db.execute(query.order_by(Club.name, ClubPlanVersion.period_start))
     ).all()
     return [_plan_out(plan, club) for plan, club in rows]
 
@@ -159,9 +127,7 @@ async def list_all_club_plans(
     if club_id:
         query = query.where(Club.id == club_id)
     rows = (
-        await db.execute(
-            query.order_by(Club.name, ClubPlanVersion.effective_from.desc())
-        )
+        await db.execute(query.order_by(Club.name, ClubPlanVersion.period_start.desc()))
     ).all()
     return [_plan_out(plan, club) for plan, club in rows]
 
@@ -180,7 +146,26 @@ async def create_club_plan(
     club = await db.get(Club, club_id)
     if club is None:
         raise HTTPException(status_code=404, detail="Club not found")
-    plan = ClubPlanVersion(club_id=club_id, **body.model_dump())
+    values = body.model_dump()
+    if body.community_experience_offering_id:
+        offering = await db.get(
+            CommunityExperienceOffering, body.community_experience_offering_id
+        )
+        if offering is None or not offering.is_active:
+            raise HTTPException(
+                status_code=400, detail="Community Experience offering is unavailable"
+            )
+        if (
+            offering.currency != body.currency
+            or offering.period_start != body.period_start
+            or offering.period_end != body.period_end
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Community Experience and Club plan must use the same quarter and currency",
+            )
+        values["community_experience_fee_kobo"] = offering.club_bundle_fee_kobo
+    plan = ClubPlanVersion(club_id=club_id, **values)
     db.add(plan)
     await db.commit()
     await db.refresh(plan)
@@ -198,7 +183,16 @@ async def create_club_application(
     db: AsyncSession = Depends(get_async_db),
 ):
     member = await _member_for_user(current_user, db)
-    plan = await db.get(ClubPlanVersion, body.plan_version_id)
+    selected_ids = list(dict.fromkeys([body.plan_version_id, *body.plan_version_ids]))
+    plans = list(
+        (
+            await db.execute(
+                select(ClubPlanVersion).where(ClubPlanVersion.id.in_(selected_ids))
+            )
+        ).scalars()
+    )
+    plans_by_id = {plan.id: plan for plan in plans}
+    plan = plans_by_id.get(body.plan_version_id)
     today = date.today()
     if (
         plan is None
@@ -207,6 +201,76 @@ async def create_club_application(
         or (plan.effective_to and plan.effective_to < today)
     ):
         raise HTTPException(status_code=400, detail="This Club plan is not available")
+    if len(plans) != len(selected_ids):
+        raise HTTPException(
+            status_code=400, detail="One or more Club plans are unavailable"
+        )
+    ordered_plans = [plans_by_id[plan_id] for plan_id in selected_ids]
+    if any(selected.club_id != plan.club_id for selected in ordered_plans):
+        raise HTTPException(
+            status_code=400,
+            detail="All prepaid quarters must belong to the same Club location",
+        )
+    if any(
+        not selected.is_active
+        or selected.effective_from > today
+        or (selected.effective_to and selected.effective_to < today)
+        for selected in ordered_plans
+    ):
+        raise HTTPException(
+            status_code=400, detail="One or more Club plans are unavailable"
+        )
+    club = await db.get(Club, plan.club_id)
+    if club is None:
+        raise HTTPException(status_code=404, detail="Club location not found")
+    current_plan = (
+        (
+            await db.execute(
+                select(ClubPlanVersion)
+                .where(
+                    ClubPlanVersion.club_id == plan.club_id,
+                    ClubPlanVersion.is_active.is_(True),
+                    ClubPlanVersion.period_start <= today,
+                    ClubPlanVersion.period_end >= today,
+                    ClubPlanVersion.effective_from <= today,
+                    (ClubPlanVersion.effective_to.is_(None))
+                    | (ClubPlanVersion.effective_to >= today),
+                )
+                .order_by(ClubPlanVersion.period_start)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if (
+        current_plan
+        and _plan_price(current_plan, club)[2]
+        and current_plan.id not in selected_ids
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The current Club quarter is still open and must be included. "
+                "Future quarters remain optional."
+            ),
+        )
+    if any(not _plan_price(selected, club)[2] for selected in ordered_plans):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This quarter is too close to closing for a new Club enrollment. "
+                "Use Community drop-ins and select the next quarter instead."
+            ),
+        )
+    chronologically = sorted(ordered_plans, key=lambda item: item.period_start)
+    if any(
+        current.period_start <= previous.period_end
+        for previous, current in zip(
+            chronologically,
+            chronologically[1:],
+        )
+    ):
+        raise HTTPException(status_code=400, detail="Selected Club quarters overlap")
     if body.preferred_pod_id:
         pod = await db.get(Pod, body.preferred_pod_id)
         if pod is None or pod.club_id != plan.club_id:
@@ -217,9 +281,18 @@ async def create_club_application(
     application = ClubApplication(
         member_id=member.id,
         club_id=plan.club_id,
-        **body.model_dump(),
+        **body.model_dump(exclude={"plan_version_ids"}),
     )
     db.add(application)
+    await db.flush()
+    for index, selected in enumerate(chronologically):
+        db.add(
+            ClubApplicationPlan(
+                application_id=application.id,
+                plan_version_id=selected.id,
+                sort_order=index,
+            )
+        )
     await db.commit()
     await db.refresh(application)
     return await _application_out(application, db)
@@ -329,7 +402,6 @@ async def complete_observed_club_assessment(
 
     if body.send_result_email:
         member = await db.get(Member, application.member_id)
-        plan = await db.get(ClubPlanVersion, application.plan_version_id)
         club = await db.get(Club, application.club_id)
         outcome_copy = {
             "club_ready": "You are Club-ready.",
@@ -347,16 +419,12 @@ async def complete_observed_club_assessment(
         if body.first_club_milestone:
             lines.append(f"First milestone: {body.first_club_milestone}")
         if application.status == "approved":
-            total = plan.club_fee_kobo + (
-                plan.community_experience_fee_kobo
-                if application.community_experience_selected
-                else 0
-            )
             lines.extend(
                 [
                     "",
-                    f"Your selected quarterly plan total before payment processing charges is NGN {total / 100:,.2f}.",
-                    "Sign in to complete payment and onboarding.",
+                    "Sign in to review your server-calculated Club quote. It will show "
+                    "each selected quarter, any mid-quarter adjustment, annual "
+                    "SwimBuddz Membership due, and the optional Community Experience.",
                 ]
             )
         sent = await get_email_client().send(
@@ -396,32 +464,114 @@ async def get_club_application_payment_context(
             select(MemberMembership).where(MemberMembership.member_id == member.id)
         )
     ).scalar_one_or_none()
-    if not (
+    selections = list(
+        (
+            await db.execute(
+                select(ClubApplicationPlan, ClubPlanVersion)
+                .join(
+                    ClubPlanVersion,
+                    ClubPlanVersion.id == ClubApplicationPlan.plan_version_id,
+                )
+                .where(ClubApplicationPlan.application_id == application.id)
+                .order_by(ClubApplicationPlan.sort_order)
+            )
+        ).all()
+    )
+    selected_plans = [selected_plan for _row, selected_plan in selections]
+    if not selected_plans:
+        selected_plans = [plan]
+    club_items: list[dict] = []
+    for selected_plan in selected_plans:
+        amount, remaining, available, reason = _plan_price(selected_plan, club)
+        if not available:
+            raise HTTPException(status_code=409, detail=reason)
+        club_items.append(
+            {
+                "plan_version_id": str(selected_plan.id),
+                "name": selected_plan.name,
+                "period_start": selected_plan.period_start.isoformat(),
+                "period_end": selected_plan.period_end.isoformat(),
+                "sessions_included": selected_plan.sessions_included,
+                "remaining_sessions": remaining,
+                "full_quarter_fee_kobo": selected_plan.club_fee_kobo,
+                "amount_kobo": amount,
+            }
+        )
+    club_fee = sum(item["amount_kobo"] for item in club_items)
+    last_period_end = max(selected.period_end for selected in selected_plans)
+    membership_covers_selection = bool(
         membership
         and membership.community_paid_until
-        and membership.community_paid_until > utc_now()
-    ):
+        and membership.community_paid_until.date() >= last_period_end
+    )
+    annual_membership_months = 0 if membership_covers_selection else 12
+    annual_membership_fee = (
+        0
+        if membership_covers_selection
+        else int(getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20_000) * 100)
+    )
+    experience_fee = 0
+    experience_selected = application.community_experience_selected
+    primary_offering = (
+        await db.get(CommunityExperienceOffering, plan.community_experience_offering_id)
+        if plan.community_experience_offering_id
+        else None
+    )
+    if experience_selected and primary_offering:
+        now = utc_now()
+        purchasable = (
+            primary_offering.is_active
+            and (
+                primary_offering.purchase_opens_at is None
+                or primary_offering.purchase_opens_at <= now
+            )
+            and (
+                primary_offering.purchase_closes_at is None
+                or primary_offering.purchase_closes_at >= now
+            )
+        )
+        if not purchasable:
+            experience_selected = False
+        else:
+            experience_fee = primary_offering.club_bundle_fee_kobo
+    elif experience_selected:
+        # Backwards compatibility for plans created before offerings existed.
+        experience_fee = plan.community_experience_fee_kobo
+    if experience_selected and primary_offering:
+        existing_experience = (
+            await db.execute(
+                select(CommunityExperiencePurchase.id).where(
+                    CommunityExperiencePurchase.member_id == member.id,
+                    CommunityExperiencePurchase.offering_id == primary_offering.id,
+                )
+            )
+        ).first()
+        if existing_experience:
+            experience_selected = False
+            experience_fee = 0
+    subtotal = club_fee + annual_membership_fee + experience_fee
+    if subtotal <= 0:
         raise HTTPException(
             status_code=409,
-            detail="Annual Community membership must be active before Club payment",
+            detail="Nothing remains payable for this Club application",
         )
-    experience_fee = (
-        plan.community_experience_fee_kobo
-        if application.community_experience_selected
-        else 0
-    )
     return ClubPaymentContext(
         application_id=application.id,
         member_auth_id=member.auth_id,
         club_id=club.id,
         club_name=club.name,
         plan_version_id=plan.id,
+        plan_version_ids=[selected.id for selected in selected_plans],
         billing_cycle=plan.billing_cycle,
         currency=plan.currency,
-        club_fee_kobo=plan.club_fee_kobo,
-        community_experience_selected=application.community_experience_selected,
+        club_fee_kobo=club_fee,
+        club_items=club_items,
+        annual_membership_fee_kobo=annual_membership_fee,
+        annual_membership_months=annual_membership_months,
+        community_experience_selected=experience_selected,
         community_experience_fee_kobo=experience_fee,
-        subtotal_kobo=plan.club_fee_kobo + experience_fee,
+        subtotal_kobo=subtotal,
+        months=3 * len(selected_plans),
     )
 
 
@@ -438,27 +588,85 @@ async def activate_club_application(
     application = await db.get(ClubApplication, application_id)
     if application is None:
         raise HTTPException(status_code=404, detail="Club application not found")
-    existing = (
-        await db.execute(
-            select(ClubEnrollment).where(
-                ClubEnrollment.application_id == application.id
+    selections = list(
+        (
+            await db.execute(
+                select(ClubApplicationPlan, ClubPlanVersion)
+                .join(
+                    ClubPlanVersion,
+                    ClubPlanVersion.id == ClubApplicationPlan.plan_version_id,
+                )
+                .where(ClubApplicationPlan.application_id == application.id)
+                .order_by(ClubApplicationPlan.sort_order)
             )
-        )
-    ).scalar_one_or_none()
-    if existing is None:
-        starts_at = body.starts_at or utc_now()
-        db.add(
-            ClubEnrollment(
-                member_id=application.member_id,
-                club_id=application.club_id,
-                plan_version_id=application.plan_version_id,
-                application_id=application.id,
-                payment_reference=body.payment_reference,
-                starts_at=starts_at,
-                ends_at=starts_at + relativedelta(months=body.months),
-                assigned_pod_id=application.preferred_pod_id,
+        ).all()
+    )
+    selected_plans = [selected_plan for _row, selected_plan in selections]
+    if not selected_plans:
+        selected_plans = [await db.get(ClubPlanVersion, application.plan_version_id)]
+    created_enrollments: list[ClubEnrollment] = []
+    for selected_plan in selected_plans:
+        existing = (
+            await db.execute(
+                select(ClubEnrollment).where(
+                    ClubEnrollment.application_id == application.id,
+                    ClubEnrollment.plan_version_id == selected_plan.id,
+                )
             )
+        ).scalar_one_or_none()
+        if existing:
+            created_enrollments.append(existing)
+            continue
+        start_date = max(date.today(), selected_plan.period_start)
+        enrollment = ClubEnrollment(
+            member_id=application.member_id,
+            club_id=application.club_id,
+            plan_version_id=selected_plan.id,
+            application_id=application.id,
+            payment_reference=body.payment_reference,
+            starts_at=datetime.combine(start_date, time.min, tzinfo=timezone.utc),
+            ends_at=datetime.combine(
+                selected_plan.period_end.fromordinal(
+                    selected_plan.period_end.toordinal() + 1
+                ),
+                time.min,
+                tzinfo=timezone.utc,
+            ),
+            assigned_pod_id=application.preferred_pod_id,
         )
+        db.add(enrollment)
+        await db.flush()
+        created_enrollments.append(enrollment)
+    primary_plan = selected_plans[0]
+    if (
+        body.community_experience_selected
+        and primary_plan.community_experience_offering_id
+    ):
+        offering = await db.get(
+            CommunityExperienceOffering,
+            primary_plan.community_experience_offering_id,
+        )
+        existing_purchase = (
+            await db.execute(
+                select(CommunityExperiencePurchase).where(
+                    CommunityExperiencePurchase.member_id == application.member_id,
+                    CommunityExperiencePurchase.offering_id == offering.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing_purchase is None:
+            db.add(
+                CommunityExperiencePurchase(
+                    member_id=application.member_id,
+                    offering_id=offering.id,
+                    club_enrollment_id=(
+                        created_enrollments[0].id if created_enrollments else None
+                    ),
+                    price_context="club_bundle",
+                    amount_paid_kobo=body.community_experience_fee_kobo,
+                    payment_reference=body.payment_reference,
+                )
+            )
     application.status = "enrolled"
     await db.commit()
     await db.refresh(application)

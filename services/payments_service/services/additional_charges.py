@@ -38,7 +38,17 @@ async def calculate_additional_charges(
             and subtotal_kobo < policy.waive_fixed_below_kobo
         ):
             fixed = 0
-        amount = ((subtotal_kobo * policy.rate_basis_points + 5_000) // 10_000) + fixed
+        if policy.calculation_mode == "gross_up":
+            denominator = 10_000 - policy.rate_basis_points
+            if denominator <= 0:
+                continue
+            amount = (
+                ((subtotal_kobo + fixed) * 10_000 + denominator - 1) // denominator
+            ) - subtotal_kobo
+        else:
+            amount = (
+                (subtotal_kobo * policy.rate_basis_points + 5_000) // 10_000
+            ) + fixed
         if policy.cap_amount_kobo is not None:
             amount = min(amount, policy.cap_amount_kobo)
         if amount <= 0:
@@ -47,6 +57,7 @@ async def calculate_additional_charges(
             {
                 "policy_id": str(policy.id),
                 "label": policy.label,
+                "calculation_mode": policy.calculation_mode,
                 "amount_kobo": amount,
                 "rate_basis_points": policy.rate_basis_points,
                 "fixed_amount_kobo": fixed,

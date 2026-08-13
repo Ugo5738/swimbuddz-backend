@@ -520,14 +520,12 @@ async def create_session(
     session_data["pool_fee"] = round((session_data.get("pool_fee") or 0.0) * 100)
     guest_fee = session_data.pop("guest_fee", None)
     community_dropin_fee = session_data.pop("community_dropin_fee", None)
-    guest_referral_reward = session_data.pop("guest_referral_reward", 1000)
     session_data["guest_fee_kobo"] = (
         round(guest_fee * 100) if guest_fee is not None else None
     )
     session_data["community_dropin_fee_kobo"] = (
         round(community_dropin_fee * 100) if community_dropin_fee is not None else None
     )
-    session_data["guest_referral_reward_kobo"] = round(guest_referral_reward * 100)
     session_data["ride_share_fee"] = round(
         (session_data.get("ride_share_fee") or 0.0) * 100
     )
@@ -769,10 +767,6 @@ async def update_session(
         update_data["community_dropin_fee_kobo"] = (
             round(value * 100) if value is not None else None
         )
-    if "guest_referral_reward" in update_data:
-        value = update_data.pop("guest_referral_reward")
-        if value is not None:
-            update_data["guest_referral_reward_kobo"] = round(value * 100)
     if "ride_share_fee" in update_data and update_data["ride_share_fee"] is not None:
         update_data["ride_share_fee"] = round(update_data["ride_share_fee"] * 100)
 

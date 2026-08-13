@@ -23,6 +23,7 @@ from libs.common.session_access import denial_message
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     BookingChannel,
+    GuestPass,
     Session,
     SessionBooking,
     SessionBookingStatus,
@@ -260,6 +261,7 @@ class SessionDetailedStats(BaseModel):
 
     total_sessions: int = 0
     total_pool_hours: float = 0.0
+    guest_swimmer_hours: float = 0.0
     by_type: dict | None = None
     most_active_location: str | None = None
     busiest_session_title: str | None = None
@@ -374,8 +376,23 @@ async def get_session_detailed_stats(
     )
     sessions = result.scalars().all()
 
+    guest_minutes = int(
+        (
+            await db.execute(
+                select(func.coalesce(func.sum(GuestPass.actual_swim_minutes), 0))
+                .join(Session, Session.id == GuestPass.session_id)
+                .where(
+                    Session.starts_at >= parsed_from,
+                    Session.starts_at <= parsed_to,
+                    GuestPass.status == "attended",
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+
     if not sessions:
-        return SessionDetailedStats()
+        return SessionDetailedStats(guest_swimmer_hours=round(guest_minutes / 60, 1))
 
     # Total pool hours (sum of session durations)
     total_hours = sum(
@@ -437,11 +454,50 @@ async def get_session_detailed_stats(
     return SessionDetailedStats(
         total_sessions=len(sessions),
         total_pool_hours=round(total_hours, 1),
+        guest_swimmer_hours=round(guest_minutes / 60, 1),
         by_type=dict(type_counts) if type_counts else None,
         most_active_location=most_active,
         most_popular_day=most_popular_day,
         most_popular_time_slot=most_popular_slot,
         session_details=details,
+    )
+
+
+class ConvertedGuestHours(BaseModel):
+    member_id: uuid.UUID
+    swimmer_hours: float = 0.0
+
+
+@router.get(
+    "/member/{member_id}/converted-guest-hours",
+    response_model=ConvertedGuestHours,
+)
+async def get_converted_guest_hours(
+    member_id: uuid.UUID,
+    date_from: datetime = Query(..., alias="from"),
+    date_to: datetime = Query(..., alias="to"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+) -> ConvertedGuestHours:
+    """Return standalone guest swim history linked to a converted member."""
+    minutes = int(
+        (
+            await db.execute(
+                select(func.coalesce(func.sum(GuestPass.actual_swim_minutes), 0))
+                .join(Session, Session.id == GuestPass.session_id)
+                .where(
+                    GuestPass.converted_member_id == member_id,
+                    GuestPass.status == "attended",
+                    Session.starts_at >= date_from,
+                    Session.starts_at <= date_to,
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    return ConvertedGuestHours(
+        member_id=member_id,
+        swimmer_hours=round(minutes / 60, 1),
     )
 
 

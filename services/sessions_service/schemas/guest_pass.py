@@ -70,9 +70,8 @@ class GuestPassAdminResponse(GuestPassPublicResponse):
     phone: str
     referral_code: Optional[str] = None
     referrer_auth_id: Optional[str] = None
-    referral_reward_kobo: int
+    referral_reward_bubbles: int
     referral_reward_status: str
-    referral_reward_reference: Optional[str] = None
     marketing_consent: bool
     attended_at: Optional[datetime] = None
     actual_swim_minutes: Optional[int] = None
@@ -88,7 +87,3 @@ class GuestPassAttendanceUpdate(BaseModel):
     actual_swim_minutes: int = Field(..., ge=0, le=1440)
     assessment_result: Optional[dict[str, Any]] = None
     send_assessment_email: bool = True
-
-
-class GuestReferralRewardPaid(BaseModel):
-    transfer_reference: str = Field(..., min_length=1, max_length=128)

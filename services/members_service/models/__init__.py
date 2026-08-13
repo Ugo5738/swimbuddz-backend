@@ -17,9 +17,12 @@ from services.members_service.models.assessment import SwimAssessment  # noqa: F
 from services.members_service.models.club import (  # noqa: F401
     Club,
     ClubApplication,
+    ClubApplicationPlan,
     ClubEnrollment,
     ClubPlanVersion,
     ClubReadinessAssessment,
+    CommunityExperienceOffering,
+    CommunityExperiencePurchase,
 )
 from services.members_service.models.coach import (  # noqa: F401
     AgreementType,
@@ -71,9 +74,12 @@ __all__ = [
     "AcquisitionSource",
     "Club",
     "ClubApplication",
+    "ClubApplicationPlan",
     "ClubEnrollment",
     "ClubPlanVersion",
     "ClubReadinessAssessment",
+    "CommunityExperienceOffering",
+    "CommunityExperiencePurchase",
     "CoachGrade",
     "GuardianLink",
     "GuardianRelationship",

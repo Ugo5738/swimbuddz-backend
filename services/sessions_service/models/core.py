@@ -137,11 +137,6 @@ class Session(Base):
     community_dropin_fee_kobo: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True
     )
-    # Snapshotted onto a referred GuestPass at booking time. Kept separate
-    # from the guest price so promotions can change without changing rates.
-    guest_referral_reward_kobo: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=100_000, server_default="100000"
-    )
     ride_share_fee: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Cost-plus pricing is optional. Existing sessions remain in manual mode;
     # when enabled, editable cost lines and margin calculate pool_fee, which is

@@ -177,6 +177,9 @@ class AdditionalChargePolicy(Base):
     purpose: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     payment_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
     label: Mapped[str] = mapped_column(String(120), nullable=False)
+    calculation_mode: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="additive", server_default="additive"
+    )
     rate_basis_points: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
@@ -199,6 +202,10 @@ class AdditionalChargePolicy(Base):
     __table_args__ = (
         CheckConstraint(
             "rate_basis_points >= 0", name="ck_charge_policy_rate_nonnegative"
+        ),
+        CheckConstraint(
+            "calculation_mode IN ('additive', 'gross_up')",
+            name="ck_charge_policy_calculation_mode",
         ),
         CheckConstraint(
             "fixed_amount_kobo >= 0", name="ck_charge_policy_fixed_nonnegative"

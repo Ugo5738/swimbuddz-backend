@@ -18,6 +18,9 @@ from services.payments_service.models import AdditionalChargePolicy, PaymentPurp
 from services.payments_service.services.additional_charges import (
     calculate_additional_charges,
 )
+from services.payments_service.services.academy_pricing import (
+    academy_payment_context,
+)
 
 router = APIRouter(prefix="/payments/charges", tags=["payment-charges"])
 settings = get_settings()
@@ -27,7 +30,8 @@ class ChargePolicyCreate(BaseModel):
     purpose: str = Field(..., min_length=1, max_length=40)
     payment_method: Optional[str] = Field(default=None, max_length=32)
     label: str = Field(..., min_length=1, max_length=120)
-    rate_basis_points: int = Field(default=0, ge=0, le=10000)
+    calculation_mode: str = Field(default="additive", pattern="^(additive|gross_up)$")
+    rate_basis_points: int = Field(default=0, ge=0, le=9999)
     fixed_amount_kobo: int = Field(default=0, ge=0)
     cap_amount_kobo: Optional[int] = Field(default=None, ge=0)
     waive_fixed_below_kobo: Optional[int] = Field(default=None, ge=0)
@@ -36,7 +40,10 @@ class ChargePolicyCreate(BaseModel):
 
 class ChargePolicyUpdate(BaseModel):
     label: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    rate_basis_points: Optional[int] = Field(default=None, ge=0, le=10000)
+    calculation_mode: Optional[str] = Field(
+        default=None, pattern="^(additive|gross_up)$"
+    )
+    rate_basis_points: Optional[int] = Field(default=None, ge=0, le=9999)
     fixed_amount_kobo: Optional[int] = Field(default=None, ge=0)
     cap_amount_kobo: Optional[int] = Field(default=None, ge=0)
     waive_fixed_below_kobo: Optional[int] = Field(default=None, ge=0)
@@ -53,6 +60,10 @@ class ChargePreviewRequest(BaseModel):
     purpose: PaymentPurpose
     payment_method: str = "paystack"
     club_application_id: Optional[uuid.UUID] = None
+    community_experience_offering_id: Optional[uuid.UUID] = None
+    enrollment_id: Optional[uuid.UUID] = None
+    use_installments: bool = False
+    amount_override_kobo: Optional[int] = Field(default=None, ge=0)
     subtotal_kobo: Optional[int] = Field(default=None, ge=0)
 
 
@@ -74,6 +85,29 @@ async def _club_context(application_id: uuid.UUID) -> dict:
         )
     if response.status_code >= 400:
         detail = "Could not price this Club application"
+        try:
+            detail = response.json().get("detail") or detail
+        except ValueError:
+            pass
+        raise HTTPException(status_code=response.status_code, detail=detail)
+    return response.json()
+
+
+async def _community_experience_context(
+    offering_id: uuid.UUID, member_auth_id: str
+) -> dict:
+    headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(
+            (
+                f"{settings.MEMBERS_SERVICE_URL}/clubs/community-experiences/"
+                f"internal/{offering_id}/payment-context"
+            ),
+            params={"member_auth_id": member_auth_id},
+            headers=headers,
+        )
+    if response.status_code >= 400:
+        detail = "Could not price this Community Experience"
         try:
             detail = response.json().get("detail") or detail
         except ValueError:
@@ -161,8 +195,46 @@ async def preview_additional_charges(
         currency = context["currency"]
         components = {
             "club": int(context["club_fee_kobo"]),
+            "club_items": context.get("club_items") or [],
+            "annual_swimbuddz_membership": int(
+                context.get("annual_membership_fee_kobo") or 0
+            ),
             "community_experience": int(context["community_experience_fee_kobo"]),
             "community_experience_selected": context["community_experience_selected"],
+        }
+    elif (
+        body.purpose == PaymentPurpose.COMMUNITY_EXPERIENCE
+        and body.community_experience_offering_id
+    ):
+        context = await _community_experience_context(
+            body.community_experience_offering_id,
+            current_user.user_id,
+        )
+        subtotal_kobo = int(context["subtotal_kobo"])
+        currency = context["currency"]
+        components = {
+            "community_experience": int(context["amount_kobo"]),
+            "annual_swimbuddz_membership": int(
+                context.get("annual_membership_fee_kobo") or 0
+            ),
+            "price_context": context["price_context"],
+        }
+    elif body.purpose == PaymentPurpose.ACADEMY_COHORT and body.enrollment_id:
+        context = await academy_payment_context(
+            enrollment_id=body.enrollment_id,
+            member_auth_id=current_user.user_id,
+            use_installments=body.use_installments,
+            amount_override_kobo=body.amount_override_kobo,
+        )
+        subtotal_kobo = int(context["subtotal_kobo"])
+        currency = context["currency"]
+        components = {
+            "academy": int(context["academy_amount_kobo"]),
+            "annual_swimbuddz_membership": int(context["annual_membership_fee_kobo"]),
+            "academy_membership_policy": context["membership_policy"],
+            "annual_membership_months": int(context["annual_membership_months"]),
+            "installment_number": context["installment_number"],
+            "total_installments": context["total_installments"],
         }
     elif body.subtotal_kobo is not None:
         subtotal_kobo = body.subtotal_kobo
