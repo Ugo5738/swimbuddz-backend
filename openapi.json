@@ -43453,6 +43453,64 @@
         }
       }
     },
+    "/api/v1/internal/media/vaults/sync-volunteer-grants": {
+      "post": {
+        "tags": [
+          "media-internal"
+        ],
+        "summary": "Sync Existing Vault Volunteer Grants",
+        "description": "Reconcile media/gallery claims immediately when a vault already exists.",
+        "operationId": "sync_existing_vault_volunteer_grants_internal_media_vaults_sync_volunteer_grants_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalVaultGrantSyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "type": "object",
+                  "title": "Response Sync Existing Vault Volunteer Grants Internal Media Vaults Sync Volunteer Grants Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/internal/media/direct-uploads": {
       "post": {
         "tags": [
@@ -106812,6 +106870,36 @@
           "object_key"
         ],
         "title": "InternalObjectVerifyRequest"
+      },
+      "InternalVaultGrantSyncRequest": {
+        "properties": {
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          }
+        },
+        "type": "object",
+        "title": "InternalVaultGrantSyncRequest"
       },
       "MediaDownloadResponse": {
         "properties": {
