@@ -97,6 +97,54 @@ async def test_public_list_filter_by_location(pools_client):
 
 
 @pytest.mark.asyncio
+async def test_public_area_and_pool_filters_share_the_registry(pools_client):
+    """Club signup can discover an area and only its bookable pools."""
+    area_response = await pools_client.post(
+        "/admin/pools/pricing/areas",
+        json={
+            "name": "Mainland",
+            "slug": "mainland",
+            "area_type": "commercial_band",
+            "country_code": "NG",
+            "timezone": "Africa/Lagos",
+            "currency": "NGN",
+            "is_active": True,
+        },
+    )
+    assert area_response.status_code == 201, area_response.text
+    area_id = area_response.json()["id"]
+
+    await _create_active_pool(
+        pools_client,
+        {
+            **POOL_PAYLOAD,
+            "name": "Mainland Club Pool",
+            "slug": "mainland-club-pool",
+            "operating_area_id": area_id,
+        },
+    )
+    await _create_active_pool(
+        pools_client,
+        {
+            **POOL_PAYLOAD,
+            "name": "Unassigned Club Pool",
+            "slug": "unassigned-club-pool",
+        },
+    )
+
+    areas_response = await pools_client.get("/pools/operating-areas")
+    assert areas_response.status_code == 200, areas_response.text
+    assert any(area["id"] == area_id for area in areas_response.json())
+
+    pools_response = await pools_client.get(
+        f"/pools?operating_area_id={area_id}"
+    )
+    assert pools_response.status_code == 200, pools_response.text
+    assert pools_response.json()["total"] == 1
+    assert pools_response.json()["items"][0]["name"] == "Mainland Club Pool"
+
+
+@pytest.mark.asyncio
 async def test_public_list_search(pools_client):
     """Public list search by name."""
     await _create_active_pool(pools_client)

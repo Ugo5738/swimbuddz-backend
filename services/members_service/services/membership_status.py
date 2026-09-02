@@ -74,15 +74,20 @@ def effective_tiers_from_dates(
     post_academy_club_until: Optional[datetime] = None,
     now: Optional[datetime] = None,
 ) -> set[str]:
-    """Return effective tiers from canonical entitlement dates."""
+    """Return independent legacy product labels from canonical dates.
+
+    These labels remain in the API for compatibility. They are not a product
+    hierarchy: Academy does not imply Club, and neither programme implies an
+    annual SwimBuddz Membership.
+    """
     now = now or utc_now()
     tiers: set[str] = set()
     if _paid_until_is_active(academy_paid_until, now):
-        tiers.update(TIERS)
+        tiers.add("academy")
     if _paid_until_is_active(club_paid_until, now) or _paid_until_is_active(
         post_academy_club_until, now
     ):
-        tiers.update({"club", "community"})
+        tiers.add("club")
     if _paid_until_is_active(community_paid_until, now):
         tiers.add("community")
     return tiers
@@ -129,25 +134,13 @@ def build_membership_status_summary(
     bridge_active = _paid_until_is_active(post_academy_club_until, now)
 
     inherited_from: dict[str, Optional[str]] = {tier: None for tier in TIERS}
-    paid_tiers: set[str] = set()
-    if direct_paid["academy"]:
-        paid_tiers.update(TIERS)
-        inherited_from["club"] = "academy" if not direct_paid["club"] else None
-        inherited_from["community"] = (
-            "academy" if not direct_paid["community"] else None
-        )
-    if direct_paid["club"]:
-        paid_tiers.update({"club", "community"})
-        if not direct_paid["community"] and inherited_from["community"] is None:
-            inherited_from["community"] = "club"
+    paid_tiers: set[str] = {
+        tier for tier, is_paid in direct_paid.items() if is_paid
+    }
     if bridge_active:
-        paid_tiers.update({"club", "community"})
+        paid_tiers.add("club")
         if not direct_paid["club"] and inherited_from["club"] is None:
             inherited_from["club"] = "post_academy"
-        if not direct_paid["community"] and inherited_from["community"] is None:
-            inherited_from["community"] = "club"
-    if direct_paid["community"]:
-        paid_tiers.add("community")
 
     # ``pending_payment_reference`` is retained only for legacy checkout
     # resumption. Display state is driven by the tier-scoped map so unrelated
@@ -176,11 +169,7 @@ def build_membership_status_summary(
 
         effective_candidates = [paid_until[tier]]
         if tier == "club":
-            effective_candidates.extend([post_academy_club_until, academy_paid_until])
-        elif tier == "community":
-            effective_candidates.extend(
-                [club_paid_until, post_academy_club_until, academy_paid_until]
-            )
+            effective_candidates.append(post_academy_club_until)
         effective_dates = [
             value for value in effective_candidates if value and value > now
         ]

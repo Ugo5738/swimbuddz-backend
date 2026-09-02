@@ -107,7 +107,7 @@ async def test_entitlement_key_cannot_be_reused_for_another_action(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_academy_activation_replay_does_not_regrant_bundled_periods(
+async def test_academy_activation_is_idempotent_and_does_not_grant_other_products(
     members_client,
     db_session,
 ):
@@ -143,6 +143,9 @@ async def test_academy_activation_replay_does_not_regrant_bundled_periods(
         == first_membership["community_paid_until"]
     )
     assert second_membership["club_paid_until"] == first_membership["club_paid_until"]
+    assert first_membership["community_paid_until"] is None
+    assert first_membership["club_paid_until"] is None
+    assert first_membership["effective_paid_tiers"] == ["academy"]
 
 
 @pytest.mark.asyncio
