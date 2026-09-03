@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -59,6 +60,13 @@ class MediaItem(Base):
     """Comprehensive media item (photo, video, etc.)."""
 
     __tablename__ = "media_items"
+    __table_args__ = (
+        Index(
+            "ix_media_items_vault_labels_gin",
+            "vault_labels",
+            postgresql_using="gin",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -138,6 +146,7 @@ class MediaItem(Base):
     rating: Mapped[int] = mapped_column(Integer, nullable=True)
     review_notes: Mapped[str] = mapped_column(Text, nullable=True)
     rejection_reason: Mapped[str] = mapped_column(Text, nullable=True)
+    vault_labels: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     reviewed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     reviewed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=True

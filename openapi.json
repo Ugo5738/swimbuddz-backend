@@ -45246,6 +45246,32 @@
             }
           },
           {
+            "name": "processing_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "ready",
+              "title": "Processing Status"
+            }
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label"
+            }
+          },
+          {
             "name": "search",
             "in": "query",
             "required": false,
@@ -45430,6 +45456,65 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/VaultMediaResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/{vault_id}/items/delete": {
+      "post": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Delete Vault Items",
+        "description": "Remove vault media, optionally deleting every stored copy permanently.",
+        "operationId": "delete_vault_items_media_vaults__vault_id__items_delete_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vault_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Vault Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VaultMediaDeleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultMediaDeleteResponse"
                 }
               }
             }
@@ -106243,6 +106328,21 @@
             ],
             "title": "Rejection Reason"
           },
+          "labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labels"
+          },
           "media_item_ids": {
             "items": {
               "type": "string",
@@ -107430,6 +107530,21 @@
               }
             ],
             "title": "Rejection Reason"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labels"
           }
         },
         "type": "object",
@@ -108178,6 +108293,53 @@
         ],
         "title": "VaultListResponse"
       },
+      "VaultMediaDeleteRequest": {
+        "properties": {
+          "media_item_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Media Item Ids"
+          },
+          "delete_from_storage": {
+            "type": "boolean",
+            "title": "Delete From Storage",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "media_item_ids"
+        ],
+        "title": "VaultMediaDeleteRequest"
+      },
+      "VaultMediaDeleteResponse": {
+        "properties": {
+          "removed_count": {
+            "type": "integer",
+            "title": "Removed Count"
+          },
+          "storage_deleted_count": {
+            "type": "integer",
+            "title": "Storage Deleted Count"
+          },
+          "bytes_deleted": {
+            "type": "integer",
+            "title": "Bytes Deleted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "removed_count",
+          "storage_deleted_count",
+          "bytes_deleted"
+        ],
+        "title": "VaultMediaDeleteResponse"
+      },
       "VaultMediaListResponse": {
         "properties": {
           "items": {
@@ -108326,6 +108488,13 @@
               }
             ],
             "title": "Rejection Reason"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Labels"
           },
           "duplicate_of_id": {
             "anyOf": [

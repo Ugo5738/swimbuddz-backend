@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 VaultRole = Literal["contributor", "curator", "admin"]
 ReviewStatus = Literal["unreviewed", "shortlisted", "approved", "rejected", "published"]
@@ -38,8 +38,6 @@ class VaultCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_dates_and_link(self):
-        if not self.session_id and not self.event_id:
-            raise ValueError("A session_id or event_id is required")
         if self.session_id and self.event_id:
             raise ValueError("Use either session_id or event_id, not both")
         if self.upload_closes_at <= self.upload_opens_at:
@@ -263,6 +261,7 @@ class VaultMediaResponse(BaseModel):
     rating: Optional[int]
     review_notes: Optional[str]
     rejection_reason: Optional[str]
+    labels: list[str] = Field(default_factory=list)
     duplicate_of_id: Optional[uuid.UUID]
     published_media_id: Optional[uuid.UUID]
     published_at: Optional[datetime]
@@ -288,10 +287,41 @@ class ReviewUpdate(BaseModel):
     rating: Optional[int] = Field(default=None, ge=0, le=5)
     review_notes: Optional[str] = Field(default=None, max_length=5000)
     rejection_reason: Optional[str] = Field(default=None, max_length=2000)
+    labels: Optional[list[str]] = Field(default=None, max_length=20)
+
+    @field_validator("labels")
+    @classmethod
+    def normalize_labels(cls, labels: Optional[list[str]]) -> Optional[list[str]]:
+        if labels is None:
+            return None
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in labels:
+            label = " ".join(value.strip().split())
+            if not label:
+                continue
+            if len(label) > 40:
+                raise ValueError("Each media label must be 40 characters or fewer")
+            key = label.casefold()
+            if key not in seen:
+                normalized.append(label)
+                seen.add(key)
+        return normalized
 
 
 class BulkReviewRequest(ReviewUpdate):
     media_item_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+
+
+class VaultMediaDeleteRequest(BaseModel):
+    media_item_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    delete_from_storage: bool = False
+
+
+class VaultMediaDeleteResponse(BaseModel):
+    removed_count: int
+    storage_deleted_count: int
+    bytes_deleted: int
 
 
 class PublishRequest(BaseModel):

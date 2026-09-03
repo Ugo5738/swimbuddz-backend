@@ -120,7 +120,7 @@ def test_filename_cannot_escape_vault_prefix():
     assert _safe_filename("pool/../clip<>.mov") == "clip_.mov"
 
 
-def test_vault_requires_one_context_and_valid_upload_window():
+def test_vault_allows_standalone_context_and_rejects_ambiguous_context():
     now = datetime.now(timezone.utc)
     common = {
         "title": "Saturday swim",
@@ -128,14 +128,30 @@ def test_vault_requires_one_context_and_valid_upload_window():
         "upload_opens_at": now,
         "upload_closes_at": now + timedelta(hours=8),
     }
-    with pytest.raises(ValidationError):
-        VaultCreate(**common)
+    standalone = VaultCreate(**common)
+    assert standalone.session_id is None
+    assert standalone.event_id is None
     with pytest.raises(ValidationError):
         VaultCreate(
             **common,
             session_id="00000000-0000-0000-0000-000000000001",
             event_id="00000000-0000-0000-0000-000000000002",
         )
+
+
+def test_media_labels_are_normalized_and_deduplicated():
+    from services.media_service.schemas.vault import ReviewUpdate
+
+    payload = ReviewUpdate(labels=["  Coaching  ", "coaching", "Main   set", ""])
+
+    assert payload.labels == ["Coaching", "Main set"]
+
+
+def test_media_labels_reject_overly_long_values():
+    from services.media_service.schemas.vault import ReviewUpdate
+
+    with pytest.raises(ValidationError, match="40 characters or fewer"):
+        ReviewUpdate(labels=["x" * 41])
 
 
 def test_upload_batch_requires_consent_attestation():
