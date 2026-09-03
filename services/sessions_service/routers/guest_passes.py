@@ -106,9 +106,7 @@ async def _spaces_remaining(
         guest_conditions.append(GuestPass.id != exclude_guest_pass_id)
     guest_count = int(
         (
-            await db.execute(
-                select(func.count(GuestPass.id)).where(*guest_conditions)
-            )
+            await db.execute(select(func.count(GuestPass.id)).where(*guest_conditions))
         ).scalar_one()
         or 0
     )
@@ -194,8 +192,7 @@ async def create_guest_pass(
         price_kobo=price_kobo,
         total_kobo=price_kobo,
         referral_reward_bubbles=10,
-        reservation_expires_at=now
-        + timedelta(minutes=GUEST_PASS_RESERVATION_MINUTES),
+        reservation_expires_at=now + timedelta(minutes=GUEST_PASS_RESERVATION_MINUTES),
         payment_reference=f"GUEST-{uuid.uuid4().hex[:20].upper()}",
     )
     db.add(guest_pass)
@@ -233,7 +230,9 @@ async def create_guest_pass(
     except httpx.HTTPError as exc:
         guest_pass.status = "payment_failed"
         await db.commit()
-        raise HTTPException(status_code=502, detail="Could not start guest payment") from exc
+        raise HTTPException(
+            status_code=502, detail="Could not start guest payment"
+        ) from exc
     if response.status_code >= 400:
         guest_pass.status = "payment_failed"
         await db.commit()
@@ -271,18 +270,14 @@ async def confirm_guest_pass(
 ):
     guest_pass = (
         await db.execute(
-            select(GuestPass)
-            .where(GuestPass.id == guest_pass_id)
-            .with_for_update()
+            select(GuestPass).where(GuestPass.id == guest_pass_id).with_for_update()
         )
     ).scalar_one_or_none()
     if guest_pass is None or guest_pass.payment_reference != body.payment_reference:
         raise HTTPException(status_code=404, detail="Guest pass not found")
     session = (
         await db.execute(
-            select(Session)
-            .where(Session.id == guest_pass.session_id)
-            .with_for_update()
+            select(Session).where(Session.id == guest_pass.session_id).with_for_update()
         )
     ).scalar_one_or_none()
     if session is None:
@@ -304,19 +299,21 @@ async def confirm_guest_pass(
             status_code=409,
             detail="The guest-pass reservation expired and the session is now full",
         )
+    should_send_confirmation = guest_pass.status == "pending_payment"
     if guest_pass.status != "attended":
         guest_pass.status = "confirmed"
         guest_pass.reservation_expires_at = None
     await db.commit()
     await db.refresh(guest_pass)
-    await get_email_client().send(
-        to_email=guest_pass.email,
-        subject="Your SwimBuddz guest pass is confirmed",
-        body=(
-            f"Hi {guest_pass.full_name},\n\nYour SwimBuddz guest pass is confirmed. "
-            f"Your reference is {guest_pass.payment_reference}. We look forward to swimming with you."
-        ),
-    )
+    if should_send_confirmation:
+        await get_email_client().send(
+            to_email=guest_pass.email,
+            subject="Your SwimBuddz guest pass is confirmed",
+            body=(
+                f"Hi {guest_pass.full_name},\n\nYour SwimBuddz guest pass is confirmed. "
+                f"Your reference is {guest_pass.payment_reference}. We look forward to swimming with you."
+            ),
+        )
     return guest_pass
 
 
@@ -346,9 +343,7 @@ async def mark_guest_pass_attended(
 ):
     guest_pass = (
         await db.execute(
-            select(GuestPass)
-            .where(GuestPass.id == guest_pass_id)
-            .with_for_update()
+            select(GuestPass).where(GuestPass.id == guest_pass_id).with_for_update()
         )
     ).scalar_one_or_none()
     if guest_pass is None:

@@ -30,9 +30,7 @@ async def test_session_access_context_batches_unique_cohorts_and_pods(monkeypatc
         }
     )
     pod_batch = AsyncMock(return_value={str(pod_id): [str(member_id)]})
-    club_batch = AsyncMock(
-        return_value={str(pod_session.id): {"allowed": True}}
-    )
+    club_batch = AsyncMock(return_value={str(pod_session.id): {"allowed": True}})
     monkeypatch.setattr(
         session_access,
         "check_cohort_enrollments_batch",
@@ -41,7 +39,11 @@ async def test_session_access_context_batches_unique_cohorts_and_pods(monkeypatc
     monkeypatch.setattr(session_access, "get_pod_rosters_batch", pod_batch)
     monkeypatch.setattr(session_access, "check_club_access_batch", club_batch)
 
-    cohort_access, pod_rosters, club_access = await session_access.get_sessions_access_context(
+    (
+        cohort_access,
+        pod_rosters,
+        club_access,
+    ) = await session_access.get_sessions_access_context(
         sessions=[
             cohort_session,
             same_cohort_session,

@@ -156,8 +156,7 @@ async def _release_club_application_capacity(
         response = await internal_post(
             service_url=settings.MEMBERS_SERVICE_URL,
             path=(
-                f"/clubs/internal/applications/{application_id}/"
-                "reservation/release"
+                f"/clubs/internal/applications/{application_id}/" "reservation/release"
             ),
             calling_service="payments",
             json={"payment_reference": payment_reference},

@@ -1013,9 +1013,7 @@ async def _get_session_announcement_members(
                 session,
                 now=now,
                 club_product_access=(
-                    bool(
-                        (club_access.get(str(member.get("id"))) or {}).get("allowed")
-                    )
+                    bool((club_access.get(str(member.get("id"))) or {}).get("allowed"))
                     if session_type == "club"
                     else None
                 ),
@@ -1320,8 +1318,7 @@ async def send_weekly_session_digest() -> None:
                                         or {}
                                     ).get("allowed")
                                 )
-                                if str(s.get("session_type") or "").lower()
-                                == "club"
+                                if str(s.get("session_type") or "").lower() == "club"
                                 else None
                             ),
                         )

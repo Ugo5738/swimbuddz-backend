@@ -54,6 +54,7 @@ async def list_pools(
     partnership_status: Optional[PartnershipStatus] = None,
     pool_type: Optional[PoolType] = None,
     location_area: Optional[str] = None,
+    operating_area_id: Optional[uuid.UUID] = None,
     search: Optional[str] = None,
     is_active: Optional[bool] = None,
     page: int = Query(1, ge=1),
@@ -70,6 +71,8 @@ async def list_pools(
         query = query.where(Pool.pool_type == pool_type)
     if location_area:
         query = query.where(Pool.location_area.ilike(f"%{location_area}%"))
+    if operating_area_id:
+        query = query.where(Pool.operating_area_id == operating_area_id)
     if search:
         query = query.where(Pool.name.ilike(f"%{search}%"))
     if is_active is not None:

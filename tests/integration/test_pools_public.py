@@ -136,9 +136,7 @@ async def test_public_area_and_pool_filters_share_the_registry(pools_client):
     assert areas_response.status_code == 200, areas_response.text
     assert any(area["id"] == area_id for area in areas_response.json())
 
-    pools_response = await pools_client.get(
-        f"/pools?operating_area_id={area_id}"
-    )
+    pools_response = await pools_client.get(f"/pools?operating_area_id={area_id}")
     assert pools_response.status_code == 200, pools_response.text
     assert pools_response.json()["total"] == 1
     assert pools_response.json()["items"][0]["name"] == "Mainland Club Pool"

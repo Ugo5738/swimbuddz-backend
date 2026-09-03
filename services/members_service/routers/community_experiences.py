@@ -10,6 +10,7 @@ from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.members_service.models import (
@@ -24,6 +25,9 @@ from services.members_service.schemas import (
     CommunityExperienceOfferingCreate,
     CommunityExperienceOfferingResponse,
     CommunityExperienceQuote,
+)
+from services.members_service.services.membership_pricing import (
+    annual_membership_extension,
 )
 
 router = APIRouter(
@@ -87,15 +91,13 @@ async def _quote_for_member(
             select(MemberMembership).where(MemberMembership.member_id == member.id)
         )
     ).scalar_one_or_none()
-    membership_covers_period = bool(
-        membership
-        and membership.community_paid_until
-        and membership.community_paid_until.date() >= offering.period_end
-    )
-    annual_membership_fee = (
-        0
-        if membership_covers_period
-        else int(getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20_000) * 100)
+    annual_membership_months, annual_membership_fee = annual_membership_extension(
+        paid_until=(membership.community_paid_until if membership else None),
+        coverage_end=offering.period_end,
+        annual_fee_kobo=int(
+            getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20_000) * 100
+        ),
+        now=utc_now(),
     )
     if active_club:
         context = "club_member_later"
@@ -111,7 +113,7 @@ async def _quote_for_member(
         price_context=context,
         amount_kobo=amount,
         annual_membership_fee_kobo=annual_membership_fee,
-        annual_membership_months=0 if membership_covers_period else 12,
+        annual_membership_months=annual_membership_months,
         subtotal_kobo=amount + annual_membership_fee,
         already_purchased=bool(existing),
     )
@@ -199,23 +201,23 @@ async def activate_community_experience(
     if offering is None:
         raise HTTPException(status_code=404, detail="Community Experience not found")
     member = await _member_by_auth(db, body.member_auth_id)
-    existing = (
-        await db.execute(
-            select(CommunityExperiencePurchase).where(
-                CommunityExperiencePurchase.member_id == member.id,
-                CommunityExperiencePurchase.offering_id == offering.id,
-            )
+    # Payment providers retry callbacks and may deliver the same activation
+    # concurrently. The unique member/offering boundary keeps this idempotent.
+    await db.execute(
+        insert(CommunityExperiencePurchase)
+        .values(
+            member_id=member.id,
+            offering_id=offering.id,
+            price_context=body.price_context,
+            amount_paid_kobo=body.amount_paid_kobo,
+            payment_reference=body.payment_reference,
         )
-    ).scalar_one_or_none()
-    if existing is None:
-        db.add(
-            CommunityExperiencePurchase(
-                member_id=member.id,
-                offering_id=offering.id,
-                price_context=body.price_context,
-                amount_paid_kobo=body.amount_paid_kobo,
-                payment_reference=body.payment_reference,
-            )
+        .on_conflict_do_nothing(
+            index_elements=[
+                CommunityExperiencePurchase.member_id,
+                CommunityExperiencePurchase.offering_id,
+            ]
         )
-        await db.commit()
+    )
+    await db.commit()
     return offering

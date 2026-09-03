@@ -12,12 +12,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.members_service.models import (
     Club,
     ClubEnrollment,
+    ClubPlanVersion,
     MemberMembership,
     Pod,
 )
@@ -65,8 +66,12 @@ async def resolve_club_access_checks(
 
     enrollment_rows = (
         await db.execute(
-            select(ClubEnrollment, Club)
+            select(ClubEnrollment, Club, ClubPlanVersion)
             .join(Club, Club.id == ClubEnrollment.club_id)
+            .join(
+                ClubPlanVersion,
+                ClubPlanVersion.id == ClubEnrollment.plan_version_id,
+            )
             .where(
                 ClubEnrollment.member_id.in_(member_ids),
                 ClubEnrollment.status == "active",
@@ -76,10 +81,12 @@ async def resolve_club_access_checks(
             )
         )
     ).all()
-    enrollments_by_member: dict[Any, list[tuple[ClubEnrollment, Club]]] = {}
-    for enrollment, club in enrollment_rows:
+    enrollments_by_member: dict[
+        Any, list[tuple[ClubEnrollment, Club, ClubPlanVersion]]
+    ] = {}
+    for enrollment, club, plan in enrollment_rows:
         enrollments_by_member.setdefault(enrollment.member_id, []).append(
-            (enrollment, club)
+            (enrollment, club, plan)
         )
 
     pod_ids = {check.pod_id for check in requested if check.pod_id is not None}
@@ -96,16 +103,18 @@ async def resolve_club_access_checks(
     for check in requested:
         at = _aware(check.at)
         matched_enrollment: ClubEnrollment | None = None
-        for enrollment, club in enrollments_by_member.get(check.member_id, []):
-            if not (
-                _aware(enrollment.starts_at) <= at < _aware(enrollment.ends_at)
-            ):
+        for enrollment, club, plan in enrollments_by_member.get(check.member_id, []):
+            if not (_aware(enrollment.starts_at) <= at < _aware(enrollment.ends_at)):
                 continue
             if check.pod_id is not None:
                 if pod_club_ids.get(check.pod_id) != enrollment.club_id:
                     continue
             elif check.pool_id is not None:
-                if club.default_pool_id != check.pool_id:
+                # Use the immutable commercial snapshot. The Club default is
+                # only a fallback for historical plans created before the
+                # snapshot columns existed.
+                enrollment_pool_id = plan.pool_id or club.default_pool_id
+                if enrollment_pool_id != check.pool_id:
                     continue
             matched_enrollment = enrollment
             break
@@ -121,9 +130,7 @@ async def resolve_club_access_checks(
                     "club_id": matched_enrollment.club_id,
                 }
             )
-        elif membership and _paid_until_covers(
-            membership.post_academy_club_until, at
-        ):
+        elif membership and _paid_until_covers(membership.post_academy_club_until, at):
             resolved.append(
                 {
                     "context_key": check.context_key,
@@ -176,3 +183,24 @@ async def has_current_club_access(
 
     result = await resolve_club_access_checks(db, [_Check()])
     return bool(result and result[0]["allowed"])
+
+
+async def current_club_enrollment_until(
+    db: AsyncSession,
+    *,
+    member_id: Any,
+    at: datetime,
+) -> datetime | None:
+    """Return the latest end of a location-specific enrollment active now."""
+
+    current = _aware(at)
+    return (
+        await db.execute(
+            select(func.max(ClubEnrollment.ends_at)).where(
+                ClubEnrollment.member_id == member_id,
+                ClubEnrollment.status == "active",
+                ClubEnrollment.starts_at <= current,
+                ClubEnrollment.ends_at > current,
+            )
+        )
+    ).scalar_one_or_none()

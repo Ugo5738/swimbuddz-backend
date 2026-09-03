@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 import uuid
@@ -9,6 +9,7 @@ from fastapi import HTTPException
 
 from services.members_service.routers import clubs
 from services.members_service.schemas.club import ActivateClubApplicationRequest
+from services.members_service.services.club_access import resolve_club_access_checks
 from services.payments_service.routers.intents import intent_creation
 from services.sessions_service.routers import guest_passes
 
@@ -133,3 +134,66 @@ async def test_guest_capacity_ignores_expired_pending_holds_in_query():
     assert "session_bookings.expires_at" in sql
     assert "guest_passes.reservation_expires_at" in sql
     assert guest_passes.GUEST_PASS_RESERVATION_MINUTES == 30
+
+
+class _RowsResult:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self.rows
+
+
+class _AccessDb:
+    def __init__(self, memberships, enrollments):
+        self.results = iter([_RowsResult(memberships), _RowsResult(enrollments)])
+
+    async def execute(self, _statement):
+        return next(self.results)
+
+
+@pytest.mark.asyncio
+async def test_club_access_uses_the_plan_pool_snapshot():
+    member_id = uuid.uuid4()
+    club_id = uuid.uuid4()
+    enrollment_id = uuid.uuid4()
+    original_pool_id = uuid.uuid4()
+    changed_club_default = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    enrollment = SimpleNamespace(
+        id=enrollment_id,
+        member_id=member_id,
+        club_id=club_id,
+        starts_at=now - timedelta(days=1),
+        ends_at=now + timedelta(days=30),
+    )
+    club = SimpleNamespace(default_pool_id=changed_club_default)
+    plan = SimpleNamespace(pool_id=original_pool_id)
+    checks = [
+        SimpleNamespace(
+            context_key="original",
+            member_id=member_id,
+            at=now,
+            pool_id=original_pool_id,
+            pod_id=None,
+        ),
+        SimpleNamespace(
+            context_key="changed-default",
+            member_id=member_id,
+            at=now,
+            pool_id=changed_club_default,
+            pod_id=None,
+        ),
+    ]
+
+    result = await resolve_club_access_checks(
+        _AccessDb([], [(enrollment, club, plan)]),
+        checks,
+    )
+
+    assert result[0]["allowed"] is True
+    assert result[0]["source"] == "club_enrollment"
+    assert result[1]["allowed"] is False

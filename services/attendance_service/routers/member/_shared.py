@@ -161,9 +161,7 @@ async def validate_session_access(
             ],
             calling_service="attendance",
         )
-        club_product_access = bool(
-            (results.get(context_key) or {}).get("allowed")
-        )
+        club_product_access = bool((results.get(context_key) or {}).get("allowed"))
 
     decision = evaluate_session_access(
         member_payload,

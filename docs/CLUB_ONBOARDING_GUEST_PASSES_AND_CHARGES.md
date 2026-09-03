@@ -7,7 +7,7 @@ and standalone guest-pass flows introduced in August 2026.
 
 Club pricing is configured as a versioned plan for one Club location. A plan
 contains the Club fee, number of included sessions, refreshment inclusion, an
-effective period, capacity guidance, and the optional quarterly Community
+effective period, enforced capacity, an immutable area/pool snapshot, and the optional quarterly Community
 Experience amount. The commercial plan is separate from pool and refreshment
 cost-rate records: cost rates help an admin decide a price, while the plan is the
 price a member is offered and later pays.
@@ -22,23 +22,33 @@ The normal lifecycle is:
 
 1. Admin associates a Club with its operating area/default pool and publishes a
    dated Club plan.
-2. Member selects the location plan and may select a pod at that location.
+2. Member selects an operating area, pool location, one or more consecutive
+   Club quarters, and optionally a pod at that location.
 3. Member completes the safety pre-assessment.
 4. Admin records the observed 10–15 minute readiness assessment with one of:
    `club_ready`, `club_ready_modified`, or `academy_first`.
 5. The result and baseline can be emailed to the member. Payment is available
    only for either Club-ready outcome.
-6. Payments fetch the approved application price from members-service, apply any
-   enabled additional-charge policies, and persist the pricing snapshot.
-7. Successful payment creates a location-specific Club enrollment. Pod joining
-   is restricted to the member's enrolled Club location.
+6. Payments fetch the approved application price from members-service, reserve
+   plan/pod capacity for 30 minutes, apply any enabled additional-charge
+   policies, and persist the pricing snapshot.
+7. Successful payment creates one dated, location-specific Club enrollment for
+   every selected quarter and consumes the seat reservation. Pod joining is
+   restricted to the member's enrolled Club location and pod capacity.
 
-The annual Community membership remains a separate ecosystem membership. Both
-the member UI and server-side payment context require it to be active before a
-new location-plan payment. Location-plan activation does not silently extend the
-annual Community expiry. Legacy Club checkout retains its existing one-year
-extension for existing/transitional members; new location-aware registrations
-should use an application ID.
+Annual SwimBuddz Membership is a separate ecosystem product. A new swimmer does
+not have to take an unrelated Community-first checkout path: if Membership will
+not cover the selected Club period, the server adds the required renewal as a
+separate line in the same approved Club quote. Successful settlement applies
+that dated Membership entitlement before creating the Club enrollments. Legacy
+Club checkout retains its existing one-year extension for transitional members;
+new location-aware registrations must use an approved application ID.
+
+Club and Academy are independent programmes, not ranks in a tier hierarchy.
+Club access comes from a Club enrollment covering the session date and location;
+Academy access comes from enrollment in the relevant cohort. Completing Academy
+does not imply ongoing Club access. A configured graduation flow may grant the
+separate, auditable one-month post-Academy Club bridge.
 
 ## Additional payment charges
 
@@ -78,6 +88,10 @@ enter required name/email/phone details, accept the safety waiver, and pay their
 own guest price. The referrer does not need to book or attend. Referral links use
 `?ref={member_referral_code}`.
 
+An unpaid guest pass holds one session place for 30 minutes. Expired unpaid
+holds no longer reduce availability. A delayed successful payment is confirmed
+only if the session still has room.
+
 Marketing consent is separate and defaults off. Transactional booking and
 assessment emails do not depend on marketing consent. For a minor, guardian name
 and phone are required by schema validation.
@@ -88,24 +102,29 @@ referrer information. The detailed record is admin-only.
 
 After a paid guest attends, an admin records actual swim minutes and may record
 and email an assessment. Guest minutes are retained as guest swimmer-hours and
-can later be linked through `converted_member_id` when the guest becomes a member.
+can later be linked through `converted_member_id` when the guest becomes a
+member. Once linked, the minutes move into that member's history and are excluded
+from the aggregate guest bucket so total swimmer-hours count them once.
 
 ## Guest referral thank-you
 
-A referred guest becomes eligible for the session's configured thank-you
-(currently NGN 1,000 by default) only after the first paid attendance for that
-phone number. Repeat visits do not earn another acquisition reward. The existing
-member-conversion referral reward is a separate later event.
+A referred guest earns the configured referral thank-you (currently 10 Bubbles)
+only after the first paid attendance for that normalized phone number. A unique
+claim plus the rewards engine's idempotency key protects this under concurrent
+attendance updates. Repeat visits do not earn another acquisition reward. The
+existing member-conversion referral reward is a separate later event.
 
 The guest flow validates the referral code with wallet-service and snapshots the
-referrer's auth ID. The first version deliberately records eligibility and a
-manual transfer reference rather than initiating an automatic payout. Admin
-should verify the referral, make the transfer, then mark it paid. This provides an
-audit trail while the programme is still being tested.
+referrer's auth ID. Attendance emits `referral.guest_attended`; wallet-service
+credits the 10 Bubbles automatically through its configured reward rule. Cash
+transfers were a temporary pre-implementation workaround and are not the system
+contract.
 
 ## Primary endpoints
 
 - `GET /api/v1/clubs/plans`
+- `GET /api/v1/pools/operating-areas`
+- `GET /api/v1/pools?operating_area_id={id}`
 - `POST /api/v1/clubs/applications`
 - `PUT /api/v1/clubs/applications/{id}/pre-assessment`
 - `GET /api/v1/clubs/admin/applications`

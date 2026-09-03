@@ -59,6 +59,9 @@ from services.members_service.schemas import (
     ClubUpdate,
 )
 from services.members_service.services.chat_sync import reconcile_pod_membership
+from services.members_service.services.membership_pricing import (
+    annual_membership_extension,
+)
 from services.members_service.routers._club_pricing import (
     application_response as _application_out,
     plan_price as _plan_price,
@@ -242,7 +245,9 @@ async def _assert_pod_capacity(
     held = int(
         (
             await db.execute(
-                select(func.count(func.distinct(ClubEnrollmentReservation.application_id)))
+                select(
+                    func.count(func.distinct(ClubEnrollmentReservation.application_id))
+                )
                 .join(
                     ClubApplication,
                     ClubApplication.id == ClubEnrollmentReservation.application_id,
@@ -307,7 +312,13 @@ async def list_club_plans(
         )
     )
     if operating_area_id:
-        query = query.where(Club.operating_area_id == operating_area_id)
+        query = query.where(
+            func.coalesce(
+                ClubPlanVersion.operating_area_id,
+                Club.operating_area_id,
+            )
+            == operating_area_id
+        )
     if club_id:
         query = query.where(Club.id == club_id)
     rows = (
@@ -391,6 +402,33 @@ async def create_club_application(
     db: AsyncSession = Depends(get_async_db),
 ):
     member = await _member_for_user(current_user, db)
+    # Serialize application creation per member so two browser retries cannot
+    # open competing assessment/payment journeys.
+    await db.execute(select(Member.id).where(Member.id == member.id).with_for_update())
+    existing_application = (
+        (
+            await db.execute(
+                select(ClubApplication)
+                .where(
+                    ClubApplication.member_id == member.id,
+                    ClubApplication.status.in_(
+                        {"assessment_required", "assessment_pending", "approved"}
+                    ),
+                )
+                .order_by(ClubApplication.created_at.desc())
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if existing_application is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "You already have an open Club application. Continue that "
+                "assessment or payment before starting another."
+            ),
+        )
     selected_ids = list(dict.fromkeys([body.plan_version_id, *body.plan_version_ids]))
     plans = list(
         (
@@ -726,16 +764,13 @@ async def get_club_application_payment_context(
         )
     club_fee = sum(item["amount_kobo"] for item in club_items)
     last_period_end = max(selected.period_end for selected in selected_plans)
-    membership_covers_selection = bool(
-        membership
-        and membership.community_paid_until
-        and membership.community_paid_until.date() >= last_period_end
-    )
-    annual_membership_months = 0 if membership_covers_selection else 12
-    annual_membership_fee = (
-        0
-        if membership_covers_selection
-        else int(getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20_000) * 100)
+    annual_membership_months, annual_membership_fee = annual_membership_extension(
+        paid_until=(membership.community_paid_until if membership else None),
+        coverage_end=last_period_end,
+        annual_fee_kobo=int(
+            getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20_000) * 100
+        ),
+        now=utc_now(),
     )
     experience_fee = 0
     experience_selected = application.community_experience_selected
@@ -847,9 +882,7 @@ async def reserve_club_application_capacity(
         for row in (
             await db.execute(
                 select(ClubEnrollmentReservation)
-                .where(
-                    ClubEnrollmentReservation.application_id == application.id
-                )
+                .where(ClubEnrollmentReservation.application_id == application.id)
                 .with_for_update()
             )
         ).scalars()
@@ -931,7 +964,9 @@ async def release_club_application_capacity(
             row.status = "released"
             row.expires_at = min(row.expires_at, now)
     await db.commit()
-    status_value = "consumed" if any(row.status == "consumed" for row in rows) else "released"
+    status_value = (
+        "consumed" if any(row.status == "consumed" for row in rows) else "released"
+    )
     return ClubApplicationReservationResponse(
         application_id=application.id,
         payment_reference=body.payment_reference,
@@ -971,9 +1006,7 @@ async def activate_club_application(
         (
             await db.execute(
                 select(ClubEnrollmentReservation)
-                .where(
-                    ClubEnrollmentReservation.application_id == application.id
-                )
+                .where(ClubEnrollmentReservation.application_id == application.id)
                 .with_for_update()
             )
         ).scalars()
@@ -1012,7 +1045,11 @@ async def activate_club_application(
             .with_for_update()
         )
     ).scalar_one_or_none()
-    if preferred_pod and active_assignment and active_assignment.pod_id != preferred_pod.id:
+    if (
+        preferred_pod
+        and active_assignment
+        and active_assignment.pod_id != preferred_pod.id
+    ):
         raise HTTPException(
             status_code=409,
             detail="Member already belongs to another active pod",
@@ -1029,6 +1066,7 @@ async def activate_club_application(
         await db.flush()
 
     created_enrollments: list[ClubEnrollment] = []
+    activation_date = (body.starts_at or now).date()
     for selected_plan in selected_plans:
         existing = (
             await db.execute(
@@ -1041,7 +1079,10 @@ async def activate_club_application(
         if existing:
             created_enrollments.append(existing)
             continue
-        start_date = max(date.today(), selected_plan.period_start)
+        # Use the provider-confirmed payment time rather than the webhook
+        # processing date. A delayed callback near a quarter boundary must
+        # not shorten or invalidate an enrollment that was paid on time.
+        start_date = max(activation_date, selected_plan.period_start)
         enrollment = ClubEnrollment(
             member_id=application.member_id,
             club_id=application.club_id,
@@ -1092,6 +1133,20 @@ async def activate_club_application(
                 )
             )
     application.status = "enrolled"
+    membership = (
+        await db.execute(
+            select(MemberMembership)
+            .where(MemberMembership.member_id == application.member_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if membership is not None:
+        membership.requested_tiers = [
+            tier for tier in (membership.requested_tiers or []) if tier != "club"
+        ] or None
+        membership.declared_tiers = sorted(
+            set(membership.declared_tiers or []) | {"club"}
+        )
     for reservation in reservations:
         reservation.status = "consumed"
     await db.commit()

@@ -1572,7 +1572,7 @@
           "admin-members"
         ],
         "summary": "Admin Activate Academy Membership By Auth",
-        "description": "Apply a paid Academy entitlement once and preserve later cohorts.\n\nThe idempotency key protects both the Academy end date and the Community\nperiod granted by the first Academy payment. Club is inherited while\nAcademy is active; its explicit one-month bridge is granted separately on\ngraduation. Retrying the same payment cannot keep moving entitlements.",
+        "description": "Apply a paid Academy entitlement once and preserve later cohorts.\n\nThe idempotency key protects the Academy date. Annual Membership is\nextended separately by the payment flow only when the programme's policy\nis ``active_required`` or ``included``; an ``open`` Academy programme must\nnot silently grant Membership. Club access is likewise independent, with\nits explicit one-month bridge granted separately on graduation.",
         "operationId": "admin_activate_academy_membership_by_auth_admin_members_by_auth__auth_id__academy_activate_post",
         "security": [
           {
@@ -3667,6 +3667,124 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ClubPaymentContext"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/internal/applications/{application_id}/reservation": {
+      "post": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "Reserve Club Application Capacity",
+        "description": "Atomically hold every selected quarter (and preferred pod) for checkout.",
+        "operationId": "reserve_club_application_capacity_clubs_internal_applications__application_id__reservation_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubApplicationReservationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubApplicationReservationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/internal/applications/{application_id}/reservation/release": {
+      "post": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "Release Club Application Capacity",
+        "description": "Idempotently release an abandoned checkout's capacity hold.",
+        "operationId": "release_club_application_capacity_clubs_internal_applications__application_id__reservation_release_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubApplicationReservationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubApplicationReservationResponse"
                 }
               }
             }
@@ -7364,6 +7482,53 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/internal/members/club-access/checks": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Check Club Access",
+        "description": "Resolve location- and date-aware Club access in one internal call.\n\nClub enrollments are checked against each session's start time.  This\nkeeps a future-quarter purchase from authorizing sessions before that\nquarter begins, while retaining explicit legacy and post-Academy bridges.",
+        "operationId": "check_club_access_internal_members_club_access_checks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubAccessChecksRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubAccessChecksResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/internal/members/{member_id}/membership": {
@@ -35485,6 +35650,23 @@
             }
           },
           {
+            "name": "operating_area_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Operating Area Id"
+            }
+          },
+          {
             "name": "search",
             "in": "query",
             "required": false,
@@ -35541,6 +35723,32 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/operating-areas": {
+      "get": {
+        "tags": [
+          "pools"
+        ],
+        "summary": "List Public Operating Areas",
+        "description": "List active areas that currently contain a bookable partner pool.\n\nClub registration uses this as the first step of its Area -> Pool -> Plan\nselector. Areas without an active partner pool are deliberately hidden so\na swimmer cannot choose a location where SwimBuddz cannot yet operate.",
+        "operationId": "list_public_operating_areas_pools_operating_areas_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OperatingAreaResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Public Operating Areas Pools Operating Areas Get"
                 }
               }
             }
@@ -37524,6 +37732,23 @@
                 }
               ],
               "title": "Location Area"
+            }
+          },
+          {
+            "name": "operating_area_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Operating Area Id"
             }
           },
           {
@@ -55212,6 +55437,135 @@
         "title": "ChallengeWinnerPublicInfo",
         "description": "Winner summary shown on the public landing page.\n\nOnly populated when format='competition' AND winner_submission_id is set.\nMember emails / auth_ids are NEVER included \u2014 only display names.\nproof_media is only populated when show_winner_media_publicly is true on\nthe challenge."
       },
+      "ClubAccessCheck": {
+        "properties": {
+          "context_key": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Context Key"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "context_key",
+          "member_id",
+          "at"
+        ],
+        "title": "ClubAccessCheck",
+        "description": "One session-specific Club access decision requested internally."
+      },
+      "ClubAccessCheckResult": {
+        "properties": {
+          "context_key": {
+            "type": "string",
+            "title": "Context Key"
+          },
+          "allowed": {
+            "type": "boolean",
+            "title": "Allowed"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "enrollment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrollment Id"
+          },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "context_key",
+          "allowed",
+          "source"
+        ],
+        "title": "ClubAccessCheckResult"
+      },
+      "ClubAccessChecksRequest": {
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/ClubAccessCheck"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "title": "ClubAccessChecksRequest"
+      },
+      "ClubAccessChecksResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ClubAccessCheckResult"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ClubAccessChecksResponse"
+      },
       "ClubApplicationCreate": {
         "properties": {
           "plan_version_id": {
@@ -55263,6 +55617,64 @@
           "plan_version_id"
         ],
         "title": "ClubApplicationCreate"
+      },
+      "ClubApplicationReservationRequest": {
+        "properties": {
+          "payment_reference": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Payment Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_reference"
+        ],
+        "title": "ClubApplicationReservationRequest"
+      },
+      "ClubApplicationReservationResponse": {
+        "properties": {
+          "application_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Application Id"
+          },
+          "payment_reference": {
+            "type": "string",
+            "title": "Payment Reference"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "released",
+              "consumed"
+            ],
+            "title": "Status"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "plan_version_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Plan Version Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "application_id",
+          "payment_reference",
+          "status",
+          "expires_at"
+        ],
+        "title": "ClubApplicationReservationResponse"
       },
       "ClubApplicationResponse": {
         "properties": {
@@ -57057,6 +57469,18 @@
               }
             ],
             "title": "Operating Area Id"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
           },
           "default_pool_id": {
             "anyOf": [
@@ -65400,6 +65824,18 @@
             ],
             "title": "Post Academy Club Until"
           },
+          "club_enrollment_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Enrollment Until"
+          },
           "club_billing_cycle_months": {
             "anyOf": [
               {
@@ -66672,6 +67108,18 @@
             "type": "string",
             "title": "Status"
           },
+          "reservation_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reservation Expires At"
+          },
           "checkout_url": {
             "anyOf": [
               {
@@ -67041,6 +67489,18 @@
           "status": {
             "type": "string",
             "title": "Status"
+          },
+          "reservation_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reservation Expires At"
           },
           "checkout_url": {
             "anyOf": [

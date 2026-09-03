@@ -129,6 +129,17 @@ def test_post_academy_bridge_is_effective_club_with_auditable_source():
     assert summary["tier_statuses"]["club"]["access_source"] == "post_academy"
 
 
+def test_current_dated_enrollment_projects_direct_club_status():
+    summary = _summary(club_enrollment_until=FUTURE)
+
+    assert summary["paid_tier"] == "club"
+    assert summary["paid_tiers"] == ["club"]
+    assert summary["tier_statuses"]["club"]["status"] == "active"
+    assert summary["tier_statuses"]["club"]["direct_paid"] is True
+    assert summary["tier_statuses"]["club"]["paid_until"] == FUTURE
+    assert summary["tier_statuses"]["community"]["status"] == "approved_unpaid"
+
+
 def test_contract_separates_declared_identity_from_effective_paid_access():
     summary = _summary(
         primary_tier="prospect",

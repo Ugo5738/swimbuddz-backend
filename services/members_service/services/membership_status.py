@@ -103,6 +103,7 @@ def build_membership_status_summary(
     club_paid_until: Optional[datetime],
     academy_paid_until: Optional[datetime],
     post_academy_club_until: Optional[datetime] = None,
+    club_enrollment_until: Optional[datetime] = None,
     pending_payment_reference: Optional[str] = None,
     pending_tier_payments: Optional[dict[str, str]] = None,
     now: Optional[datetime] = None,
@@ -128,15 +129,15 @@ def build_membership_status_summary(
     lifecycle_tiers.update(
         tier for tier, entitlement_end in paid_until.items() if entitlement_end
     )
-    if post_academy_club_until:
+    if post_academy_club_until or club_enrollment_until:
         lifecycle_tiers.add("club")
     direct_paid = {tier: _paid_until_is_active(paid_until[tier], now) for tier in TIERS}
+    if _paid_until_is_active(club_enrollment_until, now):
+        direct_paid["club"] = True
     bridge_active = _paid_until_is_active(post_academy_club_until, now)
 
     inherited_from: dict[str, Optional[str]] = {tier: None for tier in TIERS}
-    paid_tiers: set[str] = {
-        tier for tier, is_paid in direct_paid.items() if is_paid
-    }
+    paid_tiers: set[str] = {tier for tier, is_paid in direct_paid.items() if is_paid}
     if bridge_active:
         paid_tiers.add("club")
         if not direct_paid["club"] and inherited_from["club"] is None:
@@ -169,7 +170,9 @@ def build_membership_status_summary(
 
         effective_candidates = [paid_until[tier]]
         if tier == "club":
-            effective_candidates.append(post_academy_club_until)
+            effective_candidates.extend(
+                [post_academy_club_until, club_enrollment_until]
+            )
         effective_dates = [
             value for value in effective_candidates if value and value > now
         ]
@@ -185,7 +188,18 @@ def build_membership_status_summary(
             "tier": tier,
             "status": status,
             "label": STATUS_LABELS[status],
-            "paid_until": paid_until[tier],
+            "paid_until": (
+                max(
+                    value
+                    for value in (
+                        paid_until[tier],
+                        club_enrollment_until if tier == "club" else None,
+                    )
+                    if value is not None
+                )
+                if paid_until[tier] or (tier == "club" and club_enrollment_until)
+                else None
+            ),
             "requested": is_requested,
             "declared_active": declared,
             "direct_paid": is_direct_paid,

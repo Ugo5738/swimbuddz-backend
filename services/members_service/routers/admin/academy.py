@@ -135,8 +135,7 @@ async def admin_activate_academy_membership_by_auth(
     if current_until is None or new_end > current_until:
         member.membership.academy_paid_until = new_end
     member.membership.declared_tiers = sorted(
-        set(member.membership.declared_tiers or ["community"])
-        | {"academy"}
+        set(member.membership.declared_tiers or ["community"]) | {"academy"}
     )
     _normalize_stored_tiers(member)
 
@@ -169,8 +168,7 @@ async def admin_project_academy_membership_by_auth(
     )
     if payload.paid_until:
         member.membership.declared_tiers = sorted(
-            set(member.membership.declared_tiers or ["community"])
-            | {"academy"}
+            set(member.membership.declared_tiers or ["community"]) | {"academy"}
         )
     _normalize_stored_tiers(member)
     logger.info(

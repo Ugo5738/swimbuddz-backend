@@ -97,7 +97,7 @@ def required_tier_for_session_type(session_type: Any) -> str:
 
 
 def member_declared_tiers(member: Any) -> set[str]:
-    """Return declared tiers from member payload, with hierarchy expanded."""
+    """Return declared compatibility labels without inventing programme access."""
     tiers = {
         _normalized(t) for t in (_value(member, "active_tiers") or []) if _normalized(t)
     }
@@ -105,10 +105,9 @@ def member_declared_tiers(member: Any) -> set[str]:
     if primary:
         tiers.add(primary)
 
-    if ACADEMY in tiers:
-        tiers.update({CLUB, COMMUNITY})
-    if CLUB in tiers:
-        tiers.add(COMMUNITY)
+    # These are independent products. The labels remain for compatibility,
+    # but Academy must never manufacture Club and Club must never manufacture
+    # annual Membership.
     if not tiers:
         tiers.add(COMMUNITY)
     return tiers

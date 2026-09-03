@@ -144,6 +144,10 @@ class MemberMembershipResponse(BaseModel):
     club_paid_until: Optional[datetime] = None
     academy_paid_until: Optional[datetime] = None
     post_academy_club_until: Optional[datetime] = None
+    # Dynamic projection from current location-specific ClubEnrollment rows.
+    # It is not persisted on MemberMembership and is never an authorization
+    # substitute for the underlying dated enrollment.
+    club_enrollment_until: Optional[datetime] = None
     club_billing_cycle_months: Optional[int] = None
     pending_payment_reference: Optional[str] = None
     pending_tier_payments: dict[str, str] = Field(default_factory=dict)
@@ -195,6 +199,7 @@ class MemberMembershipResponse(BaseModel):
             club_paid_until=self.club_paid_until,
             academy_paid_until=self.academy_paid_until,
             post_academy_club_until=self.post_academy_club_until,
+            club_enrollment_until=self.club_enrollment_until,
             pending_payment_reference=self.pending_payment_reference,
             pending_tier_payments=self.pending_tier_payments,
         )
