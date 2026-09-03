@@ -169,10 +169,11 @@ async def admin_extend_club_membership_by_auth(
                 new_until.isoformat(),
             )
 
-    # Ensure {club, community} are in active_tiers since we just paid for them.
+    # This grant is Club-specific. Annual Membership is an independent product
+    # and must only appear active when its own dated entitlement is current.
     tier_priority = {"academy": 3, "club": 2, "community": 1}
     updated_tiers = set(member.membership.active_tiers or [])
-    updated_tiers.update({"club", "community"})
+    updated_tiers.add("club")
     member.membership.active_tiers = sorted(
         [t for t in updated_tiers if t in tier_priority],
         key=lambda t: tier_priority[t],
@@ -255,8 +256,8 @@ async def admin_activate_club_membership_by_auth(
 
     approved_tiers = set(member.membership.active_tiers or [])
     requested_tiers = set(member.membership.requested_tiers or [])
-    club_approved = "club" in approved_tiers or "academy" in approved_tiers
-    club_requested = "club" in requested_tiers or "academy" in requested_tiers
+    club_approved = "club" in approved_tiers
+    club_requested = "club" in requested_tiers
 
     ec = member.emergency_contact
     av = member.availability
@@ -325,7 +326,7 @@ async def admin_activate_club_membership_by_auth(
         remaining_requests = [
             tier
             for tier in member.membership.requested_tiers
-            if tier not in {"club", "academy", "community"}
+            if tier not in {"club", "community"}
         ]
         member.membership.requested_tiers = remaining_requests or None
 
