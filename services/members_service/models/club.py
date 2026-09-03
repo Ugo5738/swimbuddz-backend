@@ -126,6 +126,14 @@ class ClubPlanVersion(Base):
         nullable=False,
         index=True,
     )
+    # Immutable location snapshots. A later Club-default edit must not move a
+    # published plan, in-flight application, or paid enrollment.
+    pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    operating_area_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     billing_cycle: Mapped[str] = mapped_column(
         String(24), nullable=False, default="quarterly"
@@ -333,6 +341,67 @@ class ClubApplicationPlan(Base):
             "application_id",
             "plan_version_id",
             name="uq_club_application_plan_selection",
+        ),
+    )
+
+
+class ClubEnrollmentReservation(Base):
+    """Short-lived seat hold created when a Club checkout starts.
+
+    One row is held per selected plan/quarter.  Capacity is therefore
+    protected while Paystack is open without granting the member early Club
+    access.  Re-starting checkout for the same application refreshes these
+    rows instead of creating duplicate holds.
+    """
+
+    __tablename__ = "club_enrollment_reservations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("club_applications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    plan_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("club_plan_versions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    payment_reference: Mapped[str] = mapped_column(
+        String(128), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="active", server_default="active"
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "application_id",
+            "plan_version_id",
+            name="uq_club_enrollment_reservation_application_plan",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'consumed', 'released')",
+            name="ck_club_enrollment_reservation_status",
+        ),
+        Index(
+            "ix_club_enrollment_reservations_live",
+            "plan_version_id",
+            "status",
+            "expires_at",
         ),
     )
 

@@ -58,6 +58,7 @@ class GuestPassPublicResponse(BaseModel):
     total_kobo: int
     payment_reference: str
     status: str
+    reservation_expires_at: Optional[datetime] = None
     checkout_url: Optional[str] = None
     created_at: datetime
 

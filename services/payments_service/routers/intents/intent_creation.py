@@ -113,6 +113,72 @@ async def _approved_club_application_context(application_id: uuid.UUID) -> dict:
     return response.json()
 
 
+async def _reserve_club_application_capacity(
+    application_id: uuid.UUID,
+    *,
+    payment_reference: str,
+) -> dict:
+    """Hold all selected Club-quarter seats before checkout is exposed."""
+    try:
+        response = await internal_post(
+            service_url=settings.MEMBERS_SERVICE_URL,
+            path=f"/clubs/internal/applications/{application_id}/reservation",
+            calling_service="payments",
+            json={"payment_reference": payment_reference},
+            timeout=30,
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not reserve the selected Club place. Please try again.",
+        ) from exc
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=(
+                response.status_code
+                if response.status_code in {400, 403, 404, 409}
+                else status.HTTP_502_BAD_GATEWAY
+            ),
+            detail=_service_error_detail(
+                response, "Could not reserve the selected Club place"
+            ),
+        )
+    return response.json()
+
+
+async def _release_club_application_capacity(
+    application_id: uuid.UUID,
+    *,
+    payment_reference: str,
+) -> None:
+    """Best-effort release used when checkout cannot be created."""
+    try:
+        response = await internal_post(
+            service_url=settings.MEMBERS_SERVICE_URL,
+            path=(
+                f"/clubs/internal/applications/{application_id}/"
+                "reservation/release"
+            ),
+            calling_service="payments",
+            json={"payment_reference": payment_reference},
+            timeout=15,
+        )
+        if response.status_code >= 400:
+            logger.warning(
+                "Club capacity release failed application_id=%s reference=%s: %s %s",
+                application_id,
+                payment_reference,
+                response.status_code,
+                response.text,
+            )
+    except httpx.HTTPError:
+        logger.exception(
+            "Could not release Club capacity application_id=%s reference=%s",
+            application_id,
+            payment_reference,
+        )
+
+
 async def _community_experience_context(
     offering_id: uuid.UUID, member_auth_id: str
 ) -> dict:
@@ -623,8 +689,10 @@ async def create_payment_intent(
     Create a payment intent (records a pending payment) and (if configured) initializes Paystack checkout.
     """
     payment_id = uuid.uuid4()
+    payment_reference = Payment.generate_reference()
     session_booking_id: uuid.UUID | None = None
     bundle_reservation_active = False
+    club_reservation_active = False
 
     async def release_active_bundle_reservation() -> None:
         nonlocal bundle_reservation_active
@@ -635,6 +703,16 @@ async def create_payment_intent(
             payment_intent_id=payment_id,
         )
         bundle_reservation_active = False
+
+    async def release_active_club_reservation() -> None:
+        nonlocal club_reservation_active
+        if not club_reservation_active or payload.club_application_id is None:
+            return
+        await _release_club_application_capacity(
+            payload.club_application_id,
+            payment_reference=payment_reference,
+        )
+        club_reservation_active = False
 
     # Community activation - ₦20,000/year
     if payload.purpose == PaymentPurpose.COMMUNITY:
@@ -1316,9 +1394,28 @@ async def create_payment_intent(
             "wallet_hold_id": wallet_hold_id,
         }
 
+    if payload.purpose == PaymentPurpose.CLUB and payload.club_application_id:
+        try:
+            reservation = await _reserve_club_application_capacity(
+                payload.club_application_id,
+                payment_reference=payment_reference,
+            )
+        except Exception:
+            await release_active_wallet_hold()
+            await release_active_bundle_reservation()
+            raise
+        club_reservation_active = True
+        payment_metadata = {
+            **payment_metadata,
+            "club_capacity_reservation": {
+                "expires_at": reservation.get("expires_at"),
+                "plan_version_ids": reservation.get("plan_version_ids") or [],
+            },
+        }
+
     payment = Payment(
         id=payment_id,
-        reference=Payment.generate_reference(),
+        reference=payment_reference,
         member_auth_id=current_user.user_id,
         payer_email=current_user.email,
         purpose=payload.purpose,
@@ -1340,6 +1437,7 @@ async def create_payment_intent(
         await db.rollback()
         await release_active_wallet_hold()
         await release_active_bundle_reservation()
+        await release_active_club_reservation()
         raise
     await db.refresh(payment)
 
@@ -1356,6 +1454,7 @@ async def create_payment_intent(
         if not internally_settleable:
             await release_active_wallet_hold()
             await release_active_bundle_reservation()
+            await release_active_club_reservation()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Amount must be greater than zero",
@@ -1368,6 +1467,7 @@ async def create_payment_intent(
             settlement_reference = f"free:{payment.reference}"
         # Once settlement starts, entitlement retry owns the reservations.
         bundle_reservation_active = False
+        club_reservation_active = False
         payment = await _mark_paid_and_apply(
             db=db,
             payment=payment,
@@ -1395,6 +1495,7 @@ async def create_payment_intent(
             await db.commit()
             await release_active_wallet_hold()
             await release_active_bundle_reservation()
+            await release_active_club_reservation()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Authenticated user email is required to initialize Paystack",
@@ -1418,6 +1519,7 @@ async def create_payment_intent(
             await db.commit()
             await release_active_wallet_hold()
             await release_active_bundle_reservation()
+            await release_active_club_reservation()
             raise
         checkout_url = authorization_url
         payment.provider = "paystack"
@@ -1443,6 +1545,7 @@ async def create_payment_intent(
         await db.commit()
         await release_active_wallet_hold()
         await release_active_bundle_reservation()
+        await release_active_club_reservation()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Online payment is temporarily unavailable. Please try again later.",

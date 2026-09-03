@@ -385,6 +385,10 @@ async def get_session_detailed_stats(
                     Session.starts_at >= parsed_from,
                     Session.starts_at <= parsed_to,
                     GuestPass.status == "attended",
+                    # Once linked to a member, these minutes are included in
+                    # that member's attendance history. Keep them out of the
+                    # aggregate guest bucket so swimmer-hours count once.
+                    GuestPass.converted_member_id.is_(None),
                 )
             )
         ).scalar_one()

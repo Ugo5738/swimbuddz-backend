@@ -74,16 +74,19 @@ def plan_price(
 
 def plan_response(plan: ClubPlanVersion, club: Club) -> ClubPlanResponse:
     amount, remaining, available, reason = plan_price(plan, club)
+    values = {
+        column.name: getattr(plan, column.name)
+        for column in ClubPlanVersion.__table__.columns
+    }
+    pool_id = plan.pool_id or club.default_pool_id
+    values["pool_id"] = pool_id
+    values["operating_area_id"] = plan.operating_area_id or club.operating_area_id
     return ClubPlanResponse(
-        **{
-            column.name: getattr(plan, column.name)
-            for column in ClubPlanVersion.__table__.columns
-        },
+        **values,
         club_name=club.name,
         club_slug=club.slug,
         location=club.location,
-        operating_area_id=club.operating_area_id,
-        default_pool_id=club.default_pool_id,
+        default_pool_id=pool_id,
         remaining_sessions=remaining,
         entry_available=available,
         entry_reason=reason,

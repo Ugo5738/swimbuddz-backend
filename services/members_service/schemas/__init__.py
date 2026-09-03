@@ -49,6 +49,8 @@ from services.members_service.schemas.challenge import (  # noqa: F401
 from services.members_service.schemas.club import (  # noqa: F401
     ActivateCommunityExperienceRequest,
     ActivateClubApplicationRequest,
+    ClubApplicationReservationRequest,
+    ClubApplicationReservationResponse,
     ClubApplicationCreate,
     ClubApplicationResponse,
     ClubAssessmentResponse,

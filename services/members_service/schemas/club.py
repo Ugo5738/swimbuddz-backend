@@ -121,6 +121,7 @@ class ClubPlanResponse(ClubPlanCreate):
     club_slug: Optional[str] = None
     location: Optional[str] = None
     operating_area_id: Optional[uuid.UUID] = None
+    pool_id: Optional[uuid.UUID] = None
     default_pool_id: Optional[uuid.UUID] = None
     remaining_sessions: int = 0
     entry_available: bool = True
@@ -229,6 +230,18 @@ class ActivateClubApplicationRequest(BaseModel):
     months: int = Field(default=3, ge=1, le=24)
     community_experience_selected: bool = False
     community_experience_fee_kobo: int = Field(default=0, ge=0)
+
+
+class ClubApplicationReservationRequest(BaseModel):
+    payment_reference: str = Field(..., min_length=1, max_length=128)
+
+
+class ClubApplicationReservationResponse(BaseModel):
+    application_id: uuid.UUID
+    payment_reference: str
+    status: Literal["active", "released", "consumed"]
+    expires_at: datetime
+    plan_version_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class CommunityExperienceOfferingCreate(BaseModel):

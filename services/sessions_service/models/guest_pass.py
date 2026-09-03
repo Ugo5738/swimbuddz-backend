@@ -9,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    ForeignKey,
     Integer,
     String,
     UniqueConstraint,
@@ -61,6 +62,9 @@ class GuestPass(Base):
         default="pending_payment",
         server_default="pending_payment",
     )
+    reservation_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     referral_reward_bubbles: Mapped[int] = mapped_column(
         Integer, nullable=False, default=10, server_default="10"
     )
@@ -92,5 +96,49 @@ class GuestPass(Base):
         CheckConstraint(
             "actual_swim_minutes IS NULL OR actual_swim_minutes >= 0",
             name="ck_guest_pass_minutes_nonnegative",
+        ),
+    )
+
+
+class GuestReferralClaim(Base):
+    """One acquisition-reward claim per normalized guest identity.
+
+    The unique phone constraint is the concurrency boundary: two different
+    attendance requests for the same person cannot both become the person's
+    first qualifying guest swim.
+    """
+
+    __tablename__ = "guest_referral_claims"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    guest_phone: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    guest_pass_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("guest_passes.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    referrer_auth_id: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="pending", server_default="pending"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    rewarded_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "guest_pass_id",
+            name="uq_guest_referral_claim_guest_pass",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'granted', 'not_eligible')",
+            name="ck_guest_referral_claim_status",
         ),
     )
