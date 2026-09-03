@@ -95,6 +95,15 @@ class AdminReferralProgramStats(BaseModel):
     total_bubbles_distributed: int
 
 
+class AdminReferralCodeResponse(BaseModel):
+    """Referral code an admin can attach to a guest self-payment link."""
+
+    member_auth_id: str
+    code: str
+    is_active: bool
+    expires_at: Optional[datetime] = None
+
+
 class ReferralLinkResponse(BaseModel):
     """Single-field response for the s2s referral-link lookup.
 

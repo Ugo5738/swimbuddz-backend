@@ -16,15 +16,38 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.wallet_service.models.enums import ReferralStatus
 from services.wallet_service.models.referral import ReferralCode, ReferralRecord
 from services.wallet_service.schemas import (
+    AdminReferralCodeResponse,
     AdminReferralListResponse,
     AdminReferralProgramStats,
     LeaderboardEntry,
     ReferralHistoryItem,
     ReferralLeaderboardResponse,
 )
+from services.wallet_service.services.referral_service import (
+    get_or_create_referral_code,
+)
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/admin/wallet/referrals", tags=["admin-referral"])
+
+
+@router.post(
+    "/code/{member_auth_id}",
+    response_model=AdminReferralCodeResponse,
+)
+async def get_member_referral_code(
+    member_auth_id: str,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get or create a member's code for a referred guest-payment link."""
+    code = await get_or_create_referral_code(member_auth_id, db)
+    return AdminReferralCodeResponse(
+        member_auth_id=code.member_auth_id,
+        code=code.code,
+        is_active=code.is_active,
+        expires_at=code.expires_at,
+    )
 
 
 @router.get("/", response_model=AdminReferralListResponse)

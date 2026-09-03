@@ -27623,6 +27623,54 @@
         ]
       }
     },
+    "/api/v1/admin/wallet/referrals/code/{member_auth_id}": {
+      "post": {
+        "tags": [
+          "admin-referral"
+        ],
+        "summary": "Get Member Referral Code",
+        "description": "Get or create a member's code for a referred guest-payment link.",
+        "operationId": "get_member_referral_code_admin_wallet_referrals_code__member_auth_id__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminReferralCodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/wallet/referrals/": {
       "get": {
         "tags": [
@@ -85669,6 +85717,42 @@
         ],
         "title": "AdminEventSubmitRequest",
         "description": "Admin submits a reward event on behalf of a member.\n\nUsed for safety reports, content contributions, social shares,\nride-share completions, and other ad-hoc reward triggers."
+      },
+      "AdminReferralCodeResponse": {
+        "properties": {
+          "member_auth_id": {
+            "type": "string",
+            "title": "Member Auth Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_auth_id",
+          "code",
+          "is_active"
+        ],
+        "title": "AdminReferralCodeResponse",
+        "description": "Referral code an admin can attach to a guest self-payment link."
       },
       "AdminReferralListResponse": {
         "properties": {
