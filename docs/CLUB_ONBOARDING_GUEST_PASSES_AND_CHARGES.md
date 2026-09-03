@@ -63,7 +63,10 @@ date, with application, Club, pool, operating area, payment mode, transition
 rate, and optional pod snapshots. If annual SwimBuddz Membership does not cover
 the transition period, the same checkout adds the required ₦20,000 annual block.
 If it already covers the period, the annual line is ₦0. A zero-total transition
-activation is settled internally rather than sent to a payment provider.
+activation is settled internally rather than sent to a payment provider. A
+quarterly Community Experience bundle selection is never carried into a
+transition activation; Community Experience remains a separate, explicit
+purchase.
 
 The member-facing wording is **2026 Club Transition — Pay Per Session**: Club
 sessions are charged at the snapshotted rate when booked, and quarterly Club

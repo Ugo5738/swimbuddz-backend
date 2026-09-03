@@ -972,7 +972,12 @@ async def get_club_application_payment_context(
         now=utc_now(),
     )
     experience_fee = 0
-    experience_selected = application.community_experience_selected
+    # Community Experience is a quarterly bundle choice. A transition
+    # activation is deliberately limited to Membership (when due) plus the
+    # zero-cost transition enrollment; Experiences remain separate purchases.
+    experience_selected = (
+        chosen_mode == QUARTERLY_PREPAID and application.community_experience_selected
+    )
     primary_offering = (
         await db.get(CommunityExperienceOffering, plan.community_experience_offering_id)
         if plan.community_experience_offering_id

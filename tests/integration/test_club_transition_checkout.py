@@ -165,6 +165,63 @@ async def test_active_membership_covering_transition_is_not_charged_again(
 
 
 @pytest.mark.asyncio
+async def test_transition_quote_ignores_carried_community_experience_selection(
+    members_client, db_session, seed_member_row
+):
+    member = await seed_member_row(auth_id=f"transition-no-experience-{uuid.uuid4()}")
+    club = Club(
+        name="Transition Without Bundle Club",
+        slug=f"transition-no-bundle-{uuid.uuid4().hex[:8]}",
+    )
+    db_session.add(club)
+    await db_session.flush()
+    plan = ClubPlanVersion(
+        club_id=club.id,
+        name="Transition Without Bundle Q4 2026",
+        billing_cycle="quarterly",
+        currency="NGN",
+        club_fee_kobo=6_500_000,
+        community_experience_fee_kobo=3_000_000,
+        community_experience_default_selected=True,
+        sessions_included=13,
+        period_start=date(2026, 9, 1),
+        period_end=date(2026, 12, 31),
+        minimum_entry_sessions=5,
+        effective_from=date(2026, 1, 1),
+        is_active=True,
+    )
+    db_session.add(plan)
+    await db_session.flush()
+    application = ClubApplication(
+        member_id=member.id,
+        club_id=club.id,
+        plan_version_id=plan.id,
+        status="approved",
+        # Simulate the quarterly bundle default having been carried on the
+        # application before Admin approved transition_per_session.
+        community_experience_selected=True,
+        approved_payment_modes=["transition_per_session"],
+        transition_session_rate_kobo=500_000,
+        transition_expires_at=date(2026, 12, 31),
+    )
+    db_session.add(application)
+    await db_session.commit()
+
+    response = await members_client.get(
+        f"/clubs/internal/applications/{application.id}/payment-context"
+    )
+
+    assert response.status_code == 200, response.text
+    quote = response.json()
+    assert quote["payment_mode"] == "transition_per_session"
+    assert quote["community_experience_selected"] is False
+    assert quote["community_experience_fee_kobo"] == 0
+    assert quote["club_fee_kobo"] == 0
+    assert quote["annual_membership_fee_kobo"] == 2_000_000
+    assert quote["subtotal_kobo"] == 2_000_000
+
+
+@pytest.mark.asyncio
 async def test_new_club_period_reuses_completed_readiness_without_auto_enrollment(
     db_session, seed_member_row
 ):
