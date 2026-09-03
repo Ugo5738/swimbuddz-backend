@@ -364,9 +364,8 @@ async def grant_graduation_rewards(
     to members who actually completed the programme). Grants:
 
     * ``academy.graduated`` bubbles,
-    * the free post-academy club bridge (anchored to the cohort end date so
-      the free month starts when the cohort finishes — with or without an
-      extension), and
+    * the configured post-Academy Club eligibility bridge (anchored to the
+      cohort end date, with zero explicitly disabling it), and
     * ``academy.perfect_attendance`` when they attended every completed session.
 
     Every grant is independently guarded and idempotent (reward events and the
@@ -402,29 +401,35 @@ async def grant_graduation_rewards(
             exc_info=True,
         )
 
-    # Free post-academy club bridge per PRICING_STRATEGY.md, anchored to the
-    # cohort end date. The stable application key makes later daily passes safe.
-    try:
-        _settings = get_settings()
-        await internal_post(
-            service_url=_settings.MEMBERS_SERVICE_URL,
-            path=f"/admin/members/by-auth/{auth_id}/club/post-academy-bridge",
-            calling_service="academy",
-            json={
-                "months": _settings.POST_ACADEMY_FREE_CLUB_MONTHS,
-                "from_date": (cohort.end_date.isoformat() if cohort.end_date else None),
-                "reason": f"Free post-academy club bridge (cohort {cohort.id})",
-                "idempotency_key": f"academy:{enrollment.id}:club-bridge",
-                "source_reference": str(enrollment.id),
-            },
-        )
-    except Exception:
-        logger.warning(
-            "Failed to grant post-academy club bridge for enrollment %s "
-            "(best-effort)",
-            enrollment.id,
-            exc_info=True,
-        )
+    # The bridge is eligibility, not a prepaid quarterly purchase. A stable
+    # application key makes repeated certificate/reconciliation passes safe.
+    _settings = get_settings()
+    # Cohorts opt into this eligibility bridge explicitly. Both NULL (legacy
+    # rows) and 0 mean disabled; there is deliberately no global default grant.
+    bridge_months = getattr(cohort, "post_graduation_club_bridge_months", None) or 0
+    if bridge_months > 0:
+        try:
+            await internal_post(
+                service_url=_settings.MEMBERS_SERVICE_URL,
+                path=f"/admin/members/by-auth/{auth_id}/club/post-academy-bridge",
+                calling_service="academy",
+                json={
+                    "months": bridge_months,
+                    "from_date": (
+                        cohort.end_date.isoformat() if cohort.end_date else None
+                    ),
+                    "reason": f"Post-Academy Club bridge (cohort {cohort.id})",
+                    "idempotency_key": f"academy:{enrollment.id}:club-bridge",
+                    "source_reference": str(enrollment.id),
+                },
+            )
+        except Exception:
+            logger.warning(
+                "Failed to grant post-academy club bridge for enrollment %s "
+                "(best-effort)",
+                enrollment.id,
+                exc_info=True,
+            )
 
     # academy.perfect_attendance when they attended every completed session
     # (attendance_records live in attendance_service — fetched via internal HTTP).

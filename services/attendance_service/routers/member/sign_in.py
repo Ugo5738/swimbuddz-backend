@@ -69,7 +69,7 @@ async def sign_in_to_session(
 
     # A confirmed booking preserves the access decision made at booking time,
     # but the shared policy still enforces session status and the check-in window.
-    await validate_session_access(
+    access = await validate_session_access(
         session_data,
         str(current_member.id),
         confirmed_booking=linked_booking_id is not None,
@@ -92,7 +92,7 @@ async def sign_in_to_session(
         and attendance_in.pay_with_bubbles
         and attendance_in.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE)
     ):
-        pool_fee_kobo = session_data.get("pool_fee") or 0
+        pool_fee_kobo = access.fee_amount_kobo or 0
         if pool_fee_kobo > 0:
             try:
                 fee_bubbles = kobo_to_bubbles_exact(pool_fee_kobo)

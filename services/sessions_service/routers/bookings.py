@@ -411,12 +411,18 @@ async def book_session(
             detail=denial_message(access.reason),
         )
 
-    # Server-authoritative head count + fee: the member's own slot plus any
-    # named guests (D1/D3); fee is pool_fee × heads (D8) — the client-sent
-    # fee_amount_kobo is ignored. Guest eligibility + capacity are checked
-    # before any wallet debit so we never charge and then reject.
+    # Server-authoritative head count + fee. Club pricing is resolved from the
+    # member's dated access source; attached guests remain independently priced
+    # at guest_fee. The client-sent fee_amount_kobo is always ignored.
     party_size = 1 + len(booking_in.guests) + booking_in.block_guests
-    fee_kobo = int(session.pool_fee or 0) * party_size
+    member_fee_kobo = int(access.fee_amount_kobo or 0)
+    guest_count = party_size - 1
+    guest_unit_fee_kobo = int(
+        session.guest_fee_kobo
+        if session.guest_fee_kobo is not None
+        else session.pool_fee or 0
+    )
+    fee_kobo = member_fee_kobo + (guest_unit_fee_kobo * guest_count)
     _validate_guest_policy(
         allows_guests=session.allows_guests,
         max_guests=session.max_guests_per_booking,
@@ -448,6 +454,8 @@ async def book_session(
 
         existing.party_size = party_size
         existing.fee_amount_kobo = fee_kobo
+        existing.member_fee_amount_kobo = member_fee_kobo
+        existing.access_source = access.access_source
         existing.booking_source = booking_in.booking_source
         existing.campaign_key = booking_in.campaign_key
         if booking_in.notes is not None:
@@ -514,6 +522,8 @@ async def book_session(
             channel=BookingChannel.MEMBER_SELF,
             party_size=party_size,
             fee_amount_kobo=fee_kobo,
+            member_fee_amount_kobo=member_fee_kobo,
+            access_source=access.access_source,
             notes=booking_in.notes,
             wallet_transaction_id=wallet_txn_id,
             booking_source=booking_in.booking_source,
@@ -547,6 +557,8 @@ async def book_session(
         channel=BookingChannel.MEMBER_SELF,
         party_size=party_size,
         fee_amount_kobo=fee_kobo,
+        member_fee_amount_kobo=member_fee_kobo,
+        access_source=access.access_source,
         notes=booking_in.notes,
         booking_source=booking_in.booking_source,
         campaign_key=booking_in.campaign_key,

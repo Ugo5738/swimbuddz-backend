@@ -107,6 +107,11 @@ class Cohort(Base):
     membership_policy_override: Mapped[Optional[str]] = mapped_column(
         String(24), nullable=True
     )
+    # Both None (legacy/unconfigured) and zero disable the post-graduation
+    # Club eligibility bridge; a positive value opts this cohort in.
+    post_graduation_club_bridge_months: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
     # Admin-only per-learner cost model. Public responses expose only the
     # published all-in price above, never these individual cost lines.
     pricing_cost_lines: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)

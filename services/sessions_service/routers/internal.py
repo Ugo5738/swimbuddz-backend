@@ -83,6 +83,9 @@ class SessionBasic(BaseModel):
     # pool_fee is returned in KOBO (integer) for service-to-service use.
     # Wallet-only consumers require pool_fee to be exactly divisible by one Bubble.
     pool_fee: Optional[int] = None
+    guest_fee_kobo: Optional[int] = None
+    community_dropin_fee_kobo: Optional[int] = None
+    allows_community_dropins: bool = False
     ride_share_fee: Optional[int] = None
     occupied_slots: int = 0
     confirmed_booking_member_ids: List[str] = Field(default_factory=list)
@@ -690,6 +693,9 @@ async def get_session_by_id(
         pod_id=str(session.pod_id) if session.pod_id else None,
         capacity=session.capacity,
         pool_fee=session.pool_fee,
+        guest_fee_kobo=getattr(session, "guest_fee_kobo", None),
+        community_dropin_fee_kobo=getattr(session, "community_dropin_fee_kobo", None),
+        allows_community_dropins=getattr(session, "allows_community_dropins", False),
         ride_share_fee=session.ride_share_fee,
         occupied_slots=occupied_slots,
         confirmed_booking_member_ids=confirmed_member_ids,
@@ -772,6 +778,9 @@ async def get_member_session_access(
         sign_in_eligible=access.sign_in_eligible,
         reason=access.reason,
         message=denial_message(access.reason) if access.reason else None,
+        access_source=access.access_source,
+        fee_amount_kobo=access.fee_amount_kobo,
+        price_label=access.price_label,
     )
 
 
@@ -1063,6 +1072,7 @@ async def reserve_bundle_bookings(
         member_id=member_id,
         calling_service="sessions",
     )
+    access_by_session = {}
     for session_id in payload.session_ids:
         session = session_map[session_id]
         access = await evaluate_session_access_for_member(
@@ -1076,6 +1086,7 @@ async def reserve_bundle_bookings(
                 status_code=403,
                 detail=f"{session.title}: {denial_message(access.reason)}",
             )
+        access_by_session[session_id] = access
 
     lines: list[BundleBookingLineResponse] = []
     for session_id in payload.session_ids:
@@ -1086,7 +1097,8 @@ async def reserve_bundle_bookings(
             member_id=member_id,
             new_party_size=1,
         )
-        fee_kobo = int(session.pool_fee or 0)
+        access = access_by_session[session_id]
+        fee_kobo = int(access.fee_amount_kobo or 0)
         booking = existing_by_session.get(session_id)
         if booking is None:
             booking = SessionBooking(
@@ -1097,6 +1109,8 @@ async def reserve_bundle_bookings(
                 channel=BookingChannel.BUNDLE_CART,
                 party_size=1,
                 fee_amount_kobo=fee_kobo,
+                member_fee_amount_kobo=fee_kobo,
+                access_source=access.access_source,
                 payment_intent_id=payload.payment_intent_id,
                 booked_at=now,
                 expires_at=now + timedelta(minutes=PENDING_TTL_MINUTES),
@@ -1108,6 +1122,8 @@ async def reserve_bundle_bookings(
             booking.channel = BookingChannel.BUNDLE_CART
             booking.party_size = 1
             booking.fee_amount_kobo = fee_kobo
+            booking.member_fee_amount_kobo = fee_kobo
+            booking.access_source = access.access_source
             booking.payment_intent_id = payload.payment_intent_id
             booking.wallet_transaction_id = None
             booking.confirmed_at = None

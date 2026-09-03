@@ -72,6 +72,9 @@ def _session_payload(session: Session, access=None) -> dict:
             "sign_in_eligible": access.sign_in_eligible,
             "reason": access.reason,
             "message": denial_message(access.reason) if access.reason else None,
+            "access_source": access.access_source,
+            "fee_amount_kobo": access.fee_amount_kobo,
+            "price_label": access.price_label,
         }
     return payload
 
@@ -770,6 +773,26 @@ async def update_session(
         )
     if "ride_share_fee" in update_data and update_data["ride_share_fee"] is not None:
         update_data["ride_share_fee"] = round(update_data["ride_share_fee"] * 100)
+
+    resulting_type = update_data.get("session_type", session.session_type)
+    resulting_type_value = getattr(resulting_type, "value", resulting_type)
+    resulting_allows_dropins = update_data.get(
+        "allows_community_dropins", session.allows_community_dropins
+    )
+    resulting_dropin_fee = update_data.get(
+        "community_dropin_fee_kobo", session.community_dropin_fee_kobo
+    )
+    if (
+        resulting_type_value == SessionType.CLUB.value
+        and resulting_allows_dropins
+        and resulting_dropin_fee is None
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "community_dropin_fee is required when a Club session allows drop-ins"
+            ),
+        )
 
     for field, value in update_data.items():
         setattr(session, field, value)

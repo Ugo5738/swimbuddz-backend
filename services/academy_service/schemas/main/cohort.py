@@ -48,6 +48,7 @@ class CohortBase(BaseModel):
     membership_policy_override: Optional[
         Literal["open", "active_required", "included"]
     ] = None
+    post_graduation_club_bridge_months: Optional[int] = Field(default=None, ge=0, le=12)
     notes_internal: Optional[str] = None
     # ── Session defaults (applied to every session generated for this cohort) ──
     # API contract: default_pool_fee in naira (major unit); DB stores kobo.
@@ -127,6 +128,7 @@ class CohortUpdate(BaseModel):
     membership_policy_override: Optional[
         Literal["open", "active_required", "included"]
     ] = None
+    post_graduation_club_bridge_months: Optional[int] = Field(default=None, ge=0, le=12)
     notes_internal: Optional[str] = None
     # ── Session defaults ─────────────────────────────────────────────────
     default_pool_fee: Optional[float] = None

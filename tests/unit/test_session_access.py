@@ -140,6 +140,75 @@ def test_authoritative_club_product_result_overrides_legacy_dates():
     assert allowed.bookable
 
 
+@pytest.mark.parametrize(
+    ("club_access_result", "expected_source", "expected_fee"),
+    [
+        (
+            {
+                "allowed": True,
+                "source": "club_enrollment",
+                "payment_mode": "quarterly_prepaid",
+                "fee_amount_kobo": 0,
+            },
+            "club_enrollment",
+            0,
+        ),
+        (
+            {
+                "allowed": True,
+                "source": "club_transition",
+                "payment_mode": "transition_per_session",
+                "fee_amount_kobo": 500_000,
+            },
+            "club_transition",
+            500_000,
+        ),
+    ],
+)
+def test_club_enrollment_mode_controls_the_authoritative_member_fee(
+    club_access_result, expected_source, expected_fee
+):
+    decision = evaluate_session_access(
+        _member(),
+        _session(session_type="club", pool_fee=9_000),
+        now=NOW,
+        club_access_result=club_access_result,
+    )
+
+    assert decision.bookable
+    assert decision.access_source == expected_source
+    assert decision.fee_amount_kobo == expected_fee
+
+
+def test_community_dropin_requires_explicit_session_opt_in_and_annual_membership():
+    session = _session(
+        session_type="club",
+        allows_community_dropins=True,
+        community_dropin_fee_kobo=650_000,
+    )
+    denied = evaluate_session_access(
+        _member(), session, now=NOW, club_access_result={"allowed": False}
+    )
+    allowed = evaluate_session_access(
+        _member(community_paid_until=FUTURE),
+        session,
+        now=NOW,
+        club_access_result={"allowed": False},
+    )
+    disabled = evaluate_session_access(
+        _member(community_paid_until=FUTURE),
+        {**session, "allows_community_dropins": False},
+        now=NOW,
+        club_access_result={"allowed": False},
+    )
+
+    assert denied.reason == "membership_required"
+    assert allowed.bookable
+    assert allowed.access_source == "community_dropin"
+    assert allowed.fee_amount_kobo == 650_000
+    assert disabled.reason == "community_dropins_disabled"
+
+
 def test_post_academy_bridge_grants_club_access_and_prompt_tier():
     member = _member(
         active_tiers=["club", "community"],

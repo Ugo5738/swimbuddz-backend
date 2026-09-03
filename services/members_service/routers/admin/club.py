@@ -41,7 +41,7 @@ async def admin_grant_post_academy_club_bridge_by_auth(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Grant the explicit complimentary Club period after graduation."""
+    """Grant the explicit Club eligibility period after graduation."""
     query = (
         select(Member)
         .where(Member.auth_id == auth_id)

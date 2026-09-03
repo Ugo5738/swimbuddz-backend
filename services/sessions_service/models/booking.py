@@ -29,7 +29,7 @@ from services.sessions_service.models.enums import (
 )
 from sqlalchemy import DateTime
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import CheckConstraint, Integer, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -103,6 +103,12 @@ class SessionBooking(Base):
     fee_amount_kobo: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    # Audit snapshot of why the member was admitted and the member's own part
+    # of the total. Any attached guests are priced separately at guest_fee.
+    access_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    member_fee_amount_kobo: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     # Payment linkage (cross-service; plain UUIDs).
     payment_intent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -157,6 +163,10 @@ class SessionBooking(Base):
         ),
         # party_size is the head count (member + guests); never below 1.
         CheckConstraint("party_size >= 1", name="ck_session_bookings_party_size"),
+        CheckConstraint(
+            "member_fee_amount_kobo >= 0",
+            name="ck_session_booking_member_fee_nonnegative",
+        ),
     )
 
     def __repr__(self) -> str:

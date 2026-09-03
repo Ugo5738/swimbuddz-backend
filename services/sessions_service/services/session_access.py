@@ -118,7 +118,6 @@ async def evaluate_session_access_for_member(
             )
         pod_member_ids = (pod or {}).get("active_member_ids") or []
 
-    club_product_access = None
     if _is_club_session(session) and not confirmed_booking:
         try:
             club_access = await check_club_access_batch(
@@ -136,9 +135,12 @@ async def evaluate_session_access_for_member(
                 status_code=503,
                 detail="Could not verify Club access. Please try again.",
             )
-        club_product_access = bool(
-            (club_access.get(str(session.id)) or {}).get("allowed")
-        )
+        club_access_result = club_access.get(str(session.id)) or {
+            "allowed": False,
+            "source": "none",
+        }
+    else:
+        club_access_result = None
 
     return evaluate_session_access(
         member_payload,
@@ -147,7 +149,7 @@ async def evaluate_session_access_for_member(
         cohort_enrollment=cohort_enrollment,
         pod_member_ids=pod_member_ids,
         confirmed_booking=confirmed_booking,
-        club_product_access=club_product_access,
+        club_access_result=club_access_result,
     )
 
 
@@ -236,11 +238,12 @@ def evaluate_session_access_from_context(
     if session.pod_id is not None and not confirmed_booking:
         pod_member_ids = pod_rosters.get(str(session.pod_id), [])
 
-    club_product_access = None
+    club_access_result = None
     if _is_club_session(session) and not confirmed_booking:
-        club_product_access = bool(
-            (club_access.get(str(session.id)) or {}).get("allowed")
-        )
+        club_access_result = club_access.get(str(session.id)) or {
+            "allowed": False,
+            "source": "none",
+        }
 
     return evaluate_session_access(
         member_payload,
@@ -249,7 +252,7 @@ def evaluate_session_access_from_context(
         cohort_enrollment=cohort_enrollment,
         pod_member_ids=pod_member_ids,
         confirmed_booking=confirmed_booking,
-        club_product_access=club_product_access,
+        club_access_result=club_access_result,
     )
 
 

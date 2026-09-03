@@ -298,6 +298,22 @@ class ClubApplication(Base):
     quote_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+    # Commercial options are granted by an assessor/admin after the readiness
+    # decision. The temporary transition is never inferred from the calendar
+    # or exposed globally merely because the backend supports it.
+    approved_payment_modes: Mapped[list] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=lambda: ["quarterly_prepaid"],
+        server_default='["quarterly_prepaid"]',
+    )
+    transition_session_rate_kobo: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    transition_expires_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    selected_payment_mode: Mapped[Optional[str]] = mapped_column(
+        String(32), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )
@@ -306,6 +322,16 @@ class ClubApplication(Base):
     )
 
     __table_args__ = (
+        CheckConstraint(
+            "transition_session_rate_kobo IS NULL OR "
+            "transition_session_rate_kobo >= 0",
+            name="ck_club_application_transition_rate_nonnegative",
+        ),
+        CheckConstraint(
+            "selected_payment_mode IS NULL OR selected_payment_mode IN "
+            "('quarterly_prepaid', 'transition_per_session')",
+            name="ck_club_application_selected_payment_mode",
+        ),
         Index("ix_club_applications_member_status", "member_id", "status"),
     )
 
@@ -472,6 +498,14 @@ class ClubEnrollment(Base):
         ForeignKey("club_plan_versions.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    # Immutable location and commercial snapshots. Historical plan rows remain
+    # the fallback for enrollments created before these columns existed.
+    pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    operating_area_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     application_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("club_applications.id", ondelete="RESTRICT"),
@@ -482,6 +516,15 @@ class ClubEnrollment(Base):
     )
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    payment_mode: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="quarterly_prepaid",
+        server_default="quarterly_prepaid",
+    )
+    transition_session_rate_kobo: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
     assigned_pod_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("pods.id", ondelete="SET NULL"), nullable=True
     )
@@ -497,6 +540,18 @@ class ClubEnrollment(Base):
 
     __table_args__ = (
         CheckConstraint("ends_at > starts_at", name="ck_club_enrollment_period"),
+        CheckConstraint(
+            "payment_mode IN ('quarterly_prepaid', 'transition_per_session')",
+            name="ck_club_enrollment_payment_mode",
+        ),
+        CheckConstraint(
+            "(payment_mode = 'transition_per_session' AND "
+            "transition_session_rate_kobo IS NOT NULL AND "
+            "transition_session_rate_kobo >= 0) OR "
+            "(payment_mode = 'quarterly_prepaid' AND "
+            "transition_session_rate_kobo IS NULL)",
+            name="ck_club_enrollment_transition_rate",
+        ),
         UniqueConstraint(
             "application_id",
             "plan_version_id",

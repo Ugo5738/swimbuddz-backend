@@ -92,11 +92,14 @@ async def _member_for_payment_quote(member_auth_id: str) -> dict:
     return member
 
 
-async def _approved_club_application_context(application_id: uuid.UUID) -> dict:
+async def _approved_club_application_context(
+    application_id: uuid.UUID, payment_mode: str | None
+) -> dict:
     headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.get(
             f"{settings.MEMBERS_SERVICE_URL}/clubs/internal/applications/{application_id}/payment-context",
+            params={"payment_mode": payment_mode} if payment_mode else None,
             headers=headers,
         )
     if response.status_code >= 400:
@@ -117,6 +120,7 @@ async def _reserve_club_application_capacity(
     application_id: uuid.UUID,
     *,
     payment_reference: str,
+    payment_mode: str = "quarterly_prepaid",
 ) -> dict:
     """Hold all selected Club-quarter seats before checkout is exposed."""
     try:
@@ -124,7 +128,14 @@ async def _reserve_club_application_capacity(
             service_url=settings.MEMBERS_SERVICE_URL,
             path=f"/clubs/internal/applications/{application_id}/reservation",
             calling_service="payments",
-            json={"payment_reference": payment_reference},
+            json={
+                "payment_reference": payment_reference,
+                **(
+                    {"payment_mode": payment_mode}
+                    if payment_mode != "quarterly_prepaid"
+                    else {}
+                ),
+            },
             timeout=30,
         )
     except httpx.HTTPError as exc:
@@ -363,6 +374,14 @@ async def _get_internal_session_access(
             raise ValueError("confirmed booking fields are inconsistent")
         if not isinstance(access["required_tier"], str):
             raise TypeError("required_tier must be a string")
+        if access.get("fee_amount_kobo") is not None:
+            access["fee_amount_kobo"] = int(access["fee_amount_kobo"])
+            if access["fee_amount_kobo"] < 0:
+                raise ValueError("fee_amount_kobo cannot be negative")
+        if access.get("access_source") is not None and not isinstance(
+            access["access_source"], str
+        ):
+            raise TypeError("access_source must be a string")
     except (KeyError, TypeError, ValueError) as exc:
         logger.error("Sessions service returned an invalid access decision: %s", exc)
         raise HTTPException(
@@ -727,7 +746,8 @@ async def create_payment_intent(
         requires_community_extension = False
         if payload.club_application_id:
             context = await _approved_club_application_context(
-                payload.club_application_id
+                payload.club_application_id,
+                payload.club_payment_mode,
             )
             if context.get("member_auth_id") != current_user.user_id:
                 raise HTTPException(
@@ -747,6 +767,11 @@ async def create_payment_intent(
                 "months": months,
                 "club_billing_cycle": cycle,
                 "club_application_id": str(payload.club_application_id),
+                "club_payment_mode": context["payment_mode"],
+                "transition_session_rate_kobo": context.get(
+                    "transition_session_rate_kobo"
+                ),
+                "transition_expires_at": context.get("transition_expires_at"),
                 "club_id": context["club_id"],
                 "club_name": context["club_name"],
                 "plan_version_id": context["plan_version_id"],
@@ -964,7 +989,6 @@ async def create_payment_intent(
                     or "Session sign-in is not currently available."
                 ),
             )
-        session_quote = await _get_internal_session_quote(payload.session_id)
         ride_quote = await _quote_ride_selection(
             member_id=str(member["id"]),
             session_id=payload.session_id,
@@ -972,7 +996,8 @@ async def create_payment_intent(
             pickup_location_id=payload.pickup_location_id,
             num_seats=payload.num_seats,
         )
-        authoritative_total_kobo = int(session_quote["pool_fee"]) + int(
+        authoritative_session_fee_kobo = int(access.get("fee_amount_kobo") or 0)
+        authoritative_total_kobo = authoritative_session_fee_kobo + int(
             ride_quote["total_kobo"]
         )
         if (
@@ -1005,7 +1030,8 @@ async def create_payment_intent(
             ),
             "bubbles_to_apply": payload.bubbles_to_apply or 0,
             "server_price": {
-                "pool_total_kobo": int(session_quote["pool_fee"]),
+                "pool_total_kobo": authoritative_session_fee_kobo,
+                "access_source": access.get("access_source"),
                 "ride_total_kobo": int(ride_quote["total_kobo"]),
                 "total_kobo": authoritative_total_kobo,
             },
@@ -1398,6 +1424,7 @@ async def create_payment_intent(
             reservation = await _reserve_club_application_capacity(
                 payload.club_application_id,
                 payment_reference=payment_reference,
+                payment_mode=str(payment_metadata.get("club_payment_mode")),
             )
         except Exception:
             await release_active_wallet_hold()
@@ -1446,9 +1473,18 @@ async def create_payment_intent(
     # A full discount, full Bubbles settlement, or genuinely free server-priced
     # bundle is completed internally and its entitlement applied immediately.
     if payment.amount <= 0:
-        internally_settleable = bool(payload.discount_code) or (
-            payload.purpose in bubbles_purposes
-            and (bubbles_to_apply_val > 0 or original_amount <= 0)
+        free_club_transition = (
+            payload.purpose == PaymentPurpose.CLUB
+            and payload.club_application_id is not None
+            and payment_metadata.get("club_payment_mode") == "transition_per_session"
+        )
+        internally_settleable = (
+            bool(payload.discount_code)
+            or free_club_transition
+            or (
+                payload.purpose in bubbles_purposes
+                and (bubbles_to_apply_val > 0 or original_amount <= 0)
+            )
         )
         if not internally_settleable:
             await release_active_wallet_hold()

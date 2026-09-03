@@ -52,6 +52,37 @@ async def _make_community_session(
     return s
 
 
+async def _make_club_session(
+    db_session,
+    *,
+    pool_fee=900_000,
+    guest_fee=700_000,
+    community_dropin_fee=650_000,
+    capacity=20,
+):
+    from services.sessions_service.models import Session
+    from services.sessions_service.models.enums import SessionStatus, SessionType
+
+    session = Session(
+        session_type=SessionType.CLUB,
+        status=SessionStatus.SCHEDULED,
+        title="Saturday Club Pricing Test",
+        starts_at=_start(),
+        ends_at=_start() + timedelta(hours=2),
+        capacity=capacity,
+        pool_fee=pool_fee,
+        guest_fee_kobo=guest_fee,
+        community_dropin_fee_kobo=community_dropin_fee,
+        allows_community_dropins=True,
+        allows_guests=True,
+        max_guests_per_booking=4,
+    )
+    db_session.add(session)
+    await db_session.commit()
+    await db_session.refresh(session)
+    return session
+
+
 def _patch_member_wallet():
     """Patch the member-lookup + wallet-debit the book endpoint imports."""
     member_id = uuid.uuid4()
@@ -84,7 +115,7 @@ def _patch_member_wallet():
 async def test_book_with_guests_persists_and_computes_fee(sessions_client, db_session):
     from services.sessions_service.models import BookingGuest
 
-    session = await _make_community_session(db_session, pool_fee=3500)
+    session = await _make_community_session(db_session, pool_fee=350_000)
     p_member, p_membership, p_wallet = _patch_member_wallet()
     with p_member, p_membership, p_wallet:
         resp = await sessions_client.post(
@@ -102,7 +133,7 @@ async def test_book_with_guests_persists_and_computes_fee(sessions_client, db_se
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["party_size"] == 3  # member + 2 guests
-    assert body["fee_amount_kobo"] == 3500 * 3  # server-computed, client value ignored
+    assert body["fee_amount_kobo"] == 350_000 * 3  # server price; client ignored
     assert body["status"] == "confirmed"
 
     n_guests = (
@@ -130,6 +161,101 @@ async def test_capacity_rejects_overfill_by_heads(sessions_client, db_session):
             },
         )
     assert resp.status_code == 409, resp.text
+
+
+@pytest.mark.parametrize(
+    ("source", "member_fee_kobo", "expected_status"),
+    [
+        ("club_enrollment", 0, "confirmed"),
+        ("club_transition", 500_000, "pending"),
+        ("community_dropin", 650_000, "pending"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_club_booking_uses_access_source_price_and_ignores_client_amount(
+    sessions_client,
+    db_session,
+    source,
+    member_fee_kobo,
+    expected_status,
+):
+    from libs.common.session_access import SessionAccessDecision
+
+    session = await _make_club_session(db_session)
+    member_patch, _, _ = _patch_member_wallet()
+    access = SessionAccessDecision(
+        required_tier="club",
+        visible=True,
+        bookable=True,
+        digest_eligible=True,
+        prompt_eligible=True,
+        sign_in_allowed=False,
+        access_source=source,
+        fee_amount_kobo=member_fee_kobo,
+        price_label="Server price",
+    )
+    with (
+        member_patch,
+        patch(
+            f"{BOOKINGS}.evaluate_member_session_access",
+            AsyncMock(return_value=access),
+        ),
+    ):
+        response = await sessions_client.post(
+            f"/sessions/{session.id}/book",
+            json={
+                "session_id": str(session.id),
+                "fee_amount_kobo": 1,
+                "pay_with_bubbles": False,
+            },
+        )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["fee_amount_kobo"] == member_fee_kobo
+    assert response.json()["member_fee_amount_kobo"] == member_fee_kobo
+    assert response.json()["access_source"] == source
+    assert response.json()["status"] == expected_status
+
+
+@pytest.mark.asyncio
+async def test_attached_guest_fee_is_independent_from_included_club_member_price(
+    sessions_client, db_session
+):
+    from libs.common.session_access import SessionAccessDecision
+
+    session = await _make_club_session(db_session, guest_fee=700_000)
+    member_patch, _, _ = _patch_member_wallet()
+    access = SessionAccessDecision(
+        required_tier="club",
+        visible=True,
+        bookable=True,
+        digest_eligible=True,
+        prompt_eligible=True,
+        sign_in_allowed=False,
+        access_source="club_enrollment",
+        fee_amount_kobo=0,
+        price_label="Included in Club quarter",
+    )
+    with (
+        member_patch,
+        patch(
+            f"{BOOKINGS}.evaluate_member_session_access",
+            AsyncMock(return_value=access),
+        ),
+    ):
+        response = await sessions_client.post(
+            f"/sessions/{session.id}/book",
+            json={
+                "session_id": str(session.id),
+                "fee_amount_kobo": 1,
+                "pay_with_bubbles": False,
+                "guests": [{"full_name": "Guest-priced independently"}],
+            },
+        )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["member_fee_amount_kobo"] == 0
+    assert response.json()["fee_amount_kobo"] == 700_000
 
 
 @pytest.mark.asyncio
@@ -258,7 +384,7 @@ async def test_guest_conversion_funnel(sessions_client, db_session):
     """Phase 3: leads list shows repeat guests by phone; convert links them."""
     from services.sessions_service.models import BookingGuest
 
-    phone = f"funnel-{uuid.uuid4().hex[:8]}"
+    phone = f"+23480{uuid.uuid4().int % 100_000_000:08d}"
     for _ in range(2):  # two appearances, unconverted
         db_session.add(
             BookingGuest(

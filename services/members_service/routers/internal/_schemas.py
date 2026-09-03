@@ -104,6 +104,8 @@ class ClubAccessCheckResult(BaseModel):
     source: str
     enrollment_id: UUID | None = None
     club_id: UUID | None = None
+    payment_mode: str | None = None
+    fee_amount_kobo: int | None = None
 
 
 class ClubAccessChecksResponse(BaseModel):

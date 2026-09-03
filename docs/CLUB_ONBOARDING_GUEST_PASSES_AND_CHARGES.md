@@ -7,8 +7,8 @@ and standalone guest-pass flows introduced in August 2026.
 
 Club pricing is configured as a versioned plan for one Club location. A plan
 contains the Club fee, number of included sessions, refreshment inclusion, an
-effective period, enforced capacity, an immutable area/pool snapshot, and the optional quarterly Community
-Experience amount. The commercial plan is separate from pool and refreshment
+effective period, enforced capacity, an immutable area/pool snapshot, and the
+optional quarterly Community Experience amount. The commercial plan is separate from pool and refreshment
 cost-rate records: cost rates help an admin decide a price, while the plan is the
 price a member is offered and later pays.
 
@@ -26,7 +26,8 @@ The normal lifecycle is:
    Club quarters, and optionally a pod at that location.
 3. Member completes the safety pre-assessment.
 4. Admin records the observed 10–15 minute readiness assessment with one of:
-   `club_ready`, `club_ready_modified`, or `academy_first`.
+   `club_ready`, `club_ready_modified`, or `academy_first`, and explicitly
+   chooses the payment arrangements allowed for that application.
 5. The result and baseline can be emailed to the member. Payment is available
    only for either Club-ready outcome.
 6. Payments fetch the approved application price from members-service, reserve
@@ -35,6 +36,38 @@ The normal lifecycle is:
 7. Successful payment creates one dated, location-specific Club enrollment for
    every selected quarter and consumes the seat reservation. Pod joining is
    restricted to the member's enrolled Club location and pod capacity.
+
+When a member later applies for a newly published Club commercial period, a
+completed `club_ready` or `club_ready_modified` assessment from an enrolled
+application can be copied with its source application ID. The new quarter is
+still a deliberate purchase: readiness reuse never auto-enrolls or auto-charges
+the member.
+
+## Club payment arrangements
+
+`quarterly_prepaid` is the standard Club product. A settled application creates
+one dated enrollment per selected quarter, and eligible sessions covered by
+that enrollment have no second member session charge.
+
+`transition_per_session` is a temporary, admin-approved payment arrangement for
+the remainder of 2026. It is **not** a permanent weekly or monthly Club product,
+is never exposed globally, and is available only when an assessor enables it on
+the individual approved application. Admin snapshots the member's session rate
+and expiry (current policy default: 31 December 2026). Admin may approve only
+quarterly prepaid, only the transition, or both; the member sees exactly those
+options.
+
+A transition activation charges no quarterly Club fee. It creates a proper
+Club enrollment starting on activation and ending after the configured expiry
+date, with application, Club, pool, operating area, payment mode, transition
+rate, and optional pod snapshots. If annual SwimBuddz Membership does not cover
+the transition period, the same checkout adds the required ₦20,000 annual block.
+If it already covers the period, the annual line is ₦0. A zero-total transition
+activation is settled internally rather than sent to a payment provider.
+
+The member-facing wording is **2026 Club Transition — Pay Per Session**: Club
+sessions are charged at the snapshotted rate when booked, and quarterly Club
+enrollment becomes the standard from 2027.
 
 Annual SwimBuddz Membership is a separate ecosystem product. A new swimmer does
 not have to take an unrelated Community-first checkout path: if Membership will
@@ -46,9 +79,50 @@ new location-aware registrations must use an approved application ID.
 
 Club and Academy are independent programmes, not ranks in a tier hierarchy.
 Club access comes from a Club enrollment covering the session date and location;
-Academy access comes from enrollment in the relevant cohort. Completing Academy
-does not imply ongoing Club access. A configured graduation flow may grant the
-separate, auditable one-month post-Academy Club bridge.
+Academy access comes from enrollment in the relevant cohort. Neither product
+silently grants the other or annual Membership.
+
+## Authoritative Club-session access and pricing
+
+The server resolves the access source before it prices or reserves a Club
+booking. Clients may display the returned label and amount, but a submitted
+amount is never authoritative.
+
+| Access source | Requirements | Authenticated member fee |
+| --- | --- | ---: |
+| `club_enrollment` | active prepaid enrollment covers session date and pool/location (and pod when scoped) | ₦0, included in Club quarter |
+| `club_transition` | active transition enrollment covers session date and pool/location (and pod when scoped) | snapshotted transition rate |
+| `community_dropin` | active annual Membership and the session explicitly enables Community drop-ins | session's `community_dropin_fee_kobo` |
+
+All three paths consume normal session capacity. A Community-only member is
+denied with a specific reason when `allows_community_dropins` is false. Session
+admin exposes both that toggle and the independent Community rate.
+
+Guest admission remains the separate GuestPass flow and uses
+`guest_fee_kobo`. Guest and Community rates can currently be numerically equal
+without becoming the same price source. Attached named guests on an
+authenticated booking also use the guest rate, independently from the member's
+resolved Club fee.
+
+The access endpoint, direct booking, bundle reservation, attendance sign-in,
+wallet/Bubbles debit, and payment-intent creation all consume the same resolved
+member fee. Booking rows snapshot `access_source` and the member component for
+audit. Pool, plan, pod, session-seat, and GuestPass hold capacity checks continue
+to apply at their existing concurrency boundaries.
+
+## Post-Academy Club bridge
+
+Completing Academy does not imply generic Club access. A cohort may explicitly
+set `post_graduation_club_bridge_months` from 0 to 12. Positive values cause the
+graduation job to call the existing auditable bridge endpoint with an
+enrollment-stable idempotency key; retries therefore do not stack extra months.
+`0` and legacy `null` mean disabled and create no bridge.
+
+The bridge is eligibility, not prepaid quarterly Club. A graduate with bridge
+eligibility pays the prevailing operational Club session rate where the session
+and location permit access; the bridge never manufactures a paid quarter.
+Academy's `open`, `active_required`, and `included` annual-membership policies
+remain unchanged.
 
 ## Additional payment charges
 
@@ -129,6 +203,8 @@ contract.
 - `PUT /api/v1/clubs/applications/{id}/pre-assessment`
 - `GET /api/v1/clubs/admin/applications`
 - `PUT /api/v1/clubs/admin/applications/{id}/assessment`
+- `GET /api/v1/clubs/internal/applications/{id}/payment-context`
+- `GET /api/v1/sessions/{id}/access`
 - `GET|POST|PATCH /api/v1/payments/charges...`
 - `GET /api/v1/sessions/{id}/guest-pass`
 - `POST /api/v1/sessions/{id}/guest-passes`

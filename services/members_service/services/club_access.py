@@ -102,32 +102,63 @@ async def resolve_club_access_checks(
     resolved: list[dict[str, Any]] = []
     for check in requested:
         at = _aware(check.at)
-        matched_enrollment: ClubEnrollment | None = None
+        matched_enrollments: list[ClubEnrollment] = []
         for enrollment, club, plan in enrollments_by_member.get(check.member_id, []):
             if not (_aware(enrollment.starts_at) <= at < _aware(enrollment.ends_at)):
                 continue
             if check.pod_id is not None:
                 if pod_club_ids.get(check.pod_id) != enrollment.club_id:
                     continue
-            elif check.pool_id is not None:
+            if check.pool_id is not None:
                 # Use the immutable commercial snapshot. The Club default is
                 # only a fallback for historical plans created before the
                 # snapshot columns existed.
-                enrollment_pool_id = plan.pool_id or club.default_pool_id
+                enrollment_pool_id = (
+                    getattr(enrollment, "pool_id", None)
+                    or plan.pool_id
+                    or club.default_pool_id
+                )
                 if enrollment_pool_id != check.pool_id:
                     continue
-            matched_enrollment = enrollment
-            break
+            matched_enrollments.append(enrollment)
+
+        # A prepaid quarter covering the same session takes precedence over a
+        # temporary transition enrollment because its session price is included.
+        matched_enrollment = next(
+            (
+                item
+                for item in matched_enrollments
+                if getattr(item, "payment_mode", "quarterly_prepaid")
+                == "quarterly_prepaid"
+            ),
+            matched_enrollments[0] if matched_enrollments else None,
+        )
 
         membership = memberships.get(check.member_id)
         if matched_enrollment is not None:
+            payment_mode = getattr(
+                matched_enrollment, "payment_mode", "quarterly_prepaid"
+            )
+            transition_rate = getattr(
+                matched_enrollment, "transition_session_rate_kobo", None
+            )
             resolved.append(
                 {
                     "context_key": check.context_key,
                     "allowed": True,
-                    "source": "club_enrollment",
+                    "source": (
+                        "club_transition"
+                        if payment_mode == "transition_per_session"
+                        else "club_enrollment"
+                    ),
                     "enrollment_id": matched_enrollment.id,
                     "club_id": matched_enrollment.club_id,
+                    "payment_mode": payment_mode,
+                    "fee_amount_kobo": (
+                        transition_rate
+                        if payment_mode == "transition_per_session"
+                        else 0
+                    ),
                 }
             )
         elif membership and _paid_until_covers(membership.post_academy_club_until, at):
@@ -138,6 +169,8 @@ async def resolve_club_access_checks(
                     "source": "post_academy_bridge",
                     "enrollment_id": None,
                     "club_id": None,
+                    "payment_mode": None,
+                    "fee_amount_kobo": None,
                 }
             )
         elif membership and _paid_until_covers(membership.club_paid_until, at):
@@ -148,6 +181,8 @@ async def resolve_club_access_checks(
                     "source": "legacy_club_entitlement",
                     "enrollment_id": None,
                     "club_id": None,
+                    "payment_mode": None,
+                    "fee_amount_kobo": None,
                 }
             )
         else:
@@ -158,6 +193,8 @@ async def resolve_club_access_checks(
                     "source": "none",
                     "enrollment_id": None,
                     "club_id": None,
+                    "payment_mode": None,
+                    "fee_amount_kobo": None,
                 }
             )
 

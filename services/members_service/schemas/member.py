@@ -659,7 +659,7 @@ class ExtendClubRequest(BaseModel):
 
 
 class GrantPostAcademyClubBridgeRequest(BaseModel):
-    """Grant the complimentary Club period earned at Academy graduation."""
+    """Grant the distinct Club eligibility period earned at graduation."""
 
     months: int = Field(default=1, ge=1, le=12)
     from_date: Optional[datetime] = Field(

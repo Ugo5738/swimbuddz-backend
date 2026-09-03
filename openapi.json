@@ -1350,7 +1350,7 @@
           "admin-members"
         ],
         "summary": "Admin Grant Post Academy Club Bridge By Auth",
-        "description": "Grant the explicit complimentary Club period after graduation.",
+        "description": "Grant the explicit Club eligibility period after graduation.",
         "operationId": "admin_grant_post_academy_club_bridge_by_auth_admin_members_by_auth__auth_id__club_post_academy_bridge_post",
         "security": [
           {
@@ -3657,6 +3657,26 @@
               "type": "string",
               "format": "uuid",
               "title": "Application Id"
+            }
+          },
+          {
+            "name": "payment_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "quarterly_prepaid",
+                    "transition_per_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Payment Mode"
             }
           }
         ],
@@ -53273,6 +53293,15 @@
             "minimum": 0.0,
             "title": "Community Experience Fee Kobo",
             "default": 0
+          },
+          "payment_mode": {
+            "type": "string",
+            "enum": [
+              "quarterly_prepaid",
+              "transition_per_session"
+            ],
+            "title": "Payment Mode",
+            "default": "quarterly_prepaid"
           }
         },
         "type": "object",
@@ -55574,6 +55603,28 @@
               }
             ],
             "title": "Club Id"
+          },
+          "payment_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Mode"
+          },
+          "fee_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Amount Kobo"
           }
         },
         "type": "object",
@@ -55673,6 +55724,15 @@
             "maxLength": 128,
             "minLength": 1,
             "title": "Payment Reference"
+          },
+          "payment_mode": {
+            "type": "string",
+            "enum": [
+              "quarterly_prepaid",
+              "transition_per_session"
+            ],
+            "title": "Payment Mode",
+            "default": "quarterly_prepaid"
           }
         },
         "type": "object",
@@ -55810,6 +55870,55 @@
               }
             ],
             "title": "Quote Id"
+          },
+          "approved_payment_modes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "quarterly_prepaid",
+                "transition_per_session"
+              ]
+            },
+            "type": "array",
+            "title": "Approved Payment Modes"
+          },
+          "transition_session_rate_kobo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transition Session Rate Kobo"
+          },
+          "transition_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transition Expires At"
+          },
+          "selected_payment_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "quarterly_prepaid",
+                  "transition_per_session"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Payment Mode"
           },
           "plan": {
             "anyOf": [
@@ -57101,6 +57210,43 @@
             "type": "boolean",
             "title": "Send Result Email",
             "default": true
+          },
+          "approved_payment_modes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "quarterly_prepaid",
+                "transition_per_session"
+              ]
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Approved Payment Modes"
+          },
+          "transition_session_rate_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transition Session Rate Kobo"
+          },
+          "transition_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transition Expires At"
           }
         },
         "type": "object",
@@ -57141,6 +57287,48 @@
             },
             "type": "array",
             "title": "Plan Version Ids"
+          },
+          "approved_payment_modes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "quarterly_prepaid",
+                "transition_per_session"
+              ]
+            },
+            "type": "array",
+            "title": "Approved Payment Modes"
+          },
+          "payment_mode": {
+            "type": "string",
+            "enum": [
+              "quarterly_prepaid",
+              "transition_per_session"
+            ],
+            "title": "Payment Mode"
+          },
+          "transition_session_rate_kobo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transition Session Rate Kobo"
+          },
+          "transition_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transition Expires At"
           },
           "billing_cycle": {
             "type": "string",
@@ -57197,6 +57385,7 @@
           "club_id",
           "club_name",
           "plan_version_id",
+          "payment_mode",
           "billing_cycle",
           "currency",
           "club_fee_kobo",
@@ -60840,7 +61029,7 @@
         },
         "type": "object",
         "title": "GrantPostAcademyClubBridgeRequest",
-        "description": "Grant the complimentary Club period earned at Academy graduation."
+        "description": "Grant the distinct Club eligibility period earned at graduation."
       },
       "GuardianLinkCreate": {
         "properties": {
@@ -68155,6 +68344,40 @@
             ],
             "title": "Message"
           },
+          "access_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Source"
+          },
+          "fee_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Amount Kobo"
+          },
+          "price_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Label"
+          },
           "member_id": {
             "type": "string",
             "format": "uuid",
@@ -68393,6 +68616,40 @@
               }
             ],
             "title": "Message"
+          },
+          "access_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Source"
+          },
+          "fee_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Amount Kobo"
+          },
+          "price_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Label"
           }
         },
         "type": "object",
@@ -68535,6 +68792,33 @@
               }
             ],
             "title": "Pool Fee"
+          },
+          "guest_fee_kobo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Fee Kobo"
+          },
+          "community_dropin_fee_kobo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Dropin Fee Kobo"
+          },
+          "allows_community_dropins": {
+            "type": "boolean",
+            "title": "Allows Community Dropins",
+            "default": false
           },
           "ride_share_fee": {
             "anyOf": [
@@ -68719,6 +69003,22 @@
           "fee_amount_kobo": {
             "type": "integer",
             "title": "Fee Amount Kobo"
+          },
+          "member_fee_amount_kobo": {
+            "type": "integer",
+            "title": "Member Fee Amount Kobo",
+            "default": 0
+          },
+          "access_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Source"
           },
           "payment_intent_id": {
             "anyOf": [
@@ -69043,6 +69343,11 @@
               }
             ],
             "title": "Community Dropin Fee"
+          },
+          "allows_community_dropins": {
+            "type": "boolean",
+            "title": "Allows Community Dropins",
+            "default": false
           },
           "ride_share_fee": {
             "type": "number",
@@ -69482,6 +69787,11 @@
               }
             ],
             "title": "Community Dropin Fee"
+          },
+          "allows_community_dropins": {
+            "type": "boolean",
+            "title": "Allows Community Dropins",
+            "default": false
           },
           "ride_share_fee": {
             "type": "number",
@@ -70370,6 +70680,17 @@
               }
             ],
             "title": "Community Dropin Fee"
+          },
+          "allows_community_dropins": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allows Community Dropins"
           },
           "ride_share_fee": {
             "anyOf": [
@@ -72714,6 +73035,19 @@
             ],
             "title": "Membership Policy Override"
           },
+          "post_graduation_club_bridge_months": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Graduation Club Bridge Months"
+          },
           "notes_internal": {
             "anyOf": [
               {
@@ -73343,6 +73677,19 @@
               }
             ],
             "title": "Membership Policy Override"
+          },
+          "post_graduation_club_bridge_months": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Graduation Club Bridge Months"
           },
           "notes_internal": {
             "anyOf": [
@@ -74132,6 +74479,19 @@
               }
             ],
             "title": "Membership Policy Override"
+          },
+          "post_graduation_club_bridge_months": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Graduation Club Bridge Months"
           },
           "notes_internal": {
             "anyOf": [
@@ -77662,6 +78022,21 @@
             ],
             "title": "Club Application Id"
           },
+          "club_payment_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "quarterly_prepaid",
+                  "transition_per_session"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Payment Mode"
+          },
           "community_experience_offering_id": {
             "anyOf": [
               {
@@ -78242,6 +78617,21 @@
               }
             ],
             "title": "Club Application Id"
+          },
+          "club_payment_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "quarterly_prepaid",
+                  "transition_per_session"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Payment Mode"
           },
           "community_experience_offering_id": {
             "anyOf": [
@@ -97315,10 +97705,10 @@
               {
                 "type": "string",
                 "enum": [
+                  "all",
                   "community",
                   "club",
-                  "academy",
-                  "all"
+                  "academy"
                 ]
               },
               {
@@ -99356,10 +99746,10 @@
               {
                 "type": "string",
                 "enum": [
+                  "all",
                   "community",
                   "club",
-                  "academy",
-                  "all"
+                  "academy"
                 ]
               },
               {

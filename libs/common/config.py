@@ -1,5 +1,6 @@
 import os
 from functools import lru_cache
+from datetime import date
 from typing import Literal, Optional
 
 from pydantic import field_validator
@@ -179,12 +180,12 @@ class Settings(BaseSettings):
     CLUB_QUARTERLY_FEE_NGN: int = 42500
     CLUB_BIANNUAL_FEE_NGN: int = 80000
     CLUB_ANNUAL_FEE_NGN: int = 150000
+    # Temporary, individually approved 2026 Club arrangement. These values
+    # are defaults for the admin assessment form; the application/enrollment
+    # snapshots remain authoritative after approval.
+    CLUB_TRANSITION_SESSION_RATE_NGN: int = 5000
+    CLUB_TRANSITION_END_DATE: date = date(2026, 12, 31)
     WELCOME_BONUS_INCLUDE_COACHES: bool = False
-    # Free club access granted to academy graduates (cohort end + N months).
-    # Per docs/club/PRICING_STRATEGY.md: bridges the academy→club gap so habit
-    # doesn't break. Admins can override per-member via /club/extend admin endpoint.
-    POST_ACADEMY_FREE_CLUB_MONTHS: int = 1
-
     # Paystack (optional; used by payments_service)
     PAYSTACK_SECRET_KEY: str = ""
     PAYSTACK_PUBLIC_KEY: str = ""

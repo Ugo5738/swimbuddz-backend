@@ -52,6 +52,7 @@ class SessionBase(BaseModel):
     pool_fee: float = 0.0  # naira input/output
     guest_fee: Optional[float] = None
     community_dropin_fee: Optional[float] = None
+    allows_community_dropins: bool = False
     ride_share_fee: float = 0.0  # naira input/output
     pricing_mode: Literal["manual", "cost_plus"] = "manual"
     pricing_expected_attendees: Optional[int] = Field(None, ge=1)
@@ -99,6 +100,14 @@ class SessionCreate(SessionBase):
             # Re-raise as ValueError so Pydantic surfaces a 422
             # validation error with the discriminator message in `detail`.
             raise ValueError(str(exc)) from exc
+        if (
+            self.session_type == SessionType.CLUB
+            and self.allows_community_dropins
+            and self.community_dropin_fee is None
+        ):
+            raise ValueError(
+                "community_dropin_fee is required when a Club session allows drop-ins"
+            )
         return self
 
 
@@ -123,6 +132,7 @@ class SessionUpdate(BaseModel):
     pool_fee: Optional[float] = None  # naira — router converts to kobo on write
     guest_fee: Optional[float] = None
     community_dropin_fee: Optional[float] = None
+    allows_community_dropins: Optional[bool] = None
     ride_share_fee: Optional[float] = None  # naira — router converts to kobo on write
     pricing_mode: Optional[Literal["manual", "cost_plus"]] = None
     pricing_expected_attendees: Optional[int] = Field(None, ge=1)
@@ -148,6 +158,9 @@ class SessionAccessResponse(BaseModel):
     sign_in_eligible: bool
     reason: Optional[str] = None
     message: Optional[str] = None
+    access_source: Optional[str] = None
+    fee_amount_kobo: Optional[int] = Field(default=None, ge=0)
+    price_label: Optional[str] = None
 
 
 class MemberSessionAccessResponse(SessionAccessResponse):
@@ -209,6 +222,7 @@ class SessionResponse(SessionBase):
                 if community_dropin_fee_kobo is not None
                 else None
             ),
+            "allows_community_dropins": getattr(obj, "allows_community_dropins", False),
             "ride_share_fee": ride_share_fee_kobo / 100.0,
             **pricing,
             "allows_guests": getattr(obj, "allows_guests", True),

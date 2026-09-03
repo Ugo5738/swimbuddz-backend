@@ -162,6 +162,30 @@ class ClubObservedAssessmentUpdate(BaseModel):
     first_club_milestone: Optional[str] = Field(default=None, max_length=2000)
     assessor_notes: Optional[str] = Field(default=None, max_length=4000)
     send_result_email: bool = True
+    approved_payment_modes: list[
+        Literal["quarterly_prepaid", "transition_per_session"]
+    ] = Field(default_factory=lambda: ["quarterly_prepaid"], min_length=1, max_length=2)
+    transition_session_rate_kobo: Optional[int] = Field(default=None, ge=0)
+    transition_expires_at: Optional[date] = None
+
+    @model_validator(mode="after")
+    def valid_payment_arrangements(self):
+        self.approved_payment_modes = list(dict.fromkeys(self.approved_payment_modes))
+        if self.outcome == "academy_first":
+            return self
+        if "transition_per_session" in self.approved_payment_modes:
+            if (
+                self.transition_expires_at is not None
+                and self.transition_expires_at < date.today()
+            ):
+                raise ValueError("transition_expires_at cannot be in the past")
+        elif (
+            self.transition_session_rate_kobo is not None or self.transition_expires_at
+        ):
+            raise ValueError(
+                "Transition rate/expiry require transition_per_session approval"
+            )
+        return self
 
 
 class ClubAssessmentResponse(BaseModel):
@@ -196,6 +220,14 @@ class ClubApplicationResponse(BaseModel):
     preferred_pod_id: Optional[uuid.UUID] = None
     notes: Optional[str] = None
     quote_id: Optional[uuid.UUID] = None
+    approved_payment_modes: list[
+        Literal["quarterly_prepaid", "transition_per_session"]
+    ] = Field(default_factory=list)
+    transition_session_rate_kobo: Optional[int] = None
+    transition_expires_at: Optional[date] = None
+    selected_payment_mode: Optional[
+        Literal["quarterly_prepaid", "transition_per_session"]
+    ] = None
     plan: Optional[ClubPlanResponse] = None
     selected_plans: list[ClubPlanResponse] = Field(default_factory=list)
     assessment: Optional[ClubAssessmentResponse] = None
@@ -212,6 +244,12 @@ class ClubPaymentContext(BaseModel):
     club_name: str
     plan_version_id: uuid.UUID
     plan_version_ids: list[uuid.UUID] = Field(default_factory=list)
+    approved_payment_modes: list[
+        Literal["quarterly_prepaid", "transition_per_session"]
+    ] = Field(default_factory=list)
+    payment_mode: Literal["quarterly_prepaid", "transition_per_session"]
+    transition_session_rate_kobo: Optional[int] = None
+    transition_expires_at: Optional[date] = None
     billing_cycle: str
     currency: str
     club_fee_kobo: int
@@ -230,10 +268,16 @@ class ActivateClubApplicationRequest(BaseModel):
     months: int = Field(default=3, ge=1, le=24)
     community_experience_selected: bool = False
     community_experience_fee_kobo: int = Field(default=0, ge=0)
+    payment_mode: Literal["quarterly_prepaid", "transition_per_session"] = (
+        "quarterly_prepaid"
+    )
 
 
 class ClubApplicationReservationRequest(BaseModel):
     payment_reference: str = Field(..., min_length=1, max_length=128)
+    payment_mode: Literal["quarterly_prepaid", "transition_per_session"] = (
+        "quarterly_prepaid"
+    )
 
 
 class ClubApplicationReservationResponse(BaseModel):

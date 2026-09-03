@@ -1,7 +1,7 @@
 """Additional payment-charge policies and member-facing previews."""
 
 import uuid
-from typing import Optional
+from typing import Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -60,6 +60,9 @@ class ChargePreviewRequest(BaseModel):
     purpose: PaymentPurpose
     payment_method: str = "paystack"
     club_application_id: Optional[uuid.UUID] = None
+    club_payment_mode: Optional[
+        Literal["quarterly_prepaid", "transition_per_session"]
+    ] = None
     community_experience_offering_id: Optional[uuid.UUID] = None
     enrollment_id: Optional[uuid.UUID] = None
     use_installments: bool = False
@@ -76,11 +79,12 @@ class ChargePreviewResponse(BaseModel):
     components: dict = Field(default_factory=dict)
 
 
-async def _club_context(application_id: uuid.UUID) -> dict:
+async def _club_context(application_id: uuid.UUID, payment_mode: str | None) -> dict:
     headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.get(
             f"{settings.MEMBERS_SERVICE_URL}/clubs/internal/applications/{application_id}/payment-context",
+            params={"payment_mode": payment_mode} if payment_mode else None,
             headers=headers,
         )
     if response.status_code >= 400:
@@ -185,7 +189,7 @@ async def preview_additional_charges(
     components: dict = {}
     currency = "NGN"
     if body.purpose == PaymentPurpose.CLUB and body.club_application_id:
-        context = await _club_context(body.club_application_id)
+        context = await _club_context(body.club_application_id, body.club_payment_mode)
         if context["member_auth_id"] != current_user.user_id:
             raise HTTPException(
                 status_code=403,
@@ -196,6 +200,10 @@ async def preview_additional_charges(
         components = {
             "club": int(context["club_fee_kobo"]),
             "club_items": context.get("club_items") or [],
+            "club_payment_mode": context["payment_mode"],
+            "approved_payment_modes": context.get("approved_payment_modes") or [],
+            "transition_session_rate_kobo": context.get("transition_session_rate_kobo"),
+            "transition_expires_at": context.get("transition_expires_at"),
             "annual_swimbuddz_membership": int(
                 context.get("annual_membership_fee_kobo") or 0
             ),

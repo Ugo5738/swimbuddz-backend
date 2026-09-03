@@ -34,7 +34,7 @@ async def require_admin_or_coach_for_session(
     session_id: uuid.UUID,
     current_user: AuthUser,
     db: AsyncSession,
-) -> None:
+):
     """
     Verify the user is either an admin or the coach assigned to the session's cohort.
     Raises 403 if not authorized.
@@ -146,7 +146,7 @@ async def validate_session_access(
         pod = await get_pod_by_id(str(pod_id), calling_service="attendance")
         pod_member_ids = (pod or {}).get("active_member_ids") or []
 
-    club_product_access = None
+    club_access_result = None
     if session_data.get("session_type") == "club" and not confirmed_booking:
         context_key = str(session_data.get("id") or "attendance-session")
         results = await check_club_access_batch(
@@ -161,7 +161,10 @@ async def validate_session_access(
             ],
             calling_service="attendance",
         )
-        club_product_access = bool((results.get(context_key) or {}).get("allowed"))
+        club_access_result = results.get(context_key) or {
+            "allowed": False,
+            "source": "none",
+        }
 
     decision = evaluate_session_access(
         member_payload,
@@ -170,10 +173,11 @@ async def validate_session_access(
         cohort_enrollment=cohort_enrollment,
         pod_member_ids=pod_member_ids,
         confirmed_booking=confirmed_booking,
-        club_product_access=club_product_access,
+        club_access_result=club_access_result,
     )
     if not decision.sign_in_allowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=denial_message(decision.reason),
         )
+    return decision

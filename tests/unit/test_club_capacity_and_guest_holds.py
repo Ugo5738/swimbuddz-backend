@@ -197,3 +197,71 @@ async def test_club_access_uses_the_plan_pool_snapshot():
     assert result[0]["allowed"] is True
     assert result[0]["source"] == "club_enrollment"
     assert result[1]["allowed"] is False
+
+
+@pytest.mark.asyncio
+async def test_transition_access_is_dated_location_specific_and_returns_snapshot_rate():
+    member_id = uuid.uuid4()
+    club_id = uuid.uuid4()
+    pool_id = uuid.uuid4()
+    another_pool_id = uuid.uuid4()
+    now = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    enrollment = SimpleNamespace(
+        id=uuid.uuid4(),
+        member_id=member_id,
+        club_id=club_id,
+        pool_id=pool_id,
+        payment_mode="transition_per_session",
+        transition_session_rate_kobo=500_000,
+        starts_at=now,
+        ends_at=datetime(2027, 1, 1, tzinfo=timezone.utc),
+    )
+    club = SimpleNamespace(default_pool_id=another_pool_id)
+    plan = SimpleNamespace(pool_id=another_pool_id)
+    checks = [
+        SimpleNamespace(
+            context_key="before",
+            member_id=member_id,
+            at=now - timedelta(seconds=1),
+            pool_id=pool_id,
+            pod_id=None,
+        ),
+        SimpleNamespace(
+            context_key="covered",
+            member_id=member_id,
+            at=now + timedelta(days=1),
+            pool_id=pool_id,
+            pod_id=None,
+        ),
+        SimpleNamespace(
+            context_key="wrong-pool",
+            member_id=member_id,
+            at=now + timedelta(days=1),
+            pool_id=another_pool_id,
+            pod_id=None,
+        ),
+        SimpleNamespace(
+            context_key="expired",
+            member_id=member_id,
+            at=datetime(2027, 1, 1, tzinfo=timezone.utc),
+            pool_id=pool_id,
+            pod_id=None,
+        ),
+    ]
+
+    result = await resolve_club_access_checks(
+        _AccessDb([], [(enrollment, club, plan)]), checks
+    )
+
+    assert result[0]["allowed"] is False
+    assert result[1] == {
+        "context_key": "covered",
+        "allowed": True,
+        "source": "club_transition",
+        "enrollment_id": enrollment.id,
+        "club_id": club_id,
+        "payment_mode": "transition_per_session",
+        "fee_amount_kobo": 500_000,
+    }
+    assert result[2]["allowed"] is False
+    assert result[3]["allowed"] is False

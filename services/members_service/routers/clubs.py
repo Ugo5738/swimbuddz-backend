@@ -15,7 +15,7 @@ existing.
 
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -74,6 +74,97 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter(prefix="/clubs", tags=["clubs"])
 settings = get_settings()
 CLUB_CHECKOUT_RESERVATION_MINUTES = 30
+QUARTERLY_PREPAID = "quarterly_prepaid"
+TRANSITION_PER_SESSION = "transition_per_session"
+
+
+def _application_payment_mode(
+    application: ClubApplication,
+    requested: str | None,
+) -> Literal["quarterly_prepaid", "transition_per_session"]:
+    """Choose only from the arrangements explicitly approved for this member."""
+    approved = list(application.approved_payment_modes or [QUARTERLY_PREPAID])
+    chosen = requested or (approved[0] if len(approved) == 1 else QUARTERLY_PREPAID)
+    if chosen not in approved:
+        raise HTTPException(
+            status_code=403,
+            detail="This payment arrangement was not approved for your Club application",
+        )
+    if chosen == TRANSITION_PER_SESSION and (
+        application.transition_session_rate_kobo is None
+        or application.transition_expires_at is None
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The approved transition arrangement is missing its rate or expiry",
+        )
+    return chosen  # type: ignore[return-value]
+
+
+def _assert_transition_can_start(
+    application: ClubApplication,
+    *,
+    on_date: date,
+) -> None:
+    """Prevent a new checkout/reservation after its approved window closed."""
+    if (
+        application.transition_expires_at is not None
+        and application.transition_expires_at < on_date
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The approved Club transition has expired",
+        )
+
+
+def _new_club_enrollment(
+    *,
+    application: ClubApplication,
+    plan: ClubPlanVersion,
+    payment_reference: str,
+    activation_date: date,
+    payment_mode: Literal["quarterly_prepaid", "transition_per_session"],
+) -> ClubEnrollment:
+    """Build the immutable dated/location/commercial enrollment snapshot."""
+    start_date = (
+        activation_date
+        if payment_mode == TRANSITION_PER_SESSION
+        else max(activation_date, plan.period_start)
+    )
+    end_date = (
+        application.transition_expires_at
+        if payment_mode == TRANSITION_PER_SESSION
+        else plan.period_end
+    )
+    if end_date is None or end_date < start_date:
+        raise HTTPException(
+            status_code=409,
+            detail="The approved Club transition has expired",
+        )
+    return ClubEnrollment(
+        member_id=application.member_id,
+        club_id=application.club_id,
+        plan_version_id=plan.id,
+        application_id=application.id,
+        payment_reference=payment_reference,
+        starts_at=datetime.combine(start_date, time.min, tzinfo=timezone.utc),
+        # ends_at is exclusive, so the member remains covered throughout the
+        # configured expiry date.
+        ends_at=datetime.combine(
+            end_date + timedelta(days=1),
+            time.min,
+            tzinfo=timezone.utc,
+        ),
+        pool_id=plan.pool_id,
+        operating_area_id=plan.operating_area_id,
+        payment_mode=payment_mode,
+        transition_session_rate_kobo=(
+            application.transition_session_rate_kobo
+            if payment_mode == TRANSITION_PER_SESSION
+            else None
+        ),
+        assigned_pod_id=application.preferred_pod_id,
+    )
 
 
 def _assert_consecutive_plan_periods(plans: list[ClubPlanVersion]) -> None:
@@ -429,6 +520,24 @@ async def create_club_application(
                 "assessment or payment before starting another."
             ),
         )
+    reusable_readiness = (
+        await db.execute(
+            select(ClubReadinessAssessment, ClubApplication.id)
+            .join(
+                ClubApplication,
+                ClubApplication.id == ClubReadinessAssessment.application_id,
+            )
+            .where(
+                ClubApplication.member_id == member.id,
+                ClubApplication.status == "enrolled",
+                ClubReadinessAssessment.outcome.in_(
+                    {"club_ready", "club_ready_modified"}
+                ),
+                ClubReadinessAssessment.completed_at.is_not(None),
+            )
+            .order_by(ClubReadinessAssessment.completed_at.desc())
+        )
+    ).first()
     selected_ids = list(dict.fromkeys([body.plan_version_id, *body.plan_version_ids]))
     plans = list(
         (
@@ -520,6 +629,8 @@ async def create_club_application(
     application = ClubApplication(
         member_id=member.id,
         club_id=plan.club_id,
+        status="approved" if reusable_readiness else "assessment_required",
+        approved_payment_modes=[QUARTERLY_PREPAID],
         **body.model_dump(exclude={"plan_version_ids"}),
     )
     # Early availability feedback. Checkout repeats these checks while holding
@@ -538,6 +649,31 @@ async def create_club_application(
     )
     db.add(application)
     await db.flush()
+    if reusable_readiness:
+        previous_assessment, source_application_id = reusable_readiness
+        copied_self_report = dict(previous_assessment.self_report or {})
+        copied_self_report["readiness_reused_from_application_id"] = str(
+            source_application_id
+        )
+        db.add(
+            ClubReadinessAssessment(
+                application_id=application.id,
+                self_report=copied_self_report,
+                observed_checks=dict(previous_assessment.observed_checks or {}),
+                assessor_member_id=previous_assessment.assessor_member_id,
+                outcome=previous_assessment.outcome,
+                nonstop_distance_m=previous_assessment.nonstop_distance_m,
+                deep_water_comfort=previous_assessment.deep_water_comfort,
+                primary_technique_focus=previous_assessment.primary_technique_focus,
+                first_club_milestone=previous_assessment.first_club_milestone,
+                assessor_notes=(
+                    "Readiness reused for a new Club commercial period. "
+                    f"Source application: {source_application_id}. "
+                    f"Previous notes: {previous_assessment.assessor_notes or 'None'}"
+                ),
+                completed_at=utc_now(),
+            )
+        )
     for index, selected in enumerate(chronologically):
         db.add(
             ClubApplicationPlan(
@@ -642,7 +778,14 @@ async def complete_observed_club_assessment(
     if assessment is None:
         assessment = ClubReadinessAssessment(application_id=application.id)
         db.add(assessment)
-    for field, value in body.model_dump(exclude={"send_result_email"}).items():
+    commercial_fields = {
+        "approved_payment_modes",
+        "transition_session_rate_kobo",
+        "transition_expires_at",
+    }
+    for field, value in body.model_dump(
+        exclude={"send_result_email", *commercial_fields}
+    ).items():
         setattr(assessment, field, value)
     assessment.assessor_member_id = assessor.id
     assessment.completed_at = utc_now()
@@ -651,6 +794,30 @@ async def complete_observed_club_assessment(
         if body.outcome in {"club_ready", "club_ready_modified"}
         else "academy_recommended"
     )
+    if application.status == "approved":
+        approved_modes = list(dict.fromkeys(body.approved_payment_modes))
+        application.approved_payment_modes = approved_modes
+        if TRANSITION_PER_SESSION in approved_modes:
+            application.transition_session_rate_kobo = (
+                body.transition_session_rate_kobo
+                if body.transition_session_rate_kobo is not None
+                else int(settings.CLUB_TRANSITION_SESSION_RATE_NGN) * 100
+            )
+            application.transition_expires_at = (
+                body.transition_expires_at or settings.CLUB_TRANSITION_END_DATE
+            )
+            if application.transition_expires_at < date.today():
+                raise HTTPException(
+                    status_code=422,
+                    detail="The Club transition expiry cannot be in the past",
+                )
+        else:
+            application.transition_session_rate_kobo = None
+            application.transition_expires_at = None
+    else:
+        application.approved_payment_modes = []
+        application.transition_session_rate_kobo = None
+        application.transition_expires_at = None
     await db.commit()
 
     if body.send_result_email:
@@ -672,14 +839,20 @@ async def complete_observed_club_assessment(
         if body.first_club_milestone:
             lines.append(f"First milestone: {body.first_club_milestone}")
         if application.status == "approved":
-            lines.extend(
-                [
-                    "",
-                    "Sign in to review your server-calculated Club quote. It will show "
-                    "each selected quarter, any mid-quarter adjustment, annual "
-                    "SwimBuddz Membership due, and the optional Community Experience.",
-                ]
-            )
+            lines.append("")
+            if application.approved_payment_modes == [TRANSITION_PER_SESSION]:
+                lines.extend(
+                    [
+                        "Your approved arrangement is the 2026 Club Transition — Pay Per Session.",
+                        "Sign in to activate it and review any annual SwimBuddz Membership due. "
+                        "Your Club session rate is charged when you book.",
+                    ]
+                )
+            else:
+                lines.append(
+                    "Sign in to choose from your approved payment arrangements and "
+                    "review the server-calculated total."
+                )
         sent = await get_email_client().send(
             to_email=member.email,
             subject="Your SwimBuddz Club readiness result",
@@ -698,6 +871,9 @@ async def complete_observed_club_assessment(
 )
 async def get_club_application_payment_context(
     application_id: uuid.UUID,
+    payment_mode: Literal["quarterly_prepaid", "transition_per_session"] | None = Query(
+        default=None
+    ),
     _service: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -709,6 +885,9 @@ async def get_club_application_payment_context(
             status_code=409,
             detail="Club assessment approval is required before payment",
         )
+    chosen_mode = _application_payment_mode(application, payment_mode)
+    if chosen_mode == TRANSITION_PER_SESSION:
+        _assert_transition_can_start(application, on_date=date.today())
     member = await db.get(Member, application.member_id)
     club = await db.get(Club, application.club_id)
     plan = await db.get(ClubPlanVersion, application.plan_version_id)
@@ -733,10 +912,11 @@ async def get_club_application_payment_context(
     selected_plans = [selected_plan for _row, selected_plan in selections]
     if not selected_plans:
         selected_plans = [plan]
+    capacity_plans = selected_plans if chosen_mode == QUARTERLY_PREPAID else [plan]
     await _assert_plan_capacity(
         db,
         application=application,
-        plans=selected_plans,
+        plans=capacity_plans,
         at=utc_now(),
     )
     await _assert_pod_capacity(
@@ -746,24 +926,43 @@ async def get_club_application_payment_context(
         lock=False,
     )
     club_items: list[dict] = []
-    for selected_plan in selected_plans:
-        amount, remaining, available, reason = _plan_price(selected_plan, club)
-        if not available:
-            raise HTTPException(status_code=409, detail=reason)
+    if chosen_mode == TRANSITION_PER_SESSION:
+        transition_end = application.transition_expires_at
         club_items.append(
             {
-                "plan_version_id": str(selected_plan.id),
-                "name": selected_plan.name,
-                "period_start": selected_plan.period_start.isoformat(),
-                "period_end": selected_plan.period_end.isoformat(),
-                "sessions_included": selected_plan.sessions_included,
-                "remaining_sessions": remaining,
-                "full_quarter_fee_kobo": selected_plan.club_fee_kobo,
-                "amount_kobo": amount,
+                "plan_version_id": str(plan.id),
+                "name": "2026 Club Transition Enrollment",
+                "period_start": date.today().isoformat(),
+                "period_end": transition_end.isoformat(),
+                "sessions_included": 0,
+                "remaining_sessions": 0,
+                "full_quarter_fee_kobo": 0,
+                "amount_kobo": 0,
             }
         )
+    else:
+        for selected_plan in selected_plans:
+            amount, remaining, available, reason = _plan_price(selected_plan, club)
+            if not available:
+                raise HTTPException(status_code=409, detail=reason)
+            club_items.append(
+                {
+                    "plan_version_id": str(selected_plan.id),
+                    "name": selected_plan.name,
+                    "period_start": selected_plan.period_start.isoformat(),
+                    "period_end": selected_plan.period_end.isoformat(),
+                    "sessions_included": selected_plan.sessions_included,
+                    "remaining_sessions": remaining,
+                    "full_quarter_fee_kobo": selected_plan.club_fee_kobo,
+                    "amount_kobo": amount,
+                }
+            )
     club_fee = sum(item["amount_kobo"] for item in club_items)
-    last_period_end = max(selected.period_end for selected in selected_plans)
+    last_period_end = (
+        application.transition_expires_at
+        if chosen_mode == TRANSITION_PER_SESSION
+        else max(selected.period_end for selected in selected_plans)
+    )
     annual_membership_months, annual_membership_fee = annual_membership_extension(
         paid_until=(membership.community_paid_until if membership else None),
         coverage_end=last_period_end,
@@ -812,7 +1011,7 @@ async def get_club_application_payment_context(
             experience_selected = False
             experience_fee = 0
     subtotal = club_fee + annual_membership_fee + experience_fee
-    if subtotal <= 0:
+    if subtotal <= 0 and chosen_mode != TRANSITION_PER_SESSION:
         raise HTTPException(
             status_code=409,
             detail="Nothing remains payable for this Club application",
@@ -823,7 +1022,19 @@ async def get_club_application_payment_context(
         club_id=club.id,
         club_name=club.name,
         plan_version_id=plan.id,
-        plan_version_ids=[selected.id for selected in selected_plans],
+        plan_version_ids=[selected.id for selected in capacity_plans],
+        approved_payment_modes=application.approved_payment_modes,
+        payment_mode=chosen_mode,
+        transition_session_rate_kobo=(
+            application.transition_session_rate_kobo
+            if chosen_mode == TRANSITION_PER_SESSION
+            else None
+        ),
+        transition_expires_at=(
+            application.transition_expires_at
+            if chosen_mode == TRANSITION_PER_SESSION
+            else None
+        ),
         billing_cycle=plan.billing_cycle,
         currency=plan.currency,
         club_fee_kobo=club_fee,
@@ -862,9 +1073,14 @@ async def reserve_club_application_capacity(
             status_code=409,
             detail="Only an approved Club application can reserve capacity",
         )
+    chosen_mode = _application_payment_mode(application, body.payment_mode)
 
     now = utc_now()
+    if chosen_mode == TRANSITION_PER_SESSION:
+        _assert_transition_can_start(application, on_date=now.date())
     plans = await _selected_application_plans(db, application, lock=True)
+    if chosen_mode == TRANSITION_PER_SESSION:
+        plans = plans[:1]
     await _assert_plan_capacity(
         db,
         application=application,
@@ -1000,8 +1216,20 @@ async def activate_club_application(
             status_code=409,
             detail="Club assessment approval is required before activation",
         )
+    chosen_mode = _application_payment_mode(application, body.payment_mode)
+    if (
+        application.status == "enrolled"
+        and application.selected_payment_mode
+        and application.selected_payment_mode != chosen_mode
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="This Club application was already activated with another payment mode",
+        )
     now = utc_now()
     selected_plans = await _selected_application_plans(db, application, lock=True)
+    if chosen_mode == TRANSITION_PER_SESSION:
+        selected_plans = selected_plans[:1]
     reservations = list(
         (
             await db.execute(
@@ -1079,25 +1307,15 @@ async def activate_club_application(
         if existing:
             created_enrollments.append(existing)
             continue
-        # Use the provider-confirmed payment time rather than the webhook
-        # processing date. A delayed callback near a quarter boundary must
-        # not shorten or invalidate an enrollment that was paid on time.
-        start_date = max(activation_date, selected_plan.period_start)
-        enrollment = ClubEnrollment(
-            member_id=application.member_id,
-            club_id=application.club_id,
-            plan_version_id=selected_plan.id,
-            application_id=application.id,
+        # Use the provider-confirmed payment time rather than webhook processing
+        # time. Transition access starts immediately; quarterly access starts at
+        # the purchased service period.
+        enrollment = _new_club_enrollment(
+            application=application,
+            plan=selected_plan,
             payment_reference=body.payment_reference,
-            starts_at=datetime.combine(start_date, time.min, tzinfo=timezone.utc),
-            ends_at=datetime.combine(
-                selected_plan.period_end.fromordinal(
-                    selected_plan.period_end.toordinal() + 1
-                ),
-                time.min,
-                tzinfo=timezone.utc,
-            ),
-            assigned_pod_id=application.preferred_pod_id,
+            activation_date=activation_date,
+            payment_mode=chosen_mode,
         )
         db.add(enrollment)
         await db.flush()
@@ -1133,6 +1351,7 @@ async def activate_club_application(
                 )
             )
     application.status = "enrolled"
+    application.selected_payment_mode = chosen_mode
     membership = (
         await db.execute(
             select(MemberMembership)

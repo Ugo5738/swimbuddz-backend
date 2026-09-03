@@ -62,6 +62,9 @@ async def apply_club(payment: Payment) -> None:
                         payment.paid_at.isoformat() if payment.paid_at else None
                     ),
                     "months": months,
+                    "payment_mode": (payment.payment_metadata or {}).get(
+                        "club_payment_mode", "quarterly_prepaid"
+                    ),
                     "community_experience_selected": bool(
                         (payment.payment_metadata or {}).get(
                             "community_experience_selected"
