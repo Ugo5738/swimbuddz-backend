@@ -49,7 +49,7 @@ def test_paid_community_member_can_get_community_booking_prompt():
     assert not _is_unpaid_community_prospect(member, NOW)
 
 
-def test_paid_club_or_academy_member_has_club_booking_access():
+def test_only_explicit_legacy_club_access_gets_the_compatibility_prompt():
     club_member = _member(
         active_tiers=["club", "community"],
         primary_tier="club",
@@ -62,7 +62,7 @@ def test_paid_club_or_academy_member_has_club_booking_access():
     )
 
     assert _has_paid_session_access(club_member, "club", NOW)
-    assert _has_paid_session_access(academy_member, "club", NOW)
+    assert not _has_paid_session_access(academy_member, "club", NOW)
 
 
 def test_default_booking_prompt_tier_uses_highest_paid_membership():
@@ -132,7 +132,7 @@ async def test_community_prompt_targets_all_paid_members_and_prospects():
 
 
 @pytest.mark.asyncio
-async def test_club_prompt_targets_every_member_with_inherited_club_access():
+async def test_club_prompt_uses_authoritative_enrollment_results(monkeypatch):
     future = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
     members = [
         _member(id="community", community_paid_until=future),
@@ -154,12 +154,22 @@ async def test_club_prompt_targets_every_member_with_inherited_club_access():
         _member(id="prospect"),
     ]
 
+    club_access = AsyncMock(
+        return_value={"club": {"allowed": True}, "academy": {"allowed": False}}
+    )
+    monkeypatch.setattr(notifications, "check_club_access_batch", club_access)
+
     recipients = await _get_session_announcement_members(
-        session={"session_type": "club"},
+        session={
+            "id": "club-session",
+            "session_type": "club",
+            "starts_at": future,
+        },
         active_members=members,
     )
 
-    assert {m["id"] for m in recipients} == {"club", "academy"}
+    assert {m["id"] for m in recipients} == {"club"}
+    club_access.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -188,6 +198,17 @@ async def test_pod_club_prompt_uses_bulk_membership_entitlements(monkeypatch):
     get_bulk = AsyncMock(return_value=members)
     monkeypatch.setattr(notifications, "get_pod_by_id", get_pod)
     monkeypatch.setattr(notifications, "get_members_bulk", get_bulk)
+    monkeypatch.setattr(
+        notifications,
+        "check_club_access_batch",
+        AsyncMock(
+            return_value={
+                "club": {"allowed": True},
+                "bridge": {"allowed": True},
+                "community": {"allowed": False},
+            }
+        ),
+    )
 
     recipients = await _get_session_announcement_members(
         session={

@@ -53,14 +53,14 @@ def test_required_tier_by_session_type():
     assert required_tier_for_session_type("event") == "community"
 
 
-def test_paid_tiers_expand_hierarchy_from_paid_until_dates():
+def test_paid_products_do_not_expand_a_tier_hierarchy():
     member = _member(
         active_tiers=["academy", "club", "community"],
         primary_tier="academy",
         academy_paid_until=FUTURE,
     )
 
-    assert active_paid_tiers(member, NOW) == {"academy", "club", "community"}
+    assert active_paid_tiers(member, NOW) == {"academy"}
 
 
 def test_unpaid_baseline_community_is_prospect_not_bookable():
@@ -104,7 +104,7 @@ def test_paid_club_member_can_book_club_and_community():
     assert evaluate_session_access(member, _session(), now=NOW).bookable
 
 
-def test_paid_academy_member_inherits_club_access():
+def test_paid_academy_member_does_not_inherit_club_access():
     member = _member(
         active_tiers=["academy", "club", "community"],
         primary_tier="academy",
@@ -113,8 +113,31 @@ def test_paid_academy_member_inherits_club_access():
 
     decision = evaluate_session_access(member, _session(session_type="club"), now=NOW)
 
-    assert decision.bookable
-    assert decision.digest_eligible
+    assert not decision.bookable
+    assert not decision.digest_eligible
+    assert decision.reason == "club_required"
+
+
+def test_authoritative_club_product_result_overrides_legacy_dates():
+    member = _member(club_paid_until=FUTURE)
+    session = _session(session_type="club")
+
+    denied = evaluate_session_access(
+        member,
+        session,
+        now=NOW,
+        club_product_access=False,
+    )
+    allowed = evaluate_session_access(
+        _member(),
+        session,
+        now=NOW,
+        club_product_access=True,
+    )
+
+    assert not denied.bookable
+    assert denied.reason == "club_required"
+    assert allowed.bookable
 
 
 def test_post_academy_bridge_grants_club_access_and_prompt_tier():
@@ -126,7 +149,7 @@ def test_post_academy_bridge_grants_club_access_and_prompt_tier():
 
     decision = evaluate_session_access(member, _session(session_type="club"), now=NOW)
 
-    assert active_paid_tiers(member, NOW) == {"club", "community"}
+    assert active_paid_tiers(member, NOW) == {"club"}
     assert default_booking_prompt_tier(member, NOW) == "club"
     assert decision.bookable
     assert decision.prompt_eligible

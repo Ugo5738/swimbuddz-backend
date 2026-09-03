@@ -48,26 +48,12 @@ async def apply_club(payment: Payment) -> None:
                     ),
                 )
 
-        # Activate Club
-        club_resp = await client.post(
-            f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/club/activate",
-            json={
-                "months": months,
-                "idempotency_key": f"payment:{payment.id}:club-activate",
-                "source_reference": payment.reference,
-                # New location plans charge annual Community separately. The
-                # legacy checkout retains its existing one-year extension.
-                "extend_community_membership": not bool(application_id),
-            },
-            headers=headers,
-        )
-        if club_resp.status_code >= 400:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Failed to apply club entitlement via members_service ({club_resp.status_code}): {club_resp.text}",
-            )
-
         if application_id:
+            # An approved application is the eligibility authority for the
+            # new Club product.  Its dated, location-specific enrollments must
+            # not also call the legacy tier activator: that older endpoint
+            # re-runs unrelated requested-tier/readiness checks and writes a
+            # generic paid-until window that can activate future quarters now.
             enrollment_resp = await client.post(
                 f"{settings.MEMBERS_SERVICE_URL}/clubs/internal/applications/{application_id}/activate",
                 json={
@@ -97,5 +83,25 @@ async def apply_club(payment: Payment) -> None:
                     detail=(
                         "Club access was paid but location enrollment could not be "
                         f"applied ({enrollment_resp.status_code}): {enrollment_resp.text}"
+                    ),
+                )
+        else:
+            # Compatibility for the pre-application Club checkout only.
+            club_resp = await client.post(
+                f"{settings.MEMBERS_SERVICE_URL}/admin/members/by-auth/{payment.member_auth_id}/club/activate",
+                json={
+                    "months": months,
+                    "idempotency_key": f"payment:{payment.id}:club-activate",
+                    "source_reference": payment.reference,
+                    "extend_community_membership": True,
+                },
+                headers=headers,
+            )
+            if club_resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=(
+                        "Failed to apply club entitlement via members_service "
+                        f"({club_resp.status_code}): {club_resp.text}"
                     ),
                 )

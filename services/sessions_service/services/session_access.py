@@ -11,6 +11,7 @@ from fastapi import HTTPException
 
 from libs.common.logging import get_logger
 from libs.common.service_client import (
+    check_club_access_batch,
     check_cohort_enrollment,
     check_cohort_enrollments_batch,
     get_member_membership,
@@ -21,6 +22,21 @@ from libs.common.session_access import evaluate_session_access
 from services.sessions_service.models import Session
 
 logger = get_logger(__name__)
+
+
+def _is_club_session(session: Session) -> bool:
+    value = getattr(session.session_type, "value", session.session_type)
+    return str(value).lower() == "club"
+
+
+def _club_access_check(session: Session, member_id: str) -> dict:
+    return {
+        "context_key": str(session.id),
+        "member_id": member_id,
+        "at": session.starts_at.isoformat(),
+        "pool_id": str(session.pool_id) if session.pool_id else None,
+        "pod_id": str(session.pod_id) if session.pod_id else None,
+    }
 
 
 async def get_member_session_access_payload(
@@ -102,6 +118,28 @@ async def evaluate_session_access_for_member(
             )
         pod_member_ids = (pod or {}).get("active_member_ids") or []
 
+    club_product_access = None
+    if _is_club_session(session) and not confirmed_booking:
+        try:
+            club_access = await check_club_access_batch(
+                [_club_access_check(session, member_id)],
+                calling_service=calling_service,
+            )
+        except httpx.HTTPError as e:
+            logger.warning(
+                "check_club_access_batch failed for session=%s member=%s: %s",
+                session.id,
+                member_id,
+                e,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Could not verify Club access. Please try again.",
+            )
+        club_product_access = bool(
+            (club_access.get(str(session.id)) or {}).get("allowed")
+        )
+
     return evaluate_session_access(
         member_payload,
         session,
@@ -109,6 +147,7 @@ async def evaluate_session_access_for_member(
         cohort_enrollment=cohort_enrollment,
         pod_member_ids=pod_member_ids,
         confirmed_booking=confirmed_booking,
+        club_product_access=club_product_access,
     )
 
 
@@ -118,7 +157,7 @@ async def get_sessions_access_context(
     member_payload: dict,
     confirmed_session_ids: set[uuid.UUID],
     calling_service: str = "sessions",
-) -> tuple[dict[str, dict], dict[str, list[str]]]:
+) -> tuple[dict[str, dict], dict[str, list[str]], dict[str, dict]]:
     """Batch all cross-service context needed to evaluate a session list."""
     cohort_ids = sorted(
         {
@@ -135,9 +174,14 @@ async def get_sessions_access_context(
         }
     )
     member_id = str(member_payload["member_id"])
+    club_checks = [
+        _club_access_check(session, member_id)
+        for session in sessions
+        if _is_club_session(session) and session.id not in confirmed_session_ids
+    ]
 
     try:
-        cohort_access, pod_rosters = await asyncio.gather(
+        cohort_access, pod_rosters, club_access = await asyncio.gather(
             check_cohort_enrollments_batch(
                 cohort_ids,
                 member_id,
@@ -145,6 +189,10 @@ async def get_sessions_access_context(
             ),
             get_pod_rosters_batch(
                 pod_ids,
+                calling_service=calling_service,
+            ),
+            check_club_access_batch(
+                club_checks,
                 calling_service=calling_service,
             ),
         )
@@ -159,7 +207,7 @@ async def get_sessions_access_context(
             detail="Could not verify session access. Please try again.",
         ) from exc
 
-    return cohort_access, pod_rosters
+    return cohort_access, pod_rosters, club_access
 
 
 def evaluate_session_access_from_context(
@@ -170,6 +218,7 @@ def evaluate_session_access_from_context(
     confirmed_booking: bool,
     cohort_access: dict[str, dict],
     pod_rosters: dict[str, list[str]],
+    club_access: dict[str, dict],
 ):
     """Evaluate one list item using already-batched cross-service context."""
     cohort_enrollment = None
@@ -187,6 +236,12 @@ def evaluate_session_access_from_context(
     if session.pod_id is not None and not confirmed_booking:
         pod_member_ids = pod_rosters.get(str(session.pod_id), [])
 
+    club_product_access = None
+    if _is_club_session(session) and not confirmed_booking:
+        club_product_access = bool(
+            (club_access.get(str(session.id)) or {}).get("allowed")
+        )
+
     return evaluate_session_access(
         member_payload,
         session,
@@ -194,6 +249,7 @@ def evaluate_session_access_from_context(
         cohort_enrollment=cohort_enrollment,
         pod_member_ids=pod_member_ids,
         confirmed_booking=confirmed_booking,
+        club_product_access=club_product_access,
     )
 
 

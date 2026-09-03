@@ -149,7 +149,7 @@ async def _decorate_sessions_for_user(
         .scalars()
         .all()
     )
-    cohort_access, pod_rosters = await get_sessions_access_context(
+    cohort_access, pod_rosters, club_access = await get_sessions_access_context(
         sessions=sessions,
         member_payload=member_payload,
         confirmed_session_ids=confirmed_session_ids,
@@ -164,6 +164,7 @@ async def _decorate_sessions_for_user(
             confirmed_booking=session.id in confirmed_session_ids,
             cohort_access=cohort_access,
             pod_rosters=pod_rosters,
+            club_access=club_access,
         )
         decorated.append(_session_payload(session, access))
     return decorated

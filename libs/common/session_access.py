@@ -121,15 +121,21 @@ def has_active_paid_until(member: Any, field: str, now: datetime | None = None) 
 
 
 def active_paid_tiers(member: Any, now: datetime | None = None) -> set[str]:
-    """Return tiers backed by current paid entitlements."""
+    """Return products backed by current paid entitlements.
+
+    These are intentionally independent. Programme participation does not
+    silently buy annual Community membership, and Academy does not silently
+    buy Club. Any bundle/included policy must create the corresponding dated
+    entitlement explicitly.
+    """
     now = now or utc_now()
     tiers: set[str] = set()
     if has_active_paid_until(member, "academy_paid_until", now):
-        tiers.update({ACADEMY, CLUB, COMMUNITY})
+        tiers.add(ACADEMY)
     if has_active_paid_until(member, "club_paid_until", now) or has_active_paid_until(
         member, "post_academy_club_until", now
     ):
-        tiers.update({CLUB, COMMUNITY})
+        tiers.add(CLUB)
     if has_active_paid_until(member, "community_paid_until", now):
         tiers.add(COMMUNITY)
     return tiers
@@ -162,9 +168,15 @@ def has_paid_session_access(
     paid_tiers = active_paid_tiers(member, now)
 
     if normalized == COMMUNITY or normalized == EVENT:
-        return bool(paid_tiers)
+        return COMMUNITY in paid_tiers
     if normalized == CLUB:
-        return CLUB in paid_tiers
+        # Academy is a distinct programme, not an implicit Club purchase.
+        # Dated ClubEnrollment checks are supplied by service adapters; this
+        # pure compatibility helper only recognises explicit legacy Club
+        # access and the post-Academy bridge.
+        return has_active_paid_until(
+            member, "club_paid_until", now
+        ) or has_active_paid_until(member, "post_academy_club_until", now)
     if normalized in {ACADEMY, COHORT_CLASS}:
         return True
     return bool(paid_tiers)
@@ -184,6 +196,7 @@ def evaluate_session_access(
     cohort_enrollment: Mapping[str, Any] | None = None,
     pod_member_ids: Iterable[Any] | None = None,
     confirmed_booking: bool = False,
+    club_product_access: bool | None = None,
 ) -> SessionAccessDecision:
     """Evaluate member access for a single session.
 
@@ -236,7 +249,17 @@ def evaluate_session_access(
         else:
             allowed = True
     elif session_type == CLUB:
-        if CLUB not in paid_tiers:
+        # Live service callers supply the authoritative, session-dated result
+        # from members_service.  ``None`` preserves explicit legacy Club and
+        # bridge access for older/offline callers, but deliberately does not
+        # inherit Club from an Academy tier.
+        has_club_access = (
+            club_product_access
+            if club_product_access is not None
+            else has_active_paid_until(member, "club_paid_until", now)
+            or has_active_paid_until(member, "post_academy_club_until", now)
+        )
+        if not has_club_access:
             reason = "club_required"
         else:
             member_id = _value(member, "member_id") or _value(member, "id")
@@ -250,12 +273,12 @@ def evaluate_session_access(
             else:
                 allowed = True
     elif session_type in {COMMUNITY, EVENT}:
-        if paid_tiers:
+        if COMMUNITY in paid_tiers:
             allowed = True
         else:
             reason = "membership_required"
     else:
-        if paid_tiers:
+        if COMMUNITY in paid_tiers:
             allowed = True
         else:
             reason = "membership_required"
