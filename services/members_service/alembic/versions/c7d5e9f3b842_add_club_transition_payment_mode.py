@@ -32,20 +32,11 @@ def upgrade() -> None:
     )
     op.add_column(
         "club_applications",
-        sa.Column("transition_session_rate_kobo", sa.Integer(), nullable=True),
-    )
-    op.add_column(
-        "club_applications",
         sa.Column("transition_expires_at", sa.Date(), nullable=True),
     )
     op.add_column(
         "club_applications",
         sa.Column("selected_payment_mode", sa.String(length=32), nullable=True),
-    )
-    op.create_check_constraint(
-        "ck_club_application_transition_rate_nonnegative",
-        "club_applications",
-        "transition_session_rate_kobo IS NULL OR transition_session_rate_kobo >= 0",
     )
     op.create_check_constraint(
         "ck_club_application_selected_payment_mode",
@@ -71,10 +62,6 @@ def upgrade() -> None:
             server_default="quarterly_prepaid",
         ),
     )
-    op.add_column(
-        "club_enrollments",
-        sa.Column("transition_session_rate_kobo", sa.Integer(), nullable=True),
-    )
     op.execute(
         """
         UPDATE club_enrollments AS enrollment
@@ -97,21 +84,9 @@ def upgrade() -> None:
         "club_enrollments",
         "payment_mode IN ('quarterly_prepaid', 'transition_per_session')",
     )
-    op.create_check_constraint(
-        "ck_club_enrollment_transition_rate",
-        "club_enrollments",
-        "(payment_mode = 'transition_per_session' AND "
-        "transition_session_rate_kobo IS NOT NULL AND "
-        "transition_session_rate_kobo >= 0) OR "
-        "(payment_mode = 'quarterly_prepaid' AND "
-        "transition_session_rate_kobo IS NULL)",
-    )
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "ck_club_enrollment_transition_rate", "club_enrollments", type_="check"
-    )
     op.drop_constraint(
         "ck_club_enrollment_payment_mode", "club_enrollments", type_="check"
     )
@@ -122,7 +97,6 @@ def downgrade() -> None:
     op.drop_index(
         op.f("ix_club_enrollments_pool_id"), table_name="club_enrollments"
     )
-    op.drop_column("club_enrollments", "transition_session_rate_kobo")
     op.drop_column("club_enrollments", "payment_mode")
     op.drop_column("club_enrollments", "operating_area_id")
     op.drop_column("club_enrollments", "pool_id")
@@ -132,12 +106,6 @@ def downgrade() -> None:
         "club_applications",
         type_="check",
     )
-    op.drop_constraint(
-        "ck_club_application_transition_rate_nonnegative",
-        "club_applications",
-        type_="check",
-    )
     op.drop_column("club_applications", "selected_payment_mode")
     op.drop_column("club_applications", "transition_expires_at")
-    op.drop_column("club_applications", "transition_session_rate_kobo")
     op.drop_column("club_applications", "approved_payment_modes")

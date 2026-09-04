@@ -55882,17 +55882,6 @@
             "type": "array",
             "title": "Approved Payment Modes"
           },
-          "transition_session_rate_kobo": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Transition Session Rate Kobo"
-          },
           "transition_expires_at": {
             "anyOf": [
               {
@@ -57224,18 +57213,6 @@
             "minItems": 1,
             "title": "Approved Payment Modes"
           },
-          "transition_session_rate_kobo": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Transition Session Rate Kobo"
-          },
           "transition_expires_at": {
             "anyOf": [
               {
@@ -57306,17 +57283,6 @@
               "transition_per_session"
             ],
             "title": "Payment Mode"
-          },
-          "transition_session_rate_kobo": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Transition Session Rate Kobo"
           },
           "transition_expires_at": {
             "anyOf": [

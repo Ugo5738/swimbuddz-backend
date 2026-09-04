@@ -165,7 +165,6 @@ class ClubObservedAssessmentUpdate(BaseModel):
     approved_payment_modes: list[
         Literal["quarterly_prepaid", "transition_per_session"]
     ] = Field(default_factory=lambda: ["quarterly_prepaid"], min_length=1, max_length=2)
-    transition_session_rate_kobo: Optional[int] = Field(default=None, ge=0)
     transition_expires_at: Optional[date] = None
 
     @model_validator(mode="after")
@@ -179,11 +178,9 @@ class ClubObservedAssessmentUpdate(BaseModel):
                 and self.transition_expires_at < date.today()
             ):
                 raise ValueError("transition_expires_at cannot be in the past")
-        elif (
-            self.transition_session_rate_kobo is not None or self.transition_expires_at
-        ):
+        elif self.transition_expires_at:
             raise ValueError(
-                "Transition rate/expiry require transition_per_session approval"
+                "Transition expiry requires transition_per_session approval"
             )
         return self
 
@@ -223,7 +220,6 @@ class ClubApplicationResponse(BaseModel):
     approved_payment_modes: list[
         Literal["quarterly_prepaid", "transition_per_session"]
     ] = Field(default_factory=list)
-    transition_session_rate_kobo: Optional[int] = None
     transition_expires_at: Optional[date] = None
     selected_payment_mode: Optional[
         Literal["quarterly_prepaid", "transition_per_session"]
@@ -248,7 +244,6 @@ class ClubPaymentContext(BaseModel):
         Literal["quarterly_prepaid", "transition_per_session"]
     ] = Field(default_factory=list)
     payment_mode: Literal["quarterly_prepaid", "transition_per_session"]
-    transition_session_rate_kobo: Optional[int] = None
     transition_expires_at: Optional[date] = None
     billing_cycle: str
     currency: str

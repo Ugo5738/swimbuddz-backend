@@ -200,7 +200,7 @@ async def test_club_access_uses_the_plan_pool_snapshot():
 
 
 @pytest.mark.asyncio
-async def test_transition_access_is_dated_location_specific_and_returns_snapshot_rate():
+async def test_transition_access_is_dated_and_location_specific_without_own_rate():
     member_id = uuid.uuid4()
     club_id = uuid.uuid4()
     pool_id = uuid.uuid4()
@@ -212,7 +212,6 @@ async def test_transition_access_is_dated_location_specific_and_returns_snapshot
         club_id=club_id,
         pool_id=pool_id,
         payment_mode="transition_per_session",
-        transition_session_rate_kobo=500_000,
         starts_at=now,
         ends_at=datetime(2027, 1, 1, tzinfo=timezone.utc),
     )
@@ -261,7 +260,7 @@ async def test_transition_access_is_dated_location_specific_and_returns_snapshot
         "enrollment_id": enrollment.id,
         "club_id": club_id,
         "payment_mode": "transition_per_session",
-        "fee_amount_kobo": 500_000,
+        "fee_amount_kobo": None,
     }
     assert result[2]["allowed"] is False
     assert result[3]["allowed"] is False

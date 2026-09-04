@@ -158,10 +158,10 @@ def test_authoritative_club_product_result_overrides_legacy_dates():
                 "allowed": True,
                 "source": "club_transition",
                 "payment_mode": "transition_per_session",
-                "fee_amount_kobo": 500_000,
+                "fee_amount_kobo": None,
             },
             "club_transition",
-            500_000,
+            9_000,
         ),
     ],
 )
@@ -178,6 +178,31 @@ def test_club_enrollment_mode_controls_the_authoritative_member_fee(
     assert decision.bookable
     assert decision.access_source == expected_source
     assert decision.fee_amount_kobo == expected_fee
+
+
+def test_transition_price_tracks_each_sessions_current_admin_pool_fee():
+    access = {
+        "allowed": True,
+        "source": "club_transition",
+        "payment_mode": "transition_per_session",
+        "fee_amount_kobo": None,
+    }
+
+    first = evaluate_session_access(
+        _member(),
+        _session(session_type="club", pool_fee=520_000),
+        now=NOW,
+        club_access_result=access,
+    )
+    later = evaluate_session_access(
+        _member(),
+        _session(session_type="club", pool_fee=550_000),
+        now=NOW,
+        club_access_result=access,
+    )
+
+    assert first.fee_amount_kobo == 520_000
+    assert later.fee_amount_kobo == 550_000
 
 
 def test_community_dropin_requires_explicit_session_opt_in_and_annual_membership():

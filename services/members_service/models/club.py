@@ -307,9 +307,6 @@ class ClubApplication(Base):
         default=lambda: ["quarterly_prepaid"],
         server_default='["quarterly_prepaid"]',
     )
-    transition_session_rate_kobo: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True
-    )
     transition_expires_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     selected_payment_mode: Mapped[Optional[str]] = mapped_column(
         String(32), nullable=True
@@ -322,11 +319,6 @@ class ClubApplication(Base):
     )
 
     __table_args__ = (
-        CheckConstraint(
-            "transition_session_rate_kobo IS NULL OR "
-            "transition_session_rate_kobo >= 0",
-            name="ck_club_application_transition_rate_nonnegative",
-        ),
         CheckConstraint(
             "selected_payment_mode IS NULL OR selected_payment_mode IN "
             "('quarterly_prepaid', 'transition_per_session')",
@@ -522,9 +514,6 @@ class ClubEnrollment(Base):
         default="quarterly_prepaid",
         server_default="quarterly_prepaid",
     )
-    transition_session_rate_kobo: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True
-    )
     assigned_pod_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("pods.id", ondelete="SET NULL"), nullable=True
     )
@@ -543,14 +532,6 @@ class ClubEnrollment(Base):
         CheckConstraint(
             "payment_mode IN ('quarterly_prepaid', 'transition_per_session')",
             name="ck_club_enrollment_payment_mode",
-        ),
-        CheckConstraint(
-            "(payment_mode = 'transition_per_session' AND "
-            "transition_session_rate_kobo IS NOT NULL AND "
-            "transition_session_rate_kobo >= 0) OR "
-            "(payment_mode = 'quarterly_prepaid' AND "
-            "transition_session_rate_kobo IS NULL)",
-            name="ck_club_enrollment_transition_rate",
         ),
         UniqueConstraint(
             "application_id",

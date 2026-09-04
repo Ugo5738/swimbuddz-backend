@@ -180,10 +180,8 @@ class Settings(BaseSettings):
     CLUB_QUARTERLY_FEE_NGN: int = 42500
     CLUB_BIANNUAL_FEE_NGN: int = 80000
     CLUB_ANNUAL_FEE_NGN: int = 150000
-    # Temporary, individually approved 2026 Club arrangement. These values
-    # are defaults for the admin assessment form; the application/enrollment
-    # snapshots remain authoritative after approval.
-    CLUB_TRANSITION_SESSION_RATE_NGN: int = 5000
+    # Temporary, individually approved 2026 Club arrangement. The expiry is
+    # snapshotted at approval; each session's pool_fee remains price authority.
     CLUB_TRANSITION_END_DATE: date = date(2026, 12, 31)
     WELCOME_BONUS_INCLUDE_COACHES: bool = False
     # Paystack (optional; used by payments_service)

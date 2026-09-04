@@ -139,9 +139,6 @@ async def resolve_club_access_checks(
             payment_mode = getattr(
                 matched_enrollment, "payment_mode", "quarterly_prepaid"
             )
-            transition_rate = getattr(
-                matched_enrollment, "transition_session_rate_kobo", None
-            )
             resolved.append(
                 {
                     "context_key": check.context_key,
@@ -154,11 +151,11 @@ async def resolve_club_access_checks(
                     "enrollment_id": matched_enrollment.id,
                     "club_id": matched_enrollment.club_id,
                     "payment_mode": payment_mode,
-                    "fee_amount_kobo": (
-                        transition_rate
-                        if payment_mode == "transition_per_session"
-                        else 0
-                    ),
+                    # Members-service owns dated/location eligibility. The
+                    # sessions service owns the current per-session price.
+                    "fee_amount_kobo": 0
+                    if payment_mode == "quarterly_prepaid"
+                    else None,
                 }
             )
         elif membership and _paid_until_covers(membership.post_academy_club_until, at):

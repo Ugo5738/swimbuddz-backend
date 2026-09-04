@@ -52,15 +52,15 @@ that enrollment have no second member session charge.
 `transition_per_session` is a temporary, admin-approved payment arrangement for
 the remainder of 2026. It is **not** a permanent weekly or monthly Club product,
 is never exposed globally, and is available only when an assessor enables it on
-the individual approved application. Admin snapshots the member's session rate
-and expiry (current policy default: 31 December 2026). Admin may approve only
+the individual approved application. Admin sets the expiry (current policy
+default: 31 December 2026), but does not set an applicant-specific session rate. Admin may approve only
 quarterly prepaid, only the transition, or both; the member sees exactly those
 options.
 
 A transition activation charges no quarterly Club fee. It creates a proper
 Club enrollment starting on activation and ending after the configured expiry
-date, with application, Club, pool, operating area, payment mode, transition
-rate, and optional pod snapshots. If annual SwimBuddz Membership does not cover
+date, with application, Club, pool, operating area, payment mode, and optional
+pod snapshots. If annual SwimBuddz Membership does not cover
 the transition period, the same checkout adds the required ₦20,000 annual block.
 If it already covers the period, the annual line is ₦0. A zero-total transition
 activation is settled internally rather than sent to a payment provider. A
@@ -68,9 +68,11 @@ quarterly Community Experience bundle selection is never carried into a
 transition activation; Community Experience remains a separate, explicit
 purchase.
 
-The member-facing wording is **2026 Club Transition — Pay Per Session**: Club
-sessions are charged at the snapshotted rate when booked, and quarterly Club
-enrollment becomes the standard from 2027.
+The member-facing wording is **2026 Club Transition — Pay Per Session**. Each
+Club session's current Admin-configured `pool_fee` is resolved when the member
+books or creates the payment intent. The booking/payment snapshots that resolved
+amount, so a later session edit cannot rewrite an already-paid booking. Quarterly
+Club enrollment becomes the standard from 2027.
 
 Annual SwimBuddz Membership is a separate ecosystem product. A new swimmer does
 not have to take an unrelated Community-first checkout path: if Membership will
@@ -94,7 +96,7 @@ amount is never authoritative.
 | Access source | Requirements | Authenticated member fee |
 | --- | --- | ---: |
 | `club_enrollment` | active prepaid enrollment covers session date and pool/location (and pod when scoped) | ₦0, included in Club quarter |
-| `club_transition` | active transition enrollment covers session date and pool/location (and pod when scoped) | snapshotted transition rate |
+| `club_transition` | active transition enrollment covers session date and pool/location (and pod when scoped) | session's current Admin-configured `pool_fee` |
 | `community_dropin` | active annual Membership and the session explicitly enables Community drop-ins | session's `community_dropin_fee_kobo` |
 
 All three paths consume normal session capacity. A Community-only member is

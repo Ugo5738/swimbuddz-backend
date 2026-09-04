@@ -90,13 +90,10 @@ def _application_payment_mode(
             status_code=403,
             detail="This payment arrangement was not approved for your Club application",
         )
-    if chosen == TRANSITION_PER_SESSION and (
-        application.transition_session_rate_kobo is None
-        or application.transition_expires_at is None
-    ):
+    if chosen == TRANSITION_PER_SESSION and application.transition_expires_at is None:
         raise HTTPException(
             status_code=409,
-            detail="The approved transition arrangement is missing its rate or expiry",
+            detail="The approved transition arrangement is missing its expiry",
         )
     return chosen  # type: ignore[return-value]
 
@@ -158,11 +155,6 @@ def _new_club_enrollment(
         pool_id=plan.pool_id,
         operating_area_id=plan.operating_area_id,
         payment_mode=payment_mode,
-        transition_session_rate_kobo=(
-            application.transition_session_rate_kobo
-            if payment_mode == TRANSITION_PER_SESSION
-            else None
-        ),
         assigned_pod_id=application.preferred_pod_id,
     )
 
@@ -780,7 +772,6 @@ async def complete_observed_club_assessment(
         db.add(assessment)
     commercial_fields = {
         "approved_payment_modes",
-        "transition_session_rate_kobo",
         "transition_expires_at",
     }
     for field, value in body.model_dump(
@@ -798,11 +789,6 @@ async def complete_observed_club_assessment(
         approved_modes = list(dict.fromkeys(body.approved_payment_modes))
         application.approved_payment_modes = approved_modes
         if TRANSITION_PER_SESSION in approved_modes:
-            application.transition_session_rate_kobo = (
-                body.transition_session_rate_kobo
-                if body.transition_session_rate_kobo is not None
-                else int(settings.CLUB_TRANSITION_SESSION_RATE_NGN) * 100
-            )
             application.transition_expires_at = (
                 body.transition_expires_at or settings.CLUB_TRANSITION_END_DATE
             )
@@ -812,11 +798,9 @@ async def complete_observed_club_assessment(
                     detail="The Club transition expiry cannot be in the past",
                 )
         else:
-            application.transition_session_rate_kobo = None
             application.transition_expires_at = None
     else:
         application.approved_payment_modes = []
-        application.transition_session_rate_kobo = None
         application.transition_expires_at = None
     await db.commit()
 
@@ -1030,11 +1014,6 @@ async def get_club_application_payment_context(
         plan_version_ids=[selected.id for selected in capacity_plans],
         approved_payment_modes=application.approved_payment_modes,
         payment_mode=chosen_mode,
-        transition_session_rate_kobo=(
-            application.transition_session_rate_kobo
-            if chosen_mode == TRANSITION_PER_SESSION
-            else None
-        ),
         transition_expires_at=(
             application.transition_expires_at
             if chosen_mode == TRANSITION_PER_SESSION

@@ -202,7 +202,6 @@ async def preview_additional_charges(
             "club_items": context.get("club_items") or [],
             "club_payment_mode": context["payment_mode"],
             "approved_payment_modes": context.get("approved_payment_modes") or [],
-            "transition_session_rate_kobo": context.get("transition_session_rate_kobo"),
             "transition_expires_at": context.get("transition_expires_at"),
             "annual_swimbuddz_membership": int(
                 context.get("annual_membership_fee_kobo") or 0

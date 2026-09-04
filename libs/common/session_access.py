@@ -309,17 +309,15 @@ def evaluate_session_access(
                     else "legacy_club_entitlement"
                 )
                 access_source = source
-                resolved_fee = (
-                    club_access_result.get("fee_amount_kobo")
-                    if club_access_result is not None
-                    else None
-                )
                 if source == "club_enrollment":
                     fee_amount_kobo = 0
                     price_label = "Included in Club quarter"
                 elif source == "club_transition":
-                    fee_amount_kobo = int(resolved_fee or 0)
-                    price_label = "2026 transition rate"
+                    # Transition is an eligibility/payment mode, not a price.
+                    # Resolve the session's current Admin-set price now; the
+                    # booking/payment layer snapshots the resulting amount.
+                    fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
+                    price_label = "2026 transition session price"
                 else:
                     # Legacy and post-Academy bridges are eligibility grants,
                     # not prepaid quarters; the session's operational member

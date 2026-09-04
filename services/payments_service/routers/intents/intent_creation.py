@@ -768,9 +768,6 @@ async def create_payment_intent(
                 "club_billing_cycle": cycle,
                 "club_application_id": str(payload.club_application_id),
                 "club_payment_mode": context["payment_mode"],
-                "transition_session_rate_kobo": context.get(
-                    "transition_session_rate_kobo"
-                ),
                 "transition_expires_at": context.get("transition_expires_at"),
                 "club_id": context["club_id"],
                 "club_name": context["club_name"],

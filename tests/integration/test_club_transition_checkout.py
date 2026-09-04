@@ -59,7 +59,6 @@ async def test_transition_quote_and_activation_are_zero_quarterly_and_snapshotte
         status="approved",
         community_experience_selected=False,
         approved_payment_modes=["transition_per_session"],
-        transition_session_rate_kobo=520_000,
         transition_expires_at=date(2026, 12, 31),
     )
     db_session.add(application)
@@ -76,7 +75,7 @@ async def test_transition_quote_and_activation_are_zero_quarterly_and_snapshotte
     assert quote["club_items"][0]["amount_kobo"] == 0
     assert quote["annual_membership_fee_kobo"] == 2_000_000
     assert quote["subtotal_kobo"] == 2_000_000
-    assert quote["transition_session_rate_kobo"] == 520_000
+    assert "transition_session_rate_kobo" not in quote
     assert quote["transition_expires_at"] == "2026-12-31"
 
     activation_response = await members_client.post(
@@ -101,7 +100,7 @@ async def test_transition_quote_and_activation_are_zero_quarterly_and_snapshotte
     assert enrollment.pool_id == pool_id
     assert enrollment.operating_area_id == area_id
     assert enrollment.payment_mode == "transition_per_session"
-    assert enrollment.transition_session_rate_kobo == 520_000
+    assert not hasattr(enrollment, "transition_session_rate_kobo")
 
 
 @pytest.mark.asyncio
@@ -136,7 +135,6 @@ async def test_active_membership_covering_transition_is_not_charged_again(
         status="approved",
         community_experience_selected=False,
         approved_payment_modes=["transition_per_session"],
-        transition_session_rate_kobo=500_000,
         transition_expires_at=date(2026, 12, 31),
     )
     db_session.add_all(
@@ -201,7 +199,6 @@ async def test_transition_quote_ignores_carried_community_experience_selection(
         # application before Admin approved transition_per_session.
         community_experience_selected=True,
         approved_payment_modes=["transition_per_session"],
-        transition_session_rate_kobo=500_000,
         transition_expires_at=date(2026, 12, 31),
     )
     db_session.add(application)
@@ -265,7 +262,6 @@ async def test_new_club_period_reuses_completed_readiness_without_auto_enrollmen
         status="enrolled",
         community_experience_selected=False,
         approved_payment_modes=["transition_per_session"],
-        transition_session_rate_kobo=500_000,
         transition_expires_at=today - timedelta(days=1),
         selected_payment_mode="transition_per_session",
     )

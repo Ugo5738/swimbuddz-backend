@@ -218,6 +218,52 @@ async def test_club_booking_uses_access_source_price_and_ignores_client_amount(
 
 
 @pytest.mark.asyncio
+async def test_transition_booking_snapshots_current_session_price(
+    sessions_client, db_session
+):
+    from libs.common.session_access import evaluate_session_access
+    from services.sessions_service.models import SessionBooking
+
+    session = await _make_club_session(db_session, pool_fee=520_000)
+    access = evaluate_session_access(
+        {"id": str(uuid.uuid4()), "member_id": str(uuid.uuid4())},
+        session,
+        now=_start() - timedelta(days=1),
+        club_access_result={
+            "allowed": True,
+            "source": "club_transition",
+            "payment_mode": "transition_per_session",
+            "fee_amount_kobo": None,
+        },
+    )
+    member_patch, _, _ = _patch_member_wallet()
+    with (
+        member_patch,
+        patch(
+            f"{BOOKINGS}.evaluate_member_session_access",
+            AsyncMock(return_value=access),
+        ),
+    ):
+        response = await sessions_client.post(
+            f"/sessions/{session.id}/book",
+            json={"session_id": str(session.id), "fee_amount_kobo": 1},
+        )
+
+    assert response.status_code == 201, response.text
+    booking_id = uuid.UUID(response.json()["id"])
+    assert response.json()["fee_amount_kobo"] == 520_000
+    assert response.json()["member_fee_amount_kobo"] == 520_000
+
+    session.pool_fee = 550_000
+    await db_session.commit()
+    booking = await db_session.get(SessionBooking, booking_id)
+
+    assert booking.fee_amount_kobo == 520_000
+    assert booking.member_fee_amount_kobo == 520_000
+    assert booking.access_source == "club_transition"
+
+
+@pytest.mark.asyncio
 async def test_attached_guest_fee_is_independent_from_included_club_member_price(
     sessions_client, db_session
 ):
