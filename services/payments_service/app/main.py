@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from libs.common.health import register_health_check
 from services.payments_service.routers import (
+    charges_router,
     discounts_router,
     intents_router,
     internal_router,
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
 
     # Include split payments routers
     app.include_router(intents_router)
+    app.include_router(charges_router)
     app.include_router(webhooks_router)
     app.include_router(discounts_router)
     app.include_router(internal_router)

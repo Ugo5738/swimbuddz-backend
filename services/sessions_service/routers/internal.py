@@ -23,6 +23,7 @@ from libs.common.session_access import denial_message
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     BookingChannel,
+    GuestPass,
     Session,
     SessionBooking,
     SessionBookingStatus,
@@ -82,6 +83,9 @@ class SessionBasic(BaseModel):
     # pool_fee is returned in KOBO (integer) for service-to-service use.
     # Wallet-only consumers require pool_fee to be exactly divisible by one Bubble.
     pool_fee: Optional[int] = None
+    guest_fee_kobo: Optional[int] = None
+    community_dropin_fee_kobo: Optional[int] = None
+    allows_community_dropins: bool = False
     ride_share_fee: Optional[int] = None
     occupied_slots: int = 0
     confirmed_booking_member_ids: List[str] = Field(default_factory=list)
@@ -260,6 +264,7 @@ class SessionDetailedStats(BaseModel):
 
     total_sessions: int = 0
     total_pool_hours: float = 0.0
+    guest_swimmer_hours: float = 0.0
     by_type: dict | None = None
     most_active_location: str | None = None
     busiest_session_title: str | None = None
@@ -374,8 +379,27 @@ async def get_session_detailed_stats(
     )
     sessions = result.scalars().all()
 
+    guest_minutes = int(
+        (
+            await db.execute(
+                select(func.coalesce(func.sum(GuestPass.actual_swim_minutes), 0))
+                .join(Session, Session.id == GuestPass.session_id)
+                .where(
+                    Session.starts_at >= parsed_from,
+                    Session.starts_at <= parsed_to,
+                    GuestPass.status == "attended",
+                    # Once linked to a member, these minutes are included in
+                    # that member's attendance history. Keep them out of the
+                    # aggregate guest bucket so swimmer-hours count once.
+                    GuestPass.converted_member_id.is_(None),
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+
     if not sessions:
-        return SessionDetailedStats()
+        return SessionDetailedStats(guest_swimmer_hours=round(guest_minutes / 60, 1))
 
     # Total pool hours (sum of session durations)
     total_hours = sum(
@@ -437,11 +461,50 @@ async def get_session_detailed_stats(
     return SessionDetailedStats(
         total_sessions=len(sessions),
         total_pool_hours=round(total_hours, 1),
+        guest_swimmer_hours=round(guest_minutes / 60, 1),
         by_type=dict(type_counts) if type_counts else None,
         most_active_location=most_active,
         most_popular_day=most_popular_day,
         most_popular_time_slot=most_popular_slot,
         session_details=details,
+    )
+
+
+class ConvertedGuestHours(BaseModel):
+    member_id: uuid.UUID
+    swimmer_hours: float = 0.0
+
+
+@router.get(
+    "/member/{member_id}/converted-guest-hours",
+    response_model=ConvertedGuestHours,
+)
+async def get_converted_guest_hours(
+    member_id: uuid.UUID,
+    date_from: datetime = Query(..., alias="from"),
+    date_to: datetime = Query(..., alias="to"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+) -> ConvertedGuestHours:
+    """Return standalone guest swim history linked to a converted member."""
+    minutes = int(
+        (
+            await db.execute(
+                select(func.coalesce(func.sum(GuestPass.actual_swim_minutes), 0))
+                .join(Session, Session.id == GuestPass.session_id)
+                .where(
+                    GuestPass.converted_member_id == member_id,
+                    GuestPass.status == "attended",
+                    Session.starts_at >= date_from,
+                    Session.starts_at <= date_to,
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    return ConvertedGuestHours(
+        member_id=member_id,
+        swimmer_hours=round(minutes / 60, 1),
     )
 
 
@@ -630,6 +693,9 @@ async def get_session_by_id(
         pod_id=str(session.pod_id) if session.pod_id else None,
         capacity=session.capacity,
         pool_fee=session.pool_fee,
+        guest_fee_kobo=getattr(session, "guest_fee_kobo", None),
+        community_dropin_fee_kobo=getattr(session, "community_dropin_fee_kobo", None),
+        allows_community_dropins=getattr(session, "allows_community_dropins", False),
         ride_share_fee=session.ride_share_fee,
         occupied_slots=occupied_slots,
         confirmed_booking_member_ids=confirmed_member_ids,
@@ -712,6 +778,9 @@ async def get_member_session_access(
         sign_in_eligible=access.sign_in_eligible,
         reason=access.reason,
         message=denial_message(access.reason) if access.reason else None,
+        access_source=access.access_source,
+        fee_amount_kobo=access.fee_amount_kobo,
+        price_label=access.price_label,
     )
 
 
@@ -1003,6 +1072,7 @@ async def reserve_bundle_bookings(
         member_id=member_id,
         calling_service="sessions",
     )
+    access_by_session = {}
     for session_id in payload.session_ids:
         session = session_map[session_id]
         access = await evaluate_session_access_for_member(
@@ -1016,6 +1086,7 @@ async def reserve_bundle_bookings(
                 status_code=403,
                 detail=f"{session.title}: {denial_message(access.reason)}",
             )
+        access_by_session[session_id] = access
 
     lines: list[BundleBookingLineResponse] = []
     for session_id in payload.session_ids:
@@ -1026,7 +1097,8 @@ async def reserve_bundle_bookings(
             member_id=member_id,
             new_party_size=1,
         )
-        fee_kobo = int(session.pool_fee or 0)
+        access = access_by_session[session_id]
+        fee_kobo = int(access.fee_amount_kobo or 0)
         booking = existing_by_session.get(session_id)
         if booking is None:
             booking = SessionBooking(
@@ -1037,6 +1109,8 @@ async def reserve_bundle_bookings(
                 channel=BookingChannel.BUNDLE_CART,
                 party_size=1,
                 fee_amount_kobo=fee_kobo,
+                member_fee_amount_kobo=fee_kobo,
+                access_source=access.access_source,
                 payment_intent_id=payload.payment_intent_id,
                 booked_at=now,
                 expires_at=now + timedelta(minutes=PENDING_TTL_MINUTES),
@@ -1048,6 +1122,8 @@ async def reserve_bundle_bookings(
             booking.channel = BookingChannel.BUNDLE_CART
             booking.party_size = 1
             booking.fee_amount_kobo = fee_kobo
+            booking.member_fee_amount_kobo = fee_kobo
+            booking.access_source = access.access_source
             booking.payment_intent_id = payload.payment_intent_id
             booking.wallet_transaction_id = None
             booking.confirmed_at = None

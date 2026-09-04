@@ -151,6 +151,40 @@ async def get_member_membership(
     return resp.json()
 
 
+async def check_club_access_batch(
+    checks: list[dict], *, calling_service: str
+) -> dict[str, dict]:
+    """Resolve dated, location-specific Club access for multiple contexts.
+
+    ``context_key`` is supplied by the caller and is returned unchanged, so a
+    session list can be decorated with one members-service request.
+    """
+    if not checks:
+        return {}
+    settings = get_settings()
+    resolved: dict[str, dict] = {}
+    # Keep individual internal requests bounded for digests across many
+    # members/sessions, while presenting one helper contract to callers.
+    for offset in range(0, len(checks), 500):
+        resp = await internal_post(
+            service_url=settings.MEMBERS_SERVICE_URL,
+            path="/internal/members/club-access/checks",
+            calling_service=calling_service,
+            json={"checks": checks[offset : offset + 500]},
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        items = payload.get("items", []) if isinstance(payload, dict) else []
+        resolved.update(
+            {
+                str(item["context_key"]): item
+                for item in items
+                if isinstance(item, dict) and item.get("context_key")
+            }
+        )
+    return resolved
+
+
 async def get_coach_readiness_data(
     member_id: str, *, calling_service: str
 ) -> Optional[dict]:

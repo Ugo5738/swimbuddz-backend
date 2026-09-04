@@ -333,9 +333,10 @@ async def admin_mark_enrollment_paid(
 
     # A paid enrollment is not fulfilled until its membership entitlement is
     # durable. A payment-scoped key deduplicates webhook/verify retries while
-    # allowing each distinct successful installment to refresh Community to at
-    # least one year from that payment. Academy itself remains cohort-bounded;
-    # Club is inherited while Academy is active.
+    # allowing each distinct successful installment to apply its own durable
+    # Academy access. Annual Membership, when the configured programme policy
+    # requires or includes it, is applied separately by payments_service.
+    # Academy never implies Club; the graduation bridge is an explicit grant.
     try:
         _settings = get_settings()
         cohort_end = enrollment.cohort.end_date if enrollment.cohort else None

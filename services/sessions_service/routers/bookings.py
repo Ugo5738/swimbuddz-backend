@@ -52,6 +52,7 @@ from libs.db.session import get_async_db
 from services.sessions_service.models import (
     BookingChannel,
     BookingGuest,
+    GuestPass,
     Session,
     SessionBooking,
     SessionBookingStatus,
@@ -74,6 +75,7 @@ from services.sessions_service.schemas import (
 from services.sessions_service.services.session_access import (
     evaluate_member_session_access,
 )
+from services.sessions_service.services.guest_identity import normalize_guest_phone
 from services.sessions_service.services.booking_capacity import (
     PENDING_TTL_MINUTES,
     assert_booking_capacity,
@@ -317,7 +319,7 @@ async def _replace_guests(
             BookingGuest(
                 booking_id=booking_id,
                 full_name=(g.full_name or None),
-                phone=(g.phone or None),
+                phone=(normalize_guest_phone(g.phone) if g.phone else None),
                 intent=getattr(g.intent, "value", str(g.intent)),
                 date_of_birth=g.date_of_birth,
                 guardian_name=(g.guardian_name or None),
@@ -409,12 +411,18 @@ async def book_session(
             detail=denial_message(access.reason),
         )
 
-    # Server-authoritative head count + fee: the member's own slot plus any
-    # named guests (D1/D3); fee is pool_fee × heads (D8) — the client-sent
-    # fee_amount_kobo is ignored. Guest eligibility + capacity are checked
-    # before any wallet debit so we never charge and then reject.
+    # Server-authoritative head count + fee. Club pricing is resolved from the
+    # member's dated access source; attached guests remain independently priced
+    # at guest_fee. The client-sent fee_amount_kobo is always ignored.
     party_size = 1 + len(booking_in.guests) + booking_in.block_guests
-    fee_kobo = int(session.pool_fee or 0) * party_size
+    member_fee_kobo = int(access.fee_amount_kobo or 0)
+    guest_count = party_size - 1
+    guest_unit_fee_kobo = int(
+        session.guest_fee_kobo
+        if session.guest_fee_kobo is not None
+        else session.pool_fee or 0
+    )
+    fee_kobo = member_fee_kobo + (guest_unit_fee_kobo * guest_count)
     _validate_guest_policy(
         allows_guests=session.allows_guests,
         max_guests=session.max_guests_per_booking,
@@ -446,6 +454,8 @@ async def book_session(
 
         existing.party_size = party_size
         existing.fee_amount_kobo = fee_kobo
+        existing.member_fee_amount_kobo = member_fee_kobo
+        existing.access_source = access.access_source
         existing.booking_source = booking_in.booking_source
         existing.campaign_key = booking_in.campaign_key
         if booking_in.notes is not None:
@@ -512,6 +522,8 @@ async def book_session(
             channel=BookingChannel.MEMBER_SELF,
             party_size=party_size,
             fee_amount_kobo=fee_kobo,
+            member_fee_amount_kobo=member_fee_kobo,
+            access_source=access.access_source,
             notes=booking_in.notes,
             wallet_transaction_id=wallet_txn_id,
             booking_source=booking_in.booking_source,
@@ -545,6 +557,8 @@ async def book_session(
         channel=BookingChannel.MEMBER_SELF,
         party_size=party_size,
         fee_amount_kobo=fee_kobo,
+        member_fee_amount_kobo=member_fee_kobo,
+        access_source=access.access_source,
         notes=booking_in.notes,
         booking_source=booking_in.booking_source,
         campaign_key=booking_in.campaign_key,
@@ -607,7 +621,7 @@ async def add_trial_guest(
     )
 
     # One trial per prospect — a phone can sample a class only once.
-    phone = (payload.phone or "").strip()
+    phone = normalize_guest_phone(payload.phone) if payload.phone else ""
     if phone:
         prior = (
             await db.execute(
@@ -708,7 +722,7 @@ async def name_booking_guest(
     )
 
     guest.full_name = payload.full_name.strip() if payload.full_name else None
-    guest.phone = payload.phone or None
+    guest.phone = normalize_guest_phone(payload.phone) if payload.phone else None
     guest.date_of_birth = payload.date_of_birth
     guest.guardian_name = payload.guardian_name or None
     guest.guardian_phone = payload.guardian_phone or None
@@ -770,8 +784,8 @@ async def convert_guest_to_member(
     """Close the funnel loop: link a guest's prior appearances to the member
     account they just created. Sets converted_member_id on every unconverted
     BookingGuest row sharing the phone. Returns how many were linked."""
-    phone = payload.phone.strip()
-    result = await db.execute(
+    phone = normalize_guest_phone(payload.phone)
+    guest_result = await db.execute(
         update(BookingGuest)
         .where(
             BookingGuest.phone == phone,
@@ -779,11 +793,19 @@ async def convert_guest_to_member(
         )
         .values(converted_member_id=payload.member_id)
     )
+    pass_result = await db.execute(
+        update(GuestPass)
+        .where(
+            GuestPass.phone == phone,
+            GuestPass.converted_member_id.is_(None),
+        )
+        .values(converted_member_id=payload.member_id)
+    )
     await db.commit()
     return GuestConvertResponse(
         phone=phone,
         member_id=payload.member_id,
-        converted=result.rowcount or 0,
+        converted=(guest_result.rowcount or 0) + (pass_result.rowcount or 0),
     )
 
 

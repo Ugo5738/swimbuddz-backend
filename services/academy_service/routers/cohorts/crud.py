@@ -17,7 +17,14 @@ from libs.common.service_client import get_member_by_auth_id, internal_delete
 from libs.db.session import get_async_db
 from services.academy_service.models import CoachAssignment, Cohort
 from services.academy_service.routers._shared import _ensure_active_coach
-from services.academy_service.schemas import CohortCreate, CohortResponse, CohortUpdate
+from services.academy_service.schemas import (
+    CohortCreate,
+    CohortPricingLine,
+    CohortPricingResponse,
+    CohortPricingUpdate,
+    CohortResponse,
+    CohortUpdate,
+)
 from services.academy_service.services.chat_sync import ensure_cohort_channel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +32,92 @@ from sqlalchemy.orm import selectinload
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+def _pricing_response(cohort: Cohort) -> CohortPricingResponse:
+    lines = [
+        CohortPricingLine(
+            label=str(line.get("label") or "Cost"),
+            amount_ngn=int(line.get("amount_kobo") or 0) // 100,
+        )
+        for line in (cohort.pricing_cost_lines or [])
+    ]
+    published_kobo = (
+        cohort.price_override
+        if cohort.price_override is not None
+        else cohort.program.price_amount
+    )
+    return CohortPricingResponse(
+        cohort_id=cohort.id,
+        cost_lines=lines,
+        cost_total_ngn=sum(line.amount_ngn for line in lines),
+        margin_percent=cohort.pricing_margin_basis_points / 100,
+        calculated_price_ngn=int(cohort.calculated_price_kobo or 0) // 100,
+        round_to_ngn=cohort.pricing_round_to_kobo // 100,
+        suggested_price_ngn=int(cohort.suggested_price_kobo or 0) // 100,
+        published_price_ngn=int(published_kobo or 0) // 100,
+    )
+
+
+@router.get(
+    "/admin/cohorts/{cohort_id}/pricing",
+    response_model=CohortPricingResponse,
+)
+async def get_cohort_pricing(
+    cohort_id: uuid.UUID,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = (
+        await db.execute(
+            select(Cohort)
+            .where(Cohort.id == cohort_id)
+            .options(selectinload(Cohort.program))
+        )
+    ).scalar_one_or_none()
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+    return _pricing_response(cohort)
+
+
+@router.put(
+    "/admin/cohorts/{cohort_id}/pricing",
+    response_model=CohortPricingResponse,
+)
+async def update_cohort_pricing(
+    cohort_id: uuid.UUID,
+    body: CohortPricingUpdate,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = (
+        await db.execute(
+            select(Cohort)
+            .where(Cohort.id == cohort_id)
+            .options(selectinload(Cohort.program))
+        )
+    ).scalar_one_or_none()
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+    cost_lines = [
+        {"label": line.label, "amount_kobo": line.amount_ngn * 100}
+        for line in body.cost_lines
+    ]
+    cost_total = sum(line["amount_kobo"] for line in cost_lines)
+    basis_points = round(body.margin_percent * 100)
+    calculated = (cost_total * (10_000 + basis_points) + 9_999) // 10_000
+    round_to = body.round_to_ngn * 100
+    suggested = ((calculated + round_to - 1) // round_to) * round_to
+    cohort.pricing_cost_lines = cost_lines
+    cohort.pricing_margin_basis_points = basis_points
+    cohort.calculated_price_kobo = calculated
+    cohort.pricing_round_to_kobo = round_to
+    cohort.suggested_price_kobo = suggested
+    if body.apply_suggested_price:
+        cohort.price_override = suggested
+    await db.commit()
+    await db.refresh(cohort)
+    return _pricing_response(cohort)
 
 
 @router.post("/cohorts", response_model=CohortResponse)

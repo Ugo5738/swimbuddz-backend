@@ -36,6 +36,7 @@ from .media import (
     verify_media_object,
 )
 from .members import (
+    check_club_access_batch,
     get_admin_members,
     get_birthdays_today,
     get_coach_availability,
@@ -112,6 +113,7 @@ __all__ = [
     "upload_media_object",
     "delete_media_object",
     # Members
+    "check_club_access_batch",
     "get_member_by_auth_id",
     "search_members",
     "get_member_by_id",

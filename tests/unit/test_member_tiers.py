@@ -37,19 +37,30 @@ class TestNormalizeMemberTiers:
         assert tiers == []
         assert changed is True
 
-    def test_club_entitlement_adds_club_and_community(self):
-        """Active club subscription should add both club and community tiers."""
+    def test_club_entitlement_does_not_manufacture_community_membership(self):
+        """Club and annual Membership are independent paid products."""
         future = datetime.now(timezone.utc) + timedelta(days=30)
         primary, tiers, changed = member_service.normalize_member_tiers(
             current_tier="community",
             current_tiers=["community"],
-            community_paid_until=future,
+            community_paid_until=None,
             club_paid_until=future,
         )
         assert primary == "club"
-        assert "club" in tiers
-        assert "community" in tiers
+        assert tiers == ["club"]
         assert changed is True
+
+    def test_academy_entitlement_does_not_manufacture_other_products(self):
+        future = datetime.now(timezone.utc) + timedelta(days=30)
+        primary, tiers, _ = member_service.normalize_member_tiers(
+            current_tier="prospect",
+            current_tiers=[],
+            community_paid_until=None,
+            club_paid_until=None,
+            academy_paid_until=future,
+        )
+        assert primary == "academy"
+        assert tiers == ["academy"]
 
     def test_expired_club_is_stripped(self):
         """Expired club tier must be stripped — tiers are derived from paid_until."""
@@ -244,15 +255,15 @@ class TestClubEligibility:
         assert eligible is True
         assert error is None
 
-    def test_academy_approved_counts_as_club_eligible(self):
-        """Member with academy approved should be eligible for club."""
+    def test_academy_approval_does_not_count_as_club_eligibility(self):
+        """Academy participation cannot bypass the separate Club process."""
         eligible, error = member_service.check_club_eligibility(
             approved_tiers={"academy", "community"},
             requested_tiers=set(),
             readiness_complete=False,
         )
-        assert eligible is True
-        assert error is None
+        assert eligible is False
+        assert error == "Club upgrade not requested"
 
     def test_not_requested_is_ineligible(self):
         """Member who hasn't requested club should be ineligible."""

@@ -2,11 +2,25 @@
 
 import uuid
 from datetime import date, datetime, time
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    WithJsonSchema,
+    model_validator,
+)
 
-ActivityScope = Literal["all", "community", "club", "academy"]
+ActivityScope = Annotated[
+    Literal["all", "community", "club", "academy"],
+    WithJsonSchema(
+        {
+            "type": "string",
+            "enum": ["all", "community", "club", "academy"],
+        }
+    ),
+]
 AreaType = Literal["country", "market", "commercial_band", "locality"]
 ChargeBasis = Literal[
     "per_attendee",

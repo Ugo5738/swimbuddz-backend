@@ -23,11 +23,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.members_service.models import (
+    ClubEnrollment,
     Member,
-    MemberMembership,
     Pod,
     PodAssignment,
     PodAssignmentSource,
@@ -43,12 +44,10 @@ from services.members_service.schemas.pod import (
     PodUpdateRequest,
 )
 from services.members_service.services import pod_ops
+from services.members_service.services.club_access import has_current_club_access
 from services.members_service.services.chat_sync import (
     ensure_pod_channel,
     reconcile_pod_membership,
-)
-from services.members_service.services.membership_status import (
-    effective_tiers_from_dates,
 )
 
 logger = get_logger(__name__)
@@ -75,27 +74,12 @@ async def _resolve_member_id(current_user: AuthUser, db: AsyncSession) -> uuid.U
 
 
 async def _require_effective_club(member_id: uuid.UUID, db: AsyncSession) -> None:
-    membership = (
-        await db.execute(
-            select(MemberMembership).where(MemberMembership.member_id == member_id)
-        )
-    ).scalar_one_or_none()
-    tiers = (
-        effective_tiers_from_dates(
-            community_paid_until=membership.community_paid_until,
-            club_paid_until=membership.club_paid_until,
-            academy_paid_until=membership.academy_paid_until,
-            post_academy_club_until=membership.post_academy_club_until,
-        )
-        if membership
-        else set()
-    )
-    if "club" not in tiers:
+    if not await has_current_club_access(db, member_id=member_id, at=utc_now()):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
                 "Active Club access is required to participate in pods. "
-                "Renew Club or Academy to continue."
+                "Renew Club access to continue."
             ),
         )
 
@@ -425,6 +409,30 @@ async def member_join_pod(
     member_id = await _resolve_member_id(current_user, db)
     await _require_effective_club(member_id, db)
     pod = await pod_ops.get_pod_or_404(db, pod_id)
+    now = utc_now()
+
+    active_enrollments = list(
+        (
+            await db.execute(
+                select(ClubEnrollment).where(
+                    ClubEnrollment.member_id == member_id,
+                    ClubEnrollment.status == "active",
+                    ClubEnrollment.starts_at <= now,
+                    ClubEnrollment.ends_at > now,
+                )
+            )
+        ).scalars()
+    )
+    # Legacy Club entitlements have no enrollment row and retain the old
+    # behaviour. New registrations are location-bound and may only join a pod
+    # at the location they purchased.
+    if active_enrollments and not any(
+        enrollment.club_id == pod.club_id for enrollment in active_enrollments
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Choose a pod at your enrolled Club location",
+        )
 
     if pod.visibility.value != "public":
         raise HTTPException(

@@ -9,6 +9,7 @@ from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_urls
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,11 +26,35 @@ from services.members_service.routers._helpers import (
 from services.members_service.schemas import (
     ChallengeBadgeAwardResponse,
     MemberResponse,
+    MemberMembershipResponse,
     MemberUpdate,
+)
+from services.members_service.services.club_access import (
+    current_club_enrollment_until,
 )
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+async def _member_response_with_club_enrollment(
+    member: Member,
+    db: AsyncSession,
+) -> dict:
+    """Serialize a member with the current dated Club product projection."""
+
+    member_dict = MemberResponse.model_validate(member).model_dump()
+    membership = member_dict.get("membership")
+    if membership is not None:
+        membership["club_enrollment_until"] = await current_club_enrollment_until(
+            db,
+            member_id=member.id,
+            at=utc_now(),
+        )
+        member_dict["membership"] = MemberMembershipResponse.model_validate(
+            membership
+        ).model_dump()
+    return await resolve_member_media_urls(member_dict)
 
 
 @router.get("/me", response_model=MemberResponse)
@@ -58,9 +83,7 @@ async def get_current_member_profile(
         await db.refresh(member)
 
     # Resolve media URLs
-    member_dict = MemberResponse.model_validate(member).model_dump()
-    member_dict = await resolve_member_media_urls(member_dict)
-    return member_dict
+    return await _member_response_with_club_enrollment(member, db)
 
 
 @router.get("/me/badges", response_model=List[ChallengeBadgeAwardResponse])
@@ -252,6 +275,4 @@ async def update_current_member(
     updated_member = result.scalar_one()
 
     # Resolve media URLs
-    member_dict = MemberResponse.model_validate(updated_member).model_dump()
-    member_dict = await resolve_member_media_urls(member_dict)
-    return member_dict
+    return await _member_response_with_club_enrollment(updated_member, db)

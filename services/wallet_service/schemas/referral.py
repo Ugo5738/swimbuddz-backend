@@ -72,6 +72,13 @@ class ReferralCodeValidateResponse(BaseModel):
     message: str | None = None
 
 
+class ReferralCodeResolveResponse(BaseModel):
+    """Internal attribution result used before recording a referred guest."""
+
+    code: str
+    referrer_auth_id: str
+
+
 class AdminReferralListResponse(BaseModel):
     items: list[ReferralHistoryItem]
     total: int
@@ -86,6 +93,15 @@ class AdminReferralProgramStats(BaseModel):
     total_rewarded: int
     conversion_rate: float
     total_bubbles_distributed: int
+
+
+class AdminReferralCodeResponse(BaseModel):
+    """Referral code an admin can attach to a guest self-payment link."""
+
+    member_auth_id: str
+    code: str
+    is_active: bool
+    expires_at: Optional[datetime] = None
 
 
 class ReferralLinkResponse(BaseModel):

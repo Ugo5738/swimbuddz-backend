@@ -260,6 +260,8 @@ class SessionBookingResponse(BaseModel):
     channel: BookingChannel
     party_size: int
     fee_amount_kobo: int
+    member_fee_amount_kobo: int = 0
+    access_source: Optional[str] = None
     payment_intent_id: Optional[uuid.UUID] = None
     wallet_transaction_id: Optional[uuid.UUID] = None
     corporate_program_id: Optional[uuid.UUID] = None

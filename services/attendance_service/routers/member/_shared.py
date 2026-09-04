@@ -13,6 +13,7 @@ from libs.auth.dependencies import get_current_user, is_admin_or_service
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.service_client import (
+    check_club_access_batch,
     check_cohort_enrollment,
     get_member_by_auth_id,
     get_member_membership,
@@ -33,7 +34,7 @@ async def require_admin_or_coach_for_session(
     session_id: uuid.UUID,
     current_user: AuthUser,
     db: AsyncSession,
-) -> None:
+):
     """
     Verify the user is either an admin or the coach assigned to the session's cohort.
     Raises 403 if not authorized.
@@ -145,6 +146,26 @@ async def validate_session_access(
         pod = await get_pod_by_id(str(pod_id), calling_service="attendance")
         pod_member_ids = (pod or {}).get("active_member_ids") or []
 
+    club_access_result = None
+    if session_data.get("session_type") == "club" and not confirmed_booking:
+        context_key = str(session_data.get("id") or "attendance-session")
+        results = await check_club_access_batch(
+            [
+                {
+                    "context_key": context_key,
+                    "member_id": member_id,
+                    "at": session_data["starts_at"],
+                    "pool_id": session_data.get("pool_id"),
+                    "pod_id": session_data.get("pod_id"),
+                }
+            ],
+            calling_service="attendance",
+        )
+        club_access_result = results.get(context_key) or {
+            "allowed": False,
+            "source": "none",
+        }
+
     decision = evaluate_session_access(
         member_payload,
         session_data,
@@ -152,9 +173,11 @@ async def validate_session_access(
         cohort_enrollment=cohort_enrollment,
         pod_member_ids=pod_member_ids,
         confirmed_booking=confirmed_booking,
+        club_access_result=club_access_result,
     )
     if not decision.sign_in_allowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=denial_message(decision.reason),
         )
+    return decision

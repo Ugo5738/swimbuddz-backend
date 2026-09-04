@@ -72,6 +72,9 @@ def _session_payload(session: Session, access=None) -> dict:
             "sign_in_eligible": access.sign_in_eligible,
             "reason": access.reason,
             "message": denial_message(access.reason) if access.reason else None,
+            "access_source": access.access_source,
+            "fee_amount_kobo": access.fee_amount_kobo,
+            "price_label": access.price_label,
         }
     return payload
 
@@ -149,7 +152,7 @@ async def _decorate_sessions_for_user(
         .scalars()
         .all()
     )
-    cohort_access, pod_rosters = await get_sessions_access_context(
+    cohort_access, pod_rosters, club_access = await get_sessions_access_context(
         sessions=sessions,
         member_payload=member_payload,
         confirmed_session_ids=confirmed_session_ids,
@@ -164,6 +167,7 @@ async def _decorate_sessions_for_user(
             confirmed_booking=session.id in confirmed_session_ids,
             cohort_access=cohort_access,
             pod_rosters=pod_rosters,
+            club_access=club_access,
         )
         decorated.append(_session_payload(session, access))
     return decorated
@@ -518,6 +522,14 @@ async def create_session(
 
     # Convert naira fee inputs (float) to kobo (int) for DB storage.
     session_data["pool_fee"] = round((session_data.get("pool_fee") or 0.0) * 100)
+    guest_fee = session_data.pop("guest_fee", None)
+    community_dropin_fee = session_data.pop("community_dropin_fee", None)
+    session_data["guest_fee_kobo"] = (
+        round(guest_fee * 100) if guest_fee is not None else None
+    )
+    session_data["community_dropin_fee_kobo"] = (
+        round(community_dropin_fee * 100) if community_dropin_fee is not None else None
+    )
     session_data["ride_share_fee"] = round(
         (session_data.get("ride_share_fee") or 0.0) * 100
     )
@@ -749,8 +761,38 @@ async def update_session(
     # Convert naira fee inputs (float) to kobo (int) for DB storage.
     if "pool_fee" in update_data and update_data["pool_fee"] is not None:
         update_data["pool_fee"] = round(update_data["pool_fee"] * 100)
+    if "guest_fee" in update_data:
+        value = update_data.pop("guest_fee")
+        update_data["guest_fee_kobo"] = (
+            round(value * 100) if value is not None else None
+        )
+    if "community_dropin_fee" in update_data:
+        value = update_data.pop("community_dropin_fee")
+        update_data["community_dropin_fee_kobo"] = (
+            round(value * 100) if value is not None else None
+        )
     if "ride_share_fee" in update_data and update_data["ride_share_fee"] is not None:
         update_data["ride_share_fee"] = round(update_data["ride_share_fee"] * 100)
+
+    resulting_type = update_data.get("session_type", session.session_type)
+    resulting_type_value = getattr(resulting_type, "value", resulting_type)
+    resulting_allows_dropins = update_data.get(
+        "allows_community_dropins", session.allows_community_dropins
+    )
+    resulting_dropin_fee = update_data.get(
+        "community_dropin_fee_kobo", session.community_dropin_fee_kobo
+    )
+    if (
+        resulting_type_value == SessionType.CLUB.value
+        and resulting_allows_dropins
+        and resulting_dropin_fee is None
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "community_dropin_fee is required when a Club session allows drop-ins"
+            ),
+        )
 
     for field, value in update_data.items():
         setattr(session, field, value)

@@ -37,11 +37,15 @@ MIN_TOPUP_FOR_QUALIFICATION = 25  # Bubbles
 # Get or create referral code
 # ---------------------------------------------------------------------------
 async def get_or_create_referral_code(auth_id: str, db: AsyncSession) -> ReferralCode:
-    """Get existing active referral code or create a new one.
+    """Get a usable active referral code or create one.
 
     Handles the race condition where concurrent requests both try to create a
     code at the same time.  If the INSERT hits a UniqueViolation on the
     ``ix_referral_codes_member_auth_id`` index we roll back and re-fetch.
+
+    Referral codes are unique per member, so an active code that expired from
+    inactivity or exhausted its current allowance must be renewed in place.
+    A deliberately deactivated code is not revived.
     """
     result = await db.execute(
         select(ReferralCode).where(
@@ -51,6 +55,33 @@ async def get_or_create_referral_code(auth_id: str, db: AsyncSession) -> Referra
     )
     existing = result.scalar_one_or_none()
     if existing:
+        now = utc_now()
+        expired = existing.expires_at is not None and existing.expires_at <= now
+        exhausted = (
+            existing.max_uses is not None and existing.uses_count >= existing.max_uses
+        )
+        if expired or exhausted:
+            locked_result = await db.execute(
+                select(ReferralCode)
+                .where(
+                    ReferralCode.member_auth_id == auth_id,
+                    ReferralCode.is_active.is_(True),
+                )
+                .with_for_update()
+            )
+            existing = locked_result.scalar_one_or_none()
+            if existing is None:
+                raise RuntimeError("Referral code disappeared while being renewed")
+            now = utc_now()
+            if existing.expires_at is not None and existing.expires_at <= now:
+                existing.expires_at = now + timedelta(days=CODE_EXPIRY_DAYS)
+            if (
+                existing.max_uses is not None
+                and existing.uses_count >= existing.max_uses
+            ):
+                existing.max_uses = existing.uses_count + MAX_REFERRALS_PER_CODE
+            await db.commit()
+            await db.refresh(existing)
         return existing
 
     # Fetch member name for code generation

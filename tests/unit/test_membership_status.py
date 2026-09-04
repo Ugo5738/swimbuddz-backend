@@ -91,7 +91,7 @@ def test_legacy_or_non_membership_reference_does_not_mark_a_tier_pending():
     assert summary["tier_statuses"]["community"]["status"] == "approved_unpaid"
 
 
-def test_paid_academy_inherits_club_and_community_status():
+def test_paid_academy_is_an_independent_programme_status():
     summary = _summary(
         primary_tier="academy",
         active_tiers=["academy", "club", "community"],
@@ -99,11 +99,11 @@ def test_paid_academy_inherits_club_and_community_status():
     )
 
     assert summary["paid_tier"] == "academy"
-    assert summary["paid_tiers"] == ["academy", "club", "community"]
+    assert summary["paid_tiers"] == ["academy"]
     assert summary["display_label"] == "Academy Member"
     assert summary["tier_statuses"]["academy"]["direct_paid"] is True
-    assert summary["tier_statuses"]["club"]["inherited_from"] == "academy"
-    assert summary["tier_statuses"]["community"]["inherited_from"] == "academy"
+    assert summary["tier_statuses"]["club"]["status"] == "inactive"
+    assert summary["tier_statuses"]["community"]["status"] == "approved_unpaid"
 
 
 def test_expired_declared_tier_is_not_active_but_remains_visible():
@@ -123,10 +123,21 @@ def test_post_academy_bridge_is_effective_club_with_auditable_source():
     summary = _summary(post_academy_club_until=FUTURE)
 
     assert summary["paid_tier"] == "club"
-    assert summary["paid_tiers"] == ["club", "community"]
+    assert summary["paid_tiers"] == ["club"]
     assert summary["tier_statuses"]["club"]["status"] == "active"
     assert summary["tier_statuses"]["club"]["direct_paid"] is False
     assert summary["tier_statuses"]["club"]["access_source"] == "post_academy"
+
+
+def test_current_dated_enrollment_projects_direct_club_status():
+    summary = _summary(club_enrollment_until=FUTURE)
+
+    assert summary["paid_tier"] == "club"
+    assert summary["paid_tiers"] == ["club"]
+    assert summary["tier_statuses"]["club"]["status"] == "active"
+    assert summary["tier_statuses"]["club"]["direct_paid"] is True
+    assert summary["tier_statuses"]["club"]["paid_until"] == FUTURE
+    assert summary["tier_statuses"]["community"]["status"] == "approved_unpaid"
 
 
 def test_contract_separates_declared_identity_from_effective_paid_access():

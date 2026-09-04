@@ -53,14 +53,14 @@ def test_required_tier_by_session_type():
     assert required_tier_for_session_type("event") == "community"
 
 
-def test_paid_tiers_expand_hierarchy_from_paid_until_dates():
+def test_paid_products_do_not_expand_a_tier_hierarchy():
     member = _member(
         active_tiers=["academy", "club", "community"],
         primary_tier="academy",
         academy_paid_until=FUTURE,
     )
 
-    assert active_paid_tiers(member, NOW) == {"academy", "club", "community"}
+    assert active_paid_tiers(member, NOW) == {"academy"}
 
 
 def test_unpaid_baseline_community_is_prospect_not_bookable():
@@ -104,7 +104,7 @@ def test_paid_club_member_can_book_club_and_community():
     assert evaluate_session_access(member, _session(), now=NOW).bookable
 
 
-def test_paid_academy_member_inherits_club_access():
+def test_paid_academy_member_does_not_inherit_club_access():
     member = _member(
         active_tiers=["academy", "club", "community"],
         primary_tier="academy",
@@ -113,8 +113,125 @@ def test_paid_academy_member_inherits_club_access():
 
     decision = evaluate_session_access(member, _session(session_type="club"), now=NOW)
 
+    assert not decision.bookable
+    assert not decision.digest_eligible
+    assert decision.reason == "club_required"
+
+
+def test_authoritative_club_product_result_overrides_legacy_dates():
+    member = _member(club_paid_until=FUTURE)
+    session = _session(session_type="club")
+
+    denied = evaluate_session_access(
+        member,
+        session,
+        now=NOW,
+        club_product_access=False,
+    )
+    allowed = evaluate_session_access(
+        _member(),
+        session,
+        now=NOW,
+        club_product_access=True,
+    )
+
+    assert not denied.bookable
+    assert denied.reason == "club_required"
+    assert allowed.bookable
+
+
+@pytest.mark.parametrize(
+    ("club_access_result", "expected_source", "expected_fee"),
+    [
+        (
+            {
+                "allowed": True,
+                "source": "club_enrollment",
+                "payment_mode": "quarterly_prepaid",
+                "fee_amount_kobo": 0,
+            },
+            "club_enrollment",
+            0,
+        ),
+        (
+            {
+                "allowed": True,
+                "source": "club_transition",
+                "payment_mode": "transition_per_session",
+                "fee_amount_kobo": None,
+            },
+            "club_transition",
+            9_000,
+        ),
+    ],
+)
+def test_club_enrollment_mode_controls_the_authoritative_member_fee(
+    club_access_result, expected_source, expected_fee
+):
+    decision = evaluate_session_access(
+        _member(),
+        _session(session_type="club", pool_fee=9_000),
+        now=NOW,
+        club_access_result=club_access_result,
+    )
+
     assert decision.bookable
-    assert decision.digest_eligible
+    assert decision.access_source == expected_source
+    assert decision.fee_amount_kobo == expected_fee
+
+
+def test_transition_price_tracks_each_sessions_current_admin_pool_fee():
+    access = {
+        "allowed": True,
+        "source": "club_transition",
+        "payment_mode": "transition_per_session",
+        "fee_amount_kobo": None,
+    }
+
+    first = evaluate_session_access(
+        _member(),
+        _session(session_type="club", pool_fee=520_000),
+        now=NOW,
+        club_access_result=access,
+    )
+    later = evaluate_session_access(
+        _member(),
+        _session(session_type="club", pool_fee=550_000),
+        now=NOW,
+        club_access_result=access,
+    )
+
+    assert first.fee_amount_kobo == 520_000
+    assert later.fee_amount_kobo == 550_000
+
+
+def test_community_dropin_requires_explicit_session_opt_in_and_annual_membership():
+    session = _session(
+        session_type="club",
+        allows_community_dropins=True,
+        community_dropin_fee_kobo=650_000,
+    )
+    denied = evaluate_session_access(
+        _member(), session, now=NOW, club_access_result={"allowed": False}
+    )
+    allowed = evaluate_session_access(
+        _member(community_paid_until=FUTURE),
+        session,
+        now=NOW,
+        club_access_result={"allowed": False},
+    )
+    disabled = evaluate_session_access(
+        _member(community_paid_until=FUTURE),
+        {**session, "allows_community_dropins": False},
+        now=NOW,
+        club_access_result={"allowed": False},
+    )
+
+    assert denied.reason == "membership_required"
+    assert allowed.bookable
+    assert allowed.access_source == "community_dropin"
+    assert allowed.fee_amount_kobo == 650_000
+    assert disabled.reason == "community_dropins_disabled"
 
 
 def test_post_academy_bridge_grants_club_access_and_prompt_tier():
@@ -126,7 +243,7 @@ def test_post_academy_bridge_grants_club_access_and_prompt_tier():
 
     decision = evaluate_session_access(member, _session(session_type="club"), now=NOW)
 
-    assert active_paid_tiers(member, NOW) == {"club", "community"}
+    assert active_paid_tiers(member, NOW) == {"club"}
     assert default_booking_prompt_tier(member, NOW) == "club"
     assert decision.bookable
     assert decision.prompt_eligible

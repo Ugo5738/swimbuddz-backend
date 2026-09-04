@@ -43,11 +43,13 @@ from services.wallet_service.schemas.hold import (  # noqa: F401
     WalletHoldResponse,
 )
 from services.wallet_service.schemas.referral import (  # noqa: F401
+    AdminReferralCodeResponse,
     AdminReferralListResponse,
     AdminReferralProgramStats,
     ReferralApplyRequest,
     ReferralApplyResponse,
     ReferralCodeResponse,
+    ReferralCodeResolveResponse,
     ReferralCodeValidateResponse,
     ReferralHistoryItem,
     ReferralLinkResponse,
@@ -148,11 +150,13 @@ __all__ = [
     "MemberIdentityResponse",
     "UnfreezeWalletRequest",
     # Referral
+    "AdminReferralCodeResponse",
     "AdminReferralListResponse",
     "AdminReferralProgramStats",
     "ReferralApplyRequest",
     "ReferralApplyResponse",
     "ReferralCodeResponse",
+    "ReferralCodeResolveResponse",
     "ReferralCodeValidateResponse",
     "ReferralHistoryItem",
     "ReferralLinkResponse",

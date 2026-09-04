@@ -1,0 +1,434 @@
+"""Public self-paying guest passes and protected operations follow-up."""
+
+import uuid
+from datetime import timedelta
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from libs.auth.dependencies import require_admin, require_service_role
+from libs.auth.models import AuthUser
+from libs.common.config import get_settings
+from libs.common.datetime_utils import utc_now
+from libs.common.emails.client import get_email_client
+from libs.common.service_client import emit_rewards_event, internal_get, internal_post
+from libs.db.session import get_async_db
+from services.sessions_service.models import (
+    GuestPass,
+    GuestReferralClaim,
+    Session,
+    SessionBooking,
+    SessionBookingStatus,
+    SessionStatus,
+)
+from services.sessions_service.schemas import (
+    GuestPassAdminResponse,
+    GuestPassAttendanceUpdate,
+    GuestPassConfirm,
+    GuestPassCreate,
+    GuestPassOffer,
+    GuestPassPublicResponse,
+)
+from services.sessions_service.services.guest_identity import (
+    normalize_guest_phone as _normalize_guest_phone,
+)
+
+router = APIRouter(tags=["guest-passes"])
+settings = get_settings()
+GUEST_PASS_RESERVATION_MINUTES = 30
+
+
+async def _resolve_referrer_auth_id(referral_code: str) -> str:
+    try:
+        response = await internal_get(
+            service_url=settings.WALLET_SERVICE_URL,
+            path="/internal/wallet/referral-code/resolve",
+            calling_service="sessions",
+            params={"code": referral_code},
+            timeout=10,
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Referral attribution is temporarily unavailable",
+        ) from exc
+    if response.status_code >= 400:
+        raise HTTPException(status_code=400, detail="Referral code is not valid")
+    referrer_auth_id = response.json().get("referrer_auth_id")
+    if not referrer_auth_id:
+        raise HTTPException(status_code=502, detail="Referral attribution failed")
+    return str(referrer_auth_id)
+
+
+async def _spaces_remaining(
+    session: Session,
+    db: AsyncSession,
+    *,
+    exclude_guest_pass_id: uuid.UUID | None = None,
+) -> int:
+    now = utc_now()
+    booked = int(
+        (
+            await db.execute(
+                select(func.coalesce(func.sum(SessionBooking.party_size), 0)).where(
+                    SessionBooking.session_id == session.id,
+                    or_(
+                        SessionBooking.status == SessionBookingStatus.CONFIRMED,
+                        and_(
+                            SessionBooking.status == SessionBookingStatus.PENDING,
+                            or_(
+                                SessionBooking.expires_at.is_(None),
+                                SessionBooking.expires_at > now,
+                            ),
+                        ),
+                    ),
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    guest_conditions = [
+        GuestPass.session_id == session.id,
+        or_(
+            GuestPass.status.in_(["confirmed", "attended"]),
+            and_(
+                GuestPass.status == "pending_payment",
+                GuestPass.reservation_expires_at.is_not(None),
+                GuestPass.reservation_expires_at > now,
+            ),
+        ),
+    ]
+    if exclude_guest_pass_id is not None:
+        guest_conditions.append(GuestPass.id != exclude_guest_pass_id)
+    guest_count = int(
+        (
+            await db.execute(select(func.count(GuestPass.id)).where(*guest_conditions))
+        ).scalar_one()
+        or 0
+    )
+    return max(0, session.capacity - booked - guest_count)
+
+
+@router.get("/sessions/{session_id}/guest-pass", response_model=GuestPassOffer)
+async def guest_pass_offer(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    session = await db.get(Session, session_id)
+    if session is None or session.status != SessionStatus.SCHEDULED:
+        raise HTTPException(status_code=404, detail="Session not found")
+    guest_fee = (
+        session.guest_fee_kobo
+        if session.guest_fee_kobo is not None
+        else session.pool_fee
+    )
+    return GuestPassOffer(
+        session_id=session.id,
+        title=session.title,
+        location_name=session.location_name,
+        starts_at=session.starts_at,
+        ends_at=session.ends_at,
+        guest_fee_kobo=guest_fee,
+        community_dropin_fee_kobo=session.community_dropin_fee_kobo,
+        allows_guests=session.allows_guests,
+        spaces_remaining=await _spaces_remaining(session, db),
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/guest-passes",
+    response_model=GuestPassPublicResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_guest_pass(
+    session_id: uuid.UUID,
+    body: GuestPassCreate,
+    db: AsyncSession = Depends(get_async_db),
+):
+    initial_session = await db.get(Session, session_id)
+    if initial_session is None or initial_session.status != SessionStatus.SCHEDULED:
+        raise HTTPException(status_code=404, detail="Session not found")
+    referral_code = body.referral_code.upper().strip() if body.referral_code else None
+    referrer_auth_id = (
+        await _resolve_referrer_auth_id(referral_code) if referral_code else None
+    )
+    # Do not hold a database lock while resolving a referral over HTTP. The
+    # following lock is the capacity boundary for concurrent guest checkouts.
+    await db.rollback()
+    session = (
+        await db.execute(
+            select(Session).where(Session.id == session_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if session is None or session.status != SessionStatus.SCHEDULED:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not session.allows_guests or await _spaces_remaining(session, db) < 1:
+        raise HTTPException(
+            status_code=409,
+            detail="Guest passes are not available for this session",
+        )
+    price_kobo = (
+        session.guest_fee_kobo
+        if session.guest_fee_kobo is not None
+        else session.pool_fee
+    )
+    now = utc_now()
+    guest_pass = GuestPass(
+        session_id=session.id,
+        full_name=body.full_name.strip(),
+        email=str(body.email).lower(),
+        phone=_normalize_guest_phone(body.phone),
+        date_of_birth=body.date_of_birth,
+        guardian_name=body.guardian_name,
+        guardian_phone=body.guardian_phone,
+        waiver_accepted_at=now,
+        marketing_consent=body.marketing_consent,
+        referral_code=referral_code,
+        referrer_auth_id=referrer_auth_id,
+        price_kobo=price_kobo,
+        total_kobo=price_kobo,
+        referral_reward_bubbles=10,
+        reservation_expires_at=now + timedelta(minutes=GUEST_PASS_RESERVATION_MINUTES),
+        payment_reference=f"GUEST-{uuid.uuid4().hex[:20].upper()}",
+    )
+    db.add(guest_pass)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="A guest pass already exists for this phone and session",
+        ) from exc
+    await db.refresh(guest_pass)
+
+    try:
+        response = await internal_post(
+            service_url=settings.PAYMENTS_SERVICE_URL,
+            path="/internal/payments/initialize",
+            calling_service="sessions",
+            json={
+                "purpose": "guest_pass",
+                "amount": price_kobo / 100,
+                "currency": "NGN",
+                "reference": guest_pass.payment_reference,
+                "member_auth_id": f"guest:{guest_pass.id}",
+                "callback_url": f"/guest-pass/{guest_pass.id}",
+                "metadata": {
+                    "guest_pass_id": str(guest_pass.id),
+                    "session_id": str(session.id),
+                    "payer_email": guest_pass.email,
+                    "referral_code": guest_pass.referral_code,
+                },
+            },
+            timeout=30,
+        )
+    except httpx.HTTPError as exc:
+        guest_pass.status = "payment_failed"
+        await db.commit()
+        raise HTTPException(
+            status_code=502, detail="Could not start guest payment"
+        ) from exc
+    if response.status_code >= 400:
+        guest_pass.status = "payment_failed"
+        await db.commit()
+        raise HTTPException(status_code=502, detail="Could not start guest payment")
+    checkout = response.json()
+    guest_pass.additional_charges = checkout.get("additional_charges") or []
+    guest_pass.total_kobo = int(checkout.get("amount_kobo") or price_kobo)
+    await db.commit()
+    await db.refresh(guest_pass)
+    result = GuestPassPublicResponse.model_validate(guest_pass)
+    return result.model_copy(update={"checkout_url": checkout.get("authorization_url")})
+
+
+@router.get("/guest-passes/{guest_pass_id}", response_model=GuestPassPublicResponse)
+async def get_guest_pass_status(
+    guest_pass_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Redacted public receipt; identity and assessment data are never returned."""
+    guest_pass = await db.get(GuestPass, guest_pass_id)
+    if guest_pass is None:
+        raise HTTPException(status_code=404, detail="Guest pass not found")
+    return guest_pass
+
+
+@router.post(
+    "/internal/sessions/guest-passes/{guest_pass_id}/confirm",
+    response_model=GuestPassPublicResponse,
+)
+async def confirm_guest_pass(
+    guest_pass_id: uuid.UUID,
+    body: GuestPassConfirm,
+    _service: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    guest_pass = (
+        await db.execute(
+            select(GuestPass).where(GuestPass.id == guest_pass_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if guest_pass is None or guest_pass.payment_reference != body.payment_reference:
+        raise HTTPException(status_code=404, detail="Guest pass not found")
+    session = (
+        await db.execute(
+            select(Session).where(Session.id == guest_pass.session_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=409, detail="The guest session is unavailable")
+    if (
+        guest_pass.status == "pending_payment"
+        and (
+            guest_pass.reservation_expires_at is None
+            or guest_pass.reservation_expires_at <= utc_now()
+        )
+        and await _spaces_remaining(
+            session,
+            db,
+            exclude_guest_pass_id=guest_pass.id,
+        )
+        < 1
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The guest-pass reservation expired and the session is now full",
+        )
+    should_send_confirmation = guest_pass.status == "pending_payment"
+    if guest_pass.status != "attended":
+        guest_pass.status = "confirmed"
+        guest_pass.reservation_expires_at = None
+    await db.commit()
+    await db.refresh(guest_pass)
+    if should_send_confirmation:
+        await get_email_client().send(
+            to_email=guest_pass.email,
+            subject="Your SwimBuddz guest pass is confirmed",
+            body=(
+                f"Hi {guest_pass.full_name},\n\nYour SwimBuddz guest pass is confirmed. "
+                f"Your reference is {guest_pass.payment_reference}. We look forward to swimming with you."
+            ),
+        )
+    return guest_pass
+
+
+@router.get("/admin/guest-passes", response_model=list[GuestPassAdminResponse])
+async def list_guest_passes(
+    session_id: uuid.UUID | None = None,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    query = select(GuestPass)
+    if session_id:
+        query = query.where(GuestPass.session_id == session_id)
+    return list(
+        (await db.execute(query.order_by(GuestPass.created_at.desc()))).scalars()
+    )
+
+
+@router.post(
+    "/admin/guest-passes/{guest_pass_id}/attendance",
+    response_model=GuestPassAdminResponse,
+)
+async def mark_guest_pass_attended(
+    guest_pass_id: uuid.UUID,
+    body: GuestPassAttendanceUpdate,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    guest_pass = (
+        await db.execute(
+            select(GuestPass).where(GuestPass.id == guest_pass_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if guest_pass is None:
+        raise HTTPException(status_code=404, detail="Guest pass not found")
+    if guest_pass.status not in {"confirmed", "attended"}:
+        raise HTTPException(
+            status_code=409, detail="Only a paid guest pass can be attended"
+        )
+    guest_pass.status = "attended"
+    guest_pass.attended_at = guest_pass.attended_at or utc_now()
+    guest_pass.actual_swim_minutes = body.actual_swim_minutes
+    guest_pass.assessment_result = body.assessment_result
+    claim_status = "pending" if guest_pass.referrer_auth_id else "not_eligible"
+    claim_id = (
+        await db.execute(
+            insert(GuestReferralClaim)
+            .values(
+                guest_phone=guest_pass.phone,
+                guest_pass_id=guest_pass.id,
+                referrer_auth_id=guest_pass.referrer_auth_id,
+                status=claim_status,
+            )
+            .on_conflict_do_nothing(index_elements=[GuestReferralClaim.guest_phone])
+            .returning(GuestReferralClaim.id)
+        )
+    ).scalar_one_or_none()
+    claim = (
+        await db.get(GuestReferralClaim, claim_id)
+        if claim_id is not None
+        else (
+            await db.execute(
+                select(GuestReferralClaim).where(
+                    GuestReferralClaim.guest_phone == guest_pass.phone
+                )
+            )
+        ).scalar_one()
+    )
+    should_reward_referrer = bool(
+        guest_pass.referrer_auth_id
+        and claim.guest_pass_id == guest_pass.id
+        and claim.status == "pending"
+        and guest_pass.referral_reward_status != "granted"
+    )
+    if should_reward_referrer:
+        guest_pass.referral_reward_status = "pending"
+    await db.commit()
+    await db.refresh(guest_pass)
+
+    if should_reward_referrer and guest_pass.referrer_auth_id:
+        reward_result = await emit_rewards_event(
+            event_type="referral.guest_attended",
+            member_auth_id=guest_pass.referrer_auth_id,
+            service_source="sessions",
+            event_data={
+                "guest_name": guest_pass.full_name,
+                "guest_pass_id": str(guest_pass.id),
+                "session_id": str(guest_pass.session_id),
+            },
+            idempotency_key=f"guest-referral-attended-{guest_pass.id}",
+            calling_service="sessions",
+            occurred_at=guest_pass.attended_at.isoformat(),
+        )
+        if reward_result is not None:
+            granted = int(reward_result.get("rewards_granted") or 0) or sum(
+                int(reward.get("bubbles", 0))
+                for reward in reward_result.get("rewards", [])
+            )
+            if granted:
+                guest_pass.referral_reward_bubbles = granted
+                guest_pass.referral_reward_status = "granted"
+                claim.status = "granted"
+                claim.rewarded_at = utc_now()
+            await db.commit()
+            await db.refresh(guest_pass)
+    if body.assessment_result and body.send_assessment_email:
+        summary = "\n".join(
+            f"{key.replace('_', ' ').title()}: {value}"
+            for key, value in body.assessment_result.items()
+        )
+        await get_email_client().send(
+            to_email=guest_pass.email,
+            subject="Your SwimBuddz swim assessment",
+            body=(
+                f"Hi {guest_pass.full_name},\n\nHere is the assessment from your swim:\n\n"
+                f"{summary}\n\nKeep swimming,\nSwimBuddz"
+            ),
+        )
+    return guest_pass

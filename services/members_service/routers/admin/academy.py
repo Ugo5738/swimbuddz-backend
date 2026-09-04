@@ -19,7 +19,6 @@ from services.members_service.schemas import (
     ProjectAcademyRequest,
 )
 from services.members_service.services.member_service import (
-    academy_bundle_expiry,
     normalize_member_tiers,
 )
 
@@ -108,10 +107,11 @@ async def admin_activate_academy_membership_by_auth(
 ):
     """Apply a paid Academy entitlement once and preserve later cohorts.
 
-    The idempotency key protects both the Academy end date and the Community
-    period granted by the first Academy payment. Club is inherited while
-    Academy is active; its explicit one-month bridge is granted separately on
-    graduation. Retrying the same payment cannot keep moving entitlements.
+    The idempotency key protects the Academy date. Annual Membership is
+    extended separately by the payment flow only when the programme's policy
+    is ``active_required`` or ``included``; an ``open`` Academy programme must
+    not silently grant Membership. Club access is likewise independent, with
+    its explicit one-month bridge granted separately on graduation.
     """
     member = await _load_member_for_update(db, auth_id=auth_id)
     should_apply = await _claim_entitlement_application(
@@ -135,17 +135,7 @@ async def admin_activate_academy_membership_by_auth(
     if current_until is None or new_end > current_until:
         member.membership.academy_paid_until = new_end
     member.membership.declared_tiers = sorted(
-        set(member.membership.declared_tiers or ["community"])
-        | {"community", "club", "academy"}
-    )
-
-    (
-        member.membership.community_paid_until,
-        member.membership.club_paid_until,
-    ) = academy_bundle_expiry(
-        utc_now(),
-        member.membership.community_paid_until,
-        member.membership.club_paid_until,
+        set(member.membership.declared_tiers or ["community"]) | {"academy"}
     )
     _normalize_stored_tiers(member)
 
@@ -178,8 +168,7 @@ async def admin_project_academy_membership_by_auth(
     )
     if payload.paid_until:
         member.membership.declared_tiers = sorted(
-            set(member.membership.declared_tiers or ["community"])
-            | {"community", "club", "academy"}
+            set(member.membership.declared_tiers or ["community"]) | {"academy"}
         )
     _normalize_stored_tiers(member)
     logger.info(

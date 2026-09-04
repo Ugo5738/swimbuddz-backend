@@ -121,6 +121,19 @@ async def _fetch_member_session_commitments(
     return data if isinstance(data, list) else []
 
 
+async def _fetch_converted_guest_hours(
+    member_id: str | None, date_from: str, date_to: str
+) -> float:
+    if not member_id:
+        return 0.0
+    data = await _safe_get(
+        settings.SESSIONS_SERVICE_URL,
+        f"/internal/sessions/member/{member_id}/converted-guest-hours",
+        params={"from": date_from, "to": date_to},
+    )
+    return float(data.get("swimmer_hours", 0.0)) if isinstance(data, dict) else 0.0
+
+
 async def _fetch_cohort_sessions(
     cohort_id: str, date_from: str, date_to: str
 ) -> list[dict]:
@@ -404,9 +417,10 @@ async def _compute_segment_attendance(
     date_from = start.isoformat()
     date_to = elapsed_end.isoformat()
 
-    commitments, enrollments = await asyncio.gather(
+    commitments, enrollments, converted_guest_hours = await asyncio.gather(
         _fetch_member_session_commitments(member_auth_id, date_from, date_to),
         _fetch_member_cohort_enrollments(member_auth_id, date_from, date_to),
+        _fetch_converted_guest_hours(member_id, date_from, date_to),
     )
 
     expected_by_segment: dict[str, dict[str, dict]] = {
@@ -528,7 +542,10 @@ async def _compute_segment_attendance(
         "favorite_location": primary["favorite_location"],
         "weekly_attendance": weekly_attendance
         or fallback_attendance.get("weekly_attendance", []),
-        "pool_hours": computed_pool_hours or fallback_pool_hours,
+        "pool_hours": round(
+            (computed_pool_hours or fallback_pool_hours) + converted_guest_hours,
+            1,
+        ),
         "sessions_by_type": by_type or fallback_attendance.get("by_type"),
     }
 
@@ -791,6 +808,10 @@ async def compute_community_stats(
     )
     stats = result.scalar_one_or_none()
 
+    member_swimmer_hours = float(row.total_pool_hours_member or 0.0)
+    guest_swimmer_hours = float(detailed_stats.get("guest_swimmer_hours", 0.0))
+    community_swimmer_hours = round(member_swimmer_hours + guest_swimmer_hours, 1)
+
     stats_data = dict(
         year=year,
         quarter=quarter,
@@ -805,7 +826,7 @@ async def compute_community_stats(
         total_rides_shared=row.total_rides or 0,
         total_revenue_ngn=row.total_revenue or 0,
         # Pool hours
-        total_pool_hours=detailed_stats.get("total_pool_hours", 0.0),
+        total_pool_hours=community_swimmer_hours,
         # Location & session highlights
         most_active_location=detailed_stats.get("most_active_location"),
         busiest_session_title=detailed_stats.get("busiest_session_title"),
@@ -817,7 +838,7 @@ async def compute_community_stats(
         stats_by_type=session_stats.get("by_type"),
         # Community milestones
         community_milestones=_build_community_milestones(
-            total_pool_hours=detailed_stats.get("total_pool_hours", 0.0),
+            total_pool_hours=community_swimmer_hours,
             total_members=row.total_members or 0,
             total_sessions=session_stats.get("total_sessions", 0),
             total_volunteer=float(row.total_volunteer or 0.0),

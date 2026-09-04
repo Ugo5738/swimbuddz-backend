@@ -229,6 +229,28 @@ def create_app() -> FastAPI:
             clients.sessions_client, f"/sessions/{path}", request
         )
 
+    @app.api_route("/api/v1/guest-passes/{path:path}", methods=["GET"])
+    async def proxy_guest_pass_status(path: str, request: Request):
+        """Proxy the redacted public guest-pass receipt/status surface."""
+        return await proxy_request(
+            clients.sessions_client, f"/guest-passes/{path}", request
+        )
+
+    @app.api_route("/api/v1/admin/guest-passes", methods=["GET"])
+    async def proxy_admin_guest_passes_root(request: Request):
+        return await proxy_request(
+            clients.sessions_client, "/admin/guest-passes", request
+        )
+
+    @app.api_route(
+        "/api/v1/admin/guest-passes/{path:path}",
+        methods=["GET", "POST", "PATCH"],
+    )
+    async def proxy_admin_guest_passes(path: str, request: Request):
+        return await proxy_request(
+            clients.sessions_client, f"/admin/guest-passes/{path}", request
+        )
+
     @app.api_route(
         "/api/v1/makeups/{path:path}",
         methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
