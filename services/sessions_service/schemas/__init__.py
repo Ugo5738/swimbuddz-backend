@@ -41,6 +41,14 @@ from services.sessions_service.schemas.makeup import (
     MakeupOpenSlotCreate,
     MakeupRequestCreate,
 )
+from services.sessions_service.schemas.guest_pass import (
+    GuestPassAdminResponse,
+    GuestPassAttendanceUpdate,
+    GuestPassConfirm,
+    GuestPassCreate,
+    GuestPassOffer,
+    GuestPassPublicResponse,
+)
 from services.sessions_service.schemas.templates import (
     GenerateSessionsRequest,
     SessionTemplateBase,
@@ -50,6 +58,12 @@ from services.sessions_service.schemas.templates import (
 )
 
 __all__ = [
+    "GuestPassAdminResponse",
+    "GuestPassAttendanceUpdate",
+    "GuestPassConfirm",
+    "GuestPassCreate",
+    "GuestPassOffer",
+    "GuestPassPublicResponse",
     "AdminPoolFeeRefundRequest",
     "AdminWalkInRequest",
     "BookableSlotResponse",

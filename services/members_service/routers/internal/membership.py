@@ -16,8 +16,13 @@ from sqlalchemy.orm import selectinload
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.members_service.models import Member, MemberMembership
+from services.members_service.services.club_access import (
+    has_current_club_access,
+    resolve_club_access_checks,
+)
 from services.members_service.services.member_service import normalize_member_tiers
 from services.members_service.services.membership_status import (
     build_membership_status_summary,
@@ -26,6 +31,8 @@ from services.members_service.services.membership_status import (
 from ._helpers import _membership_fields
 from ._schemas import (
     BulkMembersRequest,
+    ClubAccessChecksRequest,
+    ClubAccessChecksResponse,
     MemberBasic,
     MemberMembershipResponse,
     TierHistoryEntry,
@@ -33,6 +40,27 @@ from ._schemas import (
 )
 
 router = APIRouter()
+
+
+@router.post("/club-access/checks", response_model=ClubAccessChecksResponse)
+async def check_club_access(
+    body: ClubAccessChecksRequest,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Resolve location- and date-aware Club access in one internal call.
+
+    Club enrollments are checked against each session's start time.  This
+    keeps a future-quarter purchase from authorizing sessions before that
+    quarter begins, while retaining explicit legacy and post-Academy bridges.
+    """
+
+    keys = [check.context_key for check in body.checks]
+    if len(keys) != len(set(keys)):
+        raise HTTPException(status_code=422, detail="context_key values must be unique")
+    return ClubAccessChecksResponse(
+        items=await resolve_club_access_checks(db, body.checks)
+    )
 
 
 @router.get("/{member_id}/membership", response_model=MemberMembershipResponse)
@@ -78,13 +106,28 @@ async def get_member_membership(
         pending_tier_payments=membership.pending_tier_payments,
     )
 
+    # New Club purchases are date-bounded ClubEnrollment rows, not a generic
+    # ``club_paid_until`` value. Include a current Club enrollment in the
+    # compatibility product summary used by content/events/calendar surfaces,
+    # while session booking still uses the stricter date-and-location check.
+    effective_products = set(summary["effective_paid_tiers"])
+    if await has_current_club_access(db, member_id=member_id, at=utc_now()):
+        effective_products.add("club")
+    product_priority = {"academy": 3, "club": 2, "community": 1}
+    sorted_products = sorted(
+        effective_products,
+        key=lambda product: product_priority.get(product, 0),
+        reverse=True,
+    )
+    response_primary = sorted_products[0] if sorted_products else "prospect"
+
     return MemberMembershipResponse(
         member_id=str(membership.member_id),
-        primary_tier=new_primary,
-        active_tiers=new_tiers,
+        primary_tier=response_primary,
+        active_tiers=sorted_products,
         declared_tiers=summary["declared_tiers"],
-        effective_paid_tiers=summary["effective_paid_tiers"],
-        highest_paid_tier=summary["highest_paid_tier"],
+        effective_paid_tiers=sorted_products,
+        highest_paid_tier=response_primary,
         community_paid_until=(
             membership.community_paid_until.isoformat()
             if membership.community_paid_until

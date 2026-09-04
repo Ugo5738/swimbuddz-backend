@@ -482,6 +482,7 @@ async def test_bundle_reservation_uses_database_prices_and_creates_pending_rows(
         return {"id": str(member_id), "member_id": str(member_id)}
 
     async def fake_access(**kwargs):
+        session = kwargs["session"]
         return SessionAccessDecision(
             required_tier="club",
             visible=True,
@@ -489,6 +490,9 @@ async def test_bundle_reservation_uses_database_prices_and_creates_pending_rows(
             digest_eligible=True,
             prompt_eligible=True,
             sign_in_allowed=True,
+            access_source="legacy_club_entitlement",
+            fee_amount_kobo=int(session.pool_fee or 0),
+            price_label="Club session rate",
         )
 
     monkeypatch.setattr(internal_router, "get_member_by_auth_id", fake_member_lookup)
@@ -565,6 +569,7 @@ async def test_bundle_reservation_rejects_second_active_payment(
         return {"id": str(member_id), "member_id": str(member_id)}
 
     async def fake_access(**kwargs):
+        session = kwargs["session"]
         return SessionAccessDecision(
             required_tier="club",
             visible=True,
@@ -572,6 +577,9 @@ async def test_bundle_reservation_rejects_second_active_payment(
             digest_eligible=True,
             prompt_eligible=True,
             sign_in_allowed=True,
+            access_source="legacy_club_entitlement",
+            fee_amount_kobo=int(session.pool_fee or 0),
+            price_label="Club session rate",
         )
 
     monkeypatch.setattr(internal_router, "get_member_by_auth_id", fake_member_lookup)

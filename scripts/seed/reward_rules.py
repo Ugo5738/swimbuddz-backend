@@ -27,7 +27,7 @@ from sqlalchemy import func
 from sqlalchemy.future import select
 
 # ---------------------------------------------------------------------------
-# Default reward rules (22 rules from design doc)
+# Default reward rules (including guest-acquisition rewards)
 # ---------------------------------------------------------------------------
 
 
@@ -81,6 +81,19 @@ def build_default_rules() -> list[RewardRule]:
             reward_description_template="Reward — shared {event_name} on social media ({amount} 🫧)",
             max_per_member_per_period=5,
             period=RewardPeriod.MONTH,
+            category=RewardCategory.ACQUISITION,
+            created_by="seed",
+        ),
+        RewardRule(
+            id=uuid.UUID("00000000-0000-0000-0000-100000000022"),
+            rule_name="guest_first_attendance_referral",
+            display_name="Guest Referral Thank-you",
+            event_type="referral.guest_attended",
+            trigger_config={},
+            reward_bubbles=10,
+            reward_description_template=(
+                "Guest referral thank-you — {guest_name} attended ({amount} 🫧)"
+            ),
             category=RewardCategory.ACQUISITION,
             created_by="seed",
         ),

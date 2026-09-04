@@ -79,21 +79,20 @@ COHORT_ID = uuid.uuid4()
 AUTH_ID = "auth-user-1"
 
 
-def _make_cohort() -> SimpleNamespace:
+def _make_cohort(*, bridge_months: int | None = 1) -> SimpleNamespace:
     return SimpleNamespace(
         id=COHORT_ID,
         name="Cohort Alpha",
         program=SimpleNamespace(name="Learn to Swim"),
         end_date=None,
+        post_graduation_club_bridge_months=bridge_months,
     )
 
 
 def _patches(*, attendance):
     """Patch every cross-service call grant_graduation_rewards makes."""
     base = "services.academy_service.tasks.enrollment"
-    settings = Mock(
-        MEMBERS_SERVICE_URL="http://members", POST_ACADEMY_FREE_CLUB_MONTHS=1
-    )
+    settings = Mock(MEMBERS_SERVICE_URL="http://members")
     return {
         "emit_rewards_event": patch(
             f"{base}.emit_rewards_event", new=AsyncMock(return_value={"accepted": True})
@@ -111,7 +110,7 @@ def _patches(*, attendance):
     }
 
 
-async def _run(*, completed_session_ids, attendance):
+async def _run(*, completed_session_ids, attendance, bridge_months: int | None = 1):
     """Run grant_graduation_rewards for one graduate with mocks; return them."""
     enrollment = SimpleNamespace(id=ENROLLMENT_ID, member_id=MEMBER_ID)
     member = {"id": str(MEMBER_ID), "auth_id": AUTH_ID}
@@ -121,7 +120,7 @@ async def _run(*, completed_session_ids, attendance):
         for name, p in patches.items():
             started[name] = p.start()
         await grant_graduation_rewards(
-            cohort=_make_cohort(),
+            cohort=_make_cohort(bridge_months=bridge_months),
             enrollment=enrollment,
             member=member,
             completed_session_ids=completed_session_ids,
@@ -141,6 +140,27 @@ def _events_of_type(emit_mock: AsyncMock, event_type: str) -> list:
 
 @pytest.mark.unit
 class TestGrantGraduationRewards:
+    @pytest.mark.parametrize("bridge_months", [0, None])
+    async def test_disabled_cohort_bridge_creates_no_grant(self, bridge_months):
+        mocks = await _run(
+            completed_session_ids=[SESSION_1],
+            attendance=[_record(SESSION_1, "present")],
+            bridge_months=bridge_months,
+        )
+
+        mocks["internal_post"].assert_not_awaited()
+
+    async def test_bridge_uses_stable_per_enrollment_idempotency_key(self):
+        mocks = await _run(
+            completed_session_ids=[SESSION_1],
+            attendance=[_record(SESSION_1, "present")],
+            bridge_months=2,
+        )
+
+        payload = mocks["internal_post"].await_args.kwargs["json"]
+        assert payload["months"] == 2
+        assert payload["idempotency_key"] == f"academy:{ENROLLMENT_ID}:club-bridge"
+
     async def test_perfect_attendance_emitted_when_present_at_all_sessions(self):
         mocks = await _run(
             completed_session_ids=[SESSION_1, SESSION_2],

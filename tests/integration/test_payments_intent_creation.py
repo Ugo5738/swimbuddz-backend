@@ -155,6 +155,8 @@ def _stub_session_fee_quote(monkeypatch, *, session_id: str, pool_kobo: int):
                 "confirmed_booking": False,
                 "sign_in_allowed": True,
                 "message": None,
+                "access_source": "club_transition",
+                "fee_amount_kobo": pool_kobo,
             }
         ),
     )
@@ -800,9 +802,12 @@ async def test_session_fee_rejects_stale_client_amount(payments_client, monkeypa
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_session_fee_uses_server_total_without_client_amount(
-    payments_client, monkeypatch
+    payments_client, db_session, monkeypatch
 ):
+    from sqlalchemy import select
+
     from services.payments_service.app.main import app as payments_app
+    from services.payments_service.models import Payment
 
     _override_current_user_email(payments_app)
     _install_paystack_stubs(monkeypatch)
@@ -816,6 +821,17 @@ async def test_session_fee_uses_server_total_without_client_amount(
 
     assert response.status_code == 201, response.text
     assert response.json()["amount"] == 1250.0
+    payment = (
+        await db_session.execute(
+            select(Payment).where(Payment.reference == response.json()["reference"])
+        )
+    ).scalar_one()
+    assert payment.payment_metadata["server_price"] == {
+        "pool_total_kobo": 125_000,
+        "access_source": "club_transition",
+        "ride_total_kobo": 0,
+        "total_kobo": 125_000,
+    }
 
 
 @pytest.mark.asyncio

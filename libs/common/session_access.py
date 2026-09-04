@@ -37,6 +37,9 @@ class SessionAccessDecision:
     sign_in_allowed: bool
     sign_in_eligible: bool = False
     reason: str | None = None
+    access_source: str | None = None
+    fee_amount_kobo: int | None = None
+    price_label: str | None = None
 
 
 DENIAL_MESSAGES: dict[str, str] = {
@@ -45,6 +48,9 @@ DENIAL_MESSAGES: dict[str, str] = {
         "You need an active SwimBuddz membership to book this session."
     ),
     "club_required": "This session is available to active Club members.",
+    "community_dropins_disabled": (
+        "This Club session is Club-only and is not open for Community drop-ins."
+    ),
     "cohort_required": (
         "This session is restricted to members enrolled in its academy cohort."
     ),
@@ -97,7 +103,7 @@ def required_tier_for_session_type(session_type: Any) -> str:
 
 
 def member_declared_tiers(member: Any) -> set[str]:
-    """Return declared tiers from member payload, with hierarchy expanded."""
+    """Return declared compatibility labels without inventing programme access."""
     tiers = {
         _normalized(t) for t in (_value(member, "active_tiers") or []) if _normalized(t)
     }
@@ -105,10 +111,9 @@ def member_declared_tiers(member: Any) -> set[str]:
     if primary:
         tiers.add(primary)
 
-    if ACADEMY in tiers:
-        tiers.update({CLUB, COMMUNITY})
-    if CLUB in tiers:
-        tiers.add(COMMUNITY)
+    # These are independent products. The labels remain for compatibility,
+    # but Academy must never manufacture Club and Club must never manufacture
+    # annual Membership.
     if not tiers:
         tiers.add(COMMUNITY)
     return tiers
@@ -121,15 +126,21 @@ def has_active_paid_until(member: Any, field: str, now: datetime | None = None) 
 
 
 def active_paid_tiers(member: Any, now: datetime | None = None) -> set[str]:
-    """Return tiers backed by current paid entitlements."""
+    """Return products backed by current paid entitlements.
+
+    These are intentionally independent. Programme participation does not
+    silently buy annual Community membership, and Academy does not silently
+    buy Club. Any bundle/included policy must create the corresponding dated
+    entitlement explicitly.
+    """
     now = now or utc_now()
     tiers: set[str] = set()
     if has_active_paid_until(member, "academy_paid_until", now):
-        tiers.update({ACADEMY, CLUB, COMMUNITY})
+        tiers.add(ACADEMY)
     if has_active_paid_until(member, "club_paid_until", now) or has_active_paid_until(
         member, "post_academy_club_until", now
     ):
-        tiers.update({CLUB, COMMUNITY})
+        tiers.add(CLUB)
     if has_active_paid_until(member, "community_paid_until", now):
         tiers.add(COMMUNITY)
     return tiers
@@ -162,9 +173,15 @@ def has_paid_session_access(
     paid_tiers = active_paid_tiers(member, now)
 
     if normalized == COMMUNITY or normalized == EVENT:
-        return bool(paid_tiers)
+        return COMMUNITY in paid_tiers
     if normalized == CLUB:
-        return CLUB in paid_tiers
+        # Academy is a distinct programme, not an implicit Club purchase.
+        # Dated ClubEnrollment checks are supplied by service adapters; this
+        # pure compatibility helper only recognises explicit legacy Club
+        # access and the post-Academy bridge.
+        return has_active_paid_until(
+            member, "club_paid_until", now
+        ) or has_active_paid_until(member, "post_academy_club_until", now)
     if normalized in {ACADEMY, COHORT_CLASS}:
         return True
     return bool(paid_tiers)
@@ -184,6 +201,8 @@ def evaluate_session_access(
     cohort_enrollment: Mapping[str, Any] | None = None,
     pod_member_ids: Iterable[Any] | None = None,
     confirmed_booking: bool = False,
+    club_product_access: bool | None = None,
+    club_access_result: Mapping[str, Any] | None = None,
 ) -> SessionAccessDecision:
     """Evaluate member access for a single session.
 
@@ -219,11 +238,18 @@ def evaluate_session_access(
             sign_in_allowed=available_for_sign_in,
             sign_in_eligible=status_allows_sign_in,
             reason=None if available_for_sign_in else "session_unavailable",
+            access_source="confirmed_booking",
+            fee_amount_kobo=0,
+            price_label="Already booked",
         )
 
     allowed = False
     reason: str | None = None
-    paid_tiers = active_paid_tiers(member, now)
+    access_source: str | None = None
+    fee_amount_kobo: int | None = None
+    price_label: str | None = None
+    entitlement_at = starts_at or now
+    paid_tiers = active_paid_tiers(member, entitlement_at)
 
     if session_type == COHORT_CLASS:
         cohort_id = _value(session, "cohort_id")
@@ -236,8 +262,35 @@ def evaluate_session_access(
         else:
             allowed = True
     elif session_type == CLUB:
-        if CLUB not in paid_tiers:
-            reason = "club_required"
+        # Live service callers supply the authoritative, session-dated result
+        # from members_service.  ``None`` preserves explicit legacy Club and
+        # bridge access for older/offline callers, but deliberately does not
+        # inherit Club from an Academy tier.
+        if club_access_result is not None:
+            has_club_access = bool(club_access_result.get("allowed"))
+        else:
+            has_club_access = (
+                club_product_access
+                if club_product_access is not None
+                else has_active_paid_until(member, "club_paid_until", entitlement_at)
+                or has_active_paid_until(
+                    member, "post_academy_club_until", entitlement_at
+                )
+            )
+        if not has_club_access:
+            allows_dropins = _value(session, "allows_community_dropins", None)
+            if allows_dropins is None:
+                reason = "club_required"
+            elif not bool(allows_dropins):
+                reason = "community_dropins_disabled"
+            elif COMMUNITY not in paid_tiers:
+                reason = "membership_required"
+            else:
+                allowed = True
+                access_source = "community_dropin"
+                raw_dropin_fee = _value(session, "community_dropin_fee_kobo")
+                fee_amount_kobo = int(raw_dropin_fee or 0)
+                price_label = "Community drop-in rate"
         else:
             member_id = _value(member, "member_id") or _value(member, "id")
             pod_id = _value(session, "pod_id")
@@ -249,14 +302,42 @@ def evaluate_session_access(
                     allowed = True
             else:
                 allowed = True
+            if allowed:
+                source = (
+                    str(club_access_result.get("source"))
+                    if club_access_result is not None
+                    else "legacy_club_entitlement"
+                )
+                access_source = source
+                if source == "club_enrollment":
+                    fee_amount_kobo = 0
+                    price_label = "Included in Club quarter"
+                elif source == "club_transition":
+                    # Transition is an eligibility/payment mode, not a price.
+                    # Resolve the session's current Admin-set price now; the
+                    # booking/payment layer snapshots the resulting amount.
+                    fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
+                    price_label = "2026 transition session price"
+                else:
+                    # Legacy and post-Academy bridges are eligibility grants,
+                    # not prepaid quarters; the session's operational member
+                    # rate is selected explicitly by this resolver.
+                    fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
+                    price_label = "Club session rate"
     elif session_type in {COMMUNITY, EVENT}:
-        if paid_tiers:
+        if COMMUNITY in paid_tiers:
             allowed = True
+            access_source = "community_membership"
+            fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
+            price_label = "Session rate"
         else:
             reason = "membership_required"
     else:
-        if paid_tiers:
+        if COMMUNITY in paid_tiers:
             allowed = True
+            access_source = "community_membership"
+            fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
+            price_label = "Session rate"
         else:
             reason = "membership_required"
 
@@ -275,6 +356,9 @@ def evaluate_session_access(
         sign_in_allowed=allowed and available_for_sign_in,
         sign_in_eligible=allowed and status_allows_sign_in,
         reason=None if allowed and available_for_new_booking else reason,
+        access_source=access_source,
+        fee_amount_kobo=fee_amount_kobo,
+        price_label=price_label,
     )
 
 

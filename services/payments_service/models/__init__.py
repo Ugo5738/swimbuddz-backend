@@ -1,6 +1,7 @@
 """Payments Service models package."""
 
 from services.payments_service.models.core import (
+    AdditionalChargePolicy,
     CoachPayout,
     CohortMakeupObligation,
     Discount,
@@ -22,6 +23,7 @@ from services.payments_service.models.ledger_failure import LedgerPostFailure
 from services.payments_service.models.settlement import PaystackSettlement
 
 __all__ = [
+    "AdditionalChargePolicy",
     "CoachPayout",
     "CohortMakeupObligation",
     "Discount",

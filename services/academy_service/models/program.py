@@ -75,6 +75,12 @@ class Program(Base):
         default=BillingType.ONE_TIME,
         server_default="one_time",
     )
+    # open: Academy can be purchased without annual membership.
+    # active_required: add annual membership when the learner is not covered.
+    # included: the published Academy price includes annual membership.
+    membership_policy: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="open", server_default="open"
+    )
 
     # Content
     curriculum_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)

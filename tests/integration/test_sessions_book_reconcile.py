@@ -30,14 +30,36 @@ _SESSION_ACCESS = "services.sessions_service.services.session_access"
 _DEBIT = f"{_BOOKINGS}.debit_member_wallet"
 _RESOLVE_MEMBER = f"{_BOOKINGS}.get_member_by_auth_id"
 _MEMBERSHIP = f"{_SESSION_ACCESS}.get_member_membership"
+_CLUB_ACCESS = f"{_SESSION_ACCESS}.check_club_access_batch"
 _ATTENDANCE = f"{_BOOKINGS}.sync_booking_attendance"
 
 POOL_FEE_KOBO = 350_000  # ₦3,500
 
 
+async def _legacy_club_access_mock(checks, **kwargs):
+    return {
+        check["context_key"]: {
+            "context_key": check["context_key"],
+            "allowed": True,
+            "source": "legacy_club_entitlement",
+            "enrollment_id": None,
+            "club_id": None,
+            "payment_mode": None,
+            "fee_amount_kobo": None,
+        }
+        for check in checks
+    }
+
+
 @pytest.fixture(autouse=True)
-def _stub_attendance_sync():
-    with patch(_ATTENDANCE, AsyncMock(return_value=None)):
+def _stub_session_dependencies():
+    with (
+        patch(_ATTENDANCE, AsyncMock(return_value=None)),
+        patch(
+            _CLUB_ACCESS,
+            AsyncMock(side_effect=_legacy_club_access_mock),
+        ),
+    ):
         yield
 
 

@@ -7,7 +7,7 @@ not by frontend clients directly.
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +32,7 @@ from services.wallet_service.schemas import (
     MemberWalletSummary,
     PoolSubmissionRewardRequest,
     ReferralLinkResponse,
+    ReferralCodeResolveResponse,
     WalletCreateRequest,
     WalletEcosystemStatsResponse,
     WalletResponse,
@@ -65,6 +66,37 @@ from services.wallet_service.services.hold_ops import (
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/internal/wallet", tags=["internal-wallet"])
+
+
+@router.get(
+    "/referral-code/resolve",
+    response_model=ReferralCodeResolveResponse,
+)
+async def resolve_referral_code_for_attribution(
+    code: str = Query(..., min_length=1, max_length=40),
+    _service: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Resolve an active code to its owner without creating a member referral."""
+    from services.wallet_service.models import ReferralCode
+
+    normalized = code.upper().strip()
+    code_obj = (
+        await db.execute(select(ReferralCode).where(ReferralCode.code == normalized))
+    ).scalar_one_or_none()
+    if code_obj is None:
+        raise HTTPException(status_code=404, detail="Referral code not found")
+    now = datetime.now(timezone.utc)
+    if (
+        not code_obj.is_active
+        or (code_obj.expires_at and code_obj.expires_at < now)
+        or (code_obj.max_uses and code_obj.uses_count >= code_obj.max_uses)
+    ):
+        raise HTTPException(status_code=409, detail="Referral code is not active")
+    return ReferralCodeResolveResponse(
+        code=code_obj.code,
+        referrer_auth_id=code_obj.member_auth_id,
+    )
 
 
 @router.post("/debit", response_model=InternalDebitCreditResponse)

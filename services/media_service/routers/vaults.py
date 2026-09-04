@@ -13,7 +13,7 @@ from typing import Optional
 
 from arq import create_pool
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import case, desc, func, select
+from sqlalchemy import String, case, cast, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user, require_admin
@@ -69,6 +69,8 @@ from services.media_service.schemas import (
     VaultGrantResponse,
     VaultListResponse,
     VaultMediaListResponse,
+    VaultMediaDeleteRequest,
+    VaultMediaDeleteResponse,
     VaultMediaResponse,
     VaultResponse,
     VaultUpdate,
@@ -79,6 +81,7 @@ from services.media_service.services.storage import (
     recommended_multipart_part_size,
     storage_service,
 )
+from services.media_service.services.audit import write_audit
 from services.media_service.services.vault_grants import (
     ensure_contributor_window,
     notify_vault_access,
@@ -217,7 +220,9 @@ async def _media_response(item: MediaItem) -> VaultMediaResponse:
         if item.media_type == MediaType.IMAGE:
             preview_url = thumbnail_url
     metadata = dict(item.metadata_info or {})
-    if preview_url:
+    if item.processing_status != "ready":
+        preview_status = "unavailable"
+    elif preview_url:
         preview_status = "ready"
     elif thumbnail_url:
         preview_status = "thumbnail_ready"
@@ -232,6 +237,7 @@ async def _media_response(item: MediaItem) -> VaultMediaResponse:
             "preview_url": preview_url,
             "thumbnail_url": thumbnail_url,
             "preview_status": preview_status,
+            "labels": list(item.vault_labels or []),
         }
     )
 
@@ -898,12 +904,13 @@ async def create_vault(
             detail="A media vault already exists for this session or event",
         ) from exc
     await db.refresh(vault)
-    try:
-        await sync_vault_volunteer_grants(db, vault=vault, created_by=actor.auth_id)
-    except Exception:
-        # Volunteer synchronization is retryable from the vault admin screen.
-        await db.rollback()
-        vault = await get_vault_or_404(db, vault.id)
+    if vault.session_id or vault.event_id:
+        try:
+            await sync_vault_volunteer_grants(db, vault=vault, created_by=actor.auth_id)
+        except Exception:
+            # Volunteer synchronization is retryable from the vault admin screen.
+            await db.rollback()
+            vault = await get_vault_or_404(db, vault.id)
     return await _vault_response(db, vault, actor)
 
 
@@ -1269,6 +1276,8 @@ async def list_vault_items(
     review_status: Optional[str] = None,
     consent_status: Optional[str] = None,
     media_type: Optional[str] = None,
+    processing_status: str = "ready",
+    label: Optional[str] = None,
     search: Optional[str] = None,
     duplicate_only: bool = False,
     page: int = Query(default=1, ge=1),
@@ -1279,11 +1288,14 @@ async def list_vault_items(
     actor = await resolve_actor(current_user)
     vault = await get_vault_or_404(db, vault_id)
     role = await require_vault_role(db, vault=vault, actor=actor, minimum="contributor")
-    conditions = [
-        MediaItem.vault_id == vault_id,
-        MediaItem.processing_status == "ready",
-        MediaItem.soft_deleted_at.is_(None),
-    ]
+    allowed_processing_states = {"ready", "uploading", "failed", "aborted", "all"}
+    if processing_status not in allowed_processing_states:
+        raise HTTPException(status_code=422, detail="Invalid processing status")
+    conditions = [MediaItem.vault_id == vault_id, MediaItem.soft_deleted_at.is_(None)]
+    if processing_status != "all":
+        conditions.append(MediaItem.processing_status == processing_status)
+    elif not actor.is_admin:
+        conditions.append(MediaItem.processing_status == "ready")
     if role == "contributor" and not actor.is_admin:
         conditions.append(MediaItem.uploaded_by == actor.auth_id)
     if review_status:
@@ -1292,8 +1304,16 @@ async def list_vault_items(
         conditions.append(MediaItem.consent_status == consent_status)
     if media_type:
         conditions.append(MediaItem.media_type == media_type.upper())
+    if label:
+        conditions.append(MediaItem.vault_labels.contains([label.strip()]))
     if search:
-        conditions.append(MediaItem.original_filename.ilike(f"%{search}%"))
+        term = f"%{search.strip()}%"
+        conditions.append(
+            or_(
+                MediaItem.original_filename.ilike(term),
+                cast(MediaItem.vault_labels, String).ilike(term),
+            )
+        )
     if duplicate_only:
         conditions.append(MediaItem.duplicate_of_id.is_not(None))
     total = int(
@@ -1309,7 +1329,7 @@ async def list_vault_items(
     items = list(result.scalars())
     missing_thumbnails: list[MediaItem] = []
     for item in items:
-        if item.thumbnail_object_key:
+        if item.processing_status != "ready" or item.thumbnail_object_key:
             continue
         metadata = dict(item.metadata_info or {})
         if metadata.get("thumbnail_status") in {"pending", "processing"}:
@@ -1356,7 +1376,7 @@ async def review_item(
     if not item:
         raise HTTPException(status_code=404, detail="Vault media not found")
     for key, value in payload.model_dump(exclude_unset=True).items():
-        setattr(item, key, value)
+        setattr(item, "vault_labels" if key == "labels" else key, value)
     item.reviewed_by = actor.auth_id
     item.reviewed_at = utc_now()
     await db.commit()
@@ -1385,11 +1405,126 @@ async def bulk_review_items(
     updates = payload.model_dump(exclude={"media_item_ids"}, exclude_unset=True)
     for item in items:
         for key, value in updates.items():
-            setattr(item, key, value)
+            setattr(item, "vault_labels" if key == "labels" else key, value)
         item.reviewed_by = actor.auth_id
         item.reviewed_at = utc_now()
     await db.commit()
     return [await _media_response(item) for item in items]
+
+
+@router.post(
+    "/{vault_id}/items/delete",
+    response_model=VaultMediaDeleteResponse,
+)
+async def delete_vault_items(
+    vault_id: uuid.UUID,
+    payload: VaultMediaDeleteRequest,
+    request: Request,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Remove vault media, optionally deleting every stored copy permanently."""
+
+    vault = await get_vault_or_404(db, vault_id)
+    rows = await db.execute(
+        select(MediaItem).where(
+            MediaItem.vault_id == vault_id,
+            MediaItem.id.in_(payload.media_item_ids),
+            MediaItem.soft_deleted_at.is_(None),
+        )
+    )
+    items = list(rows.scalars().all())
+    if len(items) != len(set(payload.media_item_ids)):
+        raise HTTPException(
+            status_code=404, detail="One or more vault items are missing"
+        )
+
+    deleted_at = utc_now()
+    bytes_deleted = 0
+    for item in items:
+        previous = {
+            "filename": item.original_filename,
+            "size_bytes": item.size_bytes,
+            "processing_status": item.processing_status,
+            "labels": list(item.vault_labels or []),
+            "published_media_id": (
+                str(item.published_media_id) if item.published_media_id else None
+            ),
+        }
+        if item.multipart_upload_id:
+            await storage_service.abort_multipart_upload(
+                file_key=item.object_key,
+                upload_id=item.multipart_upload_id,
+            )
+            item.multipart_upload_id = None
+
+        if payload.delete_from_storage:
+            for key in {
+                item.object_key,
+                item.proxy_object_key,
+                item.thumbnail_object_key,
+            }:
+                if key:
+                    await storage_service.delete_media(
+                        key,
+                        bucket_type=BucketType.PRIVATE,
+                        is_key=True,
+                        strict=True,
+                    )
+            if item.processing_status == "ready":
+                bytes_deleted += int(item.size_bytes or 0)
+
+            if item.published_media_id:
+                published = await db.get(MediaItem, item.published_media_id)
+                if published and not published.soft_deleted_at:
+                    album_items = await db.execute(
+                        select(AlbumItem).where(AlbumItem.media_item_id == published.id)
+                    )
+                    for album_item in album_items.scalars().all():
+                        await db.delete(album_item)
+                    await storage_service.delete_media(
+                        published.file_url,
+                        published.thumbnail_url,
+                        bucket_type=BucketType.PUBLIC,
+                        strict=True,
+                    )
+                    published.soft_deleted_at = deleted_at
+                item.published_media_id = None
+                item.published_at = None
+
+        item.soft_deleted_at = deleted_at
+        item.metadata_info = {
+            **(item.metadata_info or {}),
+            "vault_delete_mode": (
+                "permanent" if payload.delete_from_storage else "vault_only"
+            ),
+            "vault_deleted_at": deleted_at.isoformat(),
+        }
+        await write_audit(
+            db,
+            action=(
+                "media.vault.delete_permanently"
+                if payload.delete_from_storage
+                else "media.vault.remove"
+            ),
+            actor=current_user,
+            entity_id=item.id,
+            request=request,
+            old_value=previous,
+            new_value={
+                "soft_deleted_at": deleted_at.isoformat(),
+                "storage_deleted": payload.delete_from_storage,
+            },
+        )
+
+    if payload.delete_from_storage:
+        vault.used_bytes = max(0, int(vault.used_bytes or 0) - bytes_deleted)
+    await db.commit()
+    return VaultMediaDeleteResponse(
+        removed_count=len(items),
+        storage_deleted_count=len(items) if payload.delete_from_storage else 0,
+        bytes_deleted=bytes_deleted,
+    )
 
 
 @router.post("/{vault_id}/publish", response_model=list[VaultMediaResponse])
@@ -1426,12 +1561,22 @@ async def publish_items(
             ),
         )
     if not vault.published_album_id:
+        album_type = (
+            AlbumType.SESSION
+            if vault.session_id
+            else AlbumType.EVENT
+            if vault.event_id
+            else AlbumType.GENERAL
+        )
+        linked_entity_type = (
+            "session" if vault.session_id else "event" if vault.event_id else None
+        )
         album = Album(
             title=payload.album_title or vault.title,
             description=vault.description,
-            album_type=AlbumType.SESSION if vault.session_id else AlbumType.EVENT,
+            album_type=album_type,
             linked_entity_id=vault.session_id or vault.event_id,
-            linked_entity_type="session" if vault.session_id else "event",
+            linked_entity_type=linked_entity_type,
             is_public=payload.make_album_public,
             created_by=actor.auth_id,
         )
@@ -1476,6 +1621,7 @@ async def publish_items(
             },
             is_processed=True,
             uploaded_by=actor.auth_id,
+            vault_labels=list(item.vault_labels or []),
         )
         db.add(published)
         await db.flush()

@@ -34,6 +34,19 @@ def test_post_academy_bridge_uses_short_club_reminder_cycle():
     assert club_candidate == ("club", now + timedelta(days=30), 1)
 
 
+def test_dated_club_enrollment_drives_quarterly_renewal_reminder():
+    now = datetime(2026, 9, 3, tzinfo=timezone.utc)
+    enrollment_expiry = now + timedelta(days=28)
+    membership = MemberMembership(
+        club_paid_until=now - timedelta(days=1),
+        club_billing_cycle_months=12,
+    )
+
+    club_candidate = _candidate_expiries(membership, enrollment_expiry)[1]
+
+    assert club_candidate == ("club", enrollment_expiry, 3)
+
+
 def test_reminder_keys_are_channel_idempotent_and_reset_after_renewal():
     expiry = datetime(2027, 2, 7, tzinfo=timezone.utc)
     renewed_expiry = datetime(2028, 2, 7, tzinfo=timezone.utc)

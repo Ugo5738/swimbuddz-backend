@@ -3,7 +3,9 @@
 Kept slim — only what cross-service callers actually need.
 """
 
+from datetime import datetime
 from typing import List, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -80,6 +82,34 @@ class MemberMembershipResponse(BaseModel):
     club_paid_until: str | None = None
     academy_paid_until: str | None = None
     post_academy_club_until: str | None = None
+
+
+class ClubAccessCheck(BaseModel):
+    """One session-specific Club access decision requested internally."""
+
+    context_key: str = Field(min_length=1, max_length=160)
+    member_id: UUID
+    at: datetime
+    pool_id: UUID | None = None
+    pod_id: UUID | None = None
+
+
+class ClubAccessChecksRequest(BaseModel):
+    checks: list[ClubAccessCheck] = Field(default_factory=list, max_length=1000)
+
+
+class ClubAccessCheckResult(BaseModel):
+    context_key: str
+    allowed: bool
+    source: str
+    enrollment_id: UUID | None = None
+    club_id: UUID | None = None
+    payment_mode: str | None = None
+    fee_amount_kobo: int | None = None
+
+
+class ClubAccessChecksResponse(BaseModel):
+    items: list[ClubAccessCheckResult]
 
 
 class BulkMembersRequest(BaseModel):

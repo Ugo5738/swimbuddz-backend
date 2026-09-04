@@ -1,7 +1,7 @@
 """Cohort and cohort-resource schemas, including timeline-shift requests."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -45,6 +45,10 @@ class CohortBase(BaseModel):
     pool_id: Optional[UUID] = None
     # Pricing override
     price_override: Optional[int] = None  # API contract: naira (major unit)
+    membership_policy_override: Optional[
+        Literal["open", "active_required", "included"]
+    ] = None
+    post_graduation_club_bridge_months: Optional[int] = Field(default=None, ge=0, le=12)
     notes_internal: Optional[str] = None
     # ── Session defaults (applied to every session generated for this cohort) ──
     # API contract: default_pool_fee in naira (major unit); DB stores kobo.
@@ -121,6 +125,10 @@ class CohortUpdate(BaseModel):
     pool_id: Optional[UUID] = None
     # Pricing override
     price_override: Optional[int] = None
+    membership_policy_override: Optional[
+        Literal["open", "active_required", "included"]
+    ] = None
+    post_graduation_club_bridge_months: Optional[int] = Field(default=None, ge=0, le=12)
     notes_internal: Optional[str] = None
     # ── Session defaults ─────────────────────────────────────────────────
     default_pool_fee: Optional[float] = None
@@ -281,6 +289,29 @@ class CohortResponse(CohortBase):
         return normalised
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CohortPricingLine(BaseModel):
+    label: str = Field(min_length=1, max_length=120)
+    amount_ngn: int = Field(ge=0)
+
+
+class CohortPricingUpdate(BaseModel):
+    cost_lines: list[CohortPricingLine]
+    margin_percent: float = Field(default=0, ge=0, le=500)
+    round_to_ngn: int = Field(default=5_000, ge=1)
+    apply_suggested_price: bool = False
+
+
+class CohortPricingResponse(BaseModel):
+    cohort_id: UUID
+    cost_lines: list[CohortPricingLine]
+    cost_total_ngn: int
+    margin_percent: float
+    calculated_price_ngn: int
+    round_to_ngn: int
+    suggested_price_ngn: int
+    published_price_ngn: int
 
 
 # --- Cohort Resource Schemas ---

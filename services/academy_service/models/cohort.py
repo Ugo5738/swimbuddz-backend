@@ -104,6 +104,25 @@ class Cohort(Base):
 
     # Pricing override in kobo (minor NGN unit). Schema auto-converts naira↔kobo.
     price_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    membership_policy_override: Mapped[Optional[str]] = mapped_column(
+        String(24), nullable=True
+    )
+    # Both None (legacy/unconfigured) and zero disable the post-graduation
+    # Club eligibility bridge; a positive value opts this cohort in.
+    post_graduation_club_bridge_months: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    # Admin-only per-learner cost model. Public responses expose only the
+    # published all-in price above, never these individual cost lines.
+    pricing_cost_lines: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    pricing_margin_basis_points: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    calculated_price_kobo: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    suggested_price_kobo: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    pricing_round_to_kobo: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=500_000, server_default="500000"
+    )
 
     # ── Session defaults ─────────────────────────────────────────────────
     # Used when generating sessions for this cohort so admins don't have

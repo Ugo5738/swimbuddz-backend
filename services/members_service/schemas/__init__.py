@@ -47,10 +47,25 @@ from services.members_service.schemas.challenge import (  # noqa: F401
     VolunteerRoleUpdate,
 )
 from services.members_service.schemas.club import (  # noqa: F401
+    ActivateCommunityExperienceRequest,
+    ActivateClubApplicationRequest,
+    ClubApplicationReservationRequest,
+    ClubApplicationReservationResponse,
+    ClubApplicationCreate,
+    ClubApplicationResponse,
+    ClubAssessmentResponse,
     ClubBase,
     ClubCreate,
+    ClubObservedAssessmentUpdate,
+    ClubPaymentContext,
+    ClubPlanCreate,
+    ClubPlanResponse,
+    ClubPreAssessmentUpsert,
     ClubResponse,
     ClubUpdate,
+    CommunityExperienceOfferingCreate,
+    CommunityExperienceOfferingResponse,
+    CommunityExperienceQuote,
 )
 from services.members_service.schemas.coach import (  # noqa: F401
     AdminApproveCoach,

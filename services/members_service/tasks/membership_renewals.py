@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from html import escape
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -15,7 +15,7 @@ from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.common.service_client import dispatch_notification
 from libs.db.session import get_async_db
-from services.members_service.models import Member, MemberMembership
+from services.members_service.models import ClubEnrollment, Member, MemberMembership
 
 logger = get_logger(__name__)
 
@@ -45,7 +45,10 @@ def _message(
     tier: str, first_name: str, days: int, expiry_label: str
 ) -> tuple[str, str]:
     name = first_name or "Swimmer"
-    tier_name = tier.title()
+    product_name = {
+        "club": "Club access",
+        "community": "SwimBuddz Membership",
+    }.get(tier, tier.title())
     if tier == "academy":
         subject = (
             "Your Academy access is ending soon"
@@ -59,28 +62,30 @@ def _message(
         )
         return subject, body
     if days > 0:
-        subject = f"Your {tier_name} membership expires in {days} day{'s' if days != 1 else ''}"
+        subject = f"Your {product_name} expires in {days} day{'s' if days != 1 else ''}"
         body = (
-            f"Hi {name}, your {tier_name} access is active until {expiry_label}. "
+            f"Hi {name}, your {product_name} is active until {expiry_label}. "
             "Renew early and your new period will start after the time you already paid for."
         )
     elif days == 0:
-        subject = f"Your {tier_name} membership expires today"
-        body = f"Hi {name}, your {tier_name} access expires today ({expiry_label}). Renew to continue without interruption."
+        subject = f"Your {product_name} expires today"
+        body = f"Hi {name}, your {product_name} expires today ({expiry_label}). Renew to continue without interruption."
     else:
-        subject = f"Renew your {tier_name} membership"
-        body = f"Hi {name}, your {tier_name} access ended on {expiry_label}. Renew whenever you're ready to restore access."
+        subject = f"Renew your {product_name}"
+        body = f"Hi {name}, your {product_name} ended on {expiry_label}. Renew whenever you're ready to restore access."
     return subject, body
 
 
 def _candidate_expiries(
     membership: MemberMembership,
+    club_enrollment_expiry: datetime | None = None,
 ) -> list[tuple[str, datetime | None, int | None]]:
     club_values = [
         value
         for value in (
             membership.club_paid_until,
             membership.post_academy_club_until,
+            club_enrollment_expiry,
         )
         if value is not None
     ]
@@ -95,6 +100,8 @@ def _candidate_expiries(
         )
     ):
         club_cycle = 1
+    elif club_enrollment_expiry and club_expiry == club_enrollment_expiry:
+        club_cycle = 3
     return [
         ("academy", membership.academy_paid_until, None),
         ("club", club_expiry, club_cycle),
@@ -122,42 +129,36 @@ async def send_membership_renewal_reminders() -> int:
                 .scalars()
                 .all()
             )
+            dated_club_expiries = {
+                member_id: expiry
+                for member_id, expiry in (
+                    await db.execute(
+                        select(
+                            ClubEnrollment.member_id,
+                            func.max(ClubEnrollment.ends_at),
+                        )
+                        .where(ClubEnrollment.status == "active")
+                        .group_by(ClubEnrollment.member_id)
+                    )
+                ).all()
+            }
 
             for member in members:
                 membership = member.membership
                 if not membership:
                     continue
 
-                # Remind about the highest currently relevant tier only. This
-                # avoids asking an Academy member to renew Community while
-                # inherited access is still active.
-                for tier, expiry, club_cycle in _candidate_expiries(membership):
+                # Products are independent. When several reminders fall on
+                # the same day, send only the first to avoid notification
+                # spam; later offsets still surface the other renewal.
+                for tier, expiry, club_cycle in _candidate_expiries(
+                    membership,
+                    dated_club_expiries.get(member.id),
+                ):
                     if expiry is None:
                         continue
                     days = (expiry.date() - now.date()).days
                     if days not in reminder_offsets(tier, club_cycle):
-                        continue
-
-                    if (
-                        tier == "club"
-                        and membership.academy_paid_until
-                        and membership.academy_paid_until > now
-                    ):
-                        continue
-                    if tier == "community" and (
-                        (
-                            membership.academy_paid_until
-                            and membership.academy_paid_until > now
-                        )
-                        or (
-                            membership.club_paid_until
-                            and membership.club_paid_until > now
-                        )
-                        or (
-                            membership.post_academy_club_until
-                            and membership.post_academy_club_until > now
-                        )
-                    ):
                         continue
 
                     expiry_key = expiry.isoformat()

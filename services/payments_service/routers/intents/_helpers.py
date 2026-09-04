@@ -440,6 +440,11 @@ async def _dispatch_payment_notification(payment: Payment) -> None:
                 "payments",
                 "wallet",
             ),
+            PaymentPurpose.COMMUNITY_EXPERIENCE: (
+                "Community Experience Confirmed",
+                "community",
+                "users",
+            ),
         }
 
         label = purpose_labels.get(payment.purpose)

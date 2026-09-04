@@ -1,7 +1,7 @@
 """Program schemas."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -27,6 +27,7 @@ class ProgramBase(BaseModel):
     currency: str = "NGN"
     price_amount: int = 0  # API contract: naira (major unit)
     billing_type: BillingType = BillingType.ONE_TIME
+    membership_policy: Literal["open", "active_required", "included"] = "open"
     # Content
     curriculum_json: Optional[Dict[str, Any]] = None
     prep_materials: Optional[Dict[str, Any]] = None
@@ -53,6 +54,7 @@ class ProgramUpdate(BaseModel):
     currency: Optional[str] = None
     price_amount: Optional[int] = None
     billing_type: Optional[BillingType] = None
+    membership_policy: Optional[Literal["open", "active_required", "included"]] = None
     curriculum_json: Optional[Dict[str, Any]] = None
     prep_materials: Optional[Dict[str, Any]] = None
     faq_json: Optional[List[ProgramFAQItem]] = None

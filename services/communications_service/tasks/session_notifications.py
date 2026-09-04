@@ -21,6 +21,7 @@ from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_urls
 from libs.common.service_client import (
+    check_club_access_batch,
     dispatch_notification,
     get_confirmed_booking_member_ids,
     get_members_bulk,
@@ -913,6 +914,23 @@ async def _get_session_announcement_members(
     session_type = session.get("session_type")
     now = utc_now()
 
+    async def club_access_for(members: list[dict]) -> dict[str, dict]:
+        session_start = session.get("starts_at") or now.isoformat()
+        return await check_club_access_batch(
+            [
+                {
+                    "context_key": str(member["id"]),
+                    "member_id": str(member["id"]),
+                    "at": session_start,
+                    "pool_id": session.get("pool_id"),
+                    "pod_id": session.get("pod_id"),
+                }
+                for member in members
+                if member.get("id")
+            ],
+            calling_service="communications",
+        )
+
     if session_type == "cohort_class":
         cohort_id = session.get("cohort_id")
         if not cohort_id:
@@ -968,6 +986,7 @@ async def _get_session_announcement_members(
         pod_member_ids = {
             str(member_id) for member_id in (pod.get("active_member_ids") or [])
         }
+        club_access = await club_access_for(pod_members)
         return [
             member
             for member in pod_members
@@ -976,14 +995,29 @@ async def _get_session_announcement_members(
                 session,
                 now=now,
                 pod_member_ids=pod_member_ids,
+                club_product_access=bool(
+                    (club_access.get(str(member.get("id"))) or {}).get("allowed")
+                ),
             ).prompt_eligible
         ]
 
     if session_type in {"club", "community", "event"}:
+        club_access = (
+            await club_access_for(active_members) if session_type == "club" else {}
+        )
         return [
             member
             for member in active_members
-            if evaluate_session_access(member, session, now=now).prompt_eligible
+            if evaluate_session_access(
+                member,
+                session,
+                now=now,
+                club_product_access=(
+                    bool((club_access.get(str(member.get("id"))) or {}).get("allowed"))
+                    if session_type == "club"
+                    else None
+                ),
+            ).prompt_eligible
             or (
                 session_type == "community"
                 and _is_unpaid_community_prospect(member, now)
@@ -1218,6 +1252,23 @@ async def send_weekly_session_digest() -> None:
                     continue
                 eligible_members.append(m)
 
+            digest_club_access = await check_club_access_batch(
+                [
+                    {
+                        "context_key": f"{member['id']}:{session['id']}",
+                        "member_id": str(member["id"]),
+                        "at": session["starts_at"],
+                        "pool_id": session.get("pool_id"),
+                        "pod_id": session.get("pod_id"),
+                    }
+                    for member in eligible_members
+                    if member.get("id")
+                    for session in sessions
+                    if str(session.get("session_type") or "").lower() == "club"
+                ],
+                calling_service="communications",
+            )
+
             sent_count = 0
             for member in eligible_members:
                 member_sessions = []
@@ -1258,6 +1309,18 @@ async def send_weekly_session_digest() -> None:
                             cohort_enrollment=cohort_enrollment,
                             pod_member_ids=pod_member_ids,
                             confirmed_booking=is_booked,
+                            club_product_access=(
+                                bool(
+                                    (
+                                        digest_club_access.get(
+                                            f"{member_id}:{session_id}"
+                                        )
+                                        or {}
+                                    ).get("allowed")
+                                )
+                                if str(s.get("session_type") or "").lower() == "club"
+                                else None
+                            ),
                         )
                         if not access.digest_eligible:
                             continue

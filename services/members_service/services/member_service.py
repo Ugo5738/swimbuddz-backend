@@ -1,5 +1,5 @@
 """
-Business logic for member tier management.
+Business logic for legacy membership projections and product dates.
 
 Pure functions with no database dependencies for easy testing.
 All datetime operations use timezone-aware UTC datetimes.
@@ -25,19 +25,17 @@ def normalize_member_tiers(
     post_academy_club_until: Optional[datetime] = None,
 ) -> tuple[str, list[str], bool]:
     """
-    Compute member tier state derived from paid entitlements.
+    Compute the legacy cached labels derived from independent paid products.
 
     Tiers are computed FRESH from ``*_paid_until`` columns each call — stored
     ``current_tiers`` and ``current_tier`` are ignored as authoritative inputs
-    and only used to detect whether the result is a change. Per the tier
-    hierarchy in docs/club/PRICING_STRATEGY.md every tier includes the ones
-    below it, so an active club grants community and an active academy
-    grants club + community.
+    and only used to detect whether the result is a change. Product access is
+    deliberately independent: Academy never manufactures Club or annual
+    Membership access, and Club never manufactures annual Membership access.
 
     Rules:
-    - Add academy + club + community if academy_paid_until is in the future.
-    - Add club + community if club_paid_until or the post-Academy bridge is
-      in the future.
+    - Add Academy if academy_paid_until is in the future.
+    - Add Club if club_paid_until or the post-Academy bridge is in the future.
     - Add community if community_paid_until is in the future.
     - If nothing is paid, expose no effective tier and use ``prospect`` as the
       derived primary tier. Community is a paid entitlement, not an implicit
@@ -52,11 +50,11 @@ def normalize_member_tiers(
     tiers: set[str] = set()
 
     if academy_paid_until and academy_paid_until > now:
-        tiers.update({"academy", "club", "community"})
+        tiers.add("academy")
     if (club_paid_until and club_paid_until > now) or (
         post_academy_club_until and post_academy_club_until > now
     ):
-        tiers.update({"club", "community"})
+        tiers.add("club")
     if community_paid_until and community_paid_until > now:
         tiers.add("community")
 
@@ -91,29 +89,6 @@ def calculate_community_expiry(
     now = utc_now()
     base = current_expiry if current_expiry and current_expiry > now else now
     return base + relativedelta(years=years)
-
-
-def academy_bundle_expiry(
-    now: datetime,
-    community_paid_until: Optional[datetime],
-    club_paid_until: Optional[datetime],
-) -> tuple[datetime, Optional[datetime]]:
-    """Lower-tier dates updated by an Academy payment.
-
-    Academy includes Club while Academy is active, so an Academy payment does
-    not manufacture a direct Club entitlement. It extends Community to at
-    least one year from payment and preserves any independently purchased
-    Club date. The separate post-Academy bridge is granted on graduation.
-
-    Returns ``(community_paid_until, club_paid_until)``.
-    """
-    community_floor = now + relativedelta(years=1)
-    new_community = (
-        community_floor
-        if community_paid_until is None or community_paid_until < community_floor
-        else community_paid_until
-    )
-    return new_community, club_paid_until
 
 
 def calculate_club_expiry(
@@ -199,8 +174,8 @@ def check_club_eligibility(
     Returns:
         Tuple of (is_eligible, error_message_or_none)
     """
-    club_approved = "club" in approved_tiers or "academy" in approved_tiers
-    club_requested = "club" in requested_tiers or "academy" in requested_tiers
+    club_approved = "club" in approved_tiers
+    club_requested = "club" in requested_tiers
 
     if club_approved:
         return True, None

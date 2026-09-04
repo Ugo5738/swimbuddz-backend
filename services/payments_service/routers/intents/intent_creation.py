@@ -19,7 +19,6 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.currency import (
     KOBO_PER_BUBBLE,
-    KOBO_PER_NAIRA,
     bubbles_to_naira,
     kobo_to_naira,
     naira_to_kobo,
@@ -38,6 +37,12 @@ from services.payments_service.models import Payment, PaymentPurpose, PaymentSta
 from services.payments_service.schemas import (
     CreatePaymentIntentRequest,
     PaymentIntentResponse,
+)
+from services.payments_service.services.additional_charges import (
+    calculate_additional_charges,
+)
+from services.payments_service.services.academy_pricing import (
+    academy_payment_context,
 )
 
 settings = get_settings()
@@ -85,6 +90,129 @@ async def _member_for_payment_quote(member_auth_id: str) -> dict:
             detail="Member profile not found. Complete registration first.",
         )
     return member
+
+
+async def _approved_club_application_context(
+    application_id: uuid.UUID, payment_mode: str | None
+) -> dict:
+    headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(
+            f"{settings.MEMBERS_SERVICE_URL}/clubs/internal/applications/{application_id}/payment-context",
+            params={"payment_mode": payment_mode} if payment_mode else None,
+            headers=headers,
+        )
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=(
+                response.status_code
+                if response.status_code in {400, 403, 404, 409}
+                else 502
+            ),
+            detail=_service_error_detail(
+                response, "Could not price this Club application"
+            ),
+        )
+    return response.json()
+
+
+async def _reserve_club_application_capacity(
+    application_id: uuid.UUID,
+    *,
+    payment_reference: str,
+    payment_mode: str = "quarterly_prepaid",
+) -> dict:
+    """Hold all selected Club-quarter seats before checkout is exposed."""
+    try:
+        response = await internal_post(
+            service_url=settings.MEMBERS_SERVICE_URL,
+            path=f"/clubs/internal/applications/{application_id}/reservation",
+            calling_service="payments",
+            json={
+                "payment_reference": payment_reference,
+                **(
+                    {"payment_mode": payment_mode}
+                    if payment_mode != "quarterly_prepaid"
+                    else {}
+                ),
+            },
+            timeout=30,
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not reserve the selected Club place. Please try again.",
+        ) from exc
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=(
+                response.status_code
+                if response.status_code in {400, 403, 404, 409}
+                else status.HTTP_502_BAD_GATEWAY
+            ),
+            detail=_service_error_detail(
+                response, "Could not reserve the selected Club place"
+            ),
+        )
+    return response.json()
+
+
+async def _release_club_application_capacity(
+    application_id: uuid.UUID,
+    *,
+    payment_reference: str,
+) -> None:
+    """Best-effort release used when checkout cannot be created."""
+    try:
+        response = await internal_post(
+            service_url=settings.MEMBERS_SERVICE_URL,
+            path=(
+                f"/clubs/internal/applications/{application_id}/" "reservation/release"
+            ),
+            calling_service="payments",
+            json={"payment_reference": payment_reference},
+            timeout=15,
+        )
+        if response.status_code >= 400:
+            logger.warning(
+                "Club capacity release failed application_id=%s reference=%s: %s %s",
+                application_id,
+                payment_reference,
+                response.status_code,
+                response.text,
+            )
+    except httpx.HTTPError:
+        logger.exception(
+            "Could not release Club capacity application_id=%s reference=%s",
+            application_id,
+            payment_reference,
+        )
+
+
+async def _community_experience_context(
+    offering_id: uuid.UUID, member_auth_id: str
+) -> dict:
+    headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(
+            (
+                f"{settings.MEMBERS_SERVICE_URL}/clubs/community-experiences/"
+                f"internal/{offering_id}/payment-context"
+            ),
+            params={"member_auth_id": member_auth_id},
+            headers=headers,
+        )
+    if response.status_code >= 400:
+        detail = "Could not price this Community Experience"
+        try:
+            detail = response.json().get("detail") or detail
+        except ValueError:
+            pass
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=detail,
+        )
+    return response.json()
 
 
 async def _quote_ride_selection(
@@ -246,6 +374,14 @@ async def _get_internal_session_access(
             raise ValueError("confirmed booking fields are inconsistent")
         if not isinstance(access["required_tier"], str):
             raise TypeError("required_tier must be a string")
+        if access.get("fee_amount_kobo") is not None:
+            access["fee_amount_kobo"] = int(access["fee_amount_kobo"])
+            if access["fee_amount_kobo"] < 0:
+                raise ValueError("fee_amount_kobo cannot be negative")
+        if access.get("access_source") is not None and not isinstance(
+            access["access_source"], str
+        ):
+            raise TypeError("access_source must be a string")
     except (KeyError, TypeError, ValueError) as exc:
         logger.error("Sessions service returned an invalid access decision: %s", exc)
         raise HTTPException(
@@ -571,8 +707,10 @@ async def create_payment_intent(
     Create a payment intent (records a pending payment) and (if configured) initializes Paystack checkout.
     """
     payment_id = uuid.uuid4()
+    payment_reference = Payment.generate_reference()
     session_booking_id: uuid.UUID | None = None
     bundle_reservation_active = False
+    club_reservation_active = False
 
     async def release_active_bundle_reservation() -> None:
         nonlocal bundle_reservation_active
@@ -584,6 +722,16 @@ async def create_payment_intent(
         )
         bundle_reservation_active = False
 
+    async def release_active_club_reservation() -> None:
+        nonlocal club_reservation_active
+        if not club_reservation_active or payload.club_application_id is None:
+            return
+        await _release_club_application_capacity(
+            payload.club_application_id,
+            payment_reference=payment_reference,
+        )
+        club_reservation_active = False
+
     # Community activation - ₦20,000/year
     if payload.purpose == PaymentPurpose.COMMUNITY:
         amount = float(
@@ -593,66 +741,111 @@ async def create_payment_intent(
 
     # Club add-on - check if community extension needed
     elif payload.purpose == PaymentPurpose.CLUB:
-        amount, months, cycle = _resolve_club_amount(payload)
-
-        # Check if Club would exceed Community membership
         community_extension_months = 0
         community_extension_amount = 0.0
         requires_community_extension = False
-
-        # Fetch member's community_paid_until from members_service
-        try:
-            headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.get(
-                    f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{current_user.user_id}",
-                    headers=headers,
+        if payload.club_application_id:
+            context = await _approved_club_application_context(
+                payload.club_application_id,
+                payload.club_payment_mode,
+            )
+            if context.get("member_auth_id") != current_user.user_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="This Club application belongs to another member",
                 )
-                if resp.status_code == 200:
-                    member_data = resp.json()
-                    membership = member_data.get("membership") or {}
-                    community_until_str = membership.get("community_paid_until")
+            if context.get("currency") != payload.currency:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Currency does not match the selected Club plan",
+                )
+            amount = kobo_to_naira(int(context["subtotal_kobo"]))
+            months = int(context.get("months") or 3)
+            cycle = context.get("billing_cycle") or "quarterly"
+            payment_metadata = {
+                **(payload.payment_metadata or {}),
+                "months": months,
+                "club_billing_cycle": cycle,
+                "club_application_id": str(payload.club_application_id),
+                "club_payment_mode": context["payment_mode"],
+                "transition_expires_at": context.get("transition_expires_at"),
+                "club_id": context["club_id"],
+                "club_name": context["club_name"],
+                "plan_version_id": context["plan_version_id"],
+                "plan_version_ids": context.get("plan_version_ids")
+                or [context["plan_version_id"]],
+                "community_experience_selected": context[
+                    "community_experience_selected"
+                ],
+                "community_extension_months": int(
+                    context.get("annual_membership_months") or 0
+                ),
+                "community_extension_amount": kobo_to_naira(
+                    int(context.get("annual_membership_fee_kobo") or 0)
+                ),
+                "components_kobo": {
+                    "club": int(context["club_fee_kobo"]),
+                    "club_items": context.get("club_items") or [],
+                    "annual_swimbuddz_membership": int(
+                        context.get("annual_membership_fee_kobo") or 0
+                    ),
+                    "community_experience": int(
+                        context["community_experience_fee_kobo"]
+                    ),
+                },
+            }
+        else:
+            amount, months, cycle = _resolve_club_amount(payload)
 
-                    if community_until_str:
-                        from dateutil.relativedelta import relativedelta
+            # Backwards-compatible checkout for members who pre-date the
+            # location-specific Club application flow.
+            try:
+                headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.get(
+                        f"{settings.MEMBERS_SERVICE_URL}/members/by-auth/{current_user.user_id}",
+                        headers=headers,
+                    )
+                    if resp.status_code == 200:
+                        member_data = resp.json()
+                        membership = member_data.get("membership") or {}
+                        community_until_str = membership.get("community_paid_until")
+                        if community_until_str:
+                            from dateutil.relativedelta import relativedelta
 
-                        community_until = datetime.fromisoformat(
-                            community_until_str.replace("Z", "+00:00")
-                        )
-                        club_end = utc_now() + relativedelta(months=months)
-
-                        if club_end > community_until:
-                            # Calculate months needed to extend Community
-                            diff_days = (club_end - community_until).days
-                            community_extension_months = max(
-                                1, (diff_days + 29) // 30
-                            )  # Round up
-                            community_monthly_rate = (
-                                getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20000)
-                                / 12
+                            community_until = datetime.fromisoformat(
+                                community_until_str.replace("Z", "+00:00")
                             )
-                            community_extension_amount = round(
-                                community_monthly_rate * community_extension_months, 2
-                            )
-                            requires_community_extension = True
-        except Exception as e:
-            logger.warning(f"Could not check community status: {e}")
-
-        # If extension required and user opted in, add to total
-        if requires_community_extension and payload.include_community_extension:
-            amount += community_extension_amount
-
-        payment_metadata = {
-            **(payload.payment_metadata or {}),
-            "months": months,
-            "club_billing_cycle": str(cycle),
-            "community_extension_months": (
-                community_extension_months if payload.include_community_extension else 0
-            ),
-            "community_extension_amount": (
-                community_extension_amount if payload.include_community_extension else 0
-            ),
-        }
+                            club_end = utc_now() + relativedelta(months=months)
+                            if club_end > community_until:
+                                diff_days = (club_end - community_until).days
+                                community_extension_months = max(
+                                    1, (diff_days + 29) // 30
+                                )
+                                community_monthly_rate = (
+                                    getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20000)
+                                    / 12
+                                )
+                                community_extension_amount = round(
+                                    community_monthly_rate * community_extension_months,
+                                    2,
+                                )
+                                requires_community_extension = True
+            except Exception as exc:
+                logger.warning("Could not check community status: %s", exc)
+            if requires_community_extension and payload.include_community_extension:
+                amount += community_extension_amount
+            payment_metadata = {
+                **(payload.payment_metadata or {}),
+                "months": months,
+                "club_billing_cycle": str(cycle),
+                "community_extension_months": community_extension_months
+                if payload.include_community_extension
+                else 0,
+                "community_extension_amount": community_extension_amount
+                if payload.include_community_extension
+                else 0,
+            }
 
     # Club bundle - Community + Club together
     elif payload.purpose == PaymentPurpose.CLUB_BUNDLE:
@@ -672,6 +865,37 @@ async def create_payment_intent(
             },
         }
 
+    elif payload.purpose == PaymentPurpose.COMMUNITY_EXPERIENCE:
+        if not payload.community_experience_offering_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="community_experience_offering_id is required",
+            )
+        context = await _community_experience_context(
+            payload.community_experience_offering_id,
+            current_user.user_id,
+        )
+        amount = kobo_to_naira(int(context["subtotal_kobo"]))
+        payment_metadata = {
+            **(payload.payment_metadata or {}),
+            "community_experience_offering_id": str(
+                payload.community_experience_offering_id
+            ),
+            "community_experience_price_context": context["price_context"],
+            "community_extension_months": int(
+                context.get("annual_membership_months") or 0
+            ),
+            "community_extension_amount": kobo_to_naira(
+                int(context.get("annual_membership_fee_kobo") or 0)
+            ),
+            "components_kobo": {
+                "community_experience": int(context["amount_kobo"]),
+                "annual_swimbuddz_membership": int(
+                    context.get("annual_membership_fee_kobo") or 0
+                ),
+            },
+        }
+
     # Academy cohort enrollment
     elif payload.purpose == PaymentPurpose.ACADEMY_COHORT:
         if not payload.enrollment_id:
@@ -679,112 +903,28 @@ async def create_payment_intent(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="enrollment_id is required for ACADEMY_COHORT payments",
             )
-        # Lookup enrollment and next payable installment from academy_service.
-        # Pass use_installments so the academy service can build the schedule on-demand
-        # if the member opted in and no schedule exists yet.
-        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{settings.ACADEMY_SERVICE_URL}/internal/academy/enrollments/{payload.enrollment_id}",
-                params={"use_installments": str(payload.use_installments).lower()},
-                headers=headers,
-            )
-            if resp.status_code >= 400:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Failed to fetch enrollment: {resp.text}",
-                )
-            enrollment_data = resp.json()
-            cohort_id = enrollment_data.get("cohort_id")
-            installments = sorted(
-                enrollment_data.get("installments") or [],
-                key=lambda i: i.get("installment_number", 0),
-            )
-
-        paid_statuses = {"paid", "waived"}
-        next_installment = next(
-            (
-                i
-                for i in installments
-                if str(i.get("status") or "").lower() not in paid_statuses
-            ),
-            None,
+        context = await academy_payment_context(
+            enrollment_id=payload.enrollment_id,
+            member_auth_id=current_user.user_id,
+            use_installments=payload.use_installments,
+            amount_override_kobo=payload.amount_override_kobo,
         )
-
-        if next_installment:
-            # Academy returns installment amounts in kobo; convert to NGN for payment intent.
-            amount = float(next_installment.get("amount") or 0) / KOBO_PER_NAIRA
-        else:
-            # Backward-compatible fallback for older enrollments without an installment plan.
-            program = enrollment_data.get("program") or {}
-            cohort = enrollment_data.get("cohort") or {}
-            amount = float(
-                cohort.get("price_override")
-                if cohort.get("price_override") is not None
-                else (program.get("price_amount") or 0)
-            )
-            if str(enrollment_data.get("payment_status") or "").lower() == "paid":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="All required academy installments are already paid",
-                )
-
-        # Member-initiated custom amount: must be >= next installment amount
-        # and <= remaining balance (founder policy May 2026). Default behavior
-        # without an override is unchanged — charge exactly the stipulated amount.
-        if (
-            payload.amount_override_kobo is not None
-            and payload.amount_override_kobo > 0
-        ):
-            override_naira = payload.amount_override_kobo / KOBO_PER_NAIRA
-            if override_naira < amount:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Custom amount NGN {override_naira:,.2f} is less than the "
-                        f"next stipulated installment NGN {amount:,.2f}"
-                    ),
-                )
-            remaining_balance_kobo = sum(
-                int(i.get("amount") or 0)
-                for i in installments
-                if str(i.get("status") or "").lower() not in paid_statuses
-            )
-            remaining_balance_naira = remaining_balance_kobo / KOBO_PER_NAIRA
-            if override_naira > remaining_balance_naira:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Custom amount NGN {override_naira:,.2f} exceeds remaining "
-                        f"balance NGN {remaining_balance_naira:,.2f}"
-                    ),
-                )
-            amount = override_naira
-
-        if amount <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No payable installment is available for this enrollment",
-            )
-
+        amount = kobo_to_naira(int(context["subtotal_kobo"]))
         payment_metadata = {
             **(payload.payment_metadata or {}),
-            "enrollment_id": str(payload.enrollment_id),
-            "cohort_id": str(cohort_id) if cohort_id else None,
-            "installment_id": (
-                str(next_installment.get("id")) if next_installment else None
-            ),
-            "installment_number": (
-                int(next_installment.get("installment_number"))
-                if next_installment and next_installment.get("installment_number")
-                else None
-            ),
-            "installment_due_at": (
-                next_installment.get("due_at") if next_installment else None
-            ),
-            "total_installments": (
-                int(enrollment_data.get("total_installments") or 0) or None
-            ),
+            "enrollment_id": context["enrollment_id"],
+            "cohort_id": context["cohort_id"],
+            "installment_id": context["installment_id"],
+            "installment_number": context["installment_number"],
+            "installment_due_at": context["installment_due_at"],
+            "total_installments": context["total_installments"],
+            "academy_membership_policy": context["membership_policy"],
+            "community_extension_months": context["annual_membership_months"],
+            "academy_payment_amount_kobo": context["academy_amount_kobo"],
+            "components_kobo": {
+                "academy": context["academy_amount_kobo"],
+                "annual_swimbuddz_membership": context["annual_membership_fee_kobo"],
+            },
         }
 
     # Store order payment
@@ -846,7 +986,6 @@ async def create_payment_intent(
                     or "Session sign-in is not currently available."
                 ),
             )
-        session_quote = await _get_internal_session_quote(payload.session_id)
         ride_quote = await _quote_ride_selection(
             member_id=str(member["id"]),
             session_id=payload.session_id,
@@ -854,7 +993,8 @@ async def create_payment_intent(
             pickup_location_id=payload.pickup_location_id,
             num_seats=payload.num_seats,
         )
-        authoritative_total_kobo = int(session_quote["pool_fee"]) + int(
+        authoritative_session_fee_kobo = int(access.get("fee_amount_kobo") or 0)
+        authoritative_total_kobo = authoritative_session_fee_kobo + int(
             ride_quote["total_kobo"]
         )
         if (
@@ -887,7 +1027,8 @@ async def create_payment_intent(
             ),
             "bubbles_to_apply": payload.bubbles_to_apply or 0,
             "server_price": {
-                "pool_total_kobo": int(session_quote["pool_fee"]),
+                "pool_total_kobo": authoritative_session_fee_kobo,
+                "access_source": access.get("access_source"),
                 "ride_total_kobo": int(ride_quote["total_kobo"]),
                 "total_kobo": authoritative_total_kobo,
             },
@@ -1178,6 +1319,25 @@ async def create_payment_intent(
                 "discount_applies_to_component": applies_to_component,
             }
 
+    # Additional charges are calculated after discounts against the amount the
+    # provider will process. Policies are optional and independently scoped by
+    # payment purpose and method; inactive/missing policies add nothing.
+    subtotal_amount = amount
+    charge_lines, charge_total_kobo = await calculate_additional_charges(
+        db,
+        purpose=payload.purpose,
+        payment_method=payload.payment_method,
+        subtotal_kobo=naira_to_kobo(subtotal_amount),
+    )
+    if charge_total_kobo:
+        amount = subtotal_amount + kobo_to_naira(charge_total_kobo)
+        payment_metadata = {
+            **payment_metadata,
+            "subtotal_kobo": naira_to_kobo(subtotal_amount),
+            "additional_charges": charge_lines,
+            "additional_charges_total_kobo": charge_total_kobo,
+        }
+
     bubbles_purposes = {
         PaymentPurpose.SESSION_FEE,
         PaymentPurpose.SESSION_BOOKING,
@@ -1256,9 +1416,29 @@ async def create_payment_intent(
             "wallet_hold_id": wallet_hold_id,
         }
 
+    if payload.purpose == PaymentPurpose.CLUB and payload.club_application_id:
+        try:
+            reservation = await _reserve_club_application_capacity(
+                payload.club_application_id,
+                payment_reference=payment_reference,
+                payment_mode=str(payment_metadata.get("club_payment_mode")),
+            )
+        except Exception:
+            await release_active_wallet_hold()
+            await release_active_bundle_reservation()
+            raise
+        club_reservation_active = True
+        payment_metadata = {
+            **payment_metadata,
+            "club_capacity_reservation": {
+                "expires_at": reservation.get("expires_at"),
+                "plan_version_ids": reservation.get("plan_version_ids") or [],
+            },
+        }
+
     payment = Payment(
         id=payment_id,
-        reference=Payment.generate_reference(),
+        reference=payment_reference,
         member_auth_id=current_user.user_id,
         payer_email=current_user.email,
         purpose=payload.purpose,
@@ -1280,6 +1460,7 @@ async def create_payment_intent(
         await db.rollback()
         await release_active_wallet_hold()
         await release_active_bundle_reservation()
+        await release_active_club_reservation()
         raise
     await db.refresh(payment)
 
@@ -1289,13 +1470,23 @@ async def create_payment_intent(
     # A full discount, full Bubbles settlement, or genuinely free server-priced
     # bundle is completed internally and its entitlement applied immediately.
     if payment.amount <= 0:
-        internally_settleable = bool(payload.discount_code) or (
-            payload.purpose in bubbles_purposes
-            and (bubbles_to_apply_val > 0 or original_amount <= 0)
+        free_club_transition = (
+            payload.purpose == PaymentPurpose.CLUB
+            and payload.club_application_id is not None
+            and payment_metadata.get("club_payment_mode") == "transition_per_session"
+        )
+        internally_settleable = (
+            bool(payload.discount_code)
+            or free_club_transition
+            or (
+                payload.purpose in bubbles_purposes
+                and (bubbles_to_apply_val > 0 or original_amount <= 0)
+            )
         )
         if not internally_settleable:
             await release_active_wallet_hold()
             await release_active_bundle_reservation()
+            await release_active_club_reservation()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Amount must be greater than zero",
@@ -1308,6 +1499,7 @@ async def create_payment_intent(
             settlement_reference = f"free:{payment.reference}"
         # Once settlement starts, entitlement retry owns the reservations.
         bundle_reservation_active = False
+        club_reservation_active = False
         payment = await _mark_paid_and_apply(
             db=db,
             payment=payment,
@@ -1335,6 +1527,7 @@ async def create_payment_intent(
             await db.commit()
             await release_active_wallet_hold()
             await release_active_bundle_reservation()
+            await release_active_club_reservation()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Authenticated user email is required to initialize Paystack",
@@ -1358,6 +1551,7 @@ async def create_payment_intent(
             await db.commit()
             await release_active_wallet_hold()
             await release_active_bundle_reservation()
+            await release_active_club_reservation()
             raise
         checkout_url = authorization_url
         payment.provider = "paystack"
@@ -1383,6 +1577,7 @@ async def create_payment_intent(
         await db.commit()
         await release_active_wallet_hold()
         await release_active_bundle_reservation()
+        await release_active_club_reservation()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Online payment is temporarily unavailable. Please try again later.",
@@ -1417,5 +1612,8 @@ async def create_payment_intent(
         original_amount=original_amount if discount_applied else None,
         discount_applied=discount_applied,
         discount_code=discount_code_used,
+        subtotal_amount=subtotal_amount,
+        additional_charges=charge_lines,
+        additional_charges_total=kobo_to_naira(charge_total_kobo),
         **response_extension_info,
     )

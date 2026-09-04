@@ -99,7 +99,7 @@ async def test_bulk_member_lookup(members_client, db_session):
 async def test_bulk_member_lookup_returns_normalized_club_entitlement(
     members_client, db_session
 ):
-    """Pod email consumers receive the fields needed for Club eligibility."""
+    """Pod email consumers receive independent normalized Club entitlement fields."""
     from datetime import timedelta
 
     from libs.common.datetime_utils import utc_now
@@ -123,7 +123,8 @@ async def test_bulk_member_lookup_returns_normalized_club_entitlement(
     assert response.status_code == 200
     item = response.json()[0]
     assert item["primary_tier"] == "club"
-    assert set(item["active_tiers"]) == {"club", "community"}
+    assert set(item["active_tiers"]) == {"club"}
+    assert item["community_paid_until"] is None
     assert item["club_paid_until"] is not None
     assert item["academy_paid_until"] is None
 
