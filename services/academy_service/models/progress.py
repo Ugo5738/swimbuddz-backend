@@ -5,7 +5,7 @@ from typing import Optional
 from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
@@ -431,7 +431,13 @@ class CoachAssignment(Base):
     )
 
     # Relationships
-    cohort = relationship("Cohort", backref="coach_assignments")
+    cohort = relationship(
+        "Cohort",
+        backref=backref(
+            "coach_assignments",
+            passive_deletes="all",
+        ),
+    )
     evaluations = relationship(
         "ShadowEvaluation",
         back_populates="assignment",

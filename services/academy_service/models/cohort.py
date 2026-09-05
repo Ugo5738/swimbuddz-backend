@@ -185,10 +185,21 @@ class Cohort(Base):
 
     # Relationships
     program = relationship("Program", back_populates="cohorts")
-    enrollments = relationship("Enrollment", back_populates="cohort")
-    resources = relationship("CohortResource", back_populates="cohort")
+    enrollments = relationship(
+        "Enrollment",
+        back_populates="cohort",
+        passive_deletes="all",
+    )
+    resources = relationship(
+        "CohortResource",
+        back_populates="cohort",
+        passive_deletes="all",
+    )
     complexity_score = relationship(
-        "CohortComplexityScore", back_populates="cohort", uselist=False
+        "CohortComplexityScore",
+        back_populates="cohort",
+        uselist=False,
+        passive_deletes="all",
     )
 
     # Coerce string assignments to enum members on Python-side attribute set.
