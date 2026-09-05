@@ -179,6 +179,103 @@ async def test_get_cohort_not_found(academy_client, db_session):
     assert response.status_code == 404
 
 
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_delete_cohort_cascades_related_academy_rows(
+    academy_client,
+    db_session,
+):
+    """Deleting a cohort lets PostgreSQL cascade cohort-owned rows."""
+    from services.academy_service.models import (
+        CoachAssignment,
+        Cohort,
+        CohortComplexityScore,
+        CohortResource,
+        Enrollment,
+    )
+
+    program = ProgramFactory.create()
+    db_session.add(program)
+    await db_session.flush()
+
+    cohort = CohortFactory.create(program_id=program.id)
+    db_session.add(cohort)
+    await db_session.flush()
+
+    enrollment = EnrollmentFactory.create(
+        program_id=program.id,
+        cohort_id=cohort.id,
+        member_id=uuid.uuid4(),
+    )
+
+    resource = CohortResource(
+        cohort_id=cohort.id,
+        title="Delete cascade test resource",
+        resource_type="note",
+    )
+
+    assignment = CoachAssignment(
+        cohort_id=cohort.id,
+        coach_id=uuid.uuid4(),
+        role="lead",
+        assigned_by_id=uuid.uuid4(),
+    )
+
+    complexity = CohortComplexityScore(
+        cohort_id=cohort.id,
+        category="learn_to_swim",
+        dimension_1_score=1,
+        dimension_2_score=1,
+        dimension_3_score=1,
+        dimension_4_score=1,
+        dimension_5_score=1,
+        dimension_6_score=1,
+        dimension_7_score=1,
+        total_score=7,
+        required_coach_grade="grade_1",
+        pay_band_min=40,
+        pay_band_max=45,
+        scored_by_id=uuid.uuid4(),
+    )
+
+    db_session.add_all(
+        [
+            enrollment,
+            resource,
+            assignment,
+            complexity,
+        ]
+    )
+    await db_session.commit()
+
+    cohort_id = cohort.id
+    enrollment_id = enrollment.id
+    resource_id = resource.id
+    assignment_id = assignment.id
+    complexity_id = complexity.id
+
+    with patch(
+        "services.academy_service.routers.cohorts.crud.internal_delete",
+        new_callable=AsyncMock,
+        return_value=_FakeResponse(status_code=204),
+    ):
+        response = await academy_client.delete(f"/academy/cohorts/{cohort_id}")
+
+    assert response.status_code == 204, response.text
+
+    rows = [
+        (Cohort, cohort_id),
+        (Enrollment, enrollment_id),
+        (CohortResource, resource_id),
+        (CoachAssignment, assignment_id),
+        (CohortComplexityScore, complexity_id),
+    ]
+
+    for model, row_id in rows:
+        result = await db_session.execute(select(model.id).where(model.id == row_id))
+        assert result.scalar_one_or_none() is None
+
+
 # ---------------------------------------------------------------------------
 # Enrollments
 # ---------------------------------------------------------------------------
