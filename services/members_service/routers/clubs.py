@@ -159,22 +159,14 @@ def _new_club_enrollment(
     )
 
 
-def _assert_consecutive_plan_periods(plans: list[ClubPlanVersion]) -> None:
-    """Reject overlap and skipped periods in a multi-quarter purchase."""
+def _assert_non_overlapping_plan_periods(plans: list[ClubPlanVersion]) -> None:
+    """Allow skipped future quarters, while rejecting overlapping periods."""
     chronologically = sorted(plans, key=lambda item: item.period_start)
     for previous, current in zip(chronologically, chronologically[1:]):
         if current.period_start <= previous.period_end:
             raise HTTPException(
                 status_code=400,
                 detail="Selected Club quarters overlap",
-            )
-        if current.period_start != previous.period_end + timedelta(days=1):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Selected Club quarters must be consecutive. "
-                    "Remove the gap or buy the later quarter when it opens."
-                ),
             )
 
 
@@ -462,6 +454,9 @@ async def create_club_plan(
                 detail="Community Experience and Club plan must use the same quarter and currency",
             )
         values["community_experience_fee_kobo"] = offering.club_bundle_fee_kobo
+    else:
+        values["community_experience_fee_kobo"] = 0
+        values["community_experience_default_selected"] = False
     plan = ClubPlanVersion(
         club_id=club_id,
         pool_id=club.default_pool_id,
@@ -610,7 +605,7 @@ async def create_club_application(
             ),
         )
     chronologically = sorted(ordered_plans, key=lambda item: item.period_start)
-    _assert_consecutive_plan_periods(chronologically)
+    _assert_non_overlapping_plan_periods(chronologically)
     if body.preferred_pod_id:
         pod = await db.get(Pod, body.preferred_pod_id)
         if pod is None or pod.club_id != plan.club_id:
@@ -985,8 +980,10 @@ async def get_club_application_payment_context(
         else:
             experience_fee = primary_offering.club_bundle_fee_kobo
     elif experience_selected:
-        # Backwards compatibility for plans created before offerings existed.
-        experience_fee = plan.community_experience_fee_kobo
+        # An Experience is a distinct product and must have an offering to
+        # price and fulfil. A plan with no linked offering cannot charge a
+        # legacy fee-only line that would create no purchase entitlement.
+        experience_selected = False
     if experience_selected and primary_offering:
         existing_experience = (
             await db.execute(
@@ -1306,7 +1303,8 @@ async def activate_club_application(
         created_enrollments.append(enrollment)
     primary_plan = selected_plans[0]
     if (
-        body.community_experience_selected
+        chosen_mode == QUARTERLY_PREPAID
+        and body.community_experience_selected
         and primary_plan.community_experience_offering_id
     ):
         offering = await db.get(

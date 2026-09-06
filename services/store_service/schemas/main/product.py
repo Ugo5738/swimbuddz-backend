@@ -32,11 +32,10 @@ class ProductBase(BaseModel):
     requires_size_chart_ack: bool = False
     size_chart_media_id: Optional[uuid.UUID] = None
     supplier_id: Optional[uuid.UUID] = None
-    cost_price_ngn: Optional[Decimal] = Field(None, ge=0)
 
 
 class ProductCreate(ProductBase):
-    pass
+    cost_price_ngn: Optional[Decimal] = Field(None, ge=0)
 
 
 class ProductUpdate(BaseModel):
@@ -67,7 +66,6 @@ class ProductVariantBase(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     options: dict = Field(default_factory=dict)
     price_override_ngn: Optional[Decimal] = Field(None, ge=0)
-    cost_price_ngn: Optional[Decimal] = Field(None, ge=0)
     weight_grams: Optional[int] = Field(None, ge=0)
     is_active: bool = True
 
@@ -103,7 +101,13 @@ class ProductVariantResponse(ProductVariantBase):
     updated_at: datetime
 
 
-class ProductVariantWithInventory(ProductVariantResponse):
+class AdminProductVariantResponse(ProductVariantResponse):
+    """Admin variant response including internal unit cost."""
+
+    cost_price_ngn: Optional[Decimal] = None
+
+
+class ProductVariantWithInventory(AdminProductVariantResponse):
     """Admin variant response - includes full inventory details."""
 
     quantity_available: int = 0
@@ -179,7 +183,6 @@ class ProductResponse(ProductBase):
     id: uuid.UUID
     size_chart_url: Optional[str] = None  # Resolved from media_id
     supplier_id: Optional[uuid.UUID] = None
-    cost_price_ngn: Optional[Decimal] = None
     created_at: datetime
     updated_at: datetime
     images: list[ProductImageResponse] = []  # Include images for list views
@@ -190,6 +193,7 @@ class ProductResponse(ProductBase):
 class ProductDetail(ProductResponse):
     """Full product detail with variants and images (admin)."""
 
+    cost_price_ngn: Optional[Decimal] = None
     variants: list[ProductVariantWithInventory] = []
     images: list[ProductImageResponse] = []
     videos: list[ProductVideoResponse] = []

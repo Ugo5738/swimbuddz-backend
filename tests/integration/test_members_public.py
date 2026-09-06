@@ -129,6 +129,10 @@ async def test_membership_history_uses_exact_club_enrollment_dates(
         active_tiers=["club", "community"],
         declared_tiers=["community", "club"],
         community_paid_until=now + timedelta(days=365),
+        # Simulate a legacy projection that describes the same entitlement as
+        # the exact ClubEnrollment below.
+        club_paid_until=now + timedelta(days=30),
+        club_billing_cycle_months=3,
     )
     club = Club(name="Yaba Club", slug=f"history-{uuid.uuid4().hex}")
     db_session.add_all([member, membership, club])
@@ -176,6 +180,9 @@ async def test_membership_history_uses_exact_club_enrollment_dates(
     assert exact_period["label"] == "Yaba Club"
     assert exact_period["payment_mode"] == "transition_per_session"
     assert exact_period["dates_are_estimated"] is False
+    assert [
+        period for period in data["periods"] if period["product"] == "club"
+    ] == [exact_period]
 
 
 # ---------------------------------------------------------------------------

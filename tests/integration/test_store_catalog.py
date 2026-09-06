@@ -356,6 +356,46 @@ async def test_admin_variant_edit_rejects_duplicate_sku(store_client, db_session
     assert "SKU" in response.json()["detail"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cost_prices_are_admin_only(store_client, db_session):
+    product = _make_product(
+        has_variants=True,
+        cost_price_ngn=Decimal("7000.00"),
+    )
+    db_session.add(product)
+    await db_session.commit()
+    created = await store_client.post(
+        f"/admin/store/products/{product.id}/variants",
+        json={
+            "sku": f"SB-PRIVATE-COST-{uuid.uuid4().hex[:6]}",
+            "name": "Internal Cost Variant",
+            "cost_price_ngn": "4500.00",
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["cost_price_ngn"] == "4500.00"
+
+    public_list = await store_client.get("/store/products")
+    assert public_list.status_code == 200, public_list.text
+    public_product = next(
+        item for item in public_list.json()["items"] if item["id"] == str(product.id)
+    )
+    assert "cost_price_ngn" not in public_product
+
+    public_detail = await store_client.get(f"/store/products/{product.slug}")
+    assert public_detail.status_code == 200, public_detail.text
+    public_body = public_detail.json()
+    assert "cost_price_ngn" not in public_body
+    assert "cost_price_ngn" not in public_body["variants"][0]
+
+    admin_detail = await store_client.get(f"/admin/store/products/{product.id}")
+    assert admin_detail.status_code == 200, admin_detail.text
+    admin_body = admin_detail.json()
+    assert admin_body["cost_price_ngn"] == "7000.00"
+    assert admin_body["variants"][0]["cost_price_ngn"] == "4500.00"
+
+
 # ===========================================================================
 # Admin catalog — category CRUD
 # ===========================================================================

@@ -1,6 +1,7 @@
 """Store Service schemas package."""
 
 from services.store_service.schemas.main import (
+    AdminProductVariantResponse,
     ApplyDiscountRequest,
     CartItemCreate,
     CartItemResponse,
@@ -69,6 +70,7 @@ from services.store_service.schemas.main import (
 )
 
 __all__ = [
+    "AdminProductVariantResponse",
     "ApplyDiscountRequest",
     "CartItemCreate",
     "CartItemResponse",

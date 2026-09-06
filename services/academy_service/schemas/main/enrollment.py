@@ -104,6 +104,11 @@ class EnrollmentResponse(EnrollmentBase):
     )
     cohort_id: Optional[UUID] = None
     member_id: UUID
+    # Immutable commercial terms captured when the enrollment was created.
+    # Payments uses these minor-unit values instead of repricing an existing
+    # enrollment from the cohort's current settings.
+    price_snapshot_amount: Optional[int] = None
+    currency_snapshot: Optional[str] = None
     preferences: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime

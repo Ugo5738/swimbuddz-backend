@@ -39933,7 +39933,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProductVariantResponse"
+                  "$ref": "#/components/schemas/AdminProductVariantResponse"
                 }
               }
             }
@@ -40002,7 +40002,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProductVariantResponse"
+                  "$ref": "#/components/schemas/AdminProductVariantResponse"
                 }
               }
             }
@@ -75471,6 +75471,28 @@
             "format": "uuid",
             "title": "Member Id"
           },
+          "price_snapshot_amount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Snapshot Amount"
+          },
+          "currency_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency Snapshot"
+          },
           "preferences": {
             "anyOf": [
               {
@@ -102339,6 +102361,103 @@
         "title": "WeatherWindowSummaryResponse",
         "description": "Canonical provider-independent weather summary for a requested window."
       },
+      "AdminProductVariantResponse": {
+        "properties": {
+          "sku": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Sku"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "options": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Options"
+          },
+          "price_override_ngn": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Override Ngn"
+          },
+          "weight_grams": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Grams"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "cost_price_ngn": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Price Ngn"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sku",
+          "id",
+          "product_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AdminProductVariantResponse",
+        "description": "Admin variant response including internal unit cost."
+      },
       "ApplyDiscountRequest": {
         "properties": {
           "code": {
@@ -104685,18 +104804,6 @@
             ],
             "title": "Supplier Id"
           },
-          "cost_price_ngn": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cost Price Ngn"
-          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -104750,6 +104857,18 @@
                 "type": "null"
               }
             ]
+          },
+          "cost_price_ngn": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Price Ngn"
           },
           "variants": {
             "items": {
@@ -105169,18 +105288,6 @@
             ],
             "title": "Supplier Id"
           },
-          "cost_price_ngn": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cost Price Ngn"
-          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -105597,102 +105704,6 @@
         "title": "ProductVariantCreate",
         "description": "SKU is optional \u2014 auto-generated from product slug if omitted."
       },
-      "ProductVariantResponse": {
-        "properties": {
-          "sku": {
-            "type": "string",
-            "maxLength": 100,
-            "title": "Sku"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 255
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "options": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Options"
-          },
-          "price_override_ngn": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Price Override Ngn"
-          },
-          "cost_price_ngn": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cost Price Ngn"
-          },
-          "weight_grams": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Weight Grams"
-          },
-          "is_active": {
-            "type": "boolean",
-            "title": "Is Active",
-            "default": true
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "product_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Product Id"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "sku",
-          "id",
-          "product_id",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "ProductVariantResponse"
-      },
       "ProductVariantUpdate": {
         "properties": {
           "sku": {
@@ -105826,18 +105837,6 @@
             ],
             "title": "Price Override Ngn"
           },
-          "cost_price_ngn": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cost Price Ngn"
-          },
           "weight_grams": {
             "anyOf": [
               {
@@ -105874,6 +105873,18 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "cost_price_ngn": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Price Ngn"
           },
           "quantity_available": {
             "type": "integer",
@@ -106193,18 +106204,6 @@
             ],
             "title": "Supplier Id"
           },
-          "cost_price_ngn": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cost Price Ngn"
-          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -106323,18 +106322,6 @@
               }
             ],
             "title": "Price Override Ngn"
-          },
-          "cost_price_ngn": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cost Price Ngn"
           },
           "weight_grams": {
             "anyOf": [

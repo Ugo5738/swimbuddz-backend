@@ -8,8 +8,8 @@ from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.store_service.models import InventoryItem, Product, ProductVariant
 from services.store_service.schemas import (
+    AdminProductVariantResponse,
     ProductVariantCreate,
-    ProductVariantResponse,
     ProductVariantUpdate,
 )
 from sqlalchemy import func, select
@@ -23,7 +23,7 @@ router = APIRouter()
 
 @router.post(
     "/products/{product_id}/variants",
-    response_model=ProductVariantResponse,
+    response_model=AdminProductVariantResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_variant(
@@ -108,7 +108,7 @@ async def create_variant(
 
 @router.patch(
     "/products/{product_id}/variants/{variant_id}",
-    response_model=ProductVariantResponse,
+    response_model=AdminProductVariantResponse,
 )
 async def update_variant(
     product_id: uuid.UUID,

@@ -26,6 +26,15 @@ class _Scalars:
         return self._rows
 
 
+def test_thirteen_session_quarter_is_not_capped_at_twelve():
+    plan = SimpleNamespace(
+        period_start=date(2026, 10, 1), period_end=date(2026, 12, 31),
+        sessions_included=13, club_fee_kobo=6_500_000, minimum_entry_sessions=5,
+    )
+    club = SimpleNamespace(default_session_day="sat")
+    assert plan_price(plan, club, on_date=date(2026, 10, 3)) == (6_500_000, 13, True, None)
+
+
 @pytest.mark.asyncio
 async def test_payment_charge_formula_supports_waiver_and_cap():
     policy = SimpleNamespace(

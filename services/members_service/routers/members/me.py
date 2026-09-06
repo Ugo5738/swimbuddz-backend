@@ -129,6 +129,19 @@ async def get_current_member_membership_history(
     periods: list[MembershipHistoryPeriodResponse] = []
     club_coverages: list[tuple[datetime, datetime, datetime]] = []
     membership = member.membership
+    enrollment_rows = (
+        await db.execute(
+            select(ClubEnrollment, Club)
+            .join(Club, Club.id == ClubEnrollment.club_id)
+            .where(ClubEnrollment.member_id == member.id)
+            .order_by(ClubEnrollment.starts_at.desc())
+        )
+    ).all()
+    exact_club_coverages = [
+        (enrollment.starts_at, enrollment.ends_at)
+        for enrollment, _club in enrollment_rows
+        if enrollment.status not in {"cancelled", "revoked"}
+    ]
 
     if membership and membership.community_paid_until:
         periods.append(
@@ -148,7 +161,21 @@ async def get_current_member_membership_history(
             )
         )
 
-    if membership and membership.club_paid_until:
+    legacy_club_already_represented = bool(
+        membership
+        and membership.club_paid_until
+        and any(
+            # A legacy period ending exactly when the new one starts is a
+            # separate period, not a duplicate of the new enrollment.
+            starts_at < membership.club_paid_until <= ends_at
+            for starts_at, ends_at in exact_club_coverages
+        )
+    )
+    if (
+        membership
+        and membership.club_paid_until
+        and not legacy_club_already_represented
+    ):
         legacy_months = membership.club_billing_cycle_months or 3
         estimated_start = membership.club_paid_until - relativedelta(
             months=legacy_months
@@ -204,14 +231,6 @@ async def get_current_member_membership_history(
             )
         )
 
-    enrollment_rows = (
-        await db.execute(
-            select(ClubEnrollment, Club)
-            .join(Club, Club.id == ClubEnrollment.club_id)
-            .where(ClubEnrollment.member_id == member.id)
-            .order_by(ClubEnrollment.starts_at.desc())
-        )
-    ).all()
     for enrollment, club in enrollment_rows:
         # Enrollment ends are stored as exclusive midnight boundaries. Return
         # the inclusive covered instant so the UI says "Dec 31", not "Jan 1".
@@ -259,9 +278,21 @@ async def get_current_member_membership_history(
     else:
         club_renewal_status = "never"
 
-    renewal_due_at = (
-        max(coverage[2] for coverage in club_coverages) if club_coverages else None
-    )
+    renewal_due_at = None
+    if club_coverages:
+        # Independently prepaid future quarters must not hide a gap in access.
+        # Follow the current (or next upcoming) continuous coverage only.
+        coverage = (
+            max(current_club, key=lambda item: item[1])
+            if current_club
+            else min(upcoming_club, key=lambda item: item[0])
+            if upcoming_club
+            else max(club_coverages, key=lambda item: item[1])
+        )
+        coverage_end, renewal_due_at = coverage[1:]
+        for starts_at, ends_at, display_end in sorted(club_coverages):
+            if starts_at <= coverage_end < ends_at:
+                coverage_end, renewal_due_at = ends_at, display_end
     has_club_history = bool(club_coverages) or bool(
         membership and "club" in (membership.declared_tiers or [])
     )

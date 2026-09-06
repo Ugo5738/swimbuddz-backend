@@ -1,5 +1,19 @@
 # Academy Service
 
+## Editing cohort commercial settings
+
+Admin can edit the published price override, annual Membership policy, and
+installment defaults after creation. Academy tuition is frozen in
+`Enrollment.price_snapshot_amount` (kobo) and `currency_snapshot` at enrollment
+creation, including unpaid enrollments. Full-payment quotes and newly generated
+installment schedules use that snapshot; only genuinely older null snapshots
+fall back to the current cohort/program price. Existing installment rows are
+preserved when defaults change or installments are disabled.
+
+Waitlisted learners cannot pay until admitted. A checkout lookup requesting
+installments cannot opt a waitlisted enrollment into a plan or create its
+schedule. The payments quote rejects waitlisted enrollments with HTTP 409.
+
 SwimBuddz Academy Service manages structured learning programs, cohorts, and student progress.
 
 ## Features
