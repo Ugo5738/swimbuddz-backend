@@ -219,6 +219,60 @@ async def test_transition_quote_ignores_carried_community_experience_selection(
 
 
 @pytest.mark.asyncio
+async def test_quarterly_quote_does_not_charge_experience_without_an_offering(
+    members_client, db_session, seed_member_row
+):
+    """A fee-only plan cannot charge for an Experience it cannot fulfil."""
+    member = await seed_member_row(auth_id=f"quarterly-no-experience-{uuid.uuid4()}")
+    club = Club(
+        name="Quarterly Without Offering Club",
+        slug=f"quarterly-no-offering-{uuid.uuid4().hex[:8]}",
+    )
+    db_session.add(club)
+    await db_session.flush()
+    plan = ClubPlanVersion(
+        club_id=club.id,
+        name="Quarterly Without Offering Q4 2026",
+        billing_cycle="quarterly",
+        currency="NGN",
+        club_fee_kobo=6_500_000,
+        community_experience_fee_kobo=3_000_000,
+        community_experience_default_selected=True,
+        community_experience_offering_id=None,
+        sessions_included=13,
+        period_start=date(2026, 9, 1),
+        period_end=date(2026, 12, 31),
+        minimum_entry_sessions=5,
+        effective_from=date(2026, 1, 1),
+        is_active=True,
+    )
+    db_session.add(plan)
+    await db_session.flush()
+    application = ClubApplication(
+        member_id=member.id,
+        club_id=club.id,
+        plan_version_id=plan.id,
+        status="approved",
+        community_experience_selected=True,
+        approved_payment_modes=["quarterly_prepaid"],
+    )
+    db_session.add(application)
+    await db_session.commit()
+
+    response = await members_client.get(
+        f"/clubs/internal/applications/{application.id}/payment-context"
+    )
+
+    assert response.status_code == 200, response.text
+    quote = response.json()
+    assert quote["payment_mode"] == "quarterly_prepaid"
+    assert quote["community_experience_selected"] is False
+    assert quote["community_experience_fee_kobo"] == 0
+    assert quote["club_fee_kobo"] == 6_500_000
+    assert quote["subtotal_kobo"] == 8_500_000
+
+
+@pytest.mark.asyncio
 async def test_new_club_period_reuses_completed_readiness_without_auto_enrollment(
     db_session, seed_member_row
 ):

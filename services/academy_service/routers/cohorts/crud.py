@@ -202,6 +202,12 @@ async def update_cohort(
 
     update_data = cohort_in.model_dump(exclude_unset=True)
 
+    # Disabling installments also clears stale overrides. Existing enrollment
+    # schedules are separate snapshot rows and are intentionally untouched.
+    if update_data.get("installment_plan_enabled") is False:
+        update_data["installment_count"] = None
+        update_data["installment_deposit_amount"] = None
+
     for field, value in update_data.items():
         setattr(cohort, field, value)
 

@@ -1,9 +1,9 @@
 """Self-service member endpoints (/me*)."""
 
-"""Core members router - CRUD operations for member profiles."""
-
+from datetime import datetime, timedelta
 from typing import List
 
+from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.members_service.models import (
     ChallengeBadgeAward,
+    Club,
+    ClubEnrollment,
     Member,
 )
 from services.members_service.routers._helpers import (
@@ -25,6 +27,8 @@ from services.members_service.routers._helpers import (
 )
 from services.members_service.schemas import (
     ChallengeBadgeAwardResponse,
+    MembershipHistoryPeriodResponse,
+    MembershipHistoryResponse,
     MemberResponse,
     MemberMembershipResponse,
     MemberUpdate,
@@ -35,6 +39,16 @@ from services.members_service.services.club_access import (
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+def _history_status(
+    *, starts_at: datetime | None, ends_at: datetime | None, now: datetime
+) -> str:
+    if starts_at is not None and starts_at > now:
+        return "upcoming"
+    if ends_at is not None and ends_at <= now:
+        return "expired"
+    return "active"
 
 
 async def _member_response_with_club_enrollment(
@@ -84,6 +98,210 @@ async def get_current_member_profile(
 
     # Resolve media URLs
     return await _member_response_with_club_enrollment(member, db)
+
+
+@router.get("/me/membership-history", response_model=MembershipHistoryResponse)
+async def get_current_member_membership_history(
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return the authenticated member's dated Membership and Club history.
+
+    New Club purchases use exact immutable enrollment dates. Older membership
+    rows only retained an expiry, so their calculated starts are explicitly
+    marked as estimates instead of being presented as audited payment dates.
+    """
+
+    member = (
+        await db.execute(
+            select(Member)
+            .where(Member.auth_id == current_user.user_id)
+            .options(*member_eager_load_options())
+        )
+    ).scalar_one_or_none()
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member profile not found. Please complete registration.",
+        )
+
+    now = utc_now()
+    periods: list[MembershipHistoryPeriodResponse] = []
+    club_coverages: list[tuple[datetime, datetime, datetime]] = []
+    membership = member.membership
+    enrollment_rows = (
+        await db.execute(
+            select(ClubEnrollment, Club)
+            .join(Club, Club.id == ClubEnrollment.club_id)
+            .where(ClubEnrollment.member_id == member.id)
+            .order_by(ClubEnrollment.starts_at.desc())
+        )
+    ).all()
+    exact_club_coverages = [
+        (enrollment.starts_at, enrollment.ends_at)
+        for enrollment, _club in enrollment_rows
+        if enrollment.status not in {"cancelled", "revoked"}
+    ]
+
+    if membership and membership.community_paid_until:
+        periods.append(
+            MembershipHistoryPeriodResponse(
+                id="legacy-annual-membership",
+                product="community",
+                label="Annual Membership",
+                starts_at=member.created_at,
+                ends_at=membership.community_paid_until,
+                status=_history_status(
+                    starts_at=member.created_at,
+                    ends_at=membership.community_paid_until,
+                    now=now,
+                ),
+                source="legacy_membership",
+                dates_are_estimated=True,
+            )
+        )
+
+    legacy_club_already_represented = bool(
+        membership
+        and membership.club_paid_until
+        and any(
+            # A legacy period ending exactly when the new one starts is a
+            # separate period, not a duplicate of the new enrollment.
+            starts_at < membership.club_paid_until <= ends_at
+            for starts_at, ends_at in exact_club_coverages
+        )
+    )
+    if (
+        membership
+        and membership.club_paid_until
+        and not legacy_club_already_represented
+    ):
+        legacy_months = membership.club_billing_cycle_months or 3
+        estimated_start = membership.club_paid_until - relativedelta(
+            months=legacy_months
+        )
+        periods.append(
+            MembershipHistoryPeriodResponse(
+                id="legacy-club-membership",
+                product="club",
+                label="Club",
+                starts_at=estimated_start,
+                ends_at=membership.club_paid_until,
+                status=_history_status(
+                    starts_at=estimated_start,
+                    ends_at=membership.club_paid_until,
+                    now=now,
+                ),
+                source="legacy_membership",
+                dates_are_estimated=True,
+            )
+        )
+        club_coverages.append(
+            (estimated_start, membership.club_paid_until, membership.club_paid_until)
+        )
+
+    if membership and membership.post_academy_club_until:
+        bridge_start = (
+            membership.academy_paid_until
+            if membership.academy_paid_until
+            and membership.academy_paid_until < membership.post_academy_club_until
+            else None
+        )
+        periods.append(
+            MembershipHistoryPeriodResponse(
+                id="post-academy-club",
+                product="club",
+                label="Post-Academy Club access",
+                starts_at=bridge_start,
+                ends_at=membership.post_academy_club_until,
+                status=_history_status(
+                    starts_at=bridge_start,
+                    ends_at=membership.post_academy_club_until,
+                    now=now,
+                ),
+                source="post_academy",
+                dates_are_estimated=bridge_start is None,
+            )
+        )
+        club_coverages.append(
+            (
+                bridge_start or member.created_at,
+                membership.post_academy_club_until,
+                membership.post_academy_club_until,
+            )
+        )
+
+    for enrollment, club in enrollment_rows:
+        # Enrollment ends are stored as exclusive midnight boundaries. Return
+        # the inclusive covered instant so the UI says "Dec 31", not "Jan 1".
+        display_end = enrollment.ends_at - timedelta(microseconds=1)
+        period_status = _history_status(
+            starts_at=enrollment.starts_at,
+            ends_at=enrollment.ends_at,
+            now=now,
+        )
+        if enrollment.status not in {"active", "expired"}:
+            period_status = enrollment.status
+        periods.append(
+            MembershipHistoryPeriodResponse(
+                id=str(enrollment.id),
+                product="club",
+                label=club.name,
+                starts_at=enrollment.starts_at,
+                ends_at=display_end,
+                status=period_status,
+                source="club_enrollment",
+                club_name=club.name,
+                payment_mode=enrollment.payment_mode,
+            )
+        )
+        if period_status not in {"cancelled", "revoked"}:
+            club_coverages.append(
+                (enrollment.starts_at, enrollment.ends_at, display_end)
+            )
+
+    periods.sort(
+        key=lambda period: period.starts_at or datetime.min.replace(tzinfo=now.tzinfo),
+        reverse=True,
+    )
+
+    current_club = [
+        coverage for coverage in club_coverages if coverage[0] <= now < coverage[1]
+    ]
+    upcoming_club = [coverage for coverage in club_coverages if coverage[0] > now]
+    if current_club:
+        club_renewal_status = "active"
+    elif upcoming_club:
+        club_renewal_status = "upcoming"
+    elif club_coverages:
+        club_renewal_status = "due"
+    else:
+        club_renewal_status = "never"
+
+    renewal_due_at = None
+    if club_coverages:
+        # Independently prepaid future quarters must not hide a gap in access.
+        # Follow the current (or next upcoming) continuous coverage only.
+        coverage = (
+            max(current_club, key=lambda item: item[1])
+            if current_club
+            else min(upcoming_club, key=lambda item: item[0])
+            if upcoming_club
+            else max(club_coverages, key=lambda item: item[1])
+        )
+        coverage_end, renewal_due_at = coverage[1:]
+        for starts_at, ends_at, display_end in sorted(club_coverages):
+            if starts_at <= coverage_end < ends_at:
+                coverage_end, renewal_due_at = ends_at, display_end
+    has_club_history = bool(club_coverages) or bool(
+        membership and "club" in (membership.declared_tiers or [])
+    )
+    return MembershipHistoryResponse(
+        periods=periods,
+        club_renewal_status=club_renewal_status,
+        club_renewal_due_at=renewal_due_at,
+        club_action="renew" if has_club_history else "join",
+    )
 
 
 @router.get("/me/badges", response_model=List[ChallengeBadgeAwardResponse])

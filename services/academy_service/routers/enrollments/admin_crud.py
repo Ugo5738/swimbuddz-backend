@@ -18,6 +18,7 @@ from services.academy_service.models import (
     Program,
 )
 from services.academy_service.routers._shared import (
+    _resolve_enrollment_membership_policy,
     _resolve_enrollment_total_fee,
     _sync_installment_state_for_enrollment,
 )
@@ -115,6 +116,9 @@ async def enroll_student(
         preferences=enrollment_in.preferences,
         price_snapshot_amount=price_snapshot,
         currency_snapshot=program.currency or "NGN",
+        membership_policy_snapshot=_resolve_enrollment_membership_policy(
+            program, cohort
+        ),
     )
     db.add(enrollment)
 

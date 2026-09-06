@@ -71,6 +71,7 @@ from .pickup_location import (
     PickupLocationUpdate,
 )
 from .product import (
+    AdminProductVariantResponse,
     DefaultVariantResponse,
     ProductBase,
     ProductCreate,
@@ -163,6 +164,7 @@ __all__ = [
     "PickupLocationResponse",
     "PickupLocationUpdate",
     # product
+    "AdminProductVariantResponse",
     "DefaultVariantResponse",
     "ProductBase",
     "ProductCreate",

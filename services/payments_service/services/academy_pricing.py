@@ -46,6 +46,19 @@ async def academy_payment_context(
             detail="This Academy enrollment belongs to another member",
         )
 
+    enrollment_status = str(enrollment.get("status") or "").lower()
+    if enrollment_status not in {"pending_approval", "enrolled"}:
+        detail = (
+            "This Academy enrollment is waitlisted and cannot be paid until "
+            "a place becomes available."
+            if enrollment_status == "waitlist"
+            else "This Academy enrollment is not eligible for payment."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=detail,
+        )
+
     program = enrollment.get("program") or {}
     cohort = enrollment.get("cohort") or {}
     installments = sorted(
@@ -63,16 +76,22 @@ async def academy_payment_context(
     if next_installment:
         academy_amount_kobo = int(next_installment.get("amount") or 0)
     else:
-        academy_amount_kobo = int(
-            round(
-                float(
-                    cohort.get("price_override")
-                    if cohort.get("price_override") is not None
-                    else (program.get("price_amount") or 0)
+        snapshot_amount_kobo = enrollment.get("price_snapshot_amount")
+        if snapshot_amount_kobo is not None:
+            academy_amount_kobo = int(snapshot_amount_kobo)
+        else:
+            # Legacy fallback for enrollments created before price snapshots
+            # were captured. Current API prices use naira major units.
+            academy_amount_kobo = int(
+                round(
+                    float(
+                        cohort.get("price_override")
+                        if cohort.get("price_override") is not None
+                        else (program.get("price_amount") or 0)
+                    )
+                    * KOBO_PER_NAIRA
                 )
-                * KOBO_PER_NAIRA
             )
-        )
         if str(enrollment.get("payment_status") or "").lower() == "paid":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -113,7 +132,10 @@ async def academy_payment_context(
         and str(enrollment.get("payment_status") or "").lower() != "paid"
     )
     membership_policy = (
-        cohort.get("membership_policy_override")
+        enrollment.get("membership_policy_snapshot")
+        # Legacy enrollments have no policy snapshot; new enrollments never
+        # inherit later cohort/program policy edits at checkout.
+        or cohort.get("membership_policy_override")
         or program.get("membership_policy")
         or "open"
     )
@@ -141,7 +163,9 @@ async def academy_payment_context(
             )
 
     return {
-        "currency": "NGN",
+        "currency": (
+            enrollment.get("currency_snapshot") or program.get("currency") or "NGN"
+        ),
         "subtotal_kobo": academy_amount_kobo + membership_fee_kobo,
         "academy_amount_kobo": academy_amount_kobo,
         "annual_membership_fee_kobo": membership_fee_kobo,

@@ -127,6 +127,8 @@ from services.members_service.schemas.member import (  # noqa: F401
     MemberEmergencyContactResponse,
     MemberListResponse,
     MemberMembershipInput,
+    MembershipHistoryPeriodResponse,
+    MembershipHistoryResponse,
     MemberMembershipResponse,
     MemberPreferencesInput,
     MemberPreferencesResponse,

@@ -1,7 +1,7 @@
 """Enrollment and installment schemas."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -104,6 +104,14 @@ class EnrollmentResponse(EnrollmentBase):
     )
     cohort_id: Optional[UUID] = None
     member_id: UUID
+    # Immutable commercial terms captured when the enrollment was created.
+    # Payments uses these terms instead of the cohort's current settings.
+    # Tuition is in minor units (kobo).
+    price_snapshot_amount: Optional[int] = None
+    currency_snapshot: Optional[str] = None
+    membership_policy_snapshot: Optional[
+        Literal["open", "active_required", "included"]
+    ] = None
     preferences: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime

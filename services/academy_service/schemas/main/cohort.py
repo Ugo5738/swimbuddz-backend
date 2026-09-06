@@ -44,7 +44,9 @@ class CohortBase(BaseModel):
     # When set, session generation tags every session with this pool.
     pool_id: Optional[UUID] = None
     # Pricing override
-    price_override: Optional[int] = None  # API contract: naira (major unit)
+    price_override: Optional[int] = Field(
+        default=None, ge=0
+    )  # API contract: naira (major unit)
     membership_policy_override: Optional[
         Literal["open", "active_required", "included"]
     ] = None
@@ -61,10 +63,12 @@ class CohortBase(BaseModel):
     # Toggle: admin enables installment option for this cohort
     installment_plan_enabled: bool = False
     # Optional overrides — if None, business logic auto-computes from fee + duration
-    installment_count: Optional[int] = None  # Override auto-computed count
-    installment_deposit_amount: Optional[int] = (
-        None  # API contract: override first-installment amount (₦)
-    )
+    installment_count: Optional[int] = Field(
+        default=None, ge=2, le=12
+    )  # Override auto-computed count
+    installment_deposit_amount: Optional[int] = Field(
+        default=None, ge=0
+    )  # API contract: override first-installment amount (₦)
 
 
 class CoachAssignmentInput(BaseModel):
@@ -124,7 +128,7 @@ class CohortUpdate(BaseModel):
     location_address: Optional[str] = None
     pool_id: Optional[UUID] = None
     # Pricing override
-    price_override: Optional[int] = None
+    price_override: Optional[int] = Field(default=None, ge=0)
     membership_policy_override: Optional[
         Literal["open", "active_required", "included"]
     ] = None
@@ -135,8 +139,8 @@ class CohortUpdate(BaseModel):
     default_ride_configs: Optional[list[dict]] = None
     # ── Installment billing ──────────────────────────────────────────────────
     installment_plan_enabled: Optional[bool] = None
-    installment_count: Optional[int] = None
-    installment_deposit_amount: Optional[int] = None
+    installment_count: Optional[int] = Field(default=None, ge=2, le=12)
+    installment_deposit_amount: Optional[int] = Field(default=None, ge=0)
 
     @field_validator(
         "price_override",

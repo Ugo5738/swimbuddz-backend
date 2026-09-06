@@ -93,8 +93,14 @@ async def get_enrollment_internal(
     enrollment = result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
+    payable_statuses = {
+        EnrollmentStatus.PENDING_APPROVAL,
+        EnrollmentStatus.ENROLLED,
+    }
     await _sync_installment_state_for_enrollment(
-        db, enrollment, use_installments=use_installments
+        db,
+        enrollment,
+        use_installments=(use_installments and enrollment.status in payable_statuses),
     )
     await db.commit()
     # The sync above may have just built the installment schedule on demand

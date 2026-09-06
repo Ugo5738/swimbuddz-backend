@@ -312,6 +312,30 @@ class CoachProfileResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MembershipHistoryPeriodResponse(BaseModel):
+    """One dated period shown in the member's own membership history."""
+
+    id: str
+    product: str
+    label: str
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    status: str
+    source: str
+    dates_are_estimated: bool = False
+    club_name: Optional[str] = None
+    payment_mode: Optional[str] = None
+
+
+class MembershipHistoryResponse(BaseModel):
+    """Member-facing product history plus the current Club renewal state."""
+
+    periods: list[MembershipHistoryPeriodResponse] = Field(default_factory=list)
+    club_renewal_status: str
+    club_renewal_due_at: Optional[datetime] = None
+    club_action: str
+
+
 # ============================================================================
 # MEMBER RESPONSE SCHEMAS
 # ============================================================================

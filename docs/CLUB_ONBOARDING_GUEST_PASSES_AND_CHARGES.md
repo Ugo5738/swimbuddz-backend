@@ -12,8 +12,9 @@ optional quarterly Community Experience amount. The commercial plan is separate 
 cost-rate records: cost rates help an admin decide a price, while the plan is the
 price a member is offered and later pays.
 
-The quarterly Community Experience is optional. It is selected by default when
-the member chooses a plan, displayed as its own line item, and can be unticked
+The quarterly Community Experience is optional and requires a linked
+`CommunityExperienceOffering`. It can be selected by default when configured on
+the plan, is displayed as its own line item, and can be unticked
 before the application is submitted. The member's choice is saved on the
 application and used by the server when pricing checkout. A client-supplied total
 is never trusted.
@@ -22,8 +23,10 @@ The normal lifecycle is:
 
 1. Admin associates a Club with its operating area/default pool and publishes a
    dated Club plan.
-2. Member selects an operating area, pool location, one or more consecutive
-   Club quarters, and optionally a pod at that location.
+2. Member selects an operating area, pool location, the current open quarter
+   (or first available quarter), and optionally a pod at that location. Future
+   published quarters are independent optional prepayments: gaps are allowed,
+   overlapping periods are rejected, and capacity is checked for each selection.
 3. Member completes the safety pre-assessment.
 4. Admin records the observed 10–15 minute readiness assessment with one of:
    `club_ready`, `club_ready_modified`, or `academy_first`, and explicitly
@@ -42,6 +45,54 @@ completed `club_ready` or `club_ready_modified` assessment from an enrolled
 application can be copied with its source application ID. The new quarter is
 still a deliberate purchase: readiness reuse never auto-enrolls or auto-charges
 the member.
+
+### Publishing plans when registration shows no locations
+
+An existing Club, pool, or supplier cost rate does not itself create a commercial
+Club plan. Use `/admin/club-plans` to publish the location's approved plan; the
+member picker uses those active, effective plan versions. Configure the Club's
+operating area and default pool first.
+
+For the approved full Saturday Q4 2026 cycle, enter October 1–December 31,
+13 included sessions (October 3–December 26), ₦65,000 Club price, and a five-session
+minimum for new entry. The agreed 12-session cycle is ₦60,000. These are Admin
+inputs on each plan, not a global production pricing constant or a data migration.
+Set the effective-from date to when members may apply, not necessarily quarter start.
+Only publish locations intended to accept applications.
+
+If offering the optional Q4 Experience, first create its matching-period offering
+(₦50,000 standard, ₦40,000 Club member, ₦30,000 bundled) in the same Admin page,
+then link it while publishing the Club plan. A plan with no linked offering
+neither offers nor charges Experience. The obsolete fee-only checkout fallback
+has been removed. Transition activation excludes Experience even when the
+quarterly application had it selected.
+
+The undeployed `e3b7a1c4d902` Q4 seed migration was removed from the review branch.
+It must not be run; it used an incorrect hardcoded price/session count and no
+Experience offering. Existing migration history is otherwise retained.
+
+The proration helper respects the plan's configured session count, including
+13-session quarters; it has no universal 12-session cap. Within a quarter it
+currently counts occurrences of the Club's configured weekday. Replacing that
+calendar estimate with actual eligible scheduled sessions remains separate work.
+
+### Member history and renewal
+
+`GET /members/me/membership-history` powers Billing's Membership history and
+Club renewal guidance. Dated Club enrollments use exact coverage periods;
+legacy Membership records retain their known expiry and explicitly estimated
+starts. A legacy Club period already represented by an exact enrollment is
+suppressed, while separate older or adjacent periods remain visible. Cancelled
+or revoked enrollments do not suppress valid legacy history.
+
+Annual Membership and Club can expire independently. A former Club member uses
+Billing's **Renew or rejoin Club** action; prior approved readiness can be reused
+as described above. Both renewal cards open `/upgrade/club/plan`; only members
+without reusable approval must complete readiness again. Active Club access
+allows early renewal without relying on the legacy highest-paid-tier value.
+A prepaid future quarter is shown as upcoming and does not
+grant access before its start. Renewal dates follow continuous coverage, so a
+later prepaid quarter does not hide an intervening gap.
 
 ## Club payment arrangements
 

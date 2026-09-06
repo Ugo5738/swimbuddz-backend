@@ -11,7 +11,7 @@ from services.academy_service.models.enums import (
     PaymentStatus,
     enum_values,
 )
-from sqlalchemy import JSON, Boolean, DateTime
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -24,6 +24,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 class Enrollment(Base):
     __tablename__ = "enrollments"
+    __table_args__ = (
+        CheckConstraint(
+            "membership_policy_snapshot IS NULL OR membership_policy_snapshot IN "
+            "('open', 'active_required', 'included')",
+            name="ck_enrollments_membership_policy_snapshot",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -71,9 +78,13 @@ class Enrollment(Base):
         ),
         default=PaymentStatus.PENDING,
     )
-    # Snapshot of enrollment price in kobo.
+    # Commercial terms captured at creation; null policy is legacy-only.
+    # Price is stored in kobo.
     price_snapshot_amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     currency_snapshot: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    membership_policy_snapshot: Mapped[Optional[str]] = mapped_column(
+        String(24), nullable=True
+    )
     payment_reference: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     paid_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True

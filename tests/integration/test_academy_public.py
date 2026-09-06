@@ -181,6 +181,57 @@ async def test_get_cohort_not_found(academy_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+async def test_update_cohort_commercial_and_installment_settings(
+    academy_client,
+    db_session,
+):
+    """Edit Cohort persists pricing, membership policy, and installment terms."""
+    from services.academy_service.models import Cohort
+
+    program = ProgramFactory.create(price_amount=150_000 * 100)
+    db_session.add(program)
+    await db_session.flush()
+    cohort = CohortFactory.create(program_id=program.id)
+    db_session.add(cohort)
+    await db_session.commit()
+    cohort_id = cohort.id
+
+    response = await academy_client.put(
+        f"/academy/cohorts/{cohort_id}",
+        json={
+            "price_override": 180_000,
+            "membership_policy_override": "active_required",
+            "installment_plan_enabled": True,
+            "installment_count": 3,
+            "installment_deposit_amount": 60_000,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["price_override"] == 180_000
+    assert body["membership_policy_override"] == "active_required"
+    assert body["installment_plan_enabled"] is True
+    assert body["installment_count"] == 3
+    assert body["installment_deposit_amount"] == 60_000
+
+    db_session.expire_all()
+    stored = await db_session.get(Cohort, cohort_id)
+    assert stored is not None
+    assert stored.price_override == 180_000 * 100
+    assert stored.installment_deposit_amount == 60_000 * 100
+
+    disabled = await academy_client.put(
+        f"/academy/cohorts/{cohort_id}",
+        json={"installment_plan_enabled": False},
+    )
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json()["installment_count"] is None
+    assert disabled.json()["installment_deposit_amount"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 async def test_delete_cohort_cascades_related_academy_rows(
     academy_client,
     db_session,

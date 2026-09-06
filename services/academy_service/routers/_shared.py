@@ -309,6 +309,17 @@ def _resolve_enrollment_total_fee(program: Program, cohort: Cohort | None) -> in
     return int(program.price_amount or 0)
 
 
+def _resolve_enrollment_membership_policy(
+    program: Program, cohort: Cohort | None
+) -> str:
+    """Resolve the commercial policy once, when an enrollment is created."""
+    return (
+        (cohort.membership_policy_override if cohort else None)
+        or program.membership_policy
+        or "open"
+    )
+
+
 async def _list_enrollment_installments(
     db: AsyncSession, enrollment_id: uuid.UUID
 ) -> list[EnrollmentInstallment]:
@@ -338,13 +349,27 @@ async def _ensure_installment_plan(
     If installments already exist they are returned as-is regardless of the flag,
     so re-fetching the enrollment never accidentally clears an existing plan.
     """
-    # Persist installment preference once the member explicitly opts in at checkout.
-    if use_installments and not enrollment.uses_installments:
+    payable_statuses = {
+        EnrollmentStatus.PENDING_APPROVAL,
+        EnrollmentStatus.ENROLLED,
+    }
+
+    # Persist installment preference once an eligible member explicitly opts
+    # in at checkout. Waitlisted or closed enrollments must not acquire a
+    # financial schedule simply because an internal read included the flag.
+    if (
+        use_installments
+        and enrollment.status in payable_statuses
+        and not enrollment.uses_installments
+    ):
         enrollment.uses_installments = True
 
     installments = await _list_enrollment_installments(db, enrollment.id)
     if installments:
         return installments
+
+    if enrollment.status not in payable_statuses:
+        return []
 
     # Only build a schedule when both the cohort supports it AND the member opted in.
     if not enrollment.uses_installments or not getattr(
@@ -359,7 +384,12 @@ async def _ensure_installment_plan(
     if not program or not cohort:
         return []
 
-    total_fee = _resolve_enrollment_total_fee(program, cohort)
+    if enrollment.price_snapshot_amount is not None:
+        total_fee = int(enrollment.price_snapshot_amount)
+    else:
+        total_fee = _resolve_enrollment_total_fee(program, cohort)
+        enrollment.price_snapshot_amount = total_fee
+        enrollment.currency_snapshot = program.currency or "NGN"
     if total_fee <= 0:
         return []
 
@@ -395,8 +425,6 @@ async def _ensure_installment_plan(
             )
         )
 
-    enrollment.price_snapshot_amount = total_fee
-    enrollment.currency_snapshot = program.currency or "NGN"
     await db.flush()
     return await _list_enrollment_installments(db, enrollment.id)
 

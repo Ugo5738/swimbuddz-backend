@@ -243,6 +243,10 @@ class ProductVariant(Base):
     price_override_ngn: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(12, 2), nullable=True
     )
+    # Variant-specific unit cost. Null inherits the product-level cost.
+    cost_price_ngn: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
 
     # Physical attributes (for future shipping calc)
     weight_grams: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

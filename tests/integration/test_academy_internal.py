@@ -105,6 +105,7 @@ async def test_get_enrollment_internal(academy_client, db_session):
         cohort_id=cohort.id,
         member_id=member.id,
         program_id=program.id,
+        membership_policy_snapshot="included",
     )
     db_session.add(enrollment)
     await db_session.commit()
@@ -118,6 +119,96 @@ async def test_get_enrollment_internal(academy_client, db_session):
     assert data["id"] == str(enrollment.id)
     assert data["member_id"] == str(member.id)
     assert data["status"] == "enrolled"
+    assert data["price_snapshot_amount"] == enrollment.price_snapshot_amount
+    assert data["currency_snapshot"] == enrollment.currency_snapshot
+    assert data["membership_policy_snapshot"] == "included"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_internal_installment_creation_uses_enrollment_price_snapshot(
+    academy_client, db_session
+):
+    """Later cohort price edits do not reprice an existing enrollment."""
+    from services.academy_service.models import PaymentStatus
+
+    member = MemberFactory.create()
+    program = ProgramFactory.create(price_amount=20_000_000)
+    db_session.add_all([member, program])
+    await db_session.flush()
+    cohort = CohortFactory.create(
+        program_id=program.id,
+        price_override=18_000_000,
+        installment_plan_enabled=True,
+        installment_count=3,
+        installment_deposit_amount=5_000_000,
+    )
+    db_session.add(cohort)
+    await db_session.flush()
+    enrollment = EnrollmentFactory.create(
+        cohort_id=cohort.id,
+        member_id=member.id,
+        program_id=program.id,
+        payment_status=PaymentStatus.PENDING,
+        uses_installments=False,
+        price_snapshot_amount=15_000_000,
+    )
+    db_session.add(enrollment)
+    await db_session.commit()
+
+    response = await academy_client.get(
+        f"/internal/academy/enrollments/{enrollment.id}",
+        params={"use_installments": "true"},
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["uses_installments"] is True
+    assert data["price_snapshot_amount"] == 15_000_000
+    assert sum(item["amount"] for item in data["installments"]) == 15_000_000
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_waitlisted_enrollment_cannot_opt_into_installments(
+    academy_client, db_session
+):
+    """An internal quote lookup must not create debt for a waitlisted learner."""
+    from services.academy_service.models import EnrollmentStatus, PaymentStatus
+
+    member = MemberFactory.create()
+    program = ProgramFactory.create(price_amount=15_000_000)
+    db_session.add_all([member, program])
+    await db_session.flush()
+    cohort = CohortFactory.create(
+        program_id=program.id,
+        installment_plan_enabled=True,
+        installment_count=3,
+    )
+    db_session.add(cohort)
+    await db_session.flush()
+    enrollment = EnrollmentFactory.create(
+        cohort_id=cohort.id,
+        member_id=member.id,
+        program_id=program.id,
+        status=EnrollmentStatus.WAITLIST,
+        payment_status=PaymentStatus.PENDING,
+        uses_installments=False,
+        price_snapshot_amount=15_000_000,
+    )
+    db_session.add(enrollment)
+    await db_session.commit()
+
+    response = await academy_client.get(
+        f"/internal/academy/enrollments/{enrollment.id}",
+        params={"use_installments": "true"},
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["status"] == "waitlist"
+    assert data["uses_installments"] is False
+    assert data["installments"] == []
 
 
 @pytest.mark.asyncio

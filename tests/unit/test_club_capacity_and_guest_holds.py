@@ -18,26 +18,18 @@ def _plan(start: date, end: date):
     return SimpleNamespace(period_start=start, period_end=end)
 
 
-def test_multi_quarter_selection_must_be_consecutive():
-    clubs._assert_consecutive_plan_periods(
+def test_multi_quarter_selection_allows_skipped_future_periods():
+    clubs._assert_non_overlapping_plan_periods(
         [
             _plan(date(2026, 10, 1), date(2026, 12, 31)),
-            _plan(date(2027, 1, 1), date(2027, 3, 31)),
+            _plan(date(2027, 4, 1), date(2027, 6, 30)),
         ]
     )
-
-    with pytest.raises(HTTPException, match="must be consecutive"):
-        clubs._assert_consecutive_plan_periods(
-            [
-                _plan(date(2026, 10, 1), date(2026, 12, 31)),
-                _plan(date(2027, 4, 1), date(2027, 6, 30)),
-            ]
-        )
 
 
 def test_multi_quarter_selection_rejects_overlap():
     with pytest.raises(HTTPException, match="overlap"):
-        clubs._assert_consecutive_plan_periods(
+        clubs._assert_non_overlapping_plan_periods(
             [
                 _plan(date(2026, 10, 1), date(2026, 12, 31)),
                 _plan(date(2026, 12, 1), date(2027, 2, 28)),
