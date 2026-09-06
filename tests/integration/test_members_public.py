@@ -6,6 +6,7 @@ All existing tests only covered /internal/* endpoints.
 """
 
 import uuid
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -57,6 +58,124 @@ async def test_get_current_member_profile_not_found(members_client, db_session):
         response = await members_client.get("/members/me")
 
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_membership_history_guides_expired_legacy_club_member(
+    members_client, db_session
+):
+    """Former Club members see the recorded end date and a renewal action."""
+    from services.members_service.app.main import app
+    from services.members_service.models import MemberMembership
+
+    now = datetime.now(timezone.utc)
+    user = make_member_user()
+    member = MemberFactory.create(
+        auth_id=user.user_id,
+        email=user.email,
+        created_at=now - timedelta(days=400),
+    )
+    membership = MemberMembership(
+        member_id=member.id,
+        primary_tier="community",
+        active_tiers=["community"],
+        declared_tiers=["community", "club"],
+        community_paid_until=now + timedelta(days=100),
+        club_paid_until=now - timedelta(days=10),
+        club_billing_cycle_months=3,
+    )
+    db_session.add_all([member, membership])
+    await db_session.commit()
+
+    with override_auth(app, user):
+        response = await members_client.get("/members/me/membership-history")
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["club_renewal_status"] == "due"
+    assert data["club_action"] == "renew"
+    club_period = next(
+        period for period in data["periods"] if period["product"] == "club"
+    )
+    assert club_period["status"] == "expired"
+    assert club_period["dates_are_estimated"] is True
+    assert club_period["ends_at"].startswith(
+        (now - timedelta(days=10)).date().isoformat()
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_membership_history_uses_exact_club_enrollment_dates(
+    members_client, db_session
+):
+    """New Club enrollment snapshots are exposed as exact dated history."""
+    from services.members_service.app.main import app
+    from services.members_service.models import (
+        Club,
+        ClubApplication,
+        ClubEnrollment,
+        ClubPlanVersion,
+        MemberMembership,
+    )
+
+    now = datetime.now(timezone.utc)
+    user = make_member_user()
+    member = MemberFactory.create(auth_id=user.user_id, email=user.email)
+    membership = MemberMembership(
+        member_id=member.id,
+        primary_tier="club",
+        active_tiers=["club", "community"],
+        declared_tiers=["community", "club"],
+        community_paid_until=now + timedelta(days=365),
+    )
+    club = Club(name="Yaba Club", slug=f"history-{uuid.uuid4().hex}")
+    db_session.add_all([member, membership, club])
+    await db_session.flush()
+    plan = ClubPlanVersion(
+        club_id=club.id,
+        name="2026 Q4 Club",
+        club_fee_kobo=4_250_000,
+        period_start=date.today(),
+        period_end=date.today() + timedelta(days=89),
+        effective_from=date.today() - timedelta(days=1),
+    )
+    db_session.add(plan)
+    await db_session.flush()
+    application = ClubApplication(
+        member_id=member.id,
+        club_id=club.id,
+        plan_version_id=plan.id,
+        status="activated",
+    )
+    db_session.add(application)
+    await db_session.flush()
+    enrollment = ClubEnrollment(
+        member_id=member.id,
+        club_id=club.id,
+        plan_version_id=plan.id,
+        application_id=application.id,
+        payment_reference=f"HISTORY-{uuid.uuid4().hex}",
+        starts_at=now - timedelta(days=2),
+        ends_at=now + timedelta(days=30),
+        payment_mode="transition_per_session",
+    )
+    db_session.add(enrollment)
+    await db_session.commit()
+
+    with override_auth(app, user):
+        response = await members_client.get("/members/me/membership-history")
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["club_renewal_status"] == "active"
+    exact_period = next(
+        period for period in data["periods"] if period["id"] == str(enrollment.id)
+    )
+    assert exact_period["label"] == "Yaba Club"
+    assert exact_period["payment_mode"] == "transition_per_session"
+    assert exact_period["dates_are_estimated"] is False
 
 
 # ---------------------------------------------------------------------------

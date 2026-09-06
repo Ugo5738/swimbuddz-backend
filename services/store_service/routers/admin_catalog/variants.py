@@ -129,6 +129,21 @@ async def update_variant(
         raise HTTPException(status_code=404, detail="Variant not found")
 
     update_data = variant_in.model_dump(exclude_unset=True)
+    requested_sku = update_data.get("sku")
+    if requested_sku and requested_sku != variant.sku:
+        duplicate = (
+            await db.execute(
+                select(ProductVariant.id).where(
+                    ProductVariant.sku == requested_sku,
+                    ProductVariant.id != variant.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if duplicate is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Variant with this SKU already exists",
+            )
     for field, value in update_data.items():
         setattr(variant, field, value)
 

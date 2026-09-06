@@ -363,6 +363,33 @@
         ]
       }
     },
+    "/api/v1/members/me/membership-history": {
+      "get": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Get Current Member Membership History",
+        "description": "Return the authenticated member's dated Membership and Club history.\n\nNew Club purchases use exact immutable enrollment dates. Older membership\nrows only retained an expiry, so their calculated starts are explicitly\nmarked as estimates instead of being presented as audited payment dates.",
+        "operationId": "get_current_member_membership_history_members_me_membership_history_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipHistoryResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/members/me/badges": {
       "get": {
         "tags": [
@@ -64013,6 +64040,129 @@
         "title": "MemberUpdate",
         "description": "Input for updating a member."
       },
+      "MembershipHistoryPeriodResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "product": {
+            "type": "string",
+            "title": "Product"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "dates_are_estimated": {
+            "type": "boolean",
+            "title": "Dates Are Estimated",
+            "default": false
+          },
+          "club_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Name"
+          },
+          "payment_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Mode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "product",
+          "label",
+          "status",
+          "source"
+        ],
+        "title": "MembershipHistoryPeriodResponse",
+        "description": "One dated period shown in the member's own membership history."
+      },
+      "MembershipHistoryResponse": {
+        "properties": {
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/MembershipHistoryPeriodResponse"
+            },
+            "type": "array",
+            "title": "Periods"
+          },
+          "club_renewal_status": {
+            "type": "string",
+            "title": "Club Renewal Status"
+          },
+          "club_renewal_due_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Renewal Due At"
+          },
+          "club_action": {
+            "type": "string",
+            "title": "Club Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "club_renewal_status",
+          "club_action"
+        ],
+        "title": "MembershipHistoryResponse",
+        "description": "Member-facing product history plus the current Club renewal state."
+      },
       "MembershipPatchRequest": {
         "properties": {
           "pending_payment_reference": {
@@ -72977,7 +73127,8 @@
           "price_override": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -73059,7 +73210,9 @@
           "installment_count": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 2.0
               },
               {
                 "type": "null"
@@ -73070,7 +73223,8 @@
           "installment_deposit_amount": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -73620,7 +73774,8 @@
           "price_override": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -73702,7 +73857,9 @@
           "installment_count": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 2.0
               },
               {
                 "type": "null"
@@ -73713,7 +73870,8 @@
           "installment_deposit_amount": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -74422,7 +74580,8 @@
           "price_override": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -74510,7 +74669,9 @@
           "installment_count": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 2.0
               },
               {
                 "type": "null"
@@ -74521,7 +74682,8 @@
           "installment_deposit_amount": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -105397,6 +105559,22 @@
             ],
             "title": "Price Override Ngn"
           },
+          "cost_price_ngn": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Price Ngn"
+          },
           "weight_grams": {
             "anyOf": [
               {
@@ -105454,6 +105632,18 @@
               }
             ],
             "title": "Price Override Ngn"
+          },
+          "cost_price_ngn": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Price Ngn"
           },
           "weight_grams": {
             "anyOf": [
@@ -105557,6 +105747,22 @@
             ],
             "title": "Price Override Ngn"
           },
+          "cost_price_ngn": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Price Ngn"
+          },
           "weight_grams": {
             "anyOf": [
               {
@@ -105619,6 +105825,18 @@
               }
             ],
             "title": "Price Override Ngn"
+          },
+          "cost_price_ngn": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Price Ngn"
           },
           "weight_grams": {
             "anyOf": [
@@ -106105,6 +106323,18 @@
               }
             ],
             "title": "Price Override Ngn"
+          },
+          "cost_price_ngn": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Price Ngn"
           },
           "weight_grams": {
             "anyOf": [

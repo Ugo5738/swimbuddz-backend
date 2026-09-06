@@ -67,6 +67,7 @@ class ProductVariantBase(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     options: dict = Field(default_factory=dict)
     price_override_ngn: Optional[Decimal] = Field(None, ge=0)
+    cost_price_ngn: Optional[Decimal] = Field(None, ge=0)
     weight_grams: Optional[int] = Field(None, ge=0)
     is_active: bool = True
 
@@ -78,6 +79,7 @@ class ProductVariantCreate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     options: dict = Field(default_factory=dict)
     price_override_ngn: Optional[Decimal] = Field(None, ge=0)
+    cost_price_ngn: Optional[Decimal] = Field(None, ge=0)
     weight_grams: Optional[int] = Field(None, ge=0)
     is_active: bool = True
 
@@ -87,6 +89,7 @@ class ProductVariantUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     options: Optional[dict] = None
     price_override_ngn: Optional[Decimal] = Field(None, ge=0)
+    cost_price_ngn: Optional[Decimal] = Field(None, ge=0)
     weight_grams: Optional[int] = Field(None, ge=0)
     is_active: Optional[bool] = None
 
