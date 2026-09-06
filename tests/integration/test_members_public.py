@@ -180,9 +180,9 @@ async def test_membership_history_uses_exact_club_enrollment_dates(
     assert exact_period["label"] == "Yaba Club"
     assert exact_period["payment_mode"] == "transition_per_session"
     assert exact_period["dates_are_estimated"] is False
-    assert [
-        period for period in data["periods"] if period["product"] == "club"
-    ] == [exact_period]
+    assert [period for period in data["periods"] if period["product"] == "club"] == [
+        exact_period
+    ]
 
 
 # ---------------------------------------------------------------------------

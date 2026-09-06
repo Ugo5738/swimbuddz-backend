@@ -202,9 +202,7 @@ async def self_enroll(
         uses_installments=False,
         preferences=preferences or {},
         price_snapshot_amount=(
-            _resolve_enrollment_total_fee(program, cohort)
-            if program
-            else None
+            _resolve_enrollment_total_fee(program, cohort) if program else None
         ),
         currency_snapshot=(program.currency if program else None),
     )

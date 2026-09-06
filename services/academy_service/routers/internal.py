@@ -100,9 +100,7 @@ async def get_enrollment_internal(
     await _sync_installment_state_for_enrollment(
         db,
         enrollment,
-        use_installments=(
-            use_installments and enrollment.status in payable_statuses
-        ),
+        use_installments=(use_installments and enrollment.status in payable_statuses),
     )
     await db.commit()
     # The sync above may have just built the installment schedule on demand
