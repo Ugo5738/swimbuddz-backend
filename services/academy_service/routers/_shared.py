@@ -309,6 +309,17 @@ def _resolve_enrollment_total_fee(program: Program, cohort: Cohort | None) -> in
     return int(program.price_amount or 0)
 
 
+def _resolve_enrollment_membership_policy(
+    program: Program, cohort: Cohort | None
+) -> str:
+    """Resolve the commercial policy once, when an enrollment is created."""
+    return (
+        (cohort.membership_policy_override if cohort else None)
+        or program.membership_policy
+        or "open"
+    )
+
+
 async def _list_enrollment_installments(
     db: AsyncSession, enrollment_id: uuid.UUID
 ) -> list[EnrollmentInstallment]:

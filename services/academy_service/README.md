@@ -3,12 +3,23 @@
 ## Editing cohort commercial settings
 
 Admin can edit the published price override, annual Membership policy, and
-installment defaults after creation. Academy tuition is frozen in
-`Enrollment.price_snapshot_amount` (kobo) and `currency_snapshot` at enrollment
-creation, including unpaid enrollments. Full-payment quotes and newly generated
-installment schedules use that snapshot; only genuinely older null snapshots
-fall back to the current cohort/program price. Existing installment rows are
-preserved when defaults change or installments are disabled.
+installment defaults after creation. Both self-service and Admin enrollment
+creation freeze `Enrollment.price_snapshot_amount` (kobo), `currency_snapshot`,
+and `membership_policy_snapshot`, including unpaid enrollments and program-only
+requests. The policy resolves the cohort override, then program policy, then
+`open`. Later cohort/program edits never change those stored terms.
+
+Full-payment quotes and newly generated installment schedules use the tuition
+snapshot. Both full and installment quotes use the stored Membership policy, so
+an `included` enrollment cannot acquire a separate annual Membership fee because
+an Admin later changes the cohort to `active_required`. Existing installment rows
+are preserved when defaults change or installments are disabled.
+
+Migration `f6c8e0a2b413` adds the nullable Membership policy snapshot; apply it
+before deploying the new Academy code. Existing rows are intentionally not
+backfilled with a guessed historical policy. Only missing legacy snapshots fall
+back to current cohort/program terms. The existing store variant-cost migration
+is separate; neither migration is executed by these code changes.
 
 Waitlisted learners cannot pay until admitted. A checkout lookup requesting
 installments cannot opt a waitlisted enrollment into a plan or create its

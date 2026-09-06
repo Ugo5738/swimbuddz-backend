@@ -75493,6 +75493,22 @@
             ],
             "title": "Currency Snapshot"
           },
+          "membership_policy_snapshot": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "active_required",
+                  "included"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Membership Policy Snapshot"
+          },
           "preferences": {
             "anyOf": [
               {

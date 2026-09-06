@@ -132,7 +132,10 @@ async def academy_payment_context(
         and str(enrollment.get("payment_status") or "").lower() != "paid"
     )
     membership_policy = (
-        cohort.get("membership_policy_override")
+        enrollment.get("membership_policy_snapshot")
+        # Legacy enrollments have no policy snapshot; new enrollments never
+        # inherit later cohort/program policy edits at checkout.
+        or cohort.get("membership_policy_override")
         or program.get("membership_policy")
         or "open"
     )

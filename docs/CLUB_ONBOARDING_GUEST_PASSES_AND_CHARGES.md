@@ -87,7 +87,10 @@ or revoked enrollments do not suppress valid legacy history.
 
 Annual Membership and Club can expire independently. A former Club member uses
 Billing's **Renew or rejoin Club** action; prior approved readiness can be reused
-as described above. A prepaid future quarter is shown as upcoming and does not
+as described above. Both renewal cards open `/upgrade/club/plan`; only members
+without reusable approval must complete readiness again. Active Club access
+allows early renewal without relying on the legacy highest-paid-tier value.
+A prepaid future quarter is shown as upcoming and does not
 grant access before its start. Renewal dates follow continuous coverage, so a
 later prepaid quarter does not hide an intervening gap.
 

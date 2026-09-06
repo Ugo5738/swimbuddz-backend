@@ -105,6 +105,7 @@ async def test_get_enrollment_internal(academy_client, db_session):
         cohort_id=cohort.id,
         member_id=member.id,
         program_id=program.id,
+        membership_policy_snapshot="included",
     )
     db_session.add(enrollment)
     await db_session.commit()
@@ -120,6 +121,7 @@ async def test_get_enrollment_internal(academy_client, db_session):
     assert data["status"] == "enrolled"
     assert data["price_snapshot_amount"] == enrollment.price_snapshot_amount
     assert data["currency_snapshot"] == enrollment.currency_snapshot
+    assert data["membership_policy_snapshot"] == "included"
 
 
 @pytest.mark.asyncio
