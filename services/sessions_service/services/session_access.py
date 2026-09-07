@@ -32,6 +32,7 @@ def _is_club_session(session: Session) -> bool:
 def _club_access_check(session: Session, member_id: str) -> dict:
     return {
         "context_key": str(session.id),
+        "session_id": str(session.id),
         "member_id": member_id,
         "at": session.starts_at.isoformat(),
         "pool_id": str(session.pool_id) if session.pool_id else None,

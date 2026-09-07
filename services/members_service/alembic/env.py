@@ -28,6 +28,7 @@ from services.members_service.models import (  # noqa: F401
     ClubApplication,
     ClubEnrollment,
     ClubPlanVersion,
+    ClubPlanSession,
     ClubReadinessAssessment,
     ClubChallenge,
     CoachAgreement,

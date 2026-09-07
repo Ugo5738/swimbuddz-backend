@@ -70,7 +70,11 @@ async def test_club_capacity_reservation_uses_payment_reference(monkeypatch):
     )
 
     assert result["status"] == "active"
-    assert post.await_args.kwargs["json"] == {"payment_reference": "PAY-123"}
+    assert post.await_args.kwargs["json"] == {
+        "payment_reference": "PAY-123",
+        "community_experience_selected": False,
+        "community_experience_fee_kobo": 0,
+    }
 
 
 @pytest.mark.asyncio

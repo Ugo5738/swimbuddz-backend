@@ -16,6 +16,7 @@ from services.sessions_service.schemas.guest_pass import GuestPassCreate
 from services.sessions_service.schemas.main import SessionCreate, SessionType
 from services.sessions_service.routers import guest_passes
 from scripts.seed.reward_rules import build_default_rules
+from tests.club_schedule_helpers import attach_schedule
 
 
 class _Scalars:
@@ -35,6 +36,7 @@ def test_thirteen_session_quarter_is_not_capped_at_twelve():
         minimum_entry_sessions=5,
     )
     club = SimpleNamespace(default_session_day="sat")
+    attach_schedule(plan, date(2026, 10, 3))
     assert plan_price(plan, club, on_date=date(2026, 10, 3)) == (
         6_500_000,
         13,
@@ -196,6 +198,7 @@ def test_club_quarter_prorates_until_five_session_cutoff():
         club_fee_kobo=6_000_000,
     )
     club = SimpleNamespace(default_session_day="sat")
+    attach_schedule(plan, date(2026, 7, 4))
 
     amount, remaining, available, reason = plan_price(
         plan, club, on_date=date(2026, 8, 25)
@@ -218,6 +221,7 @@ def test_future_club_quarter_is_full_price():
         club_fee_kobo=6_500_000,
     )
     club = SimpleNamespace(default_session_day="sat")
+    attach_schedule(plan, date(2026, 10, 3))
 
     assert plan_price(plan, club, on_date=date(2026, 8, 25)) == (
         6_500_000,

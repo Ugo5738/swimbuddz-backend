@@ -109,7 +109,24 @@ async def resolve_club_access_checks(
             if check.pod_id is not None:
                 if pod_club_ids.get(check.pod_id) != enrollment.club_id:
                     continue
-            if check.pool_id is not None:
+            session_id = getattr(check, "session_id", None)
+            links = getattr(plan, "session_links", [])
+            scheduled_quarter = (
+                links
+                and getattr(enrollment, "payment_mode", "quarterly_prepaid")
+                == "quarterly_prepaid"
+                and session_id is not None
+            )
+            if scheduled_quarter:
+                # A location plan may explicitly include a visit to another pool.
+                # Date overlap alone never includes an unsold extra session.
+                if not any(
+                    link.session_id == session_id
+                    and (check.pool_id is None or link.pool_id == check.pool_id)
+                    for link in links
+                ):
+                    continue
+            elif check.pool_id is not None:
                 # Use the immutable commercial snapshot. The Club default is
                 # only a fallback for historical plans created before the
                 # snapshot columns existed.
@@ -170,7 +187,11 @@ async def resolve_club_access_checks(
                     "fee_amount_kobo": None,
                 }
             )
-        elif membership and _paid_until_covers(membership.club_paid_until, at):
+        elif (
+            membership
+            and not enrollments_by_member.get(check.member_id)
+            and _paid_until_covers(membership.club_paid_until, at)
+        ):
             resolved.append(
                 {
                     "context_key": check.context_key,

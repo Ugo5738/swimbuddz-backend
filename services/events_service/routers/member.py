@@ -146,6 +146,8 @@ def _total_charge_kobo(event: Event) -> int:
     ``pool_fee_kobo + organizer_surcharge_kobo``. The unused side is NULL/0, so
     summing all three is safe.
     """
+    if getattr(event, "community_experience_offering_id", None):
+        return 0  # Admission is sold exclusively by the Experience offering.
     return (
         (event.cost_kobo or 0)
         + (event.pool_fee_kobo or 0)
@@ -166,6 +168,7 @@ def _event_response_dict(
     hide_location = bool(event.is_location_private and not viewer_can_attend)
     return {
         "id": event.id,
+        "community_experience_offering_id": event.community_experience_offering_id,
         "title": event.title,
         "description": event.description,
         "event_type": event.event_type,
@@ -737,6 +740,20 @@ async def update_event(
 
     # Update only provided fields. Pricing values need Naira→kobo normalization.
     update_fields = event_data.model_dump(exclude_unset=True)
+    if event.community_experience_offering_id and any(
+        key in update_fields and update_fields[key] != getattr(event, key)
+        for key in (
+            "start_time",
+            "end_time",
+            "max_capacity",
+            "visibility",
+            "event_type",
+        )
+    ):
+        raise HTTPException(
+            409,
+            "Unlink this unsold Experience Event before changing its dates, capacity or audience. Sold packages require reconciliation/versioning.",
+        )
     pricing_updates = {
         key: update_fields.pop(key)
         for key in list(update_fields)
@@ -779,6 +796,11 @@ async def delete_event(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
+    if event.community_experience_offering_id:
+        raise HTTPException(
+            409, "Unlink this Event from its Community Experience before deleting it"
+        )
+
     # Delete associated RSVPs first
     await db.execute(delete(EventRSVP).where(EventRSVP.event_id == event_id))
     await db.delete(event)
@@ -803,12 +825,21 @@ async def create_or_update_rsvp(
     member_id = current_member.id
 
     # Check if event exists
-    event_query = select(Event).where(Event.id == event_id)
+    event_query = select(Event).where(Event.id == event_id).with_for_update()
     event_result = await db.execute(event_query)
     event = event_result.scalar_one_or_none()
 
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
+
+    if event.community_experience_offering_id:
+        raise HTTPException(
+            409,
+            detail={
+                "message": "This Event is included in a Community Experience; use its ticket checkout",
+                "offering_id": str(event.community_experience_offering_id),
+            },
+        )
 
     membership = (
         await get_member_membership(

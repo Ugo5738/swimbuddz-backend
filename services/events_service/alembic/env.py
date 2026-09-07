@@ -23,7 +23,13 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 # Only migrate tables owned by this service
-SERVICE_TABLES = {"events", "event_rsvps", "event_invites", "event_templates"}
+SERVICE_TABLES = {
+    "events",
+    "event_rsvps",
+    "event_invites",
+    "event_templates",
+    "event_reminder_logs",
+}
 
 url = settings.DATABASE_URL.replace("%", "%%")
 config.set_main_option("sqlalchemy.url", url)

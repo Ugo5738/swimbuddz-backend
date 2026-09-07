@@ -88,6 +88,7 @@ class ClubAccessCheck(BaseModel):
     """One session-specific Club access decision requested internally."""
 
     context_key: str = Field(min_length=1, max_length=160)
+    session_id: UUID | None = None
     member_id: UUID
     at: datetime
     pool_id: UUID | None = None

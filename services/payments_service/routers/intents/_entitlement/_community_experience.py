@@ -12,6 +12,30 @@ settings = get_settings()
 
 async def apply_community_experience(payment: Payment) -> None:
     metadata = payment.payment_metadata or {}
+    if metadata.get("experience_order_id"):
+        from libs.common.currency import naira_to_kobo
+        from libs.common.service_client import internal_post
+
+        order_amount = int(metadata["experience_order_amount_kobo"])
+        if naira_to_kobo(payment.amount) != order_amount + int(
+            metadata.get("additional_charges_total_kobo") or 0
+        ):
+            raise HTTPException(
+                409,
+                "Paid amount does not match the Experience order and its processing charges",
+            )
+        response = await internal_post(
+            service_url=settings.MEMBERS_SERVICE_URL,
+            path=f"/clubs/community-experiences/internal/orders/{metadata['experience_order_id']}/confirm",
+            calling_service="payments",
+            json={"payment_reference": payment.reference, "amount_kobo": order_amount},
+        )
+        if response.status_code >= 400:
+            raise HTTPException(
+                502,
+                "Experience payment succeeded but participant fulfillment requires retry/reconciliation",
+            )
+        return
     offering_id = metadata.get("community_experience_offering_id")
     if not offering_id:
         raise HTTPException(

@@ -93,6 +93,7 @@ class EventResponse(BaseModel):
     """Event response schema — cost_naira converted from cost_kobo on read."""
 
     id: uuid.UUID
+    community_experience_offering_id: Optional[uuid.UUID] = None
     title: str
     description: Optional[str] = None
     event_type: str

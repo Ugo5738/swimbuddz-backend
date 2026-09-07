@@ -3,6 +3,15 @@
 from fastapi import FastAPI
 
 from libs.common.health import register_health_check
+from services.members_service.routers.club_plan_admin import (
+    router as club_plan_admin_router,
+)
+from services.members_service.routers.experience_admin import (
+    router as experience_admin_router,
+)
+from services.members_service.routers.experience_tickets import (
+    router as experience_tickets_router,
+)
 from services.members_service.routers import (
     admin_router,
     admin_tasks_router,
@@ -51,7 +60,10 @@ def create_app() -> FastAPI:
     # NOTE: volunteer_router removed — now handled by volunteer_service (port 8012)
     app.include_router(challenge_router)
     # Static Community Experience routes must precede /clubs/{club_id}.
+    app.include_router(experience_admin_router)
+    app.include_router(experience_tickets_router)
     app.include_router(community_experiences_router)
+    app.include_router(club_plan_admin_router)
     app.include_router(clubs_router)
     app.include_router(volunteer_router)
 

@@ -14,6 +14,12 @@ Model definitions are split across:
 """
 
 from services.members_service.models.assessment import SwimAssessment  # noqa: F401
+from services.members_service.models.experience import (  # noqa: F401
+    CommunityExperienceEvent,
+    CommunityExperienceOrder,
+    CommunityExperienceParticipant,
+    CommunityExperienceAttendance,
+)
 from services.members_service.models.club import (  # noqa: F401
     Club,
     ClubApplication,
@@ -21,6 +27,7 @@ from services.members_service.models.club import (  # noqa: F401
     ClubEnrollment,
     ClubEnrollmentReservation,
     ClubPlanVersion,
+    ClubPlanSession,
     ClubReadinessAssessment,
     CommunityExperienceOffering,
     CommunityExperiencePurchase,
@@ -79,6 +86,7 @@ __all__ = [
     "ClubEnrollment",
     "ClubEnrollmentReservation",
     "ClubPlanVersion",
+    "ClubPlanSession",
     "ClubReadinessAssessment",
     "CommunityExperienceOffering",
     "CommunityExperiencePurchase",
