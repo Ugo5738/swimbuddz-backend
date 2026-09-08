@@ -7,13 +7,10 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_service_role
 from libs.common.config import get_settings
-from libs.common.currency import naira_to_kobo
-from libs.common.service_client import internal_post
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     GuestPass,
@@ -22,10 +19,14 @@ from services.sessions_service.models import (
     SessionBookingStatus,
     SessionStatus,
     SessionType,
+    SessionTemplate,
+    ClubScheduleOperation,
 )
-from services.sessions_service.services.pricing import (
-    normalize_pricing_payload,
-    pricing_payload_from_session,
+from services.sessions_service.schemas.templates import ClubTemplatePricing
+from services.sessions_service.services.club_generation import (
+    club_session_from_template,
+    club_instance_id,
+    recurrence_dates,
 )
 
 router = APIRouter(
@@ -36,6 +37,7 @@ router = APIRouter(
 
 
 class ScheduleQuery(BaseModel):
+    club_id: uuid.UUID | None = None
     session_ids: list[uuid.UUID] = Field(default_factory=list, max_length=260)
     pool_id: uuid.UUID | None = None
     period_start: date | None = None
@@ -48,6 +50,8 @@ def session_snapshot(session: Session) -> dict:
         "title": session.title,
         "pool_id": str(session.pool_id) if session.pool_id else None,
         "pod_id": str(session.pod_id) if session.pod_id else None,
+        "club_id": str(session.club_id) if session.club_id else None,
+        "club_access_mode": session.club_access_mode,
         "session_type": session.session_type.value,
         "status": session.status.value,
         "starts_at": session.starts_at.isoformat(),
@@ -72,6 +76,8 @@ async def query_schedule(body: ScheduleQuery, db: AsyncSession = Depends(get_asy
     ):
         raise HTTPException(422, "Supply session IDs or a pool and date range")
     query = select(Session)
+    if body.club_id:
+        query = query.where(Session.club_id == body.club_id)
     if body.session_ids:
         query = query.where(Session.id.in_(body.session_ids))
     else:
@@ -94,15 +100,17 @@ async def query_schedule(body: ScheduleQuery, db: AsyncSession = Depends(get_asy
 
 class GenerateQuarter(BaseModel):
     club_id: uuid.UUID
-    source_session_id: uuid.UUID
     pool_id: uuid.UUID
+    template_id: uuid.UUID | None = None
+    title: str = "Club practice"
     period_start: date
     period_end: date
     weekday: int = Field(ge=0, le=6)
     starts_at_local: time
     duration_minutes: int = Field(ge=15, le=480)
-    expected_staff: int = Field(default=0, ge=0, le=50)
-    lanes: int = Field(default=1, ge=1, le=50)
+    capacity: int = Field(default=20, ge=1, le=500)
+    pricing_settings: ClubTemplatePricing | None = None
+    excluded_dates: list[date] = Field(default_factory=list, max_length=52)
 
     @model_validator(mode="after")
     def valid_range(self):
@@ -115,117 +123,70 @@ class GenerateQuarter(BaseModel):
 async def generate_quarter(
     body: GenerateQuarter, db: AsyncSession = Depends(get_async_db)
 ):
-    source = await db.get(Session, body.source_session_id)
+    template_id = body.template_id or uuid.uuid5(body.club_id, "primary-club-template")
+    # Serialize generation for this Club/template. Repeated requests return the
+    # same Sessions and never overwrite a published Session or its price.
+    await db.execute(select(func.pg_advisory_xact_lock(template_id.int % (2**63 - 1))))
+    template = await db.get(SessionTemplate, template_id)
+    if template is None:
+        if body.template_id or body.pricing_settings is None:
+            raise HTTPException(
+                422,
+                "Choose a Club template or supply expected attendance and margin for the first recommendation",
+            )
+        template = SessionTemplate(
+            id=template_id,
+            title=body.title,
+            session_type=SessionType.CLUB,
+            club_id=body.club_id,
+            pool_id=body.pool_id,
+            club_access_mode="plan_included",
+            day_of_week=body.weekday,
+            start_time=body.starts_at_local,
+            duration_minutes=body.duration_minutes,
+            capacity=body.capacity,
+            pricing_settings=body.pricing_settings.model_dump(mode="json"),
+            auto_generate=False,
+            is_active=True,
+        )
+        db.add(template)
+        await db.flush()
     if (
-        not source
-        or source.session_type != SessionType.CLUB
-        or source.pool_id != body.pool_id
+        not template.is_active
+        or template.session_type != SessionType.CLUB
+        or template.club_id != body.club_id
+        or template.pool_id != body.pool_id
+        or template.club_access_mode != "plan_included"
+        or template.pod_id is not None
     ):
-        raise HTTPException(422, "Choose a Club session template at this Club's pool")
-    settings = get_settings()
-    tz = ZoneInfo(source.timezone or "Africa/Lagos")
-    current = body.period_start + timedelta(
-        days=(body.weekday - body.period_start.weekday()) % 7
-    )
+        raise HTTPException(
+            422, "Choose this Club's active primary, home-pool inclusion template"
+        )
+    if body.pricing_settings:
+        template.pricing_settings = {
+            **template.pricing_settings,
+            **body.pricing_settings.model_dump(mode="json", exclude_unset=True),
+        }
     ids = []
-    while current <= body.period_end:
-        starts = datetime.combine(current, body.starts_at_local, tzinfo=tz)
-        ends = starts + timedelta(minutes=body.duration_minutes)
-        matching = (
-            (
-                await db.execute(
-                    select(Session)
-                    .where(
-                        Session.pool_id == body.pool_id,
-                        Session.session_type == SessionType.CLUB,
-                        Session.starts_at == starts,
-                        Session.pod_id == source.pod_id,
-                    )
-                    .order_by(Session.id)
-                )
-            )
-            .scalars()
-            .all()
+    for day in recurrence_dates(
+        template, body.period_start, body.period_end, set(body.excluded_dates)
+    ):
+        starts = datetime.combine(
+            day, template.start_time, tzinfo=ZoneInfo(get_settings().TIMEZONE)
         )
-        if matching:
-            ids.extend(row.id for row in matching)
-            current += timedelta(days=7)
-            continue
-        session_id = uuid.uuid5(
-            body.club_id, f"quarter:{body.period_start}:{current}:{body.pool_id}"
-        )
-        ids.append(session_id)
-        if await db.get(Session, session_id) is None:
-            values = {
-                column.name: getattr(source, column.name)
-                for column in Session.__table__.columns
-                if column.name
-                not in {"id", "created_at", "updated_at", "starts_at", "ends_at"}
-            }
-            # Fresh effective pool/operating rates, existing session margin and
-            # manually entered ancillary costs. Never hardcode a Club price.
-            pricing = pricing_payload_from_session(source)
-            if source.pricing_mode == "cost_plus":
-                response = await internal_post(
-                    service_url=settings.POOLS_SERVICE_URL,
-                    path="/admin/pools/pricing/quote",
-                    calling_service="sessions",
-                    json={
-                        "pool_id": str(body.pool_id),
-                        "activity_scope": "club",
-                        "starts_at": starts.isoformat(),
-                        "ends_at": ends.isoformat(),
-                        "timezone": str(tz),
-                        "expected_attendees": pricing["pricing_expected_attendees"]
-                        or source.capacity,
-                        "expected_staff": body.expected_staff,
-                        "lanes": body.lanes,
-                    },
-                )
-                if response.status_code >= 400:
-                    raise HTTPException(
-                        503,
-                        "Could not resolve the quarter's pool/operating rates; no draft was published",
-                    )
-                quoted = response.json()
-                if quoted.get("warnings"):
-                    raise HTTPException(
-                        422,
-                        "Configure effective pool rates before generating the quarter: "
-                        + "; ".join(quoted["warnings"]),
-                    )
-                if quoted.get("currency") != "NGN":
-                    raise HTTPException(
-                        422, "Club session pricing currently requires NGN"
-                    )
-                pricing["cost_lines"] = quoted["lines"] + [
-                    line
-                    for line in pricing["cost_lines"]
-                    if not line.get("source_rate_id")
-                ]
-                normalized = normalize_pricing_payload(pricing)
-                normalized["pool_fee"] = naira_to_kobo(normalized["pool_fee"])
-                values.update(normalized)
-            values.update(
-                id=session_id,
-                starts_at=starts,
-                ends_at=ends,
-                status=SessionStatus.DRAFT,
-                published_at=None,
-                template_id=None,
-                is_recurring_instance=True,
-            )
-            await db.execute(
-                insert(Session)
-                .values(**values)
-                .on_conflict_do_nothing(index_elements=[Session.id])
-            )
-        current += timedelta(days=7)
+        session_id = club_instance_id(template.id, starts, template.pod_id)
+        row = await db.get(Session, session_id)
+        if row is None:
+            row = await club_session_from_template(template, day)
+            db.add(row)
+        ids.append(row.id)
     await db.commit()
-    return await query_schedule(ScheduleQuery(session_ids=ids), db)
+    return await query_schedule(ScheduleQuery(session_ids=ids), db) if ids else []
 
 
 class ScheduleChange(BaseModel):
+    operation_id: uuid.UUID
+    validate_only: bool = False
     session_ids: list[uuid.UUID] = Field(min_length=1, max_length=52)
     reason: str = Field(min_length=1, max_length=250)
 
@@ -235,6 +196,20 @@ async def replace_sessions(
     body: ScheduleChange, db: AsyncSession = Depends(get_async_db)
 ):
     from libs.common.datetime_utils import utc_now
+
+    await db.execute(
+        select(func.pg_advisory_xact_lock(body.operation_id.int % (2**63 - 1)))
+    )
+    operation = await db.get(ClubScheduleOperation, body.operation_id)
+    payload = body.model_dump(mode="json", exclude={"validate_only"})
+    if operation:
+        if operation.status == "reverted":
+            raise HTTPException(
+                409, "This operation was compensated; start a new configuration attempt"
+            )
+        if operation.kind != "replace" or operation.payload != payload:
+            raise HTTPException(409, "Operation ID already used for different changes")
+        return {"replaced": len(operation.after), "operation_id": str(operation.id)}
 
     rows = list(
         (
@@ -248,9 +223,21 @@ async def replace_sessions(
     )
     if len(rows) != len(set(body.session_ids)):
         raise HTTPException(422, "An affected session no longer exists")
+    before = [
+        {"id": str(row.id), "status": row.status.value, "notes": row.notes}
+        for row in rows
+    ]
     for row in rows:
         if row.session_type != SessionType.CLUB or row.starts_at <= utc_now():
             raise HTTPException(409, "Only future Club sessions can be replaced")
+        from services.sessions_service.routers.club_operations import members_operation
+
+        promises = await members_operation("promises", {"session_id": str(row.id)})
+        if promises["published_promise"]:
+            raise HTTPException(
+                409,
+                "This swim is promised in a published quarter; reschedule it instead",
+            )
         if row.status == SessionStatus.CANCELLED:
             continue
         bookings = (
@@ -276,20 +263,82 @@ async def replace_sessions(
                 409,
                 "This session has bookings; resolve cancellation/refunds through the existing session workflow first",
             )
+    if body.validate_only:
+        return {"valid": True}
+    for row in rows:
         row.status = SessionStatus.CANCELLED
         row.notes = f"{row.notes or ''}\n{body.reason}".strip()
+    db.add(
+        ClubScheduleOperation(
+            id=body.operation_id,
+            kind="replace",
+            status="applied",
+            payload=payload,
+            before=before,
+            after=[
+                {"id": str(row.id), "status": row.status.value, "notes": row.notes}
+                for row in rows
+            ],
+        )
+    )
     await db.commit()
     return {"replaced": len(rows)}
+
+
+@router.post("/operations/{operation_id}/undo")
+async def undo_replacement(
+    operation_id: uuid.UUID, db: AsyncSession = Depends(get_async_db)
+):
+    await db.execute(select(func.pg_advisory_xact_lock(operation_id.int % (2**63 - 1))))
+    operation = await db.get(ClubScheduleOperation, operation_id)
+    if operation is None:
+        # Tombstone fences a delayed replacement request after a timeout.
+        db.add(
+            ClubScheduleOperation(
+                id=operation_id,
+                kind="replace",
+                status="reverted",
+                payload={},
+                before=[],
+                after=[],
+            )
+        )
+    elif operation.kind != "replace":
+        raise HTTPException(409, "Only an unsold replacement can be compensated")
+    elif operation.status != "reverted":
+        for before, after in zip(operation.before, operation.after, strict=True):
+            row = (
+                await db.execute(
+                    select(Session)
+                    .where(Session.id == uuid.UUID(before["id"]))
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if (
+                not row
+                or row.status.value != after["status"]
+                or row.notes != after["notes"]
+            ):
+                raise HTTPException(
+                    409,
+                    "Session changed since replacement; Admin reconciliation required",
+                )
+            row.status, row.notes = SessionStatus(before["status"]), before["notes"]
+        operation.status = "reverted"
+    await db.commit()
+    return {"status": "reverted"}
 
 
 class PublishSessionInput(BaseModel):
     id: uuid.UUID
     fee_kobo: int
     starts_at: datetime
+    ends_at: datetime
     pool_id: uuid.UUID
 
 
 class PublishSessions(BaseModel):
+    club_id: uuid.UUID
     sessions: list[PublishSessionInput] = Field(min_length=1, max_length=52)
 
 
@@ -322,6 +371,9 @@ async def publish_sessions(
             row.session_type != SessionType.CLUB
             or row.status not in {SessionStatus.DRAFT, SessionStatus.SCHEDULED}
             or row.starts_at != item.starts_at
+            or row.ends_at != item.ends_at
+            or row.club_id not in (None, body.club_id)
+            or row.club_access_mode != "plan_included"
             or row.pool_fee != item.fee_kobo
             or row.pool_id != item.pool_id
         ):
@@ -335,6 +387,7 @@ async def publish_sessions(
                 )
             row.published_at = utc_now()
             newly_published.append(row)
+        row.club_id = body.club_id
         row.status = SessionStatus.SCHEDULED
     await db.commit()
     for row in newly_published:

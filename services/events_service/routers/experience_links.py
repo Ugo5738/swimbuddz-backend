@@ -9,6 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import require_service_role
 from libs.db.session import get_async_db
 from services.events_service.models import Event, EventRSVP
+from services.events_service.models.experience_operation import (
+    ExperienceBindingOperation,
+)
 
 router = APIRouter(
     prefix="/internal/events/experiences",
@@ -56,10 +59,39 @@ async def query_events(body: EventIds, db: AsyncSession = Depends(get_async_db))
 
 class BindEvents(EventIds):
     offering_id: uuid.UUID
+    operation_id: uuid.UUID | None = None
+    compensate: bool = False
 
 
 @router.post("/bind")
 async def bind_events(body: BindEvents, db: AsyncSession = Depends(get_async_db)):
+    await db.execute(
+        select(func.pg_advisory_xact_lock(body.offering_id.int % (2**63 - 1)))
+    )
+    operation = (
+        await db.get(ExperienceBindingOperation, body.operation_id)
+        if body.operation_id
+        else None
+    )
+    if operation:
+        if operation.offering_id != body.offering_id:
+            raise HTTPException(
+                409, "Binding operation belongs to a different offering"
+            )
+        if operation.status == "reverted" and not body.compensate:
+            raise HTTPException(
+                409, "This binding attempt has already been compensated"
+            )
+        if not body.compensate and operation.event_ids != sorted(
+            str(id) for id in body.event_ids
+        ):
+            raise HTTPException(409, "Binding operation was used for different Events")
+        if (operation.status == "applied" and not body.compensate) or (
+            operation.status == "reverted" and body.compensate
+        ):
+            # A replay must never overwrite a later successful configuration.
+            # This also fences duplicate delayed compensation requests.
+            return await query_events(EventIds(event_ids=body.event_ids), db)
     rows = list(
         (
             await db.execute(
@@ -105,6 +137,16 @@ async def bind_events(body: BindEvents, db: AsyncSession = Depends(get_async_db)
                     "Resolve existing Event RSVPs/payments before linking this Event",
                 )
         event.community_experience_offering_id = body.offering_id
+    if body.operation_id:
+        if operation is None:
+            operation = ExperienceBindingOperation(
+                id=body.operation_id,
+                offering_id=body.offering_id,
+                event_ids=sorted(str(id) for id in body.event_ids),
+                status="applied",
+            )
+            db.add(operation)
+        operation.status = "reverted" if body.compensate else "applied"
     await db.commit()
     return [event_snapshot(event) for event in selected]
 

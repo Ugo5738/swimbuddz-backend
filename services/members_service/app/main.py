@@ -1,6 +1,9 @@
 """FastAPI application for the Members Service."""
 
 from fastapi import FastAPI
+from services.members_service.routers.club_operations_internal import (
+    router as club_operations_internal_router,
+)
 
 from libs.common.health import register_health_check
 from services.members_service.routers.club_plan_admin import (
@@ -52,6 +55,7 @@ def create_app() -> FastAPI:
 
     # Include routers
     app.include_router(assessments_router)  # Public swim readiness assessment
+    app.include_router(club_operations_internal_router)
     app.include_router(coaches_router)  # Public coaches listing endpoints
     app.include_router(members_router)
     app.include_router(registration_router)  # Registration flow endpoints

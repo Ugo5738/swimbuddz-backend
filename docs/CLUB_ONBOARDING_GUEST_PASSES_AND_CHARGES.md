@@ -53,15 +53,24 @@ Club plan. Use `/admin/club-plans` to publish the location's approved plan; the
 member picker uses those active, effective plan versions. Configure the Club's
 operating area and default pool first.
 
-For the approved full Saturday Q4 2026 cycle, enter October 1–December 31,
-13 included sessions (October 3–December 26), ₦65,000 Club price, and a five-session
-minimum for new entry. The agreed 12-session cycle is ₦60,000. These are Admin
-inputs on each plan, not a global production pricing constant or a data migration.
+Use **Generate a quarter recommendation** for the first quarter or **Generate
+next quarter** afterwards. The generator uses a real SessionTemplate, the Club's
+home pool and weekly schedule, and fresh inherited pool/operating rates for each
+date. Admin supplies/reuses expected attendance and margin using the normal
+Session cost-plus calculation. No manually created source Session is required.
+
+A full Saturday Q4 2026 has 13 actual swims, October 3–December 26. A recommended
+₦65,000 quarter follows only when those thirteen Sessions are each priced at
+₦5,000; twelve such swims total ₦60,000. These are illustrations, not defaults or
+production constants. Different pools/dates can produce different prices.
+Session count is derived from the selected real Sessions. Review exclusions,
+the five-session entry minimum, costs and any deliberate final-price override.
 Set the effective-from date to when members may apply, not necessarily quarter start.
 Only publish locations intended to accept applications.
 
 If offering the optional Q4 Experience, first create its matching-period offering
-(₦50,000 standard, ₦40,000 Club member, ₦30,000 bundled) in the same Admin page,
+(₦50,000 standard, ₦40,000 Club member, ₦30,000 bundled) in
+`/admin/community/experiences`,
 then link it while publishing the Club plan. A plan with no linked offering
 neither offers nor charges Experience. The obsolete fee-only checkout fallback
 has been removed. Transition activation excludes Experience even when the
@@ -71,10 +80,12 @@ The undeployed `e3b7a1c4d902` Q4 seed migration was removed from the review bran
 It must not be run; it used an incorrect hardcoded price/session count and no
 Experience offering. Existing migration history is otherwise retained.
 
-The proration helper respects the plan's configured session count, including
-13-session quarters; it has no universal 12-session cap. Within a quarter it
-currently counts occurrences of the Club's configured weekday. Replacing that
-calendar estimate with actual eligible scheduled sessions remains separate work.
+Proration uses actual eligible, not-yet-started Sessions and their frozen
+commercial weights, including 13-session quarters; there is no calendar estimate
+or universal twelve-session cap. `ClubPlanSession` records the purchased inclusion
+and price snapshot, not another swim. Extra `active_club` practices do not increase
+the quarter price/count. See [the scheduling contract](CLUB_EXPERIENCE_SCHEDULING.md)
+for pod practices, rescheduling, Experience recovery and deployment checks.
 
 ### Member history and renewal
 

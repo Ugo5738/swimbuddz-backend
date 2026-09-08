@@ -2,7 +2,7 @@ name: Backend CI/CD Pipeline
 
 on:
   push:
-    branches: ["main", "master", "staging", "develop"]
+    branches: ["main", "master", "staging", "develop", "review/club-experience-20260907"]
   pull_request:
     branches: ["main", "master", "staging", "develop"]
 
@@ -68,6 +68,7 @@ jobs:
           alembic -c services/academy_service/alembic.ini upgrade head
           alembic -c services/attendance_service/alembic.ini upgrade head
           alembic -c services/communications_service/alembic.ini upgrade head
+          alembic -c services/events_service/alembic.ini upgrade head
           alembic -c services/payments_service/alembic.ini upgrade head
           alembic -c services/sessions_service/alembic.ini upgrade head
           alembic -c services/store_service/alembic.ini upgrade head
@@ -88,6 +89,7 @@ jobs:
             tests/integration/test_members_entitlement_idempotency.py
 
           pytest -v tests/integration/test_experience_ticket_orders.py
+          pytest -v tests/integration/test_club_schedule_operations.py
 
           pytest -v \
             tests/integration/test_members_internal.py::test_bulk_member_lookup_returns_normalized_club_entitlement \

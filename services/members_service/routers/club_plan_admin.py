@@ -99,8 +99,23 @@ async def plan_schedule(
             else None,
         }
         for row in rows
+        if row.get("club_id") in (None, str(plan.club_id))
+        and row.get("club_access_mode", "plan_included") == "plan_included"
     ]
     return {
+        "warnings": [
+            "Refreshments are promised, but some selected Sessions have no refreshment cost line. Review inherited operating rates or confirm they are free/sponsored."
+        ]
+        if plan.refreshments_included
+        and any(
+            row["id"] in selected_ids
+            and not any(
+                "refreshment" in line.get("category", "").lower()
+                for line in row.get("pricing", {}).get("cost_lines", [])
+            )
+            for row in rows
+        )
+        else [],
         "sessions": rows,
         "selected_session_ids": sorted(selected_ids),
         "recommended_fee_kobo": sum(
@@ -178,6 +193,7 @@ async def publish_draft(plan_id: uuid.UUID, db: AsyncSession = Depends(get_async
         or datetime.fromisoformat(live[str(link.session_id)]["starts_at"])
         != link.starts_at
         or int(live[str(link.session_id)]["fee_kobo"]) != link.fee_kobo
+        or datetime.fromisoformat(live[str(link.session_id)]["ends_at"]) != link.ends_at
         for link in plan.session_links
     ):
         raise HTTPException(
@@ -192,15 +208,17 @@ async def publish_draft(plan_id: uuid.UUID, db: AsyncSession = Depends(get_async
         path="/internal/sessions/club-schedule/publish",
         calling_service="members",
         json={
+            "club_id": str(plan.club_id),
             "sessions": [
                 {
                     "id": str(link.session_id),
                     "fee_kobo": link.fee_kobo,
                     "starts_at": link.starts_at.isoformat(),
+                    "ends_at": link.ends_at.isoformat(),
                     "pool_id": str(link.pool_id),
                 }
                 for link in plan.session_links
-            ]
+            ],
         },
     )
     if response.status_code >= 400:
@@ -213,81 +231,84 @@ async def publish_draft(plan_id: uuid.UUID, db: AsyncSession = Depends(get_async
     return plan_response(plan, club)
 
 
-class NextQuarterRequest(BaseModel):
-    generate_sessions: bool = False
-    expected_staff: int = Field(default=0, ge=0, le=50)
-    lanes: int = Field(default=1, ge=1, le=50)
+class QuarterRecommendationRequest(BaseModel):
+    club_id: uuid.UUID
+    year: int = Field(ge=2026, le=2100)
+    quarter: int = Field(ge=1, le=4)
+    template_id: uuid.UUID | None = None
+    pricing_settings: dict | None = None
+    excluded_dates: list[date] = Field(default_factory=list, max_length=52)
+    capacity: int = Field(default=20, ge=1, le=500)
+    minimum_entry_sessions: int = Field(default=5, ge=1, le=52)
+    refreshments_included: bool = True
 
 
-@router.post("/{plan_id}/next-quarter", response_model=ClubPlanResponse)
-async def generate_next_quarter(
-    plan_id: uuid.UUID,
-    body: NextQuarterRequest,
-    _admin: AuthUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_async_db),
-):
-    source = await _plan(db, plan_id)
-    club = await db.get(Club, source.club_id)
-    start, end = next_quarter(source.period_end)
-    existing = (
-        await db.execute(
-            select(ClubPlanVersion).where(
-                ClubPlanVersion.source_plan_id == source.id,
-                ClubPlanVersion.period_start == start,
-            )
-        )
-    ).scalar_one_or_none()
-    if existing:
-        await hydrate_schedules([existing])
-        return plan_response(existing, club)
-    rows = await fetch_schedule(
-        pool_id=str(club.default_pool_id),
-        period_start=start.isoformat(),
-        period_end=end.isoformat(),
-    )
-    if body.generate_sessions:
-        if not source.session_links:
-            raise HTTPException(
-                422, "Link a source Club session before generating a recurring schedule"
-            )
-        from services.members_service.routers._club_pricing import _WEEKDAY_NUMBER
-
-        response = await internal_post(
-            service_url=get_settings().SESSIONS_SERVICE_URL,
-            path="/internal/sessions/club-schedule/generate",
-            calling_service="members",
-            json={
-                "club_id": str(club.id),
-                "source_session_id": str(source.session_links[0].session_id),
-                "pool_id": str(club.default_pool_id),
-                "period_start": start.isoformat(),
-                "period_end": end.isoformat(),
-                "weekday": _WEEKDAY_NUMBER[
-                    str(
-                        getattr(
-                            club.default_session_day, "value", club.default_session_day
-                        )
-                    )
-                ],
-                "starts_at_local": club.default_session_time.isoformat(),
-                "duration_minutes": club.default_session_duration_minutes,
-                "expected_staff": body.expected_staff,
-                "lanes": body.lanes,
-            },
-        )
-        if response.status_code >= 400:
-            raise HTTPException(
-                503, "Could not generate the next schedule; nothing was published"
-            )
-        rows = response.json()
-    # Never clone a previous quarter's Experience or commercial override.
+async def recommend_quarter(body, db, *, source=None):
     from services.members_service.routers.clubs import _validate_club_pool_area
+    from services.members_service.routers._club_pricing import _WEEKDAY_NUMBER
 
+    club = (
+        await db.execute(select(Club).where(Club.id == body.club_id).with_for_update())
+    ).scalar_one_or_none()
+    if not club or not club.is_active or not club.default_pool_id:
+        raise HTTPException(
+            422, "Configure an active Club location and home pool first"
+        )
     await _validate_club_pool_area(
         operating_area_id=club.operating_area_id, default_pool_id=club.default_pool_id
     )
+    month = 3 * (body.quarter - 1) + 1
+    start = date(body.year, month, 1)
+    end = date(body.year, month + 2, calendar.monthrange(body.year, month + 2)[1])
+    existing = (
+        (
+            await db.execute(
+                select(ClubPlanVersion)
+                .where(
+                    ClubPlanVersion.club_id == club.id,
+                    ClubPlanVersion.period_start == start,
+                    ClubPlanVersion.period_end == end,
+                )
+                .order_by(ClubPlanVersion.created_at)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if existing and (existing.published_at or existing.session_links):
+        await hydrate_schedules([existing])
+        return plan_response(existing, club)
+    response = await internal_post(
+        service_url=get_settings().SESSIONS_SERVICE_URL,
+        path="/internal/sessions/club-schedule/generate",
+        calling_service="members",
+        json={
+            "club_id": str(club.id),
+            "pool_id": str(club.default_pool_id),
+            "template_id": str(body.template_id) if body.template_id else None,
+            "title": f"{club.name} Club practice",
+            "period_start": start.isoformat(),
+            "period_end": end.isoformat(),
+            "weekday": _WEEKDAY_NUMBER[
+                getattr(club.default_session_day, "value", club.default_session_day)
+            ],
+            "starts_at_local": club.default_session_time.isoformat(),
+            "duration_minutes": club.default_session_duration_minutes,
+            "capacity": body.capacity,
+            "pricing_settings": body.pricing_settings,
+            "excluded_dates": [day.isoformat() for day in body.excluded_dates],
+        },
+    )
+    if response.status_code >= 400:
+        raise HTTPException(
+            response.status_code,
+            response.json().get(
+                "detail", "Could not generate the quarter; nothing was published"
+            ),
+        )
+    rows = response.json()
     draft_body = ClubPlanCreate(
-        name=f"{start.year} Q{(start.month-1)//3+1} Club — {club.name}",
+        name=f"{start.year} Q{body.quarter} Club — {club.name}",
         period_start=start,
         period_end=end,
         effective_from=date.today(),
@@ -295,12 +316,11 @@ async def generate_next_quarter(
         session_ids=[
             row["id"] for row in rows if row["status"] in {"scheduled", "draft"}
         ],
-        minimum_entry_sessions=source.minimum_entry_sessions,
-        capacity=source.capacity,
-        refreshments_included=source.refreshments_included,
-        premium_venue_note=source.premium_venue_note,
+        minimum_entry_sessions=body.minimum_entry_sessions,
+        capacity=body.capacity,
+        refreshments_included=body.refreshments_included,
         community_experience_default_selected=False,
-        currency=source.currency,
+        currency="NGN",
     )
     links = await selected_session_snapshots(draft_body, club, db)
     values = draft_body.model_dump(
@@ -310,11 +330,24 @@ async def generate_next_quarter(
         community_experience_fee_kobo=0, community_experience_default_selected=False
     )
     recommended = sum(link.fee_kobo for link in links)
+    if existing:
+        existing.source_template_id = body.template_id or uuid.uuid5(
+            club.id, "primary-club-template"
+        )
+        existing.session_links = links
+        existing.sessions_included = len(links)
+        existing.recommended_fee_kobo = recommended
+        existing.club_fee_kobo = recommended
+        await db.commit()
+        await hydrate_schedules([existing])
+        return plan_response(existing, club)
     draft = ClubPlanVersion(
         club_id=club.id,
         pool_id=club.default_pool_id,
         operating_area_id=club.operating_area_id,
-        source_plan_id=source.id,
+        source_plan_id=source.id if source else None,
+        source_template_id=body.template_id
+        or uuid.uuid5(club.id, "primary-club-template"),
         sessions_included=len(links),
         recommended_fee_kobo=recommended,
         club_fee_kobo=recommended,
@@ -326,3 +359,42 @@ async def generate_next_quarter(
     await db.commit()
     await hydrate_schedules([draft])
     return plan_response(draft, club)
+
+
+@router.post("/recommendations", response_model=ClubPlanResponse)
+async def create_recommendation(
+    body: QuarterRecommendationRequest, db: AsyncSession = Depends(get_async_db)
+):
+    return await recommend_quarter(body, db)
+
+
+class NextQuarterRequest(BaseModel):
+    template_id: uuid.UUID | None = None
+    pricing_settings: dict | None = None
+    excluded_dates: list[date] = Field(default_factory=list, max_length=52)
+
+
+@router.post("/{plan_id}/next-quarter", response_model=ClubPlanResponse)
+async def generate_next_quarter(
+    plan_id: uuid.UUID,
+    body: NextQuarterRequest,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    source = await _plan(db, plan_id)
+    start, _ = next_quarter(source.period_end)
+    return await recommend_quarter(
+        QuarterRecommendationRequest(
+            club_id=source.club_id,
+            year=start.year,
+            quarter=(start.month - 1) // 3 + 1,
+            template_id=body.template_id or getattr(source, "source_template_id", None),
+            pricing_settings=body.pricing_settings,
+            excluded_dates=body.excluded_dates,
+            capacity=source.capacity or 20,
+            minimum_entry_sessions=source.minimum_entry_sessions,
+            refreshments_included=source.refreshments_included,
+        ),
+        db,
+        source=source,
+    )

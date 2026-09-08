@@ -24,6 +24,7 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 # Only migrate tables owned by this service
 SERVICE_TABLES = {
+    "experience_binding_operations",
     "events",
     "event_rsvps",
     "event_invites",

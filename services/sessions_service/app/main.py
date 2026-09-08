@@ -15,6 +15,9 @@ from services.sessions_service.routers.club_schedule import (
 from services.sessions_service.routers.makeups import router as makeups_router
 from services.sessions_service.routers.member import router as sessions_router
 from services.sessions_service.routers.templates import router as templates_router
+from services.sessions_service.routers.club_operations import (
+    router as club_operations_router,
+)
 
 # Pods moved to members_service in May 2026 — see docs/club/POD_OPERATIONS.md.
 
@@ -47,6 +50,7 @@ def create_app() -> FastAPI:
     # Register templates router with  full path to avoid trailing slash issues
     # FastAPI is strict about trailing slashes - /sessions/templates != /sessions/templates/
     app.include_router(templates_router)
+    app.include_router(club_operations_router)
     # Bundles must be registered BEFORE sessions_router — its /sessions/bundles path
     # would otherwise be swallowed by the sessions_router's /sessions/{id} matcher.
     app.include_router(bundles_router)

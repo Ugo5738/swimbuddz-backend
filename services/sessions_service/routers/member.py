@@ -513,6 +513,9 @@ async def create_session(
                 )
 
     session_data = session_in.model_dump()
+    from services.sessions_service.routers.club_operations import validate_club_scope
+
+    await validate_club_scope(session_data)
     # Remove ride_share_areas if present in input, though schema should handle it
     session_data.pop("ride_share_areas", None)
 
@@ -652,7 +655,7 @@ async def cancel_session(
     This transitions the session to CANCELLED status and sends cancellation
     notifications to all registered attendees and coaches.
     """
-    query = select(Session).where(Session.id == session_id)
+    query = select(Session).where(Session.id == session_id).with_for_update()
     result = await db.execute(query)
     session = result.scalar_one_or_none()
 
@@ -674,6 +677,15 @@ async def cancel_session(
             detail="Cannot cancel a completed session",
         )
 
+    if session.session_type == SessionType.CLUB:
+        from services.sessions_service.routers.club_operations import members_operation
+
+        promises = await members_operation("promises", {"session_id": str(session.id)})
+        if promises["published_promise"]:
+            raise HTTPException(
+                409,
+                "This swim is promised in a published Club quarter; reschedule it without removing coverage",
+            )
     # Update session status
     session.status = SessionStatus.CANCELLED
 
@@ -733,7 +745,7 @@ async def update_session(
     """
     Update a session.
     """
-    query = select(Session).where(Session.id == session_id)
+    query = select(Session).where(Session.id == session_id).with_for_update()
     result = await db.execute(query)
     session = result.scalar_one_or_none()
 
@@ -745,6 +757,37 @@ async def update_session(
 
     old_status = session.status
     update_data = session_in.model_dump(exclude_unset=True)
+    if {"club_id", "pod_id", "club_access_mode"} & update_data.keys():
+        from services.sessions_service.routers.club_operations import (
+            validate_club_scope,
+        )
+
+        scope = await validate_club_scope(
+            {
+                key: update_data.get(key, getattr(session, key))
+                for key in ("club_id", "pod_id", "club_access_mode")
+            }
+        )
+        update_data["club_id"] = scope.get("club_id")
+    if session.session_type == SessionType.CLUB and session.published_at:
+        protected = {
+            "starts_at",
+            "ends_at",
+            "pool_id",
+            "club_id",
+            "club_access_mode",
+            "pod_id",
+            "session_type",
+            "status",
+        }
+        if any(
+            key in update_data and update_data[key] != getattr(session, key)
+            for key in protected
+        ):
+            raise HTTPException(
+                409,
+                "Use Club rescheduling for a published practice; its location and access promise cannot be silently changed",
+            )
 
     if PRICING_KEYS & set(update_data):
         pricing_payload = pricing_payload_from_session(session)
@@ -846,7 +889,7 @@ async def delete_session(
     """
     Delete a session.
     """
-    query = select(Session).where(Session.id == session_id)
+    query = select(Session).where(Session.id == session_id).with_for_update()
     result = await db.execute(query)
     session = result.scalar_one_or_none()
 
@@ -856,5 +899,14 @@ async def delete_session(
             detail="Session not found",
         )
 
+    if session.session_type == SessionType.CLUB:
+        from services.sessions_service.routers.club_operations import members_operation
+
+        promises = await members_operation("promises", {"session_id": str(session.id)})
+        if promises["published_promise"]:
+            raise HTTPException(
+                409,
+                "This swim is promised in a published Club quarter; use rescheduling",
+            )
     await db.delete(session)
     await db.commit()

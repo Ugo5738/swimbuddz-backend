@@ -28,6 +28,10 @@ class SessionCostLine(BaseModel):
 
 
 class SessionBase(BaseModel):
+    club_id: Optional[uuid.UUID] = None
+    club_access_mode: Literal["plan_included", "active_club", "paid_addon"] = (
+        "plan_included"
+    )
     title: str
     description: Optional[str] = None
     notes: Optional[str] = None
@@ -89,6 +93,12 @@ class SessionCreate(SessionBase):
         model carries the same enforcement so non-API writers can't
         bypass this.
         """
+        if self.session_type != SessionType.CLUB and (
+            self.club_id or self.club_access_mode != "plan_included"
+        ):
+            raise ValueError(
+                "Only Club sessions may specify a Club or Club access mode"
+            )
         try:
             validate_session_discriminator(
                 session_type=self.session_type,
@@ -112,6 +122,10 @@ class SessionCreate(SessionBase):
 
 
 class SessionUpdate(BaseModel):
+    club_id: Optional[uuid.UUID] = None
+    club_access_mode: Optional[
+        Literal["plan_included", "active_club", "paid_addon"]
+    ] = None
     title: Optional[str] = None
     description: Optional[str] = None
     notes: Optional[str] = None
@@ -230,6 +244,8 @@ class SessionResponse(SessionBase):
             "cohort_id": obj.cohort_id,
             "event_id": obj.event_id,
             "pod_id": getattr(obj, "pod_id", None),
+            "club_id": getattr(obj, "club_id", None),
+            "club_access_mode": getattr(obj, "club_access_mode", "plan_included"),
             "week_number": obj.week_number,
             "lesson_title": obj.lesson_title,
             "template_id": obj.template_id,

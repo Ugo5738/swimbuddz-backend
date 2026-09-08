@@ -124,6 +124,7 @@ class ClubPlanResponse(ClubPlanCreate):
     recommended_fee_kobo: int = 0
     published_at: Optional[datetime] = None
     source_plan_id: Optional[uuid.UUID] = None
+    source_template_id: Optional[uuid.UUID] = None
     id: uuid.UUID
     club_id: uuid.UUID
     club_name: Optional[str] = None

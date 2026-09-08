@@ -103,7 +103,10 @@ async def resolve_club_access_checks(
     for check in requested:
         at = _aware(check.at)
         matched_enrollments: list[ClubEnrollment] = []
+        access_mode = getattr(check, "club_access_mode", "plan_included")
         for enrollment, club, plan in enrollments_by_member.get(check.member_id, []):
+            if getattr(check, "club_id", None) not in (None, enrollment.club_id):
+                continue
             if not (_aware(enrollment.starts_at) <= at < _aware(enrollment.ends_at)):
                 continue
             if check.pod_id is not None:
@@ -113,6 +116,7 @@ async def resolve_club_access_checks(
             links = getattr(plan, "session_links", [])
             scheduled_quarter = (
                 links
+                and access_mode == "plan_included"
                 and getattr(enrollment, "payment_mode", "quarterly_prepaid")
                 == "quarterly_prepaid"
                 and session_id is not None
@@ -163,6 +167,8 @@ async def resolve_club_access_checks(
                     "source": (
                         "club_transition"
                         if payment_mode == "transition_per_session"
+                        else "club_paid_addon"
+                        if access_mode == "paid_addon"
                         else "club_enrollment"
                     ),
                     "enrollment_id": matched_enrollment.id,
@@ -172,6 +178,7 @@ async def resolve_club_access_checks(
                     # sessions service owns the current per-session price.
                     "fee_amount_kobo": 0
                     if payment_mode == "quarterly_prepaid"
+                    and access_mode != "paid_addon"
                     else None,
                 }
             )

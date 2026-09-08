@@ -4,7 +4,7 @@ Kept slim — only what cross-service callers actually need.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -89,6 +89,10 @@ class ClubAccessCheck(BaseModel):
 
     context_key: str = Field(min_length=1, max_length=160)
     session_id: UUID | None = None
+    club_id: UUID | None = None
+    club_access_mode: Literal["plan_included", "active_club", "paid_addon"] = (
+        "plan_included"
+    )
     member_id: UUID
     at: datetime
     pool_id: UUID | None = None

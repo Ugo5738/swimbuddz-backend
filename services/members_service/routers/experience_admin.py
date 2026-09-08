@@ -24,6 +24,7 @@ from services.members_service.models.experience import (
     CommunityExperienceEvent,
     CommunityExperienceOrder,
     CommunityExperienceParticipant,
+    ExperienceConfigurationOperation,
 )
 from services.members_service.schemas.club import (
     CommunityExperienceOfferingCreate,
@@ -46,7 +47,7 @@ router = APIRouter(
 )
 
 
-async def lock_offering(db, offering_id):
+async def lock_offering(db, offering_id, *, allow_configuration=False):
     offering = (
         await db.execute(
             select(CommunityExperienceOffering)
@@ -56,6 +57,22 @@ async def lock_offering(db, offering_id):
     ).scalar_one_or_none()
     if offering is None:
         raise HTTPException(404, "Community Experience not found")
+    if not allow_configuration:
+        pending = (
+            await db.execute(
+                select(ExperienceConfigurationOperation.id).where(
+                    ExperienceConfigurationOperation.offering_id == offering_id,
+                    ExperienceConfigurationOperation.status.in_(
+                        ["pending", "needs_reconciliation"]
+                    ),
+                )
+            )
+        ).first()
+        if pending:
+            raise HTTPException(
+                409,
+                "Experience configuration is pending recovery; Admin must reconcile it before changes or checkout",
+            )
     return offering
 
 
@@ -216,40 +233,160 @@ async def set_events(
                     "A published Club quarter includes these sessions; resolve member coverage before replacing them",
                 )
             replacements.extend(str(value) for value in item.replaced_session_ids)
-    # Bind atomically in Events before writing local links: no second checkout
-    # can start once Events has accepted ownership. Safe to retry the same IDs.
-    await event_request("bind", {"offering_id": str(offering.id), "event_ids": ids})
+    operation = ExperienceConfigurationOperation(
+        offering_id=offering.id,
+        status="pending",
+        old_event_ids=[str(link.event_id) for link in offering.event_links],
+        request=body.model_dump(mode="json"),
+    )
+    db.add(operation)
+    await db.flush()
+    operation_id = operation.id
+    replacement_payload = {
+        "operation_id": str(operation_id),
+        "session_ids": sorted(set(replacements)),
+        "reason": f"Replaced by Community Experience {offering.name}",
+    }
     if replacements:
-        response = await internal_post(
-            service_url=get_settings().SESSIONS_SERVICE_URL,
-            path="/internal/sessions/club-schedule/replace",
-            calling_service="members",
-            json={
-                "session_ids": sorted(set(replacements)),
-                "reason": f"Replaced by Community Experience {offering.name}",
+        await schedule_change_request(
+            "replace", {**replacement_payload, "validate_only": True}
+        )
+    # Durable intent before any external write. All callers lock the offering
+    # and reject pending configuration, including Club-bundle reservations.
+    await db.commit()
+    offering = await lock_offering(db, offering_id, allow_configuration=True)
+    operation = await db.get(
+        ExperienceConfigurationOperation, operation_id, populate_existing=True
+    )
+    if operation.status != "pending":
+        raise HTTPException(
+            409, "This configuration was recovered; submit a new attempt"
+        )
+    try:
+        await event_request(
+            "bind",
+            {
+                "offering_id": str(offering_id),
+                "event_ids": ids,
+                "operation_id": str(operation_id),
             },
         )
-        if response.status_code >= 400:
+        if replacements:
+            await schedule_change_request("replace", replacement_payload)
+        offering.event_links.clear()
+        await db.flush()
+        offering.event_links = [
+            CommunityExperienceEvent(
+                event_id=item.event_id,
+                sort_order=index,
+                club_impact=item.club_impact,
+                replaced_session_ids=[
+                    str(value) for value in item.replaced_session_ids
+                ],
+                event_snapshot=by_id[str(item.event_id)],
+            )
+            for index, item in enumerate(body.events)
+        ]
+        operation.status = "applied"
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        # An uncertain commit must be read back before compensating. If the DB
+        # is unavailable, durable pending intent remains for Admin recovery.
+        await lock_offering(db, offering_id, allow_configuration=True)
+        operation = await db.get(
+            ExperienceConfigurationOperation, operation_id, populate_existing=True
+        )
+        if operation.status != "applied":
+            await compensate_configuration(db, operation)
             raise HTTPException(
                 409,
-                response.json().get(
-                    "detail", "Affected Club sessions could not be replaced"
-                ),
-            )
-    offering.event_links.clear()
-    await db.flush()
-    offering.event_links = [
-        CommunityExperienceEvent(
-            event_id=item.event_id,
-            sort_order=index,
-            club_impact=item.club_impact,
-            replaced_session_ids=[str(value) for value in item.replaced_session_ids],
-            event_snapshot=by_id[str(item.event_id)],
-        )
-        for index, item in enumerate(body.events)
-    ]
-    await db.commit()
+                f"Configuration did not complete. Operation {operation_id}: {operation.status}. Review recovery before retrying.",
+            ) from exc
     return await admin_events(offering_id, db)
+
+
+async def schedule_change_request(action, payload):
+    response = await internal_post(
+        service_url=get_settings().SESSIONS_SERVICE_URL,
+        path=f"/internal/sessions/club-schedule/{action}",
+        calling_service="members",
+        json=payload,
+    )
+    if response.status_code >= 400:
+        raise HTTPException(
+            response.status_code,
+            response.json().get("detail", "Schedule operation failed"),
+        )
+    return response.json()
+
+
+async def compensate_configuration(db, operation):
+    failures = []
+    if any(item.get("replaced_session_ids") for item in operation.request["events"]):
+        try:
+            await schedule_change_request(f"operations/{operation.id}/undo", {})
+        except Exception:
+            failures.append("Session restoration")
+    try:
+        await event_request(
+            "bind",
+            {
+                "offering_id": str(operation.offering_id),
+                "event_ids": operation.old_event_ids,
+                "operation_id": str(operation.id),
+                "compensate": True,
+            },
+        )
+    except Exception:
+        failures.append("Event binding restoration")
+    operation.status = "needs_reconciliation" if failures else "failed"
+    operation.error = (
+        ", ".join(failures) + " requires retry"
+        if failures
+        else "Previous configuration restored; a new attempt is safe"
+    )
+    await db.commit()
+
+
+@router.get("/{offering_id}/operations")
+async def configuration_operations(
+    offering_id: uuid.UUID, db: AsyncSession = Depends(get_async_db)
+):
+    rows = (
+        await db.execute(
+            select(ExperienceConfigurationOperation)
+            .where(
+                ExperienceConfigurationOperation.offering_id == offering_id,
+            )
+            .order_by(ExperienceConfigurationOperation.created_at.desc())
+            .limit(20)
+        )
+    ).scalars()
+    return [
+        {
+            "id": row.id,
+            "status": row.status,
+            "error": row.error,
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]
+
+
+@router.post("/{offering_id}/operations/{operation_id}/recover")
+async def recover_configuration(
+    offering_id: uuid.UUID,
+    operation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    await lock_offering(db, offering_id, allow_configuration=True)
+    operation = await db.get(ExperienceConfigurationOperation, operation_id)
+    if not operation or operation.offering_id != offering_id:
+        raise HTTPException(404, "Configuration operation not found")
+    if operation.status in {"pending", "needs_reconciliation"}:
+        await compensate_configuration(db, operation)
+    return {"id": operation.id, "status": operation.status, "error": operation.error}
 
 
 @router.get("/{offering_id}/participants")

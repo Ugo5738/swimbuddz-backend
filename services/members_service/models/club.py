@@ -149,6 +149,9 @@ class ClubPlanVersion(Base):
     source_plan_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+    source_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     session_links = relationship(
         "ClubPlanSession", lazy="selectin", cascade="all, delete-orphan"
     )

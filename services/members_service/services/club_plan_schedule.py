@@ -135,6 +135,8 @@ async def selected_session_snapshots(body, club, db):
         day = starts.astimezone(ZoneInfo(row.get("timezone") or "Africa/Lagos")).date()
         if (
             row["session_type"] != "club"
+            or row.get("club_id") not in (None, str(club.id))
+            or row.get("club_access_mode", "plan_included") != "plan_included"
             or row["status"] not in {"scheduled", "draft"}
             or not row.get("pool_id")
             or not body.period_start <= day <= body.period_end

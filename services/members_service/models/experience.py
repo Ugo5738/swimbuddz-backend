@@ -18,6 +18,29 @@ from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 
 
+class ExperienceConfigurationOperation(Base):
+    __tablename__ = "experience_configuration_operations"
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    offering_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("community_experience_offerings.id"),
+        nullable=False,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    old_event_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    request: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
 class CommunityExperienceEvent(Base):
     __tablename__ = "community_experience_events"
     id: Mapped[uuid.UUID] = mapped_column(

@@ -222,6 +222,138 @@
         }
       }
     },
+    "/api/v1/internal/clubs/operations/validate-scope": {
+      "post": {
+        "tags": [
+          "internal-club-operations"
+        ],
+        "summary": "Validate Scope",
+        "operationId": "validate_scope_internal_clubs_operations_validate_scope_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubScope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/clubs/operations/authorize-pod": {
+      "post": {
+        "tags": [
+          "internal-club-operations"
+        ],
+        "summary": "Authorize Pod",
+        "operationId": "authorize_pod_internal_clubs_operations_authorize_pod_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PodSchedulingAuthorization"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/clubs/operations/promises": {
+      "post": {
+        "tags": [
+          "internal-club-operations"
+        ],
+        "summary": "Check Promises",
+        "operationId": "check_promises_internal_clubs_operations_promises_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromiseCheck"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/members/coaches": {
       "get": {
         "tags": [
@@ -2876,6 +3008,882 @@
         }
       }
     },
+    "/api/v1/clubs/community-experiences/admin": {
+      "get": {
+        "tags": [
+          "experience-admin"
+        ],
+        "summary": "Admin Offerings",
+        "operationId": "admin_offerings_clubs_community_experiences_admin_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CommunityExperienceOfferingResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Admin Offerings Clubs Community Experiences Admin Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/clubs/community-experiences/admin/{offering_id}": {
+      "put": {
+        "tags": [
+          "experience-admin"
+        ],
+        "summary": "Update Offering",
+        "operationId": "update_offering_clubs_community_experiences_admin__offering_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offering_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offering Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommunityExperienceOfferingCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityExperienceOfferingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/admin/{offering_id}/events": {
+      "get": {
+        "tags": [
+          "experience-admin"
+        ],
+        "summary": "Admin Events",
+        "operationId": "admin_events_clubs_community_experiences_admin__offering_id__events_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offering_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offering Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "experience-admin"
+        ],
+        "summary": "Set Events",
+        "operationId": "set_events_clubs_community_experiences_admin__offering_id__events_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offering_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offering Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperienceEventsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/admin/{offering_id}/operations": {
+      "get": {
+        "tags": [
+          "experience-admin"
+        ],
+        "summary": "Configuration Operations",
+        "operationId": "configuration_operations_clubs_community_experiences_admin__offering_id__operations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offering_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offering Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/admin/{offering_id}/operations/{operation_id}/recover": {
+      "post": {
+        "tags": [
+          "experience-admin"
+        ],
+        "summary": "Recover Configuration",
+        "operationId": "recover_configuration_clubs_community_experiences_admin__offering_id__operations__operation_id__recover_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offering_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offering Id"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Operation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/admin/{offering_id}/participants": {
+      "get": {
+        "tags": [
+          "experience-admin"
+        ],
+        "summary": "Participants",
+        "operationId": "participants_clubs_community_experiences_admin__offering_id__participants_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offering_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offering Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/admin/{offering_id}/club-sessions": {
+      "get": {
+        "tags": [
+          "experience-admin"
+        ],
+        "summary": "Affected Session Options",
+        "operationId": "affected_session_options_clubs_community_experiences_admin__offering_id__club_sessions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offering_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offering Id"
+            }
+          },
+          {
+            "name": "pool_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pool Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/admin/participants/{participant_id}/check-in": {
+      "post": {
+        "tags": [
+          "experience-admin"
+        ],
+        "summary": "Check In",
+        "operationId": "check_in_clubs_community_experiences_admin_participants__participant_id__check_in_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "participant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Participant Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperienceAttendanceInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/public/{offering_id}": {
+      "get": {
+        "tags": [
+          "experience-tickets"
+        ],
+        "summary": "Public Offering",
+        "operationId": "public_offering_clubs_community_experiences_public__offering_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offering_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offering Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/{offering_id}/orders": {
+      "post": {
+        "tags": [
+          "experience-tickets"
+        ],
+        "summary": "Create Order",
+        "operationId": "create_order_clubs_community_experiences__offering_id__orders_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offering_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offering Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperienceOrderCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperienceOrderResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/orders/{order_id}/status": {
+      "post": {
+        "tags": [
+          "experience-tickets"
+        ],
+        "summary": "Order Status",
+        "operationId": "order_status_clubs_community_experiences_orders__order_id__status_post",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperienceOrderAccess"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperienceOrderResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/{offering_id}/tickets/me": {
+      "get": {
+        "tags": [
+          "experience-tickets"
+        ],
+        "summary": "My Tickets",
+        "operationId": "my_tickets_clubs_community_experiences__offering_id__tickets_me_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offering_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offering Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExperienceOrderResponse"
+                  },
+                  "title": "Response My Tickets Clubs Community Experiences  Offering Id  Tickets Me Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/participants/{participant_id}/my-details": {
+      "put": {
+        "tags": [
+          "experience-tickets"
+        ],
+        "summary": "Complete Member Details",
+        "operationId": "complete_member_details_clubs_community_experiences_participants__participant_id__my_details_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "participant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Participant Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperienceParticipantInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/orders/{order_id}/checkout": {
+      "post": {
+        "tags": [
+          "experience-tickets"
+        ],
+        "summary": "Order Checkout",
+        "operationId": "order_checkout_clubs_community_experiences_orders__order_id__checkout_post",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperienceOrderAccess"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/internal/orders/{order_id}/confirm": {
+      "post": {
+        "tags": [
+          "experience-tickets"
+        ],
+        "summary": "Confirm Order",
+        "operationId": "confirm_order_clubs_community_experiences_internal_orders__order_id__confirm_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperienceOrderConfirm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/internal/{offering_id}/events/{event_id}/participants": {
+      "get": {
+        "tags": [
+          "experience-tickets"
+        ],
+        "summary": "Event Participants",
+        "operationId": "event_participants_clubs_community_experiences_internal__offering_id__events__event_id__participants_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offering_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offering Id"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/clubs/community-experiences": {
       "get": {
         "tags": [
@@ -3096,6 +4104,279 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CommunityExperienceOfferingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/admin/plans/{plan_id}/schedule": {
+      "get": {
+        "tags": [
+          "club-plan-drafts"
+        ],
+        "summary": "Plan Schedule",
+        "operationId": "plan_schedule_clubs_admin_plans__plan_id__schedule_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "pool_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/admin/plans/{plan_id}": {
+      "put": {
+        "tags": [
+          "club-plan-drafts"
+        ],
+        "summary": "Update Draft",
+        "operationId": "update_draft_clubs_admin_plans__plan_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubPlanCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubPlanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/admin/plans/{plan_id}/publish": {
+      "post": {
+        "tags": [
+          "club-plan-drafts"
+        ],
+        "summary": "Publish Draft",
+        "operationId": "publish_draft_clubs_admin_plans__plan_id__publish_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubPlanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/admin/plans/recommendations": {
+      "post": {
+        "tags": [
+          "club-plan-drafts"
+        ],
+        "summary": "Create Recommendation",
+        "operationId": "create_recommendation_clubs_admin_plans_recommendations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuarterRecommendationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubPlanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/clubs/admin/plans/{plan_id}/next-quarter": {
+      "post": {
+        "tags": [
+          "club-plan-drafts"
+        ],
+        "summary": "Generate Next Quarter",
+        "operationId": "generate_next_quarter_clubs_admin_plans__plan_id__next_quarter_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NextQuarterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubPlanResponse"
                 }
               }
             }
@@ -8124,6 +9405,254 @@
         }
       }
     },
+    "/api/v1/sessions/club-operations/pods/{pod_id}": {
+      "get": {
+        "tags": [
+          "club-operations"
+        ],
+        "summary": "Pod Sessions",
+        "operationId": "pod_sessions_sessions_club_operations_pods__pod_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pod Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/club-operations/extra-practices": {
+      "post": {
+        "tags": [
+          "club-operations"
+        ],
+        "summary": "Extra Practice",
+        "operationId": "extra_practice_sessions_club_operations_extra_practices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtraPractice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sessions/club-operations/{session_id}/reschedule": {
+      "post": {
+        "tags": [
+          "club-operations"
+        ],
+        "summary": "Reschedule Practice",
+        "operationId": "reschedule_practice_sessions_club_operations__session_id__reschedule_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReschedulePractice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/club-operations/{session_id}/operations": {
+      "get": {
+        "tags": [
+          "club-operations"
+        ],
+        "summary": "Session Operations",
+        "operationId": "session_operations_sessions_club_operations__session_id__operations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/club-operations/{session_id}/operations/{operation_id}/retry-notifications": {
+      "post": {
+        "tags": [
+          "club-operations"
+        ],
+        "summary": "Retry Notifications",
+        "operationId": "retry_notifications_sessions_club_operations__session_id__operations__operation_id__retry_notifications_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Operation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sessions/bundles": {
       "post": {
         "tags": [
@@ -10556,6 +12085,228 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/internal/sessions/club-schedule/query": {
+      "post": {
+        "tags": [
+          "internal-club-schedule"
+        ],
+        "summary": "Query Schedule",
+        "operationId": "query_schedule_internal_sessions_club_schedule_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/sessions/club-schedule/generate": {
+      "post": {
+        "tags": [
+          "internal-club-schedule"
+        ],
+        "summary": "Generate Quarter",
+        "operationId": "generate_quarter_internal_sessions_club_schedule_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateQuarter"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/sessions/club-schedule/replace": {
+      "post": {
+        "tags": [
+          "internal-club-schedule"
+        ],
+        "summary": "Replace Sessions",
+        "operationId": "replace_sessions_internal_sessions_club_schedule_replace_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/sessions/club-schedule/operations/{operation_id}/undo": {
+      "post": {
+        "tags": [
+          "internal-club-schedule"
+        ],
+        "summary": "Undo Replacement",
+        "operationId": "undo_replacement_internal_sessions_club_schedule_operations__operation_id__undo_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Operation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/sessions/club-schedule/publish": {
+      "post": {
+        "tags": [
+          "internal-club-schedule"
+        ],
+        "summary": "Publish Sessions",
+        "operationId": "publish_sessions_internal_sessions_club_schedule_publish_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishSessions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/internal/sessions/scheduled": {
@@ -43250,6 +45001,138 @@
         }
       }
     },
+    "/api/v1/internal/events/experiences/query": {
+      "post": {
+        "tags": [
+          "internal-experience-events"
+        ],
+        "summary": "Query Events",
+        "operationId": "query_events_internal_events_experiences_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventIds"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/events/experiences/bind": {
+      "post": {
+        "tags": [
+          "internal-experience-events"
+        ],
+        "summary": "Bind Events",
+        "operationId": "bind_events_internal_events_experiences_bind_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindEvents"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/events/experiences/unbind": {
+      "post": {
+        "tags": [
+          "internal-experience-events"
+        ],
+        "summary": "Unbind Events",
+        "operationId": "unbind_events_internal_events_experiences_unbind_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindEvents"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/events/planning/templates": {
       "get": {
         "tags": [
@@ -55549,6 +57432,40 @@
             "minLength": 1,
             "title": "Context Key"
           },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "club_access_mode": {
+            "type": "string",
+            "enum": [
+              "plan_included",
+              "active_club",
+              "paid_addon"
+            ],
+            "title": "Club Access Mode",
+            "default": "plan_included"
+          },
           "member_id": {
             "type": "string",
             "format": "uuid",
@@ -55751,6 +57668,17 @@
             "maxLength": 128,
             "minLength": 1,
             "title": "Payment Reference"
+          },
+          "community_experience_selected": {
+            "type": "boolean",
+            "title": "Community Experience Selected",
+            "default": false
+          },
+          "community_experience_fee_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Community Experience Fee Kobo",
+            "default": 0
           },
           "payment_mode": {
             "type": "string",
@@ -57410,20 +59338,27 @@
             "default": "NGN"
           },
           "club_fee_kobo": {
-            "type": "integer",
-            "minimum": 0.0,
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Club Fee Kobo"
           },
           "community_experience_fee_kobo": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Community Experience Fee Kobo",
-            "default": 3000000
+            "default": 0
           },
           "community_experience_default_selected": {
             "type": "boolean",
             "title": "Community Experience Default Selected",
-            "default": true
+            "default": false
           },
           "community_experience_offering_id": {
             "anyOf": [
@@ -57440,9 +59375,18 @@
           "sessions_included": {
             "type": "integer",
             "maximum": 52.0,
-            "minimum": 1.0,
+            "minimum": 0.0,
             "title": "Sessions Included",
-            "default": 12
+            "default": 0
+          },
+          "session_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 52,
+            "title": "Session Ids"
           },
           "period_start": {
             "type": "string",
@@ -57509,13 +59453,12 @@
           "is_active": {
             "type": "boolean",
             "title": "Is Active",
-            "default": true
+            "default": false
           }
         },
         "type": "object",
         "required": [
           "name",
-          "club_fee_kobo",
           "period_start",
           "period_end",
           "effective_from"
@@ -57545,19 +59488,18 @@
           },
           "club_fee_kobo": {
             "type": "integer",
-            "minimum": 0.0,
             "title": "Club Fee Kobo"
           },
           "community_experience_fee_kobo": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Community Experience Fee Kobo",
-            "default": 3000000
+            "default": 0
           },
           "community_experience_default_selected": {
             "type": "boolean",
             "title": "Community Experience Default Selected",
-            "default": true
+            "default": false
           },
           "community_experience_offering_id": {
             "anyOf": [
@@ -57574,9 +59516,18 @@
           "sessions_included": {
             "type": "integer",
             "maximum": 52.0,
-            "minimum": 1.0,
+            "minimum": 0.0,
             "title": "Sessions Included",
-            "default": 12
+            "default": 0
+          },
+          "session_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 52,
+            "title": "Session Ids"
           },
           "period_start": {
             "type": "string",
@@ -57643,7 +59594,48 @@
           "is_active": {
             "type": "boolean",
             "title": "Is Active",
-            "default": true
+            "default": false
+          },
+          "recommended_fee_kobo": {
+            "type": "integer",
+            "title": "Recommended Fee Kobo",
+            "default": 0
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "source_plan_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Plan Id"
+          },
+          "source_template_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Template Id"
           },
           "id": {
             "type": "string",
@@ -57962,6 +59954,36 @@
           "updated_at"
         ],
         "title": "ClubResponse"
+      },
+      "ClubScope": {
+        "properties": {
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
+          }
+        },
+        "type": "object",
+        "title": "ClubScope"
       },
       "ClubUpdate": {
         "properties": {
@@ -60466,6 +62488,49 @@
             "title": "Club Bundle Fee Kobo",
             "default": 3000000
           },
+          "member_guest_fee_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Guest Fee Kobo"
+          },
+          "public_guest_fee_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Guest Fee Kobo"
+          },
+          "max_guests_per_member": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Max Guests Per Member",
+            "default": 0
+          },
+          "capacity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity"
+          },
           "purchase_opens_at": {
             "anyOf": [
               {
@@ -60546,6 +62611,49 @@
             "minimum": 0.0,
             "title": "Club Bundle Fee Kobo",
             "default": 3000000
+          },
+          "member_guest_fee_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Guest Fee Kobo"
+          },
+          "public_guest_fee_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Guest Fee Kobo"
+          },
+          "max_guests_per_member": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Max Guests Per Member",
+            "default": 0
+          },
+          "capacity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity"
           },
           "purchase_opens_at": {
             "anyOf": [
@@ -60858,6 +62966,263 @@
         ],
         "title": "EligibleCoachListItem",
         "description": "Coach item in eligible coaches list."
+      },
+      "ExperienceAttendanceInput": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id"
+        ],
+        "title": "ExperienceAttendanceInput"
+      },
+      "ExperienceEventLinkInput": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "club_impact": {
+            "type": "string",
+            "enum": [
+              "separate",
+              "parallel",
+              "replaces"
+            ],
+            "title": "Club Impact",
+            "default": "separate"
+          },
+          "replaced_session_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 52,
+            "title": "Replaced Session Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id"
+        ],
+        "title": "ExperienceEventLinkInput"
+      },
+      "ExperienceEventsUpdate": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/ExperienceEventLinkInput"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Events"
+          }
+        },
+        "type": "object",
+        "title": "ExperienceEventsUpdate"
+      },
+      "ExperienceOrderAccess": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 32,
+            "title": "Access Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token"
+        ],
+        "title": "ExperienceOrderAccess"
+      },
+      "ExperienceOrderConfirm": {
+        "properties": {
+          "payment_reference": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Payment Reference"
+          },
+          "amount_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Amount Kobo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_reference",
+          "amount_kobo"
+        ],
+        "title": "ExperienceOrderConfirm"
+      },
+      "ExperienceOrderCreate": {
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Idempotency Key"
+          },
+          "access_token": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 32,
+            "title": "Access Token"
+          },
+          "include_member": {
+            "type": "boolean",
+            "title": "Include Member",
+            "default": true
+          },
+          "participant": {
+            "$ref": "#/components/schemas/ExperienceParticipantInput"
+          },
+          "guests": {
+            "items": {
+              "$ref": "#/components/schemas/ExperienceParticipantInput"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Guests"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "idempotency_key",
+          "access_token",
+          "participant"
+        ],
+        "title": "ExperienceOrderCreate"
+      },
+      "ExperienceOrderResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "offering_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Offering Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "amount_kobo": {
+            "type": "integer",
+            "title": "Amount Kobo"
+          },
+          "membership_fee_kobo": {
+            "type": "integer",
+            "title": "Membership Fee Kobo"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "payment_reference": {
+            "type": "string",
+            "title": "Payment Reference"
+          },
+          "participant_count": {
+            "type": "integer",
+            "title": "Participant Count"
+          },
+          "tickets": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Tickets"
+          },
+          "events": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "offering_id",
+          "status",
+          "currency",
+          "amount_kobo",
+          "membership_fee_kobo",
+          "expires_at",
+          "payment_reference",
+          "participant_count"
+        ],
+        "title": "ExperienceOrderResponse"
+      },
+      "ExperienceParticipantInput": {
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Full Name"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 7,
+            "title": "Phone"
+          },
+          "emergency_contact_name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Emergency Contact Name"
+          },
+          "emergency_contact_phone": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 7,
+            "title": "Emergency Contact Phone"
+          },
+          "waiver_accepted": {
+            "type": "boolean",
+            "const": true,
+            "title": "Waiver Accepted"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "full_name",
+          "email",
+          "phone",
+          "emergency_contact_name",
+          "emergency_contact_phone",
+          "waiver_accepted"
+        ],
+        "title": "ExperienceParticipantInput"
       },
       "ExtendClubRequest": {
         "properties": {
@@ -64208,6 +66573,45 @@
         "title": "MembershipPatchRequest",
         "description": "Partial update for membership fields."
       },
+      "NextQuarterRequest": {
+        "properties": {
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "pricing_settings": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Settings"
+          },
+          "excluded_dates": {
+            "items": {
+              "type": "string",
+              "format": "date"
+            },
+            "type": "array",
+            "maxItems": 52,
+            "title": "Excluded Dates"
+          }
+        },
+        "type": "object",
+        "title": "NextQuarterRequest"
+      },
       "PendingMemberResponse": {
         "properties": {
           "id": {
@@ -65121,6 +67525,25 @@
         ],
         "title": "PodRosterBatchResponse"
       },
+      "PodSchedulingAuthorization": {
+        "properties": {
+          "auth_id": {
+            "type": "string",
+            "title": "Auth Id"
+          },
+          "pod_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pod Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "auth_id",
+          "pod_id"
+        ],
+        "title": "PodSchedulingAuthorization"
+      },
       "PodStatus": {
         "type": "string",
         "enum": [
@@ -65506,6 +67929,136 @@
         "type": "object",
         "title": "ProjectAcademyRequest",
         "description": "Replace the Academy tier projection with Academy's current truth.\n\nUnlike activation, projection does not extend Community or grant the\npost-graduation Club bridge. It is used by academy_service after\nwithdrawals, cohort changes, and during reconciliation to repair derived\nmember state."
+      },
+      "PromiseCheck": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "PromiseCheck"
+      },
+      "QuarterRecommendationRequest": {
+        "properties": {
+          "club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Club Id"
+          },
+          "year": {
+            "type": "integer",
+            "maximum": 2100.0,
+            "minimum": 2026.0,
+            "title": "Year"
+          },
+          "quarter": {
+            "type": "integer",
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Quarter"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "pricing_settings": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Settings"
+          },
+          "excluded_dates": {
+            "items": {
+              "type": "string",
+              "format": "date"
+            },
+            "type": "array",
+            "maxItems": 52,
+            "title": "Excluded Dates"
+          },
+          "capacity": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Capacity",
+            "default": 20
+          },
+          "minimum_entry_sessions": {
+            "type": "integer",
+            "maximum": 52.0,
+            "minimum": 1.0,
+            "title": "Minimum Entry Sessions",
+            "default": 5
+          },
+          "refreshments_included": {
+            "type": "boolean",
+            "title": "Refreshments Included",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "club_id",
+          "year",
+          "quarter"
+        ],
+        "title": "QuarterRecommendationRequest"
       },
       "RecurringBlockInput": {
         "properties": {
@@ -67217,6 +69770,57 @@
         ],
         "title": "CampaignBookingStats"
       },
+      "ClubTemplatePricing": {
+        "properties": {
+          "pricing_expected_attendees": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Pricing Expected Attendees"
+          },
+          "margin_type": {
+            "type": "string",
+            "enum": [
+              "fixed_per_attendee",
+              "percentage"
+            ],
+            "title": "Margin Type",
+            "default": "fixed_per_attendee"
+          },
+          "margin_value": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Margin Value"
+          },
+          "cost_lines": {
+            "items": {
+              "$ref": "#/components/schemas/SessionCostLine"
+            },
+            "type": "array",
+            "title": "Cost Lines"
+          },
+          "expected_staff": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 0.0,
+            "title": "Expected Staff",
+            "default": 0
+          },
+          "lanes": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Lanes",
+            "default": 1
+          }
+        },
+        "type": "object",
+        "required": [
+          "pricing_expected_attendees",
+          "margin_value"
+        ],
+        "title": "ClubTemplatePricing"
+      },
       "ConvertedGuestHours": {
         "properties": {
           "member_id": {
@@ -67254,6 +69858,38 @@
           "session_ids"
         ],
         "title": "CreateBundleCartRequest"
+      },
+      "ExtraPractice": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "pod_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pod Id"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "pool_time_confirmed": {
+            "type": "boolean",
+            "title": "Pool Time Confirmed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "pod_id",
+          "starts_at",
+          "pool_time_confirmed"
+        ],
+        "title": "ExtraPractice"
       },
       "GenerateCohortSessionsRequest": {
         "properties": {
@@ -67311,6 +69947,101 @@
           "week_numbers"
         ],
         "title": "GenerateCohortSessionsResponse"
+      },
+      "GenerateQuarter": {
+        "properties": {
+          "club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Club Id"
+          },
+          "pool_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pool Id"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "default": "Club practice"
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Period Start"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Period End"
+          },
+          "weekday": {
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Weekday"
+          },
+          "starts_at_local": {
+            "type": "string",
+            "format": "time",
+            "title": "Starts At Local"
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "maximum": 480.0,
+            "minimum": 15.0,
+            "title": "Duration Minutes"
+          },
+          "capacity": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Capacity",
+            "default": 20
+          },
+          "pricing_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClubTemplatePricing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "excluded_dates": {
+            "items": {
+              "type": "string",
+              "format": "date"
+            },
+            "type": "array",
+            "maxItems": 52,
+            "title": "Excluded Dates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "club_id",
+          "pool_id",
+          "period_start",
+          "period_end",
+          "weekday",
+          "starts_at_local",
+          "duration_minutes"
+        ],
+        "title": "GenerateQuarter"
       },
       "GenerateSessionsRequest": {
         "properties": {
@@ -68669,6 +71400,100 @@
         ],
         "title": "NextSessionResponse"
       },
+      "PublishSessionInput": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "fee_kobo": {
+            "type": "integer",
+            "title": "Fee Kobo"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "pool_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pool Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "fee_kobo",
+          "starts_at",
+          "ends_at",
+          "pool_id"
+        ],
+        "title": "PublishSessionInput"
+      },
+      "PublishSessions": {
+        "properties": {
+          "club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Club Id"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/PublishSessionInput"
+            },
+            "type": "array",
+            "maxItems": 52,
+            "minItems": 1,
+            "title": "Sessions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "club_id",
+          "sessions"
+        ],
+        "title": "PublishSessions"
+      },
+      "ReschedulePractice": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 250,
+            "minLength": 5,
+            "title": "Reason"
+          },
+          "pool_time_confirmed": {
+            "type": "boolean",
+            "title": "Pool Time Confirmed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "starts_at",
+          "reason",
+          "pool_time_confirmed"
+        ],
+        "title": "ReschedulePractice"
+      },
       "RunningLateRequest": {
         "properties": {
           "running_late": {
@@ -68680,6 +71505,106 @@
         "type": "object",
         "title": "RunningLateRequest",
         "description": "Member toggles their \"I'll be late\" flag on a booking.\n\nThe flag is stored as a sentinel prefix in ``booking.notes`` to avoid\nrequiring a schema migration. Set ``running_late=False`` to clear it."
+      },
+      "ScheduleChange": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "validate_only": {
+            "type": "boolean",
+            "title": "Validate Only",
+            "default": false
+          },
+          "session_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 52,
+            "minItems": 1,
+            "title": "Session Ids"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 250,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "operation_id",
+          "session_ids",
+          "reason"
+        ],
+        "title": "ScheduleChange"
+      },
+      "ScheduleQuery": {
+        "properties": {
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "session_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 260,
+            "title": "Session Ids"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          }
+        },
+        "type": "object",
+        "title": "ScheduleQuery"
       },
       "SessionAccessResponse": {
         "properties": {
@@ -69329,6 +72254,28 @@
       },
       "SessionCreate": {
         "properties": {
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "club_access_mode": {
+            "type": "string",
+            "enum": [
+              "plan_included",
+              "active_club",
+              "paid_addon"
+            ],
+            "title": "Club Access Mode",
+            "default": "plan_included"
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -69780,6 +72727,28 @@
       },
       "SessionResponse": {
         "properties": {
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "club_access_mode": {
+            "type": "string",
+            "enum": [
+              "plan_included",
+              "active_club",
+              "paid_addon"
+            ],
+            "title": "Club Access Mode",
+            "default": "plan_included"
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -70135,6 +73104,38 @@
       },
       "SessionTemplateCreate": {
         "properties": {
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "club_access_mode": {
+            "type": "string",
+            "enum": [
+              "plan_included",
+              "active_club",
+              "paid_addon"
+            ],
+            "title": "Club Access Mode",
+            "default": "plan_included"
+          },
+          "pricing_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClubTemplatePricing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -70212,6 +73213,8 @@
           },
           "capacity": {
             "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
             "title": "Capacity",
             "default": 20
           },
@@ -70229,6 +73232,8 @@
           },
           "duration_minutes": {
             "type": "integer",
+            "maximum": 480.0,
+            "minimum": 15.0,
             "title": "Duration Minutes"
           },
           "auto_generate": {
@@ -70263,6 +73268,38 @@
       },
       "SessionTemplateResponse": {
         "properties": {
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "club_access_mode": {
+            "type": "string",
+            "enum": [
+              "plan_included",
+              "active_club",
+              "paid_addon"
+            ],
+            "title": "Club Access Mode",
+            "default": "plan_included"
+          },
+          "pricing_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClubTemplatePricing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -70340,6 +73377,8 @@
           },
           "capacity": {
             "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
             "title": "Capacity",
             "default": 20
           },
@@ -70357,6 +73396,8 @@
           },
           "duration_minutes": {
             "type": "integer",
+            "maximum": 480.0,
+            "minimum": 15.0,
             "title": "Duration Minutes"
           },
           "auto_generate": {
@@ -70421,6 +73462,44 @@
       },
       "SessionTemplateUpdate": {
         "properties": {
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "club_access_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "plan_included",
+                  "active_club",
+                  "paid_addon"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Access Mode"
+          },
+          "pricing_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClubTemplatePricing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "title": {
             "anyOf": [
               {
@@ -70524,7 +73603,9 @@
           "capacity": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 500.0,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -70560,7 +73641,9 @@
           "duration_minutes": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 480.0,
+                "minimum": 15.0
               },
               {
                 "type": "null"
@@ -70621,6 +73704,34 @@
       },
       "SessionUpdate": {
         "properties": {
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "club_access_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "plan_included",
+                  "active_club",
+                  "paid_addon"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Access Mode"
+          },
           "title": {
             "anyOf": [
               {
@@ -107487,6 +110598,47 @@
         ],
         "title": "TopSellingProduct"
       },
+      "BindEvents": {
+        "properties": {
+          "event_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Event Ids"
+          },
+          "offering_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Offering Id"
+          },
+          "operation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Id"
+          },
+          "compensate": {
+            "type": "boolean",
+            "title": "Compensate",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_ids",
+          "offering_id"
+        ],
+        "title": "BindEvents"
+      },
       "Body_preview_calendar_workbook_events_planning_imports_xlsx_preview_post": {
         "properties": {
           "file": {
@@ -108164,6 +111316,24 @@
         ],
         "title": "EventGenerationResponse"
       },
+      "EventIds": {
+        "properties": {
+          "event_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Event Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_ids"
+        ],
+        "title": "EventIds"
+      },
       "EventInviteCreate": {
         "properties": {
           "member_ids": {
@@ -108273,6 +111443,18 @@
             "type": "string",
             "format": "uuid",
             "title": "Id"
+          },
+          "community_experience_offering_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Experience Offering Id"
           },
           "title": {
             "type": "string",
