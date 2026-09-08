@@ -90,6 +90,7 @@ class ClubAccessCheck(BaseModel):
     context_key: str = Field(min_length=1, max_length=160)
     member_id: UUID
     at: datetime
+    club_id: UUID | None = None
     pool_id: UUID | None = None
     pod_id: UUID | None = None
 

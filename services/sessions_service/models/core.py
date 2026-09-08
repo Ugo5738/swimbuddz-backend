@@ -49,13 +49,14 @@ class Session(Base):
     __table_args__ = (
         CheckConstraint(
             "(session_type = 'cohort_class' AND cohort_id IS NOT NULL "
-            "AND event_id IS NULL AND pod_id IS NULL) "
+            "AND event_id IS NULL AND club_id IS NULL AND pod_id IS NULL) "
             "OR (session_type = 'event' AND event_id IS NOT NULL "
-            "AND cohort_id IS NULL AND pod_id IS NULL) "
+            "AND cohort_id IS NULL AND club_id IS NULL AND pod_id IS NULL) "
             "OR (session_type = 'club' "
             "AND cohort_id IS NULL AND event_id IS NULL) "
             "OR (session_type = 'community' "
-            "AND cohort_id IS NULL AND event_id IS NULL AND pod_id IS NULL)",
+            "AND cohort_id IS NULL AND event_id IS NULL "
+            "AND club_id IS NULL AND pod_id IS NULL)",
             name="ck_sessions_discriminator",
         ),
         Index(
@@ -201,10 +202,15 @@ class Session(Base):
         nullable=True,
         index=True,
     )
-    # For CLUB sessions tied to a specific pod (cross-service ref →
-    # members_service.pods.id; not enforced as FK because the table
-    # lives in another service's schema). NULL means a general Club
-    # session not scoped to one pod. See docs/club/POD_OPERATIONS.md.
+    # Stable owner for every new CLUB session (cross-service ref →
+    # members_service.clubs.id). Nullable only for unresolved legacy rows.
+    club_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
+    # Optional narrower Pod audience. NULL means a general session for the
+    # selected Club; set means a Pod-specific session within that Club.
     pod_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
@@ -281,8 +287,8 @@ class SessionTemplate(Base):
     __tablename__ = "session_templates"
     __table_args__ = (
         CheckConstraint(
-            "pod_id IS NULL OR session_type = 'club'",
-            name="ck_session_templates_pod_only_for_club",
+            "session_type = 'club' OR (club_id IS NULL AND pod_id IS NULL)",
+            name="ck_session_templates_club_scope",
         ),
     )
 
@@ -316,7 +322,13 @@ class SessionTemplate(Base):
     )
     location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     location_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    # Optional pod scope for Club templates. NULL means a general Club template.
+    # Stable Club owner plus optional narrower Pod scope. ``club_id`` remains
+    # nullable for unresolved legacy rows only; all new API writes require it.
+    club_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
     pod_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
@@ -414,8 +426,8 @@ class SessionBundleCart(Base):
 # ============================================================================
 # SESSION DISCRIMINATOR ENFORCEMENT
 # ============================================================================
-# The Session table carries a `session_type` enum plus three mutually-exclusive
-# context-FK columns (cohort_id / event_id / pod_id). The
+# The Session table carries a `session_type` enum plus its context columns
+# (cohort_id / event_id / club_id / pod_id). The
 # `_validators.validate_session_discriminator` function is the single source
 # of truth for the type → FK mapping; it is wired here as a SQLAlchemy
 # before_insert / before_update hook so non-API writers (seed scripts,
@@ -433,6 +445,7 @@ def _validate_session_discriminator_event(mapper, connection, target):
         session_type=target.session_type,
         cohort_id=target.cohort_id,
         event_id=target.event_id,
+        club_id=target.club_id,
         pod_id=target.pod_id,
     )
 
@@ -440,11 +453,13 @@ def _validate_session_discriminator_event(mapper, connection, target):
 @event.listens_for(SessionTemplate, "before_insert")
 @event.listens_for(SessionTemplate, "before_update")
 def _validate_session_template_pod_scope_event(mapper, connection, target):
-    """Reject non-club templates that carry a pod scope."""
+    """Reject non-club templates that carry Club or Pod scope."""
     session_type = (
         target.session_type.value
         if hasattr(target.session_type, "value")
         else str(target.session_type)
     )
-    if target.pod_id is not None and session_type != SessionType.CLUB.value:
-        raise ValueError("Only club session templates may set pod_id")
+    if session_type != SessionType.CLUB.value and (
+        target.club_id is not None or target.pod_id is not None
+    ):
+        raise ValueError("Only club session templates may set club_id or pod_id")

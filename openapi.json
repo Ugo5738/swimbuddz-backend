@@ -55559,6 +55559,18 @@
             "format": "date-time",
             "title": "At"
           },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
           "pool_id": {
             "anyOf": [
               {
@@ -68591,6 +68603,17 @@
             ],
             "title": "Cohort Id"
           },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
           "pod_id": {
             "anyOf": [
               {
@@ -68882,6 +68905,17 @@
               }
             ],
             "title": "Cohort Id"
+          },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
           },
           "pod_id": {
             "anyOf": [
@@ -69547,6 +69581,18 @@
             ],
             "title": "Event Id"
           },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
           "pod_id": {
             "anyOf": [
               {
@@ -69727,6 +69773,28 @@
               }
             ],
             "title": "Location"
+          },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
           }
         },
         "type": "object",
@@ -69991,6 +70059,18 @@
             ],
             "title": "Event Id"
           },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
           "pod_id": {
             "anyOf": [
               {
@@ -70188,6 +70268,18 @@
             "$ref": "#/components/schemas/SessionType",
             "default": "community"
           },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
           "pod_id": {
             "anyOf": [
               {
@@ -70315,6 +70407,18 @@
           "session_type": {
             "$ref": "#/components/schemas/SessionType",
             "default": "community"
+          },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
           },
           "pod_id": {
             "anyOf": [
@@ -70486,6 +70590,18 @@
                 "type": "null"
               }
             ]
+          },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
           },
           "pod_id": {
             "anyOf": [
@@ -70910,6 +71026,18 @@
               }
             ],
             "title": "Event Id"
+          },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
           },
           "pod_id": {
             "anyOf": [

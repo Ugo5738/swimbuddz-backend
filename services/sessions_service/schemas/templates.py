@@ -17,7 +17,9 @@ class SessionTemplateBase(BaseModel):
     location: Optional[str] = None
     location_name: Optional[str] = None
     session_type: SessionType = SessionType.COMMUNITY
-    # Optional for Club templates only. NULL = general Club template.
+    # Every new Club template belongs to one Club. ``pod_id`` optionally
+    # narrows generated sessions to a Pod inside that Club.
+    club_id: Optional[uuid.UUID] = None
     pod_id: Optional[uuid.UUID] = None
     # API uses naira (float); DB stores kobo (int). Routers handle conversion.
     pool_fee: float = 0.0
@@ -35,8 +37,12 @@ class SessionTemplateCreate(SessionTemplateBase):
     def _require_pool_reference(self) -> "SessionTemplateCreate":
         if not self.pool_id and not self.location:
             raise ValueError("Either pool_id or location must be provided")
-        if self.session_type != SessionType.CLUB and self.pod_id is not None:
-            raise ValueError("Only club session templates may set pod_id")
+        if self.session_type == SessionType.CLUB and self.club_id is None:
+            raise ValueError("club_id is required for Club session templates")
+        if self.session_type != SessionType.CLUB and (
+            self.club_id is not None or self.pod_id is not None
+        ):
+            raise ValueError("Only club session templates may set club_id or pod_id")
         return self
 
 
@@ -47,6 +53,7 @@ class SessionTemplateUpdate(BaseModel):
     location: Optional[str] = None
     location_name: Optional[str] = None
     session_type: Optional[SessionType] = None
+    club_id: Optional[uuid.UUID] = None
     pod_id: Optional[uuid.UUID] = None
     pool_fee: Optional[float] = None  # naira — router converts to kobo on write
     ride_share_fee: Optional[float] = None  # naira — router converts to kobo on write
@@ -61,8 +68,10 @@ class SessionTemplateUpdate(BaseModel):
     @model_validator(mode="after")
     def _validate_pod_scope(self) -> "SessionTemplateUpdate":
         if self.session_type and self.session_type != SessionType.CLUB:
-            if self.pod_id is not None:
-                raise ValueError("Only club session templates may set pod_id")
+            if self.club_id is not None or self.pod_id is not None:
+                raise ValueError(
+                    "Only club session templates may set club_id or pod_id"
+                )
         return self
 
 
@@ -91,6 +100,7 @@ class SessionTemplateResponse(SessionTemplateBase):
             "location": obj.location,
             "location_name": obj.location_name,
             "session_type": obj.session_type,
+            "club_id": getattr(obj, "club_id", None),
             "pod_id": obj.pod_id,
             "pool_fee": (obj.pool_fee or 0) / 100.0,
             "ride_share_fee": (obj.ride_share_fee or 0) / 100.0,
