@@ -12,13 +12,14 @@ async def test_session_access_context_batches_unique_cohorts_and_pods(monkeypatc
     cohort_id = uuid.uuid4()
     other_cohort_id = uuid.uuid4()
     pod_id = uuid.uuid4()
+    club_id = uuid.uuid4()
     member_id = uuid.uuid4()
 
     cohort_session = SessionFactory.create(cohort_id=cohort_id)
     same_cohort_session = SessionFactory.create(cohort_id=cohort_id)
     confirmed_cohort_session = SessionFactory.create(cohort_id=other_cohort_id)
-    pod_session = SessionFactory.create(pod_id=pod_id)
-    same_pod_session = SessionFactory.create(pod_id=pod_id)
+    pod_session = SessionFactory.create(club_id=club_id, pod_id=pod_id)
+    same_pod_session = SessionFactory.create(club_id=club_id, pod_id=pod_id)
 
     cohort_batch = AsyncMock(
         return_value={
@@ -70,6 +71,7 @@ async def test_session_access_context_batches_unique_cohorts_and_pods(monkeypatc
         str(pod_session.id),
         str(same_pod_session.id),
     }
+    assert {item["club_id"] for item in club_checks} == {str(club_id)}
     assert cohort_access[str(cohort_id)]["enrolled"] is True
     assert pod_rosters[str(pod_id)] == [str(member_id)]
     assert club_access[str(pod_session.id)]["allowed"] is True

@@ -155,6 +155,7 @@ async def validate_session_access(
                     "context_key": context_key,
                     "member_id": member_id,
                     "at": session_data["starts_at"],
+                    "club_id": session_data.get("club_id"),
                     "pool_id": session_data.get("pool_id"),
                     "pod_id": session_data.get("pod_id"),
                 }

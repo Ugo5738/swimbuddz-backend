@@ -257,9 +257,11 @@ async def test_create_session(sessions_client, db_session):
     from tests.factories import _tomorrow
 
     tomorrow = _tomorrow()
+    club_id = uuid.uuid4()
     payload = {
         "title": "New Club Session",
         "session_type": "club",
+        "club_id": str(club_id),
         "starts_at": tomorrow.isoformat(),
         "ends_at": (tomorrow + timedelta(hours=2)).isoformat(),
         "timezone": "Africa/Lagos",
@@ -268,11 +270,16 @@ async def test_create_session(sessions_client, db_session):
         "pool_fee": 2000.0,
     }
 
-    response = await sessions_client.post("/sessions/", json=payload)
+    with patch(
+        "services.sessions_service.routers.member.require_valid_club_scope",
+        new_callable=AsyncMock,
+    ):
+        response = await sessions_client.post("/sessions/", json=payload)
 
     assert response.status_code == 201, response.text
     data = response.json()
     assert data["title"] == "New Club Session"
+    assert data["club_id"] == str(club_id)
 
 
 @pytest.mark.asyncio

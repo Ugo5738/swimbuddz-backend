@@ -39,8 +39,10 @@ async def resolve_club_access_checks(
     """Resolve many member/session access checks with bounded database work.
 
     Each check supplies ``context_key``, ``member_id``, ``at`` and optional
-    ``pool_id``/``pod_id`` attributes.  ``at`` is the session start, which is
-    essential: buying Q4 in Q3 must not grant Q3 access.
+    ``club_id``/``pool_id``/``pod_id`` attributes. ``club_id`` is authoritative
+    for new sessions; Pod and pool remain fallbacks for legacy rows. ``at`` is
+    the session start, which is essential: buying Q4 in Q3 must not grant Q3
+    access.
     """
 
     requested = list(checks)
@@ -102,14 +104,18 @@ async def resolve_club_access_checks(
     resolved: list[dict[str, Any]] = []
     for check in requested:
         at = _aware(check.at)
+        check_club_id = getattr(check, "club_id", None)
         matched_enrollments: list[ClubEnrollment] = []
         for enrollment, club, plan in enrollments_by_member.get(check.member_id, []):
             if not (_aware(enrollment.starts_at) <= at < _aware(enrollment.ends_at)):
                 continue
-            if check.pod_id is not None:
+            if check_club_id is not None:
+                if check_club_id != enrollment.club_id:
+                    continue
+            elif check.pod_id is not None:
                 if pod_club_ids.get(check.pod_id) != enrollment.club_id:
                     continue
-            if check.pool_id is not None:
+            elif check.pool_id is not None:
                 # Use the immutable commercial snapshot. The Club default is
                 # only a fallback for historical plans created before the
                 # snapshot columns existed.
@@ -208,6 +214,7 @@ async def has_current_club_access(
 
     class _Check:
         context_key = "current"
+        club_id = None
         pool_id = None
         pod_id = None
 
