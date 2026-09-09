@@ -48,6 +48,10 @@ class Session(Base):
     # and the unused booking_id column.
     __table_args__ = (
         CheckConstraint(
+            "club_access_mode IN ('plan_included','active_club','paid_addon') AND (session_type = 'club' OR (club_id IS NULL AND club_access_mode = 'plan_included')) AND (club_access_mode = 'plan_included' OR club_id IS NOT NULL)",
+            name="ck_sessions_club_access_mode",
+        ),
+        CheckConstraint(
             "(session_type = 'cohort_class' AND cohort_id IS NOT NULL "
             "AND event_id IS NULL AND club_id IS NULL AND pod_id IS NULL) "
             "OR (session_type = 'event' AND event_id IS NOT NULL "
@@ -190,6 +194,13 @@ class Session(Base):
     )
 
     # === Context Links (nullable based on session_type) ===
+    # Soft reference: Club location identity is owned by members-service.
+    club_access_mode: Mapped[str] = mapped_column(
+        String(24),
+        nullable=False,
+        default="plan_included",
+        server_default="plan_included",
+    )
     # For COHORT_CLASS sessions
     cohort_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -287,6 +298,10 @@ class SessionTemplate(Base):
     __tablename__ = "session_templates"
     __table_args__ = (
         CheckConstraint(
+            "club_access_mode IN ('plan_included','active_club','paid_addon') AND (session_type = 'club' OR (club_id IS NULL AND club_access_mode = 'plan_included')) AND (club_access_mode = 'plan_included' OR club_id IS NOT NULL)",
+            name="ck_session_templates_club_access_mode",
+        ),
+        CheckConstraint(
             "session_type = 'club' OR (club_id IS NULL AND pod_id IS NULL)",
             name="ck_session_templates_club_scope",
         ),
@@ -322,12 +337,19 @@ class SessionTemplate(Base):
     )
     location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     location_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    # Stable Club owner plus optional narrower Pod scope. ``club_id`` remains
-    # nullable for unresolved legacy rows only; all new API writes require it.
+    # Optional pod scope for Club templates. NULL means a general Club template.
     club_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        nullable=True,
-        index=True,
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    club_access_mode: Mapped[str] = mapped_column(
+        String(24),
+        nullable=False,
+        default="plan_included",
+        server_default="plan_included",
+    )
+    # Same API-shaped cost lines/margin used by normal Session pricing.
+    pricing_settings: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
     )
     pod_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),

@@ -121,6 +121,8 @@ async def _reserve_club_application_capacity(
     *,
     payment_reference: str,
     payment_mode: str = "quarterly_prepaid",
+    community_experience_selected: bool = False,
+    community_experience_fee_kobo: int = 0,
 ) -> dict:
     """Hold all selected Club-quarter seats before checkout is exposed."""
     try:
@@ -130,6 +132,8 @@ async def _reserve_club_application_capacity(
             calling_service="payments",
             json={
                 "payment_reference": payment_reference,
+                "community_experience_selected": community_experience_selected,
+                "community_experience_fee_kobo": community_experience_fee_kobo,
                 **(
                     {"payment_mode": payment_mode}
                     if payment_mode != "quarterly_prepaid"
@@ -866,35 +870,15 @@ async def create_payment_intent(
         }
 
     elif payload.purpose == PaymentPurpose.COMMUNITY_EXPERIENCE:
-        if not payload.community_experience_offering_id:
+        if (payload.payment_metadata or {}).get("experience_order_id"):
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="community_experience_offering_id is required",
+                422,
+                "Named Experience orders must use their server-owned ticket checkout",
             )
-        context = await _community_experience_context(
-            payload.community_experience_offering_id,
-            current_user.user_id,
+        raise HTTPException(
+            409,
+            "Use the Community Experience participant checkout to reserve tickets before paying",
         )
-        amount = kobo_to_naira(int(context["subtotal_kobo"]))
-        payment_metadata = {
-            **(payload.payment_metadata or {}),
-            "community_experience_offering_id": str(
-                payload.community_experience_offering_id
-            ),
-            "community_experience_price_context": context["price_context"],
-            "community_extension_months": int(
-                context.get("annual_membership_months") or 0
-            ),
-            "community_extension_amount": kobo_to_naira(
-                int(context.get("annual_membership_fee_kobo") or 0)
-            ),
-            "components_kobo": {
-                "community_experience": int(context["amount_kobo"]),
-                "annual_swimbuddz_membership": int(
-                    context.get("annual_membership_fee_kobo") or 0
-                ),
-            },
-        }
 
     # Academy cohort enrollment
     elif payload.purpose == PaymentPurpose.ACADEMY_COHORT:
@@ -1422,6 +1406,15 @@ async def create_payment_intent(
                 payload.club_application_id,
                 payment_reference=payment_reference,
                 payment_mode=str(payment_metadata.get("club_payment_mode")),
+                community_experience_selected=bool(
+                    payment_metadata.get("community_experience_selected")
+                ),
+                community_experience_fee_kobo=int(
+                    (payment_metadata.get("components_kobo") or {}).get(
+                        "community_experience"
+                    )
+                    or 0
+                ),
             )
         except Exception:
             await release_active_wallet_hold()

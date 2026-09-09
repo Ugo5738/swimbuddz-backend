@@ -18,6 +18,11 @@ from services.members_service.schemas import (
     ClubAssessmentResponse,
     ClubPlanResponse,
 )
+from services.members_service.services.club_plan_schedule import (
+    actual_plan_price,
+    hydrate_schedules,
+    remaining_links,
+)
 
 
 _WEEKDAY_NUMBER = {
@@ -34,42 +39,13 @@ _WEEKDAY_NUMBER = {
 def remaining_plan_sessions(
     plan: ClubPlanVersion, club: Club, *, on_date: date | None = None
 ) -> int:
-    today = on_date or date.today()
-    if today > plan.period_end:
-        return 0
-    if today <= plan.period_start:
-        return plan.sessions_included
-    weekday_value = getattr(club.default_session_day, "value", club.default_session_day)
-    target_weekday = _WEEKDAY_NUMBER.get(str(weekday_value).lower(), 5)
-    offset = (target_weekday - today.weekday()) % 7
-    first_session = today.fromordinal(today.toordinal() + offset)
-    if first_session > plan.period_end:
-        return 0
-    calendar_occurrences = ((plan.period_end - first_session).days // 7) + 1
-    return min(plan.sessions_included, calendar_occurrences)
+    return len(remaining_links(plan, on_date=on_date))
 
 
 def plan_price(
     plan: ClubPlanVersion, club: Club, *, on_date: date | None = None
 ) -> tuple[int, int, bool, str | None]:
-    today = on_date or date.today()
-    remaining = remaining_plan_sessions(plan, club, on_date=today)
-    if today < plan.period_start:
-        return plan.club_fee_kobo, remaining, True, None
-    if remaining < plan.minimum_entry_sessions:
-        return (
-            0,
-            remaining,
-            False,
-            (
-                f"Club entry closes below {plan.minimum_entry_sessions} remaining "
-                "sessions; use Community drop-ins until the next quarter"
-            ),
-        )
-    amount = (
-        plan.club_fee_kobo * remaining + plan.sessions_included - 1
-    ) // plan.sessions_included
-    return amount, remaining, True, None
+    return actual_plan_price(plan, on_date=on_date)
 
 
 def plan_response(plan: ClubPlanVersion, club: Club) -> ClubPlanResponse:
@@ -81,6 +57,9 @@ def plan_response(plan: ClubPlanVersion, club: Club) -> ClubPlanResponse:
     pool_id = plan.pool_id or club.default_pool_id
     values["pool_id"] = pool_id
     values["operating_area_id"] = plan.operating_area_id or club.operating_area_id
+    values["session_ids"] = [
+        link.session_id for link in getattr(plan, "session_links", [])
+    ]
     return ClubPlanResponse(
         **values,
         club_name=club.name,
@@ -120,6 +99,7 @@ async def application_response(
             )
         ).all()
     )
+    await hydrate_schedules([plan] + [selected for _, selected in selections])
     selected_plans = [
         plan_response(selected_plan, club)
         for _selection, selected_plan in selections

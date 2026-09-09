@@ -279,9 +279,24 @@ async def internal_initialize_payment(
             )
             db.add(payment)
             await db.commit()
-        elif payer_email and payment.payer_email != payer_email:
-            payment.payer_email = payer_email
-            await db.commit()
+        else:
+            frozen = payment.payment_metadata or {}
+            if (
+                payment.member_auth_id != req.member_auth_id
+                or payment.purpose != purpose_enum
+                or payment.currency != req.currency
+                or int(frozen.get("subtotal_kobo", _to_kobo(payment.amount)))
+                != _to_kobo(req.amount)
+            ):
+                raise HTTPException(
+                    409, "Payment reference belongs to a different frozen checkout"
+                )
+            # Re-initialization must not silently pick up later charge-rule edits.
+            final_amount = float(payment.amount)
+            charge_lines = frozen.get("additional_charges", [])
+            charge_total_kobo = int(frozen.get("additional_charges_total_kobo", 0))
+            if frozen.get("internal_checkout"):
+                return InternalInitializeResponse(**frozen["internal_checkout"])
 
     # Build callback URL
     callback = _callback_url(req.reference, req.callback_url)
@@ -334,13 +349,20 @@ async def internal_initialize_payment(
         )
 
     data = body.get("data") or {}
-    return InternalInitializeResponse(
+    result = InternalInitializeResponse(
         reference=req.reference,
         authorization_url=data.get("authorization_url"),
         access_code=data.get("access_code"),
         amount_kobo=_to_kobo(final_amount),
         additional_charges=charge_lines,
     )
+    if payment:
+        payment.payment_metadata = {
+            **(payment.payment_metadata or {}),
+            "internal_checkout": result.model_dump(),
+        }
+        await db.commit()
+    return result
 
 
 @router.get(
