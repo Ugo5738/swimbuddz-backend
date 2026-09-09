@@ -80,8 +80,12 @@ new-entry proration follows the live date and the original commercial weight.
    (including refreshments) come from the existing inherited pricing service.
    A missing effective rate is an error, not a guessed selling price.
 3. Review actual draft Sessions, excluded dates, costs and recommended sum. Interrupted
-   generation retries reuse deterministic occurrence IDs. Once a draft exists,
-   another recommendation request returns 409 and directs Admin to edit that draft;
+   generation retries reuse deterministic occurrence IDs. An empty unpublished
+   draft is populated in place, retaining its ID, saved details and explicit final-price
+   override while adding inclusions and recommended economics. Omitted capacity,
+   entry-minimum and refreshments settings retain the draft's Admin choices.
+   Once a draft has Session inclusions, another recommendation request returns 409
+   and directs Admin to edit that draft;
    it does not silently ignore new inputs or regenerate already-edited Sessions.
    Published quarters are returned unchanged. No Session price or commercial override
    is copied from an old quarter. Existing configured templates are editable in

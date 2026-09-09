@@ -270,6 +270,7 @@ async def recommend_quarter(body, db, *, source=None):
                     ClubPlanVersion.period_end == end,
                 )
                 .order_by(ClubPlanVersion.created_at)
+                .with_for_update()
             )
         )
         .scalars()
@@ -278,11 +279,20 @@ async def recommend_quarter(body, db, *, source=None):
     if existing and existing.published_at:
         await hydrate_schedules([existing])
         return plan_response(existing, club)
-    if existing:
+    if existing and existing.session_links:
         raise HTTPException(
             409,
             "A draft already exists for this Club and quarter. Open the existing draft to edit it.",
         )
+    if existing and existing.currency != "NGN":
+        raise HTTPException(422, "Session-derived Club plans currently require NGN")
+    # Omitted settings should not erase an empty draft's existing Admin choices.
+    draft_settings = {
+        key: getattr(existing, key)
+        if existing and key not in body.model_fields_set
+        else getattr(body, key)
+        for key in ("capacity", "minimum_entry_sessions", "refreshments_included")
+    }
     response = await internal_post(
         service_url=get_settings().SESSIONS_SERVICE_URL,
         path="/internal/sessions/club-schedule/generate",
@@ -299,7 +309,7 @@ async def recommend_quarter(body, db, *, source=None):
             ],
             "starts_at_local": club.default_session_time.isoformat(),
             "duration_minutes": club.default_session_duration_minutes,
-            "capacity": body.capacity,
+            "capacity": draft_settings["capacity"] or body.capacity,
             "pricing_settings": body.pricing_settings,
             "excluded_dates": [day.isoformat() for day in body.excluded_dates],
         },
@@ -321,9 +331,7 @@ async def recommend_quarter(body, db, *, source=None):
         session_ids=[
             row["id"] for row in rows if row["status"] in {"scheduled", "draft"}
         ],
-        minimum_entry_sessions=body.minimum_entry_sessions,
-        capacity=body.capacity,
-        refreshments_included=body.refreshments_included,
+        **draft_settings,
         community_experience_default_selected=False,
         currency="NGN",
     )
@@ -335,6 +343,26 @@ async def recommend_quarter(body, db, *, source=None):
         community_experience_fee_kobo=0, community_experience_default_selected=False
     )
     recommended = sum(link.fee_kobo for link in links)
+    if existing:
+        # Fill this same empty draft, preserving names, sale dates, Experience
+        # choices and any deliberate final-price override. Only the generated
+        # schedule/economics and explicitly supplied settings are populated.
+        if existing.club_fee_kobo == existing.recommended_fee_kobo:
+            existing.club_fee_kobo = recommended
+        existing.session_links = links
+        existing.sessions_included = len(links)
+        existing.recommended_fee_kobo = recommended
+        existing.source_template_id = body.template_id or uuid.uuid5(
+            club.id, "primary-club-template"
+        )
+        existing.pool_id = club.default_pool_id
+        existing.operating_area_id = club.operating_area_id
+        existing.is_active = False
+        for key, value in draft_settings.items():
+            setattr(existing, key, value)
+        await db.commit()
+        await hydrate_schedules([existing])
+        return plan_response(existing, club)
     draft = ClubPlanVersion(
         club_id=club.id,
         pool_id=club.default_pool_id,
