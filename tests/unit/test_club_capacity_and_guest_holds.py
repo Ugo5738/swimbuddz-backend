@@ -196,6 +196,52 @@ async def test_club_access_uses_the_plan_pool_snapshot():
 
 
 @pytest.mark.asyncio
+async def test_club_access_uses_explicit_club_when_session_pool_is_overridden():
+    member_id = uuid.uuid4()
+    club_id = uuid.uuid4()
+    enrollment_id = uuid.uuid4()
+    enrollment_pool_id = uuid.uuid4()
+    override_pool_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    enrollment = SimpleNamespace(
+        id=enrollment_id,
+        member_id=member_id,
+        club_id=club_id,
+        starts_at=now - timedelta(days=1),
+        ends_at=now + timedelta(days=30),
+    )
+    club = SimpleNamespace(default_pool_id=enrollment_pool_id)
+    plan = SimpleNamespace(pool_id=enrollment_pool_id)
+    checks = [
+        SimpleNamespace(
+            context_key="same-club-overridden-pool",
+            member_id=member_id,
+            at=now,
+            club_id=club_id,
+            pool_id=override_pool_id,
+            pod_id=None,
+        ),
+        SimpleNamespace(
+            context_key="different-club",
+            member_id=member_id,
+            at=now,
+            club_id=uuid.uuid4(),
+            pool_id=enrollment_pool_id,
+            pod_id=None,
+        ),
+    ]
+
+    result = await resolve_club_access_checks(
+        _AccessDb([], [(enrollment, club, plan)]),
+        checks,
+    )
+
+    assert result[0]["allowed"] is True
+    assert result[0]["club_id"] == club_id
+    assert result[1]["allowed"] is False
+
+
+@pytest.mark.asyncio
 async def test_transition_access_is_dated_and_location_specific_without_own_rate():
     member_id = uuid.uuid4()
     club_id = uuid.uuid4()

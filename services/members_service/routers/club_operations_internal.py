@@ -33,31 +33,6 @@ class PodSchedulingAuthorization(BaseModel):
     pod_id: uuid.UUID
 
 
-class ClubScope(BaseModel):
-    club_id: uuid.UUID | None = None
-    pod_id: uuid.UUID | None = None
-
-
-@router.post("/validate-scope")
-async def validate_scope(body: ClubScope, db: AsyncSession = Depends(get_async_db)):
-    club_id = body.club_id
-    if body.pod_id:
-        pod = await db.get(Pod, body.pod_id)
-        if (
-            not pod
-            or pod.status.value != "active"
-            or club_id not in (None, pod.club_id)
-        ):
-            raise HTTPException(
-                422, "Select an active pod belonging to this Club location"
-            )
-        club_id = pod.club_id
-    club = await db.get(Club, club_id) if club_id else None
-    if club_id and (not club or not club.is_active):
-        raise HTTPException(422, "Select an active Club location")
-    return {"club_id": str(club_id) if club_id else None}
-
-
 @router.post("/authorize-pod")
 async def authorize_pod(
     body: PodSchedulingAuthorization, db: AsyncSession = Depends(get_async_db)

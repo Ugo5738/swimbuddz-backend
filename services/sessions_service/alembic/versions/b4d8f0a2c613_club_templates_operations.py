@@ -1,7 +1,7 @@
 """Club location, explicit access and auditable schedule operations.
 
 Revision ID: b4d8f0a2c613
-Revises: a3c7e9f1b502
+Revises: b7d4e8f2a610
 """
 
 from alembic import op
@@ -9,14 +9,12 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
 
 revision = "b4d8f0a2c613"
-down_revision = "a3c7e9f1b502"
+down_revision = "b7d4e8f2a610"
 branch_labels = depends_on = None
 
 
 def upgrade():
     for table in ("sessions", "session_templates"):
-        op.add_column(table, sa.Column("club_id", pg.UUID(as_uuid=True), nullable=True))
-        op.create_index(f"ix_{table}_club_id", table, ["club_id"])
         op.add_column(
             table,
             sa.Column(
@@ -27,7 +25,7 @@ def upgrade():
             ),
         )
         op.create_check_constraint(
-            f"ck_{table}_club_scope",
+            f"ck_{table}_club_access_mode",
             table,
             "club_access_mode IN ('plan_included','active_club','paid_addon') AND (session_type = 'club' OR (club_id IS NULL AND club_access_mode = 'plan_included')) AND (club_access_mode = 'plan_included' OR club_id IS NOT NULL)",
         )
@@ -55,7 +53,5 @@ def downgrade():
     op.drop_table("club_schedule_operations")
     op.drop_column("session_templates", "pricing_settings")
     for table in ("sessions", "session_templates"):
-        op.drop_constraint(f"ck_{table}_club_scope", table, type_="check")
-        op.drop_index(f"ix_{table}_club_id", table_name=table)
+        op.drop_constraint(f"ck_{table}_club_access_mode", table, type_="check")
         op.drop_column(table, "club_access_mode")
-        op.drop_column(table, "club_id")

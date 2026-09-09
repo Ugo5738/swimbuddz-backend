@@ -50,11 +50,18 @@ cost-line and margin inputs used by normal Session pricing. Both carry a soft
 | `active_club` | Free extra practice at their covered Club/pool | Current Session fee | Never added to the purchased quarter |
 | `paid_addon` | Current Session fee | Current Session fee | Never added to the purchased quarter |
 
+New Club Sessions and templates require a Club owner. The location migration
+`b7d4e8f2a610` is preserved; the access-mode/operations migration follows it and
+does not create the Club ownership columns again.
+
 Pod roster restrictions still apply. An enrollment at another Club cannot grant
 access just because two Clubs use the same pool. Legacy untagged Sessions remain
 readable; publication adopts a selected legacy Session into the explicit Club and
 rejects another Club claiming it. Annual Membership drop-ins and Guest prices are
 unchanged. Paid booking/payment snapshots never follow later Session price edits.
+Historical prepaid plans without a Session inclusion ledger retain the existing
+explicit-Club pool-override behavior. New scheduled quarters require the exact
+included swim; transition enrollment remains tied to its approved pool.
 
 `ClubPlanSession` is only the inclusion ledger: soft Session ID, included pool,
 original dates and commercial weight. It is not a replacement Session or a

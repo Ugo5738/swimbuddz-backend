@@ -78,6 +78,7 @@ class SessionBasic(BaseModel):
     location_address: Optional[str] = None
     location: Optional[str] = None
     cohort_id: Optional[str] = None
+    club_id: Optional[str] = None
     pod_id: Optional[str] = None
     capacity: int
     # pool_fee is returned in KOBO (integer) for service-to-service use.
@@ -109,6 +110,7 @@ class MemberSessionCommitment(BaseModel):
     ends_at: str
     location_name: Optional[str] = None
     cohort_id: Optional[str] = None
+    club_id: Optional[str] = None
     pod_id: Optional[str] = None
     event_id: Optional[str] = None
     week_number: Optional[int] = None
@@ -145,6 +147,8 @@ class SessionListSummary(BaseModel):
     starts_at: str
     location_name: Optional[str] = None
     location: Optional[str] = None
+    club_id: Optional[str] = None
+    pod_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +233,9 @@ async def get_scheduled_sessions(
             location_address=s.location_address,
             location=s.location.value if s.location else None,
             cohort_id=str(s.cohort_id) if s.cohort_id else None,
+            club_id=(
+                str(club_id) if (club_id := getattr(s, "club_id", None)) else None
+            ),
             pod_id=str(s.pod_id) if s.pod_id else None,
             capacity=s.capacity,
             pool_fee=s.pool_fee,
@@ -557,6 +564,9 @@ async def list_member_session_commitments(
             ends_at=session.ends_at.isoformat(),
             location_name=session.location_name,
             cohort_id=str(session.cohort_id) if session.cohort_id else None,
+            club_id=(
+                str(club_id) if (club_id := getattr(session, "club_id", None)) else None
+            ),
             pod_id=str(session.pod_id) if session.pod_id else None,
             event_id=str(session.event_id) if session.event_id else None,
             week_number=session.week_number,
@@ -590,6 +600,10 @@ async def get_session_summaries_batch(
             starts_at=session.starts_at.isoformat(),
             location_name=session.location_name,
             location=session.location.value if session.location else None,
+            club_id=(
+                str(club_id) if (club_id := getattr(session, "club_id", None)) else None
+            ),
+            pod_id=str(session.pod_id) if session.pod_id else None,
         )
         for session_id in session_ids
         if (session := by_id.get(session_id)) is not None
@@ -690,6 +704,9 @@ async def get_session_by_id(
         location_address=session.location_address,
         location=session.location.value if session.location else None,
         cohort_id=str(session.cohort_id) if session.cohort_id else None,
+        club_id=(
+            str(club_id) if (club_id := getattr(session, "club_id", None)) else None
+        ),
         pod_id=str(session.pod_id) if session.pod_id else None,
         capacity=session.capacity,
         pool_fee=session.pool_fee,
@@ -924,6 +941,9 @@ async def get_sessions_for_cohort_internal(
             location_address=s.location_address,
             location=s.location.value if s.location else None,
             cohort_id=str(s.cohort_id) if s.cohort_id else None,
+            club_id=(
+                str(club_id) if (club_id := getattr(s, "club_id", None)) else None
+            ),
             pod_id=str(s.pod_id) if s.pod_id else None,
             capacity=s.capacity,
             pool_fee=s.pool_fee,

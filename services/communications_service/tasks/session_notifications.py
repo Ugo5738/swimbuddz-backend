@@ -922,6 +922,7 @@ async def _get_session_announcement_members(
                     "context_key": str(member["id"]),
                     "member_id": str(member["id"]),
                     "at": session_start,
+                    "club_id": session.get("club_id"),
                     "pool_id": session.get("pool_id"),
                     "pod_id": session.get("pod_id"),
                 }
@@ -1258,6 +1259,7 @@ async def send_weekly_session_digest() -> None:
                         "context_key": f"{member['id']}:{session['id']}",
                         "member_id": str(member["id"]),
                         "at": session["starts_at"],
+                        "club_id": session.get("club_id"),
                         "pool_id": session.get("pool_id"),
                         "pod_id": session.get("pod_id"),
                     }

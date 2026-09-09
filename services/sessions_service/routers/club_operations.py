@@ -57,15 +57,8 @@ async def pod_authority(user, pod_id):
 
 
 async def validate_club_scope(values):
-    if values.get("club_id") or values.get("pod_id"):
-        scoped = await members_operation(
-            "validate-scope",
-            {
-                key: str(values[key]) if values.get(key) else None
-                for key in ("club_id", "pod_id")
-            },
-        )
-        values["club_id"] = uuid.UUID(scoped["club_id"]) if scoped["club_id"] else None
+    # Club/Pod ownership is validated by the existing club_scope service.
+    # This helper only validates the added access-mode field.
     if values.get(
         "club_access_mode", "plan_included"
     ) != "plan_included" and not values.get("club_id"):

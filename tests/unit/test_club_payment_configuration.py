@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -133,6 +134,7 @@ def test_guest_and_community_prices_are_configured_separately():
     session = SessionCreate(
         title="Saturday Club",
         session_type=SessionType.CLUB,
+        club_id=uuid.uuid4(),
         starts_at="2026-08-15T09:00:00+01:00",
         ends_at="2026-08-15T12:00:00+01:00",
         guest_fee=7000,

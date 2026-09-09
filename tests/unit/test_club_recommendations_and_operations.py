@@ -341,3 +341,51 @@ def test_lead_requests_cannot_supply_price_pool_or_quarter_inclusion():
     ):
         with pytest.raises(ValidationError):
             ops.ExtraPractice(**base, **{field: value})
+
+
+@pytest.mark.parametrize("change", ["quarter", "pool"])
+@pytest.mark.asyncio
+async def test_published_swim_cannot_be_moved_outside_its_commercial_promise(change):
+    from services.members_service.routers import club_operations_internal as authority
+
+    pool = uuid4()
+    plan = NS(id=uuid4(), period_start=date(2026, 10, 1), period_end=date(2026, 12, 31))
+    db = NS(execute=AsyncMock(return_value=result([(plan, NS(pool_id=pool))])))
+    body = authority.PromiseCheck(
+        session_id=uuid4(),
+        starts_at=datetime(
+            2027 if change == "quarter" else 2026, 12, 5, 9, tzinfo=timezone.utc
+        ),
+        pool_id=uuid4() if change == "pool" else pool,
+    )
+    with pytest.raises(HTTPException) as error:
+        await authority.check_promises(body, db)
+    assert error.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_reschedule_refusal_does_not_mutate_the_swim(monkeypatch):
+    swim = session()
+    before = (swim.starts_at, swim.ends_at, swim.pool_fee)
+    db = NS(
+        execute=AsyncMock(return_value=result([swim])),
+        get=AsyncMock(return_value=None),
+        add=AsyncMock(),
+        commit=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        ops,
+        "members_operation",
+        AsyncMock(side_effect=HTTPException(409, "Outside purchased quarter")),
+    )
+    user = AuthUser(sub=str(uuid4()), app_metadata={"roles": ["admin"]})
+    body = ops.ReschedulePractice(
+        operation_id=uuid4(),
+        starts_at=swim.starts_at + timedelta(days=2),
+        reason="Heavy rain",
+        pool_time_confirmed=True,
+    )
+    with pytest.raises(HTTPException):
+        await ops.reschedule_practice(swim.id, body, user, db)
+    assert (swim.starts_at, swim.ends_at, swim.pool_fee) == before
+    db.commit.assert_not_awaited()

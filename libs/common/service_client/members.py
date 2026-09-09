@@ -271,8 +271,26 @@ async def get_eligible_coaches(
 
 
 # ---------------------------------------------------------------------------
-# Pod helpers (sessions_service ↔ pods integration)
+# Club and Pod helpers (sessions_service ↔ members_service integration)
 # ---------------------------------------------------------------------------
+
+
+async def get_club_by_id(club_id: str, *, calling_service: str) -> Optional[dict]:
+    """Look up one Club by id.
+
+    Club reads are public, but routing them through the shared service client
+    keeps direct service URLs and error handling out of sessions_service.
+    """
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.MEMBERS_SERVICE_URL,
+        path=f"/clubs/{club_id}",
+        calling_service=calling_service,
+    )
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    return resp.json()
 
 
 async def get_pod_by_id(pod_id: str, *, calling_service: str) -> Optional[dict]:

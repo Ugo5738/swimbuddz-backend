@@ -34,6 +34,10 @@ from services.sessions_service.models import (
     SessionStatus,
     SessionType,
 )
+from services.sessions_service.models._validators import (
+    SessionDiscriminatorError,
+    validate_session_discriminator,
+)
 from services.sessions_service.schemas import (
     SessionCreate,
     SessionResponse,
@@ -42,6 +46,7 @@ from services.sessions_service.schemas import (
 from services.sessions_service.services.notifications import (
     trigger_session_published_notifications,
 )
+from services.sessions_service.services.club_scope import require_valid_club_scope
 from services.sessions_service.services.pricing import (
     PRICING_KEYS,
     normalize_pricing_payload,
@@ -493,6 +498,12 @@ async def create_session(
     Sessions are created in DRAFT status by default. Use the publish endpoint
     to make them visible to members and trigger notifications.
     """
+    await require_valid_club_scope(
+        session_type=session_in.session_type,
+        club_id=session_in.club_id,
+        pod_id=session_in.pod_id,
+    )
+
     # Validate cohort_id exists via academy-service (avoid cross-service DB reads)
     if session_in.cohort_id:
         headers = {"Authorization": f"Bearer {_service_role_jwt('sessions')}"}
@@ -789,6 +800,34 @@ async def update_session(
                 "Use Club rescheduling for a published practice; its location and access promise cannot be silently changed",
             )
 
+    resulting_type = update_data.get("session_type", session.session_type)
+    resulting_type_value = getattr(resulting_type, "value", resulting_type)
+    if "session_type" in update_data and resulting_type_value != SessionType.CLUB.value:
+        # A Club/Pod link must never leak across a type change.
+        update_data["club_id"] = None
+        update_data["pod_id"] = None
+        update_data["club_access_mode"] = "plan_included"
+
+    context_fields = {"session_type", "cohort_id", "event_id", "club_id", "pod_id"}
+    if context_fields & set(update_data):
+        try:
+            validate_session_discriminator(
+                session_type=resulting_type,
+                cohort_id=update_data.get("cohort_id", session.cohort_id),
+                event_id=update_data.get("event_id", session.event_id),
+                club_id=update_data.get("club_id", session.club_id),
+                pod_id=update_data.get("pod_id", session.pod_id),
+                require_club_id=True,
+            )
+        except SessionDiscriminatorError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        await require_valid_club_scope(
+            session_type=resulting_type,
+            club_id=update_data.get("club_id", session.club_id),
+            pod_id=update_data.get("pod_id", session.pod_id),
+        )
+
     if PRICING_KEYS & set(update_data):
         pricing_payload = pricing_payload_from_session(session)
         pricing_payload.update(
@@ -817,8 +856,6 @@ async def update_session(
     if "ride_share_fee" in update_data and update_data["ride_share_fee"] is not None:
         update_data["ride_share_fee"] = round(update_data["ride_share_fee"] * 100)
 
-    resulting_type = update_data.get("session_type", session.session_type)
-    resulting_type_value = getattr(resulting_type, "value", resulting_type)
     resulting_allows_dropins = update_data.get(
         "allows_community_dropins", session.allows_community_dropins
     )

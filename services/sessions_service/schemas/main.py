@@ -73,9 +73,8 @@ class SessionBase(BaseModel):
     # Context links
     cohort_id: Optional[uuid.UUID] = None
     event_id: Optional[uuid.UUID] = None
-    # CLUB sessions can optionally be tied to a specific pod. NULL means
-    # a general Club session (open to any Club member). Cross-service
-    # ref → members_service.pods.id (no enforced FK).
+    # Every new CLUB session belongs to one Club. ``pod_id`` optionally
+    # narrows the audience to one Pod within that Club.
     pod_id: Optional[uuid.UUID] = None
 
     # Cohort-specific
@@ -104,7 +103,9 @@ class SessionCreate(SessionBase):
                 session_type=self.session_type,
                 cohort_id=self.cohort_id,
                 event_id=self.event_id,
+                club_id=self.club_id,
                 pod_id=self.pod_id,
+                require_club_id=True,
             )
         except SessionDiscriminatorError as exc:
             # Re-raise as ValueError so Pydantic surfaces a 422
@@ -243,8 +244,8 @@ class SessionResponse(SessionBase):
             "max_guests_per_booking": getattr(obj, "max_guests_per_booking", 4),
             "cohort_id": obj.cohort_id,
             "event_id": obj.event_id,
-            "pod_id": getattr(obj, "pod_id", None),
             "club_id": getattr(obj, "club_id", None),
+            "pod_id": getattr(obj, "pod_id", None),
             "club_access_mode": getattr(obj, "club_access_mode", "plan_included"),
             "week_number": obj.week_number,
             "lesson_title": obj.lesson_title,

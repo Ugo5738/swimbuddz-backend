@@ -1,8 +1,8 @@
 """Cross-column validation for the Session model.
 
-The ``sessions`` table carries a ``session_type`` discriminator plus three
-mutually-exclusive context FK columns (``cohort_id``, ``event_id``,
-``pod_id``). Historically nothing enforced the type → FK mapping — any
+The ``sessions`` table carries a ``session_type`` discriminator plus context
+columns (``cohort_id``, ``event_id``, ``club_id``, ``pod_id``). Historically
+nothing enforced the type → FK mapping — any
 combination was writeable, which the May 2026 codebase review flagged as
 a "god object" smell.
 
@@ -43,11 +43,11 @@ class SessionDiscriminatorError(ValueError):
 _REQUIRED_BY_TYPE: dict[SessionType, tuple[str, frozenset[str]]] = {
     SessionType.COHORT_CLASS: (
         "cohort_id",
-        frozenset({"event_id", "pod_id"}),
+        frozenset({"event_id", "club_id", "pod_id"}),
     ),
     SessionType.EVENT: (
         "event_id",
-        frozenset({"cohort_id", "pod_id"}),
+        frozenset({"cohort_id", "club_id", "pod_id"}),
     ),
 }
 
@@ -58,6 +58,8 @@ def validate_session_discriminator(
     cohort_id: Optional[uuid.UUID],
     event_id: Optional[uuid.UUID],
     pod_id: Optional[uuid.UUID],
+    club_id: Optional[uuid.UUID] = None,
+    require_club_id: bool = False,
 ) -> None:
     """Enforce the ``session_type`` → context-FK mapping.
 
@@ -67,9 +69,13 @@ def validate_session_discriminator(
       * ``EVENT`` — ``event_id`` required; ``cohort_id`` and ``pod_id``
         must be NULL.
       * ``CLUB`` — ``cohort_id`` and ``event_id`` must be NULL;
-        ``pod_id`` is *optional* (NULL = general club session; set =
-        pod-scoped club session).
-      * ``COMMUNITY`` — all three context FKs must be NULL.
+        ``club_id`` identifies the owning Club and ``pod_id`` is optional
+        (NULL = general club session; set = pod-scoped club session).
+      * ``COMMUNITY`` — all context FKs must be NULL.
+
+    ``require_club_id`` is enabled for new API writes. ORM validation keeps it
+    disabled so unresolved legacy Club rows remain readable and publishable
+    until an admin assigns their Club.
 
     Raises ``SessionDiscriminatorError`` (a ``ValueError`` subclass) on
     violation so callers get a clean 422 when the validator is wired
@@ -79,6 +85,7 @@ def validate_session_discriminator(
     fks = {
         "cohort_id": cohort_id,
         "event_id": event_id,
+        "club_id": club_id,
         "pod_id": pod_id,
     }
 
@@ -97,13 +104,17 @@ def validate_session_discriminator(
         return
 
     if session_type is SessionType.CLUB:
-        # pod_id is optional for CLUB; the other two context FKs must be NULL.
+        # pod_id is optional for CLUB; cohort/event links must be NULL.
         for fk in ("cohort_id", "event_id"):
             if fks[fk] is not None:
                 raise SessionDiscriminatorError(
                     f"session_type='club' must not set {fk} "
-                    f"(only pod_id applies, and it is optional)"
+                    f"(only club_id and optional pod_id apply)"
                 )
+        if require_club_id and club_id is None:
+            raise SessionDiscriminatorError(
+                "session_type='club' requires club_id to be set"
+            )
         return
 
     if session_type is SessionType.COMMUNITY:

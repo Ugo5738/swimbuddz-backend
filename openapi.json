@@ -222,50 +222,6 @@
         }
       }
     },
-    "/api/v1/internal/clubs/operations/validate-scope": {
-      "post": {
-        "tags": [
-          "internal-club-operations"
-        ],
-        "summary": "Validate Scope",
-        "operationId": "validate_scope_internal_clubs_operations_validate_scope_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ClubScope"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
     "/api/v1/internal/clubs/operations/authorize-pod": {
       "post": {
         "tags": [
@@ -59955,36 +59911,6 @@
         ],
         "title": "ClubResponse"
       },
-      "ClubScope": {
-        "properties": {
-          "club_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Club Id"
-          },
-          "pod_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pod Id"
-          }
-        },
-        "type": "object",
-        "title": "ClubScope"
-      },
       "ClubUpdate": {
         "properties": {
           "name": {
@@ -71322,6 +71248,17 @@
             ],
             "title": "Cohort Id"
           },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
           "pod_id": {
             "anyOf": [
               {
@@ -71807,6 +71744,17 @@
               }
             ],
             "title": "Cohort Id"
+          },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
           },
           "pod_id": {
             "anyOf": [
@@ -72674,6 +72622,28 @@
               }
             ],
             "title": "Location"
+          },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
           }
         },
         "type": "object",

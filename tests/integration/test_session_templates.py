@@ -13,34 +13,41 @@ async def test_club_template_generation_preserves_pod_type_and_ride_config(
     sessions_client,
     db_session,
 ):
+    club_id = uuid.uuid4()
     pod_id = uuid.uuid4()
     ride_area_id = uuid.uuid4()
 
-    create_response = await sessions_client.post(
-        "/sessions/templates",
-        json={
-            "title": "Dolphins Saturday",
-            "session_type": "club",
-            "pod_id": str(pod_id),
-            "location": "sunfit_pool",
-            "day_of_week": 5,
-            "start_time": "09:00:00",
-            "duration_minutes": 120,
-            "pool_fee": 2000,
-            "ride_share_fee": 1000,
-            "capacity": 8,
-            "ride_share_config": [
-                {
-                    "ride_area_id": str(ride_area_id),
-                    "cost": 1000,
-                    "capacity": 4,
-                }
-            ],
-        },
-    )
+    with patch(
+        "services.sessions_service.routers.templates.require_valid_club_scope",
+        new_callable=AsyncMock,
+    ):
+        create_response = await sessions_client.post(
+            "/sessions/templates",
+            json={
+                "title": "Dolphins Saturday",
+                "session_type": "club",
+                "club_id": str(club_id),
+                "pod_id": str(pod_id),
+                "location": "sunfit_pool",
+                "day_of_week": 5,
+                "start_time": "09:00:00",
+                "duration_minutes": 120,
+                "pool_fee": 2000,
+                "ride_share_fee": 1000,
+                "capacity": 8,
+                "ride_share_config": [
+                    {
+                        "ride_area_id": str(ride_area_id),
+                        "cost": 1000,
+                        "capacity": 4,
+                    }
+                ],
+            },
+        )
     assert create_response.status_code == 201, create_response.text
     template = create_response.json()
     assert template["session_type"] == "club"
+    assert template["club_id"] == str(club_id)
     assert template["pod_id"] == str(pod_id)
 
     with (
@@ -58,6 +65,10 @@ async def test_club_template_generation_preserves_pod_type_and_ride_config(
             "services.sessions_service.routers.templates.materialise_opportunities_from_session_template",
             new_callable=AsyncMock,
             return_value={"created_count": 2},
+        ),
+        patch(
+            "services.sessions_service.routers.templates.require_valid_club_scope",
+            new_callable=AsyncMock,
         ),
     ):
         generate_response = await sessions_client.post(
@@ -77,6 +88,7 @@ async def test_club_template_generation_preserves_pod_type_and_ride_config(
     )
     session = result.scalar_one()
     assert session.session_type.value == "club"
+    assert session.club_id == club_id
     assert session.pod_id == pod_id
     assert session.ride_share_fee == 100000
     assert session.status.value == "scheduled"
@@ -91,19 +103,25 @@ async def test_club_template_generation_preserves_pod_type_and_ride_config(
 async def test_template_volunteer_sync_backfills_existing_future_sessions(
     sessions_client,
 ):
-    create_response = await sessions_client.post(
-        "/sessions/templates",
-        json={
-            "title": "Orcas Saturday",
-            "session_type": "club",
-            "location": "sunfit_pool",
-            "day_of_week": 5,
-            "start_time": "09:00:00",
-            "duration_minutes": 120,
-            "pool_fee": 2000,
-            "capacity": 8,
-        },
-    )
+    club_id = uuid.uuid4()
+    with patch(
+        "services.sessions_service.routers.templates.require_valid_club_scope",
+        new_callable=AsyncMock,
+    ):
+        create_response = await sessions_client.post(
+            "/sessions/templates",
+            json={
+                "title": "Orcas Saturday",
+                "session_type": "club",
+                "club_id": str(club_id),
+                "location": "sunfit_pool",
+                "day_of_week": 5,
+                "start_time": "09:00:00",
+                "duration_minutes": 120,
+                "pool_fee": 2000,
+                "capacity": 8,
+            },
+        )
     assert create_response.status_code == 201, create_response.text
     template = create_response.json()
 
@@ -117,6 +135,10 @@ async def test_template_volunteer_sync_backfills_existing_future_sessions(
             "services.sessions_service.routers.templates.materialise_opportunities_from_session_template",
             new_callable=AsyncMock,
             return_value={"created_count": 0},
+        ),
+        patch(
+            "services.sessions_service.routers.templates.require_valid_club_scope",
+            new_callable=AsyncMock,
         ),
     ):
         generate_response = await sessions_client.post(

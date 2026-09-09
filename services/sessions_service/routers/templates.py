@@ -27,6 +27,7 @@ from services.sessions_service.schemas.templates import (
 from services.sessions_service.services.notifications import (
     trigger_session_published_notifications,
 )
+from services.sessions_service.services.club_scope import require_valid_club_scope
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,11 @@ async def create_template(
     _admin: AuthUser = Depends(require_admin),
 ):
     """Create a new session template."""
+    await require_valid_club_scope(
+        session_type=template_in.session_type,
+        club_id=template_in.club_id,
+        pod_id=template_in.pod_id,
+    )
     template_data = template_in.model_dump()
     from services.sessions_service.routers.club_operations import validate_club_scope
 
@@ -129,8 +135,8 @@ async def update_template(
     next_type = update_data.get("session_type")
     next_type_value = next_type.value if hasattr(next_type, "value") else next_type
     if next_type_value and next_type_value != "club":
-        update_data["pod_id"] = None
         update_data["club_id"] = None
+        update_data["pod_id"] = None
         update_data["club_access_mode"] = "plan_included"
     if {"club_id", "pod_id", "club_access_mode"} & update_data.keys():
         from services.sessions_service.routers.club_operations import (
@@ -144,6 +150,25 @@ async def update_template(
             }
         )
         update_data["club_id"] = scope.get("club_id")
+
+    effective_type = update_data.get("session_type", template.session_type)
+    scope_fields = {"session_type", "club_id", "pod_id"}
+    if scope_fields & set(update_data):
+        effective_type_value = getattr(effective_type, "value", effective_type)
+        effective_club_id = update_data.get("club_id", template.club_id)
+        effective_pod_id = update_data.get("pod_id", template.pod_id)
+        if effective_type_value != "club" and (
+            effective_club_id is not None or effective_pod_id is not None
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Only Club session templates may set club_id or pod_id.",
+            )
+        await require_valid_club_scope(
+            session_type=effective_type,
+            club_id=effective_club_id,
+            pod_id=effective_pod_id,
+        )
 
     for field, value in update_data.items():
         setattr(template, field, value)
@@ -258,6 +283,12 @@ async def generate_sessions(
             status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
         )
 
+    await require_valid_club_scope(
+        session_type=template.session_type,
+        club_id=template.club_id,
+        pod_id=template.pod_id,
+    )
+
     # Find the next occurrence of the template's day of week
     today = datetime.now().date()
     days_ahead = (template.day_of_week - today.weekday()) % 7
@@ -346,7 +377,6 @@ async def generate_sessions(
             location_name=session_location_name,
             session_type=template.session_type,
             pod_id=template.pod_id,
-            club_id=template.club_id,
             club_access_mode=template.club_access_mode,
             pool_fee=template.pool_fee,  # both are kobo integers after migration
             ride_share_fee=template.ride_share_fee,

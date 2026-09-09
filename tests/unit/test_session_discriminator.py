@@ -66,6 +66,26 @@ class TestValidCombinations:
             pod_id=_u(),
         )
 
+    def test_new_club_write_requires_club_id(self):
+        with pytest.raises(SessionDiscriminatorError, match="requires club_id"):
+            validate_session_discriminator(
+                session_type=SessionType.CLUB,
+                cohort_id=None,
+                event_id=None,
+                pod_id=None,
+                club_id=None,
+                require_club_id=True,
+            )
+
+        validate_session_discriminator(
+            session_type=SessionType.CLUB,
+            cohort_id=None,
+            event_id=None,
+            pod_id=None,
+            club_id=_u(),
+            require_club_id=True,
+        )
+
     def test_community_with_no_fks(self):
         validate_session_discriminator(
             session_type=SessionType.COMMUNITY,
@@ -156,6 +176,7 @@ class TestForbiddenFKCombinations:
         for fk_kwargs in [
             {"cohort_id": _u()},
             {"event_id": _u()},
+            {"club_id": _u()},
             {"pod_id": _u()},
         ]:
             base = {
