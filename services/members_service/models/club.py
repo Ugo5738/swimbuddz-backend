@@ -39,7 +39,7 @@ from sqlalchemy import (
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from services.members_service.models.enums import DayOfWeek, enum_values
 
@@ -140,6 +140,21 @@ class ClubPlanVersion(Base):
     )
     currency: Mapped[str] = mapped_column(String(8), nullable=False, default="NGN")
     club_fee_kobo: Mapped[int] = mapped_column(Integer, nullable=False)
+    recommended_fee_kobo: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    published_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    source_plan_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    source_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    session_links = relationship(
+        "ClubPlanSession", lazy="selectin", cascade="all, delete-orphan"
+    )
     community_experience_fee_kobo: Mapped[int] = mapped_column(
         Integer, nullable=False, default=3_000_000, server_default="3000000"
     )
@@ -186,9 +201,11 @@ class ClubPlanVersion(Base):
             "community_experience_fee_kobo >= 0",
             name="ck_club_plan_experience_fee_nonnegative",
         ),
-        CheckConstraint("sessions_included > 0", name="ck_club_plan_sessions_positive"),
         CheckConstraint(
-            "minimum_entry_sessions > 0 AND minimum_entry_sessions <= sessions_included",
+            "sessions_included >= 0", name="ck_club_plan_sessions_positive"
+        ),
+        CheckConstraint(
+            "minimum_entry_sessions > 0 AND (NOT is_active OR minimum_entry_sessions <= sessions_included)",
             name="ck_club_plan_minimum_entry_sessions",
         ),
         CheckConstraint(
@@ -200,6 +217,33 @@ class ClubPlanVersion(Base):
             "is_active",
             "effective_from",
         ),
+    )
+
+
+class ClubPlanSession(Base):
+    """Published session identity and commercial weight, never a live supplier price."""
+
+    __tablename__ = "club_plan_sessions"
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    plan_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("club_plan_versions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    pool_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    fee_kobo: Mapped[int] = mapped_column(Integer, nullable=False)
+    pricing_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    __table_args__ = (
+        UniqueConstraint("plan_version_id", "session_id", name="uq_club_plan_session"),
+        CheckConstraint("fee_kobo >= 0", name="ck_club_plan_session_fee"),
     )
 
 
@@ -224,6 +268,15 @@ class CommunityExperienceOffering(Base):
     club_bundle_fee_kobo: Mapped[int] = mapped_column(
         Integer, nullable=False, default=3_000_000, server_default="3000000"
     )
+    member_guest_fee_kobo: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    public_guest_fee_kobo: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    max_guests_per_member: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    capacity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    event_links = relationship(
+        "CommunityExperienceEvent", lazy="selectin", cascade="all, delete-orphan"
+    )
     purchase_opens_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -241,6 +294,14 @@ class CommunityExperienceOffering(Base):
     )
 
     __table_args__ = (
+        CheckConstraint(
+            "max_guests_per_member >= 0 AND (capacity IS NULL OR capacity > 0)",
+            name="ck_experience_guest_capacity",
+        ),
+        CheckConstraint(
+            "(member_guest_fee_kobo IS NULL OR member_guest_fee_kobo >= 0) AND (public_guest_fee_kobo IS NULL OR public_guest_fee_kobo >= 0)",
+            name="ck_experience_guest_fees",
+        ),
         CheckConstraint(
             "period_end >= period_start", name="ck_community_experience_period"
         ),

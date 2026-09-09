@@ -88,11 +88,12 @@ class ClubPlanCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=160)
     billing_cycle: Literal["quarterly"] = "quarterly"
     currency: str = Field(default="NGN", min_length=3, max_length=8)
-    club_fee_kobo: int = Field(..., ge=0)
-    community_experience_fee_kobo: int = Field(default=3_000_000, ge=0)
-    community_experience_default_selected: bool = True
+    club_fee_kobo: Optional[int] = Field(default=None, ge=0)
+    community_experience_fee_kobo: int = Field(default=0, ge=0)
+    community_experience_default_selected: bool = False
     community_experience_offering_id: Optional[uuid.UUID] = None
-    sessions_included: int = Field(default=12, ge=1, le=52)
+    sessions_included: int = Field(default=0, ge=0, le=52)
+    session_ids: list[uuid.UUID] = Field(default_factory=list, max_length=52)
     period_start: date
     period_end: date
     minimum_entry_sessions: int = Field(default=5, ge=1, le=52)
@@ -101,7 +102,7 @@ class ClubPlanCreate(BaseModel):
     premium_venue_note: Optional[str] = None
     effective_from: date
     effective_to: Optional[date] = None
-    is_active: bool = True
+    is_active: bool = False
 
     @model_validator(mode="after")
     def valid_period(self):
@@ -109,12 +110,21 @@ class ClubPlanCreate(BaseModel):
             raise ValueError("effective_to must be on or after effective_from")
         if self.period_end < self.period_start:
             raise ValueError("period_end must be on or after period_start")
-        if self.minimum_entry_sessions > self.sessions_included:
+        if (
+            self.is_active
+            and self.sessions_included
+            and self.minimum_entry_sessions > self.sessions_included
+        ):
             raise ValueError("minimum_entry_sessions cannot exceed sessions_included")
         return self
 
 
 class ClubPlanResponse(ClubPlanCreate):
+    club_fee_kobo: int
+    recommended_fee_kobo: int = 0
+    published_at: Optional[datetime] = None
+    source_plan_id: Optional[uuid.UUID] = None
+    source_template_id: Optional[uuid.UUID] = None
     id: uuid.UUID
     club_id: uuid.UUID
     club_name: Optional[str] = None
@@ -270,6 +280,8 @@ class ActivateClubApplicationRequest(BaseModel):
 
 class ClubApplicationReservationRequest(BaseModel):
     payment_reference: str = Field(..., min_length=1, max_length=128)
+    community_experience_selected: bool = False
+    community_experience_fee_kobo: int = Field(default=0, ge=0)
     payment_mode: Literal["quarterly_prepaid", "transition_per_session"] = (
         "quarterly_prepaid"
     )
@@ -291,6 +303,10 @@ class CommunityExperienceOfferingCreate(BaseModel):
     standard_member_fee_kobo: int = Field(default=5_000_000, ge=0)
     club_member_fee_kobo: int = Field(default=4_000_000, ge=0)
     club_bundle_fee_kobo: int = Field(default=3_000_000, ge=0)
+    member_guest_fee_kobo: Optional[int] = Field(default=None, ge=0)
+    public_guest_fee_kobo: Optional[int] = Field(default=None, ge=0)
+    max_guests_per_member: int = Field(default=0, ge=0, le=20)
+    capacity: Optional[int] = Field(default=None, ge=1)
     purchase_opens_at: Optional[datetime] = None
     purchase_closes_at: Optional[datetime] = None
     is_active: bool = True

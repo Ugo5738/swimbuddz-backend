@@ -7,8 +7,13 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 
 from libs.common.datetime_utils import utc_now
+from libs.common.config import get_settings
 from libs.common.logging import get_logger
-from libs.common.service_client import dispatch_notification
+from libs.common.service_client import (
+    dispatch_notification,
+    internal_get,
+    internal_post,
+)
 from libs.db.session import get_async_db
 from services.events_service.models import (
     Event,
@@ -20,6 +25,73 @@ from services.events_service.models import (
 logger = get_logger(__name__)
 DELIVERY_WINDOW = timedelta(minutes=10)
 LOOKAHEAD = timedelta(days=31)
+
+
+async def remind_experience_participants(db, event, hours):
+    """Reuse Event timing for paid members and named guests, without an RSVP."""
+    settings = get_settings()
+    response = await internal_get(
+        service_url=settings.MEMBERS_SERVICE_URL,
+        path=f"/clubs/community-experiences/internal/{event.community_experience_offering_id}/events/{event.id}/participants",
+        calling_service="events",
+    )
+    response.raise_for_status()
+    label, when = _offset_label(hours), _event_time(event)
+    body = f"{event.title} starts in {label}, on {when}. Location: {event.location or 'Venue to be confirmed'}."
+    for person in response.json():
+        import uuid
+
+        participant_id = uuid.UUID(person["id"])
+        exists = (
+            await db.execute(
+                select(EventReminderLog.id).where(
+                    EventReminderLog.event_id == event.id,
+                    EventReminderLog.participant_id == participant_id,
+                    EventReminderLog.reminder_hours == hours,
+                )
+            )
+        ).first()
+        if exists:
+            continue
+        if person["member_id"]:
+            result = await dispatch_notification(
+                type="event_reminder",
+                category="events",
+                member_ids=[person["member_id"]],
+                title=f"Reminder: {event.title}",
+                body=body,
+                action_url=f"/experiences/{event.community_experience_offering_id}",
+                channels=["in_app", "email"],
+                email_template="generic_event_reminder",
+                email_data={"body": body, "html_content": f"<p>{escape(body)}</p>"},
+                calling_service="events",
+            )
+            if result is None:
+                continue
+        else:
+            delivered = await internal_post(
+                service_url=settings.COMMUNICATIONS_SERVICE_URL,
+                path="/email/send",
+                calling_service="events",
+                json={
+                    "to_email": person["email"],
+                    "subject": f"Reminder: {event.title}",
+                    "body": body,
+                },
+            )
+            if delivered.status_code >= 400 or not delivered.json().get("success"):
+                continue
+        db.add(
+            EventReminderLog(
+                event_id=event.id,
+                participant_id=participant_id,
+                member_id=uuid.UUID(person["member_id"])
+                if person["member_id"]
+                else None,
+                reminder_hours=hours,
+            )
+        )
+        await db.commit()
 
 
 def due_reminder_offsets(event: Event, now: datetime) -> list[int]:
@@ -69,6 +141,9 @@ async def send_due_event_reminders() -> None:
             sent = 0
             for event in events:
                 for hours in due_reminder_offsets(event, now):
+                    if getattr(event, "community_experience_offering_id", None):
+                        await remind_experience_participants(db, event, hours)
+                        continue
                     recipients = set(
                         (
                             await db.execute(

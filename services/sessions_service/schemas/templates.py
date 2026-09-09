@@ -1,13 +1,28 @@
 import uuid
 from datetime import datetime, time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 from services.sessions_service.models import SessionType
+from services.sessions_service.schemas.main import SessionCostLine
+
+
+class ClubTemplatePricing(BaseModel):
+    pricing_expected_attendees: int = Field(ge=1, le=500)
+    margin_type: Literal["fixed_per_attendee", "percentage"] = "fixed_per_attendee"
+    margin_value: float = Field(ge=0)
+    cost_lines: list[SessionCostLine] = Field(default_factory=list)
+    expected_staff: int = Field(default=0, ge=0, le=50)
+    lanes: int = Field(default=1, ge=1, le=50)
 
 
 class SessionTemplateBase(BaseModel):
+    club_id: Optional[uuid.UUID] = None
+    club_access_mode: Literal["plan_included", "active_club", "paid_addon"] = (
+        "plan_included"
+    )
+    pricing_settings: Optional[ClubTemplatePricing] = None
     title: str
     description: Optional[str] = None
     # Pool reference — at least one of pool_id / location must be supplied.
@@ -19,15 +34,14 @@ class SessionTemplateBase(BaseModel):
     session_type: SessionType = SessionType.COMMUNITY
     # Every new Club template belongs to one Club. ``pod_id`` optionally
     # narrows generated sessions to a Pod inside that Club.
-    club_id: Optional[uuid.UUID] = None
     pod_id: Optional[uuid.UUID] = None
     # API uses naira (float); DB stores kobo (int). Routers handle conversion.
     pool_fee: float = 0.0
     ride_share_fee: float = 0.0
-    capacity: int = 20
+    capacity: int = Field(default=20, ge=1, le=500)
     day_of_week: int = Field(..., ge=0, le=6, description="0=Monday, 6=Sunday")
     start_time: time
-    duration_minutes: int
+    duration_minutes: int = Field(ge=15, le=480)
     auto_generate: bool = False
     ride_share_config: Optional[List[Dict]] = None
 
@@ -35,6 +49,12 @@ class SessionTemplateBase(BaseModel):
 class SessionTemplateCreate(SessionTemplateBase):
     @model_validator(mode="after")
     def _require_pool_reference(self) -> "SessionTemplateCreate":
+        if self.session_type != SessionType.CLUB and (
+            self.club_id or self.club_access_mode != "plan_included"
+        ):
+            raise ValueError(
+                "Only Club templates can specify a Club or Club access mode"
+            )
         if not self.pool_id and not self.location:
             raise ValueError("Either pool_id or location must be provided")
         if self.session_type == SessionType.CLUB and self.club_id is None:
@@ -47,20 +67,24 @@ class SessionTemplateCreate(SessionTemplateBase):
 
 
 class SessionTemplateUpdate(BaseModel):
+    club_id: Optional[uuid.UUID] = None
+    club_access_mode: Optional[
+        Literal["plan_included", "active_club", "paid_addon"]
+    ] = None
+    pricing_settings: Optional[ClubTemplatePricing] = None
     title: Optional[str] = None
     description: Optional[str] = None
     pool_id: Optional[uuid.UUID] = None
     location: Optional[str] = None
     location_name: Optional[str] = None
     session_type: Optional[SessionType] = None
-    club_id: Optional[uuid.UUID] = None
     pod_id: Optional[uuid.UUID] = None
     pool_fee: Optional[float] = None  # naira — router converts to kobo on write
     ride_share_fee: Optional[float] = None  # naira — router converts to kobo on write
-    capacity: Optional[int] = None
+    capacity: Optional[int] = Field(None, ge=1, le=500)
     day_of_week: Optional[int] = Field(None, ge=0, le=6)
     start_time: Optional[time] = None
-    duration_minutes: Optional[int] = None
+    duration_minutes: Optional[int] = Field(None, ge=15, le=480)
     auto_generate: Optional[bool] = None
     is_active: Optional[bool] = None
     ride_share_config: Optional[List[Dict]] = None
@@ -102,6 +126,8 @@ class SessionTemplateResponse(SessionTemplateBase):
             "session_type": obj.session_type,
             "club_id": getattr(obj, "club_id", None),
             "pod_id": obj.pod_id,
+            "club_access_mode": getattr(obj, "club_access_mode", "plan_included"),
+            "pricing_settings": getattr(obj, "pricing_settings", None) or None,
             "pool_fee": (obj.pool_fee or 0) / 100.0,
             "ride_share_fee": (obj.ride_share_fee or 0) / 100.0,
             "capacity": obj.capacity,

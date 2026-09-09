@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
@@ -14,6 +15,21 @@ from services.members_service.models import (
 from libs.auth.models import AuthUser
 from services.members_service.routers.clubs import create_club_application
 from services.members_service.schemas.club import ClubApplicationCreate
+from services.members_service.services.club_plan_schedule import snapshot_session
+from services.members_service.services import club_plan_schedule
+from tests.club_schedule_helpers import attach_schedule
+from types import SimpleNamespace
+
+
+def actual_session_fixture(plan, start, monkeypatch):
+    fixture = attach_schedule(SimpleNamespace(), start)
+    rows = list(fixture._actual_session_rows.values())
+    for row in rows:
+        row["title"] = "Included swim"
+    plan.session_links = [snapshot_session(row) for row in rows]
+    monkeypatch.setattr(
+        club_plan_schedule, "fetch_schedule", AsyncMock(return_value=rows)
+    )
 
 
 @pytest.mark.asyncio
@@ -220,9 +236,12 @@ async def test_transition_quote_ignores_carried_community_experience_selection(
 
 @pytest.mark.asyncio
 async def test_quarterly_quote_does_not_charge_experience_without_an_offering(
-    members_client, db_session, seed_member_row
+    members_client, db_session, seed_member_row, monkeypatch
 ):
     """A fee-only plan cannot charge for an Experience it cannot fulfil."""
+    monkeypatch.setattr(
+        club_plan_schedule, "utc_now", lambda: datetime(2026, 9, 7, tzinfo=timezone.utc)
+    )
     member = await seed_member_row(auth_id=f"quarterly-no-experience-{uuid.uuid4()}")
     club = Club(
         name="Quarterly Without Offering Club",
@@ -246,6 +265,7 @@ async def test_quarterly_quote_does_not_charge_experience_without_an_offering(
         effective_from=date(2026, 1, 1),
         is_active=True,
     )
+    actual_session_fixture(plan, date(2026, 10, 3), monkeypatch)
     db_session.add(plan)
     await db_session.flush()
     application = ClubApplication(
@@ -274,7 +294,7 @@ async def test_quarterly_quote_does_not_charge_experience_without_an_offering(
 
 @pytest.mark.asyncio
 async def test_new_club_period_reuses_completed_readiness_without_auto_enrollment(
-    db_session, seed_member_row
+    db_session, seed_member_row, monkeypatch
 ):
     today = date.today()
     member = await seed_member_row(auth_id=f"renewal-{uuid.uuid4()}")
@@ -307,6 +327,7 @@ async def test_new_club_period_reuses_completed_readiness_without_auto_enrollmen
         effective_from=today - timedelta(days=1),
         is_active=True,
     )
+    actual_session_fixture(new_plan, today + timedelta(days=1), monkeypatch)
     db_session.add_all([old_plan, new_plan])
     await db_session.flush()
     previous_application = ClubApplication(

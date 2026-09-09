@@ -32,9 +32,11 @@ def _is_club_session(session: Session) -> bool:
 def _club_access_check(session: Session, member_id: str) -> dict:
     return {
         "context_key": str(session.id),
+        "session_id": str(session.id),
+        "club_id": str(session.club_id) if getattr(session, "club_id", None) else None,
+        "club_access_mode": getattr(session, "club_access_mode", "plan_included"),
         "member_id": member_id,
         "at": session.starts_at.isoformat(),
-        "club_id": str(session.club_id) if session.club_id else None,
         "pool_id": str(session.pool_id) if session.pool_id else None,
         "pod_id": str(session.pod_id) if session.pod_id else None,
     }

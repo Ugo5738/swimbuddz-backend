@@ -26,6 +26,10 @@ from libs.common.config import get_settings
 from libs.common.emails.client import get_email_client
 from libs.common.service_client import get_partner_pool
 from libs.db.session import get_async_db
+from services.members_service.services.club_plan_schedule import (
+    hydrate_schedules,
+    selected_session_snapshots,
+)
 from services.members_service.models import (
     Club,
     ClubApplication,
@@ -399,6 +403,7 @@ async def list_club_plans(
     rows = (
         await db.execute(query.order_by(Club.name, ClubPlanVersion.period_start))
     ).all()
+    await hydrate_schedules([plan for plan, _ in rows])
     return [_plan_out(plan, club) for plan, club in rows]
 
 
@@ -414,6 +419,7 @@ async def list_all_club_plans(
     rows = (
         await db.execute(query.order_by(Club.name, ClubPlanVersion.period_start.desc()))
     ).all()
+    await hydrate_schedules([plan for plan, _ in rows])
     return [_plan_out(plan, club) for plan, club in rows]
 
 
@@ -428,6 +434,12 @@ async def create_club_plan(
     db: AsyncSession = Depends(get_async_db),
     _admin: AuthUser = Depends(require_admin),
 ):
+    if body.is_active:
+        raise HTTPException(
+            422, "Create a draft, review its actual schedule, then use Publish"
+        )
+    if body.currency != "NGN":
+        raise HTTPException(422, "Session-derived Club plans currently require NGN")
     club = await db.get(Club, club_id)
     if club is None:
         raise HTTPException(status_code=404, detail="Club not found")
@@ -435,7 +447,20 @@ async def create_club_plan(
         operating_area_id=club.operating_area_id,
         default_pool_id=club.default_pool_id,
     )
-    values = body.model_dump()
+    values = body.model_dump(exclude={"session_ids"})
+    links = await selected_session_snapshots(body, club, db)
+    values["sessions_included"] = len(links)
+    values["recommended_fee_kobo"] = sum(link.fee_kobo for link in links)
+    values["club_fee_kobo"] = (
+        body.club_fee_kobo
+        if body.club_fee_kobo is not None
+        else values["recommended_fee_kobo"]
+    )
+    if body.is_active and len(links) < body.minimum_entry_sessions:
+        raise HTTPException(
+            422, "Link at least the minimum entry sessions before publishing"
+        )
+    values["published_at"] = utc_now() if body.is_active else None
     if body.community_experience_offering_id:
         offering = await db.get(
             CommunityExperienceOffering, body.community_experience_offering_id
@@ -464,8 +489,10 @@ async def create_club_plan(
         **values,
     )
     db.add(plan)
+    plan.session_links = links
     await db.commit()
     await db.refresh(plan)
+    await hydrate_schedules([plan])
     return _plan_out(plan, club)
 
 
@@ -584,6 +611,7 @@ async def create_club_application(
         .scalars()
         .first()
     )
+    await hydrate_schedules(ordered_plans + [current_plan])
     if (
         current_plan
         and _plan_price(current_plan, club)[2]
@@ -891,6 +919,8 @@ async def get_club_application_payment_context(
     selected_plans = [selected_plan for _row, selected_plan in selections]
     if not selected_plans:
         selected_plans = [plan]
+    if chosen_mode == QUARTERLY_PREPAID:
+        await hydrate_schedules(selected_plans)
     capacity_plans = selected_plans if chosen_mode == QUARTERLY_PREPAID else [plan]
     await _assert_plan_capacity(
         db,
@@ -996,6 +1026,15 @@ async def get_club_application_payment_context(
         if existing_experience:
             experience_selected = False
             experience_fee = 0
+        else:
+            from services.members_service.services.experience_events import live_events
+
+            try:
+                await live_events(primary_offering, for_sale=True)
+            except HTTPException as exc:
+                if exc.status_code != 409:
+                    raise
+                experience_selected, experience_fee = False, 0
     subtotal = club_fee + annual_membership_fee + experience_fee
     if subtotal <= 0 and chosen_mode != TRANSITION_PER_SESSION:
         raise HTTPException(
@@ -1104,6 +1143,31 @@ async def reserve_club_application_capacity(
         )
 
     expires_at = now + timedelta(minutes=CLUB_CHECKOUT_RESERVATION_MINUTES)
+    if body.community_experience_selected:
+        if (
+            chosen_mode != QUARTERLY_PREPAID
+            or not application.community_experience_selected
+            or not plans[0].community_experience_offering_id
+        ):
+            raise HTTPException(
+                422, "Community Experience is not part of this checkout"
+            )
+        from services.members_service.routers.experience_admin import lock_offering
+        from services.members_service.services.experience_ticketing import (
+            reserve_bundle_ticket,
+        )
+
+        offering = await lock_offering(db, plans[0].community_experience_offering_id)
+        if offering.club_bundle_fee_kobo != body.community_experience_fee_kobo:
+            raise HTTPException(409, "Experience price changed; review a fresh quote")
+        member = await db.get(Member, application.member_id)
+        await reserve_bundle_ticket(
+            db,
+            offering=offering,
+            member=member,
+            payment_reference=body.payment_reference,
+            amount_kobo=body.community_experience_fee_kobo,
+        )
     for plan in plans:
         reservation = existing.get(plan.id)
         if reservation is None:
@@ -1139,9 +1203,24 @@ async def release_club_application_capacity(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Idempotently release an abandoned checkout's capacity hold."""
+    from services.members_service.models.experience import CommunityExperienceOrder
+    from services.members_service.routers.experience_admin import lock_offering
+
     application = await db.get(ClubApplication, application_id)
     if application is None:
         raise HTTPException(status_code=404, detail="Club application not found")
+    ticket = (
+        await db.execute(
+            select(CommunityExperienceOrder).where(
+                CommunityExperienceOrder.payment_reference == body.payment_reference
+            )
+        )
+    ).scalar_one_or_none()
+    if ticket and ticket.member_id == application.member_id:
+        await lock_offering(db, ticket.offering_id)
+        await db.refresh(ticket)
+        if ticket.status == "pending_payment":
+            ticket.status = "cancelled"
     rows = list(
         (
             await db.execute(
@@ -1307,9 +1386,13 @@ async def activate_club_application(
         and body.community_experience_selected
         and primary_plan.community_experience_offering_id
     ):
-        offering = await db.get(
-            CommunityExperienceOffering,
-            primary_plan.community_experience_offering_id,
+        from services.members_service.routers.experience_admin import lock_offering
+        from services.members_service.services.experience_ticketing import (
+            confirm_bundle_ticket,
+        )
+
+        offering = await lock_offering(
+            db, primary_plan.community_experience_offering_id
         )
         existing_purchase = (
             await db.execute(
@@ -1320,6 +1403,17 @@ async def activate_club_application(
             )
         ).scalar_one_or_none()
         if existing_purchase is None:
+            member = await db.get(Member, application.member_id)
+            if offering.event_links:
+                await confirm_bundle_ticket(
+                    db,
+                    offering=offering,
+                    member=member,
+                    payment_reference=body.payment_reference,
+                    amount_kobo=body.community_experience_fee_kobo,
+                )
+            # Historical paid intents predate Event packages. Preserve their
+            # entitlement without inventing participant safety consent.
             db.add(
                 CommunityExperiencePurchase(
                     member_id=application.member_id,

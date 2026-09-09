@@ -60,6 +60,10 @@ class Event(Base):
     status: Mapped[str] = mapped_column(
         String, nullable=False, default="published", server_default="published"
     )  # draft/published/cancelled
+    # Commercial checkout is owned by this package, never also by Event RSVP.
+    community_experience_offering_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     location_type: Mapped[str] = mapped_column(
         String, nullable=False, default="physical", server_default="physical"
     )  # physical/online/hybrid
@@ -296,6 +300,12 @@ class EventReminderLog(Base):
     __table_args__ = (
         UniqueConstraint(
             "event_id",
+            "participant_id",
+            "reminder_hours",
+            name="uq_event_reminder_participant_offset",
+        ),
+        UniqueConstraint(
+            "event_id",
             "member_id",
             "reminder_hours",
             name="uq_event_reminder_event_member_offset",
@@ -311,8 +321,11 @@ class EventReminderLog(Base):
         nullable=False,
         index=True,
     )
-    member_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True
+    member_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    participant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
     )
     reminder_hours: Mapped[int] = mapped_column(Integer, nullable=False)
     sent_at: Mapped[datetime] = mapped_column(

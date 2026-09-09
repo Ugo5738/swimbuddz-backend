@@ -1,10 +1,36 @@
 import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
 
 from services.sessions_service.models import Session
+
+
+@pytest.fixture(autouse=True)
+def current_pool_rates():
+    with patch(
+        "services.sessions_service.services.club_generation.internal_post",
+        new_callable=AsyncMock,
+        return_value=SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "currency": "NGN",
+                "warnings": [],
+                "lines": [
+                    {
+                        "category": "pool",
+                        "description": "Current pool rate",
+                        "charge_basis": "per_attendee",
+                        "unit_cost_naira": 3000,
+                        "quantity": 8,
+                    }
+                ],
+            },
+        ),
+    ):
+        yield
 
 
 @pytest.mark.asyncio
@@ -26,6 +52,12 @@ async def test_club_template_generation_preserves_pod_type_and_ride_config(
             json={
                 "title": "Dolphins Saturday",
                 "session_type": "club",
+                "club_access_mode": "active_club",
+                "pool_id": str(uuid.uuid4()),
+                "pricing_settings": {
+                    "pricing_expected_attendees": 8,
+                    "margin_value": 500,
+                },
                 "club_id": str(club_id),
                 "pod_id": str(pod_id),
                 "location": "sunfit_pool",
@@ -91,6 +123,8 @@ async def test_club_template_generation_preserves_pod_type_and_ride_config(
     assert session.club_id == club_id
     assert session.pod_id == pod_id
     assert session.ride_share_fee == 100000
+    assert session.pool_fee == 350000
+    assert session.club_access_mode == "active_club"
     assert session.status.value == "scheduled"
     assert session.published_at is not None
 
@@ -113,6 +147,12 @@ async def test_template_volunteer_sync_backfills_existing_future_sessions(
             json={
                 "title": "Orcas Saturday",
                 "session_type": "club",
+                "club_access_mode": "active_club",
+                "pool_id": str(uuid.uuid4()),
+                "pricing_settings": {
+                    "pricing_expected_attendees": 8,
+                    "margin_value": 500,
+                },
                 "club_id": str(club_id),
                 "location": "sunfit_pool",
                 "day_of_week": 5,

@@ -106,16 +106,44 @@ async def resolve_club_access_checks(
         at = _aware(check.at)
         check_club_id = getattr(check, "club_id", None)
         matched_enrollments: list[ClubEnrollment] = []
+        access_mode = getattr(check, "club_access_mode", "plan_included")
         for enrollment, club, plan in enrollments_by_member.get(check.member_id, []):
             if not (_aware(enrollment.starts_at) <= at < _aware(enrollment.ends_at)):
                 continue
             if check_club_id is not None:
                 if check_club_id != enrollment.club_id:
                     continue
-            elif check.pod_id is not None:
+            if check.pod_id is not None:
                 if pod_club_ids.get(check.pod_id) != enrollment.club_id:
                     continue
-            elif check.pool_id is not None:
+            session_id = getattr(check, "session_id", None)
+            links = getattr(plan, "session_links", [])
+            scheduled_quarter = (
+                links
+                and access_mode == "plan_included"
+                and getattr(enrollment, "payment_mode", "quarterly_prepaid")
+                == "quarterly_prepaid"
+                and session_id is not None
+            )
+            if scheduled_quarter:
+                # A location plan may explicitly include a visit to another pool.
+                # Date overlap alone never includes an unsold extra session.
+                if not any(
+                    link.session_id == session_id
+                    and (check.pool_id is None or link.pool_id == check.pool_id)
+                    for link in links
+                ):
+                    continue
+            elif check.pool_id is not None and not (
+                check_club_id is not None
+                and not links
+                and getattr(enrollment, "payment_mode", "quarterly_prepaid")
+                == "quarterly_prepaid"
+            ):
+                # Historical prepaid plans without an inclusion ledger retain
+                # explicit Club ownership when Admin overrides a swim's pool.
+                # Scheduled quarters and transition/extra-practice pricing
+                # still respect their purchased inclusion/location snapshot.
                 # Use the immutable commercial snapshot. The Club default is
                 # only a fallback for historical plans created before the
                 # snapshot columns existed.
@@ -152,6 +180,8 @@ async def resolve_club_access_checks(
                     "source": (
                         "club_transition"
                         if payment_mode == "transition_per_session"
+                        else "club_paid_addon"
+                        if access_mode == "paid_addon"
                         else "club_enrollment"
                     ),
                     "enrollment_id": matched_enrollment.id,
@@ -161,6 +191,7 @@ async def resolve_club_access_checks(
                     # sessions service owns the current per-session price.
                     "fee_amount_kobo": 0
                     if payment_mode == "quarterly_prepaid"
+                    and access_mode != "paid_addon"
                     else None,
                 }
             )
@@ -176,7 +207,11 @@ async def resolve_club_access_checks(
                     "fee_amount_kobo": None,
                 }
             )
-        elif membership and _paid_until_covers(membership.club_paid_until, at):
+        elif (
+            membership
+            and not enrollments_by_member.get(check.member_id)
+            and _paid_until_covers(membership.club_paid_until, at)
+        ):
             resolved.append(
                 {
                     "context_key": check.context_key,

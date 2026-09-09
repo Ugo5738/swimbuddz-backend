@@ -1,6 +1,9 @@
 """FastAPI application for the Events Service."""
 
 from fastapi import FastAPI
+from services.events_service.routers.experience_links import (
+    router as experience_links_router,
+)
 
 from libs.common.health import register_health_check
 from services.events_service.routers.admin_tasks import router as admin_tasks_router
@@ -20,6 +23,7 @@ def create_app() -> FastAPI:
 
     # Include events router
     app.include_router(events_router)
+    app.include_router(experience_links_router)
     app.include_router(planning_router)
     app.include_router(admin_tasks_router)
 

@@ -6,6 +6,8 @@ from uuid import uuid4
 import pytest
 
 from services.members_service.routers import clubs
+from tests.club_schedule_helpers import attach_schedule
+from services.members_service.services import club_plan_schedule, experience_events
 
 
 @pytest.mark.asyncio
@@ -65,6 +67,18 @@ async def test_checkout_only_charges_a_fulfillable_quarterly_experience(
         selected_payment_mode=None,
         transition_expires_at=date(2026, 12, 31),
         community_experience_selected=True,
+    )
+    attach_schedule(plan, date(2026, 10, 3))
+    monkeypatch.setattr(
+        club_plan_schedule,
+        "fetch_schedule",
+        AsyncMock(return_value=list(plan._actual_session_rows.values())),
+    )
+    monkeypatch.setattr(
+        club_plan_schedule, "utc_now", lambda: datetime(2026, 9, 6, tzinfo=timezone.utc)
+    )
+    monkeypatch.setattr(
+        experience_events, "live_events", AsyncMock(return_value=[{"id": str(uuid4())}])
     )
     records = {
         clubs.ClubApplication: application,

@@ -5,7 +5,7 @@ from typing import List
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
@@ -17,7 +17,12 @@ from libs.common.service_client import (
     materialise_opportunities_from_session_template,
 )
 from libs.db.session import get_async_db
-from services.sessions_service.models import Session, SessionStatus, SessionTemplate
+from services.sessions_service.models import (
+    Session,
+    SessionStatus,
+    SessionTemplate,
+    SessionType,
+)
 from services.sessions_service.schemas.templates import (
     GenerateSessionsRequest,
     SessionTemplateCreate,
@@ -91,6 +96,10 @@ async def create_template(
         pod_id=template_in.pod_id,
     )
     template_data = template_in.model_dump()
+    from services.sessions_service.routers.club_operations import validate_club_scope
+
+    await validate_club_scope(template_data)
+    template_data["pricing_settings"] = template_data.get("pricing_settings") or {}
     # Convert naira fee inputs (float) to kobo (int) for DB storage.
     template_data["pool_fee"] = round((template_data.get("pool_fee") or 0.0) * 100)
     template_data["ride_share_fee"] = round(
@@ -121,6 +130,8 @@ async def update_template(
         )
 
     update_data = template_in.model_dump(exclude_unset=True)
+    if "pricing_settings" in update_data:
+        update_data["pricing_settings"] = update_data["pricing_settings"] or {}
     # Convert naira fee inputs (float) to kobo (int) for DB storage.
     if "pool_fee" in update_data and update_data["pool_fee"] is not None:
         update_data["pool_fee"] = round(update_data["pool_fee"] * 100)
@@ -131,6 +142,19 @@ async def update_template(
     if next_type_value and next_type_value != "club":
         update_data["club_id"] = None
         update_data["pod_id"] = None
+        update_data["club_access_mode"] = "plan_included"
+    if {"club_id", "pod_id", "club_access_mode"} & update_data.keys():
+        from services.sessions_service.routers.club_operations import (
+            validate_club_scope,
+        )
+
+        scope = await validate_club_scope(
+            {
+                key: update_data.get(key, getattr(template, key))
+                for key in ("club_id", "pod_id", "club_access_mode")
+            }
+        )
+        update_data["club_id"] = scope.get("club_id")
 
     effective_type = update_data.get("session_type", template.session_type)
     scope_fields = {"session_type", "club_id", "pod_id"}
@@ -264,6 +288,15 @@ async def generate_sessions(
             status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
         )
 
+    if (
+        template.session_type == SessionType.CLUB
+        and template.club_access_mode == "plan_included"
+    ):
+        raise HTTPException(
+            409,
+            "Generate plan-included Club sessions through Club quarter recommendations",
+        )
+
     await require_valid_club_scope(
         session_type=template.session_type,
         club_id=template.club_id,
@@ -282,9 +315,20 @@ async def generate_sessions(
     ride_config_attached = 0
     volunteer_opportunities_created = 0
 
-    for week in range(request.weeks):
-        session_date = today + timedelta(days=days_ahead + (week * 7))
+    from services.sessions_service.services.club_generation import (
+        club_instance_id,
+        club_session_from_template,
+        recurrence_dates,
+    )
 
+    if template.club_id:
+        await db.execute(
+            select(func.pg_advisory_xact_lock(template.id.int % (2**63 - 1)))
+        )
+    first_day = today + timedelta(days=days_ahead)
+    for session_date in recurrence_dates(
+        template, first_day, first_day + timedelta(weeks=request.weeks - 1)
+    ):
         # Combine date with template time and localize to configured timezone
         from zoneinfo import ZoneInfo
 
@@ -300,6 +344,16 @@ async def generate_sessions(
 
         end_datetime = start_datetime + timedelta(minutes=template.duration_minutes)
         local_end_dt = local_dt + timedelta(minutes=template.duration_minutes)
+        if template.club_id and await db.get(
+            Session, club_instance_id(template.id, start_datetime, template.pod_id)
+        ):
+            conflicts.append(
+                {
+                    "date": session_date.isoformat(),
+                    "reason": "This template occurrence already exists",
+                }
+            )
+            continue
 
         # Check for conflicts if skip_conflicts is True
         if request.skip_conflicts:
@@ -336,8 +390,8 @@ async def generate_sessions(
             pool_id=template.pool_id,
             location_name=session_location_name,
             session_type=template.session_type,
-            club_id=template.club_id,
             pod_id=template.pod_id,
+            club_access_mode=template.club_access_mode,
             pool_fee=template.pool_fee,  # both are kobo integers after migration
             ride_share_fee=template.ride_share_fee,
             capacity=template.capacity,
@@ -348,6 +402,11 @@ async def generate_sessions(
             is_recurring_instance=True,
             published_at=utc_now(),
         )
+        if template.session_type.value == "club" and template.club_id:
+            session = await club_session_from_template(
+                template, session_date, starts=start_datetime
+            )
+            session.status, session.published_at = SessionStatus.SCHEDULED, utc_now()
         db.add(session)
         await db.flush()  # Flush to get session ID
 
