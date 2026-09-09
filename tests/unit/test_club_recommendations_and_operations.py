@@ -343,6 +343,17 @@ def test_lead_requests_cannot_supply_price_pool_or_quarter_inclusion():
             ops.ExtraPractice(**base, **{field: value})
 
 
+@pytest.mark.asyncio
+async def test_reschedule_history_uses_the_existing_admin_authority(monkeypatch):
+    from libs.auth import dependencies as auth
+
+    swim = session()
+    db = NS(get=AsyncMock(return_value=swim))
+    monkeypatch.setattr(auth.settings, "ADMIN_EMAILS", ["admin@example.com"])
+    user = AuthUser(sub=str(uuid4()), email="admin@example.com")
+    assert await ops.authorized_session(db, swim.id, user) is swim
+
+
 @pytest.mark.parametrize("change", ["quarter", "pool"])
 @pytest.mark.asyncio
 async def test_published_swim_cannot_be_moved_outside_its_commercial_promise(change):

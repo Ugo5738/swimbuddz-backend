@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.auth.dependencies import get_current_user
+from libs.auth.dependencies import get_current_user, is_admin_or_service
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
@@ -244,7 +244,7 @@ async def reschedule_practice(
     ).scalar_one_or_none()
     if not session or session.session_type != SessionType.CLUB:
         raise HTTPException(404, "Club session not found")
-    if not user.has_role("admin"):
+    if not is_admin_or_service(user):
         if not session.pod_id:
             raise HTTPException(403, "Only Admin can move a general Club practice")
         authority = await pod_authority(user, session.pod_id)
@@ -386,7 +386,7 @@ async def authorized_session(db, session_id, user):
     session = await db.get(Session, session_id)
     if not session or session.session_type != SessionType.CLUB:
         raise HTTPException(404, "Club session not found")
-    if not user.has_role("admin"):
+    if not is_admin_or_service(user):
         if not session.pod_id:
             raise HTTPException(403, "Only Admin manages general Club practices")
         authority = await pod_authority(user, session.pod_id)
