@@ -275,9 +275,14 @@ async def recommend_quarter(body, db, *, source=None):
         .scalars()
         .first()
     )
-    if existing and (existing.published_at or existing.session_links):
+    if existing and existing.published_at:
         await hydrate_schedules([existing])
         return plan_response(existing, club)
+    if existing:
+        raise HTTPException(
+            409,
+            "A draft already exists for this Club and quarter. Open the existing draft to edit it.",
+        )
     response = await internal_post(
         service_url=get_settings().SESSIONS_SERVICE_URL,
         path="/internal/sessions/club-schedule/generate",
@@ -330,17 +335,6 @@ async def recommend_quarter(body, db, *, source=None):
         community_experience_fee_kobo=0, community_experience_default_selected=False
     )
     recommended = sum(link.fee_kobo for link in links)
-    if existing:
-        existing.source_template_id = body.template_id or uuid.uuid5(
-            club.id, "primary-club-template"
-        )
-        existing.session_links = links
-        existing.sessions_included = len(links)
-        existing.recommended_fee_kobo = recommended
-        existing.club_fee_kobo = recommended
-        await db.commit()
-        await hydrate_schedules([existing])
-        return plan_response(existing, club)
     draft = ClubPlanVersion(
         club_id=club.id,
         pool_id=club.default_pool_id,

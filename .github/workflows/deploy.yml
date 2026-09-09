@@ -2,7 +2,7 @@ name: Backend CI/CD Pipeline
 
 on:
   push:
-    branches: ["main", "master", "staging", "develop", "review/club-experience-20260907"]
+    branches: ["main", "master", "staging", "develop"]
   pull_request:
     branches: ["main", "master", "staging", "develop"]
 

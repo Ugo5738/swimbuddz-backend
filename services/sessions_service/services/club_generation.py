@@ -99,6 +99,7 @@ async def club_session_from_template(
         pod_id=pod_id or template.pod_id,
         location_name=template.location_name,
         capacity=capacity or template.capacity,
+        ride_share_fee=getattr(template, "ride_share_fee", 0),
         starts_at=starts,
         ends_at=ends,
         timezone=get_settings().TIMEZONE,

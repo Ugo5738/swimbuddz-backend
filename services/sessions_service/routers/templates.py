@@ -17,7 +17,12 @@ from libs.common.service_client import (
     materialise_opportunities_from_session_template,
 )
 from libs.db.session import get_async_db
-from services.sessions_service.models import Session, SessionStatus, SessionTemplate
+from services.sessions_service.models import (
+    Session,
+    SessionStatus,
+    SessionTemplate,
+    SessionType,
+)
 from services.sessions_service.schemas.templates import (
     GenerateSessionsRequest,
     SessionTemplateCreate,
@@ -281,6 +286,15 @@ async def generate_sessions(
     if not template:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+        )
+
+    if (
+        template.session_type == SessionType.CLUB
+        and template.club_access_mode == "plan_included"
+    ):
+        raise HTTPException(
+            409,
+            "Generate plan-included Club sessions through Club quarter recommendations",
         )
 
     await require_valid_club_scope(

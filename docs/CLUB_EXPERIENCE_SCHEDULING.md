@@ -53,6 +53,9 @@ cost-line and margin inputs used by normal Session pricing. Both carry a soft
 New Club Sessions and templates require a Club owner. The location migration
 `b7d4e8f2a610` is preserved; the access-mode/operations migration follows it and
 does not create the Club ownership columns again.
+That shipped migration used a one-time shared-database backfill from Members-owned
+tables. It is a historical exception, not a pattern for new migrations or runtime
+code; new cross-service work uses the owning service's API.
 
 Pod roster restrictions still apply. An enrollment at another Club cannot grant
 access just because two Clubs use the same pool. Legacy untagged Sessions remain
@@ -76,8 +79,11 @@ new-entry proration follows the live date and the original commercial weight.
    explicitly configure expected attendance and margin; pool and operating rates
    (including refreshments) come from the existing inherited pricing service.
    A missing effective rate is an error, not a guessed selling price.
-3. Review actual draft Sessions, excluded dates, costs and recommended sum. Repeat
-   requests reuse the same occurrence IDs. No Session price or commercial override
+3. Review actual draft Sessions, excluded dates, costs and recommended sum. Interrupted
+   generation retries reuse deterministic occurrence IDs. Once a draft exists,
+   another recommendation request returns 409 and directs Admin to edit that draft;
+   it does not silently ignore new inputs or regenerate already-edited Sessions.
+   Published quarters are returned unchanged. No Session price or commercial override
    is copied from an old quarter. Existing configured templates are editable in
    the Admin Sessions template drawer; their future dates get newly quoted costs.
 4. Select the actual inclusions, optionally override the final quarter price,
@@ -88,6 +94,9 @@ new-entry proration follows the live date and the original commercial weight.
 
 There is no scheduled automatic generation/publication task: Admin requests a
 recommendation when needed. A saved template removes repetitive Session creation.
+For `plan_included` Club templates, the template drawer links to **Generate Club
+quarter** and the generic generate endpoint rejects direct publication. Generic
+generation remains available for `active_club`, `paid_addon`, and non-Club templates.
 Q4's December 5 suggestion does **not** automatically exclude that day's swim.
 Keep it for non-attenders, or deliberately exclude it before selling the quarter.
 
@@ -169,5 +178,6 @@ branch cleanup is authorized by this implementation.
 New append-only migration heads for this review: members `e9f1a3b5c726`, sessions
 `b4d8f0a2c613`, events `a3b5c7d9e012`. Their predecessors remain intact. Deployment
 must apply all three services' migration chains before serving the new code.
-Review-branch pushes run the normal CI test job without production image/deploy
-jobs. Local unit/component results do not substitute for PostgreSQL CI results.
+The temporary review-branch push trigger has been removed. Normal pull requests
+to develop/main/staging run CI without deploying; local unit/component results do
+not substitute for PostgreSQL CI results on the final merge candidate.
