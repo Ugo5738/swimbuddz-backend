@@ -81,6 +81,7 @@ async def _quote_for_member(
             select(ClubEnrollment.id).where(
                 ClubEnrollment.member_id == member.id,
                 ClubEnrollment.status == "active",
+                ClubEnrollment.payment_mode == "quarterly_prepaid",
                 ClubEnrollment.starts_at <= period_end,
                 ClubEnrollment.ends_at > period_start,
             )

@@ -73,8 +73,8 @@ If offering the optional Q4 Experience, first create its matching-period offerin
 `/admin/community/experiences`,
 then link it while publishing the Club plan. A plan with no linked offering
 neither offers nor charges Experience. The obsolete fee-only checkout fallback
-has been removed. Transition activation excludes Experience even when the
-quarterly application had it selected.
+has been removed. Transition members may opt into the linked Experience at its
+Standard member price (₦50,000 in this example), not the Club-later or bundle price.
 
 The undeployed `e3b7a1c4d902` Q4 seed migration was removed from the review branch.
 It must not be run; it used an incorrect hardcoded price/session count and no
@@ -125,16 +125,31 @@ date, with application, Club, pool, operating area, payment mode, and optional
 pod snapshots. If annual SwimBuddz Membership does not cover
 the transition period, the same checkout adds the required ₦20,000 annual block.
 If it already covers the period, the annual line is ₦0. A zero-total transition
-activation is settled internally rather than sent to a payment provider. A
-quarterly Community Experience bundle selection is never carried into a
-transition activation; Community Experience remains a separate, explicit
-purchase.
+activation is settled internally rather than sent to a payment provider.
+Community Experience remains a distinct optional product in the same checkout.
+The saved application choice is preserved, with a checkbox to opt in or out before
+paying. Transition checkout uses the offering's **Standard member price**; buying
+a quarterly Club plan uses its bundle price. Standalone Experience purchases by
+transition-only members also use Standard pricing. No plan default is consulted
+at checkout, and no linked, available offering means no Experience charge.
 
-The member-facing wording is **2026 Club Transition — Pay Per Session**. Each
+The member-facing wording is **Pay per swim until [approved expiry]**. Each
 Club session's current Admin-configured `pool_fee` is resolved when the member
 books or creates the payment intent. The booking/payment snapshots that resolved
 amount, so a later session edit cannot rewrite an already-paid booking. Quarterly
 Club enrollment becomes the standard from 2027.
+
+Assessment results use the central branded email template, with coaching focus,
+first goal and an authenticated next-step link. One approved option links directly
+to Club checkout; multiple options link to Club plan selection. Academy-first
+results link to Academy cohort selection. Internal coach notes are omitted from
+emails and member-facing application responses. The stored outcome codes and
+eligibility rules are unchanged.
+
+Community-only members can display the same member-card QR from their profile.
+It verifies identity/membership, not a paid booking or Club access; pool staff must
+still check the session booking and payment. Zero-due transition checkout says
+“Nothing due today” and “Activate Club access” without a payment-method selector.
 
 Annual SwimBuddz Membership is a separate ecosystem product. A new swimmer does
 not have to take an unrelated Community-first checkout path: if Membership will

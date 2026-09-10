@@ -4942,6 +4942,22 @@
               ],
               "title": "Payment Mode"
             }
+          },
+          {
+            "name": "community_experience_selected",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Community Experience Selected"
+            }
           }
         ],
         "responses": {
@@ -25108,7 +25124,7 @@
           "email"
         ],
         "summary": "Send Templated Email",
-        "description": "Send a templated email using predefined templates.\n\nTemplate types:\n- enrollment_confirmation: Academy enrollment confirmed\n- enrollment_reminder: Reminder before cohort starts\n- waitlist_promotion: Student moved off waitlist\n- progress_report: Student progress report\n- certificate: Course completion certificate\n- attendance_summary: Weekly attendance summary for coach\n- coach_assignment: Coach assigned to a cohort\n- low_attendance_alert: Alert about student low attendance\n- coach_agreement_signed: Coach agreement signing confirmation\n- coach_grade_change: Coach grade promotion/update notification\n- shadow_assignment: Shadow coach assignment notification\n- coach_readiness: Coach readiness assessment result\n- coach_application_approved: Coach application approved\n- coach_application_rejected: Coach application rejected\n- coach_application_more_info: More info requested from coach applicant\n- member_approved: Member application approved\n- member_rejected: Member application rejected\n- payment_approved: Payment was approved\n- session_confirmation: Session booking confirmed\n- store_order_confirmation: Store order confirmed\n- store_order_ready: Store order ready for pickup/shipped\n- password_reset: Password reset link\n\nRequires service role authentication (internal service-to-service calls).",
+        "description": "Send a templated email using predefined templates.\n\nTemplate types:\n- enrollment_confirmation: Academy enrollment confirmed\n- enrollment_reminder: Reminder before cohort starts\n- waitlist_promotion: Student moved off waitlist\n- progress_report: Student progress report\n- certificate: Course completion certificate\n- attendance_summary: Weekly attendance summary for coach\n- coach_assignment: Coach assigned to a cohort\n- low_attendance_alert: Alert about student low attendance\n- coach_agreement_signed: Coach agreement signing confirmation\n- coach_grade_change: Coach grade promotion/update notification\n- shadow_assignment: Shadow coach assignment notification\n- coach_readiness: Coach readiness assessment result\n- coach_application_approved: Coach application approved\n- coach_application_rejected: Coach application rejected\n- coach_application_more_info: More info requested from coach applicant\n- member_approved: Member application approved\n- club_assessment_result: Club approval or Academy recommendation with next steps\n- member_rejected: Member application rejected\n- payment_approved: Payment was approved\n- session_confirmation: Session booking confirmed\n- store_order_confirmation: Store order confirmed\n- store_order_ready: Store order ready for pickup/shipped\n- password_reset: Password reset link\n\nRequires service role authentication (internal service-to-service calls).",
         "operationId": "send_templated_email_email_template_post",
         "requestBody": {
           "content": {
@@ -59245,6 +59261,18 @@
             "type": "integer",
             "title": "Community Experience Fee Kobo"
           },
+          "community_experience_option": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Experience Option"
+          },
           "subtotal_kobo": {
             "type": "integer",
             "title": "Subtotal Kobo"
@@ -81296,6 +81324,17 @@
             ],
             "title": "Community Experience Offering Id"
           },
+          "club_community_experience_selected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Community Experience Selected"
+          },
           "enrollment_id": {
             "anyOf": [
               {
@@ -81891,6 +81930,17 @@
               }
             ],
             "title": "Community Experience Offering Id"
+          },
+          "club_community_experience_selected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Community Experience Selected"
           },
           "cohort_id": {
             "anyOf": [

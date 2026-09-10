@@ -64,6 +64,7 @@ class ChargePreviewRequest(BaseModel):
         Literal["quarterly_prepaid", "transition_per_session"]
     ] = None
     community_experience_offering_id: Optional[uuid.UUID] = None
+    club_community_experience_selected: Optional[bool] = None
     enrollment_id: Optional[uuid.UUID] = None
     use_installments: bool = False
     amount_override_kobo: Optional[int] = Field(default=None, ge=0)
@@ -79,12 +80,23 @@ class ChargePreviewResponse(BaseModel):
     components: dict = Field(default_factory=dict)
 
 
-async def _club_context(application_id: uuid.UUID, payment_mode: str | None) -> dict:
+async def _club_context(
+    application_id: uuid.UUID,
+    payment_mode: str | None,
+    community_experience_selected: bool | None = None,
+) -> dict:
     headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+    params = {}
+    if payment_mode:
+        params["payment_mode"] = payment_mode
+    if community_experience_selected is not None:
+        params["community_experience_selected"] = str(
+            community_experience_selected
+        ).lower()
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.get(
             f"{settings.MEMBERS_SERVICE_URL}/clubs/internal/applications/{application_id}/payment-context",
-            params={"payment_mode": payment_mode} if payment_mode else None,
+            params=params or None,
             headers=headers,
         )
     if response.status_code >= 400:
@@ -189,7 +201,11 @@ async def preview_additional_charges(
     components: dict = {}
     currency = "NGN"
     if body.purpose == PaymentPurpose.CLUB and body.club_application_id:
-        context = await _club_context(body.club_application_id, body.club_payment_mode)
+        context = await _club_context(
+            body.club_application_id,
+            body.club_payment_mode,
+            body.club_community_experience_selected,
+        )
         if context["member_auth_id"] != current_user.user_id:
             raise HTTPException(
                 status_code=403,
@@ -208,6 +224,7 @@ async def preview_additional_charges(
             ),
             "community_experience": int(context["community_experience_fee_kobo"]),
             "community_experience_selected": context["community_experience_selected"],
+            "community_experience_option": context.get("community_experience_option"),
         }
     elif (
         body.purpose == PaymentPurpose.COMMUNITY_EXPERIENCE
