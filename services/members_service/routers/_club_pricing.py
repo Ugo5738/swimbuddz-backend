@@ -74,7 +74,10 @@ def plan_response(plan: ClubPlanVersion, club: Club) -> ClubPlanResponse:
 
 
 async def application_response(
-    application: ClubApplication, db: AsyncSession
+    application: ClubApplication,
+    db: AsyncSession,
+    *,
+    include_internal_notes: bool = False,
 ) -> ClubApplicationResponse:
     plan = await db.get(ClubPlanVersion, application.plan_version_id)
     club = await db.get(Club, application.club_id)
@@ -117,6 +120,10 @@ async def application_response(
         member_name=(f"{member.first_name} {member.last_name}" if member else None),
         member_email=(member.email if member else None),
         assessment=(
-            ClubAssessmentResponse.model_validate(assessment) if assessment else None
+            ClubAssessmentResponse.model_validate(assessment).model_copy(
+                update={} if include_internal_notes else {"assessor_notes": None}
+            )
+            if assessment
+            else None
         ),
     )

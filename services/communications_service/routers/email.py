@@ -296,6 +296,7 @@ async def send_templated_email(
     - coach_application_rejected: Coach application rejected
     - coach_application_more_info: More info requested from coach applicant
     - member_approved: Member application approved
+    - club_assessment_result: Club approval or Academy recommendation with next steps
     - member_rejected: Member application rejected
     - payment_approved: Payment was approved
     - session_confirmation: Session booking confirmed
@@ -308,6 +309,7 @@ async def send_templated_email(
     from services.communications_service.templates import (
         academy,
         analyzer,
+        club,
         coaching,
         members,
         payments,
@@ -317,6 +319,17 @@ async def send_templated_email(
     )
 
     template_handlers = {
+        "club_assessment_result": lambda d: club.send_club_assessment_result_email(
+            to_email=request.to_email,
+            member_name=d.get("member_name", ""),
+            club_name=d.get("club_name", ""),
+            application_id=d["application_id"],
+            outcome=d["outcome"],
+            approved_payment_modes=d.get("approved_payment_modes", []),
+            transition_expires_at=d.get("transition_expires_at"),
+            primary_technique_focus=d.get("primary_technique_focus"),
+            first_club_milestone=d.get("first_club_milestone"),
+        ),
         # --- Stroke Lab analyzer templates (public guest emails) ---
         "analyzer_ready": lambda d: analyzer.send_analyzer_ready_email(
             to_email=request.to_email,

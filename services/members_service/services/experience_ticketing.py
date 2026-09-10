@@ -119,7 +119,7 @@ def hold_expiry():
 
 
 async def reserve_bundle_ticket(
-    db, *, offering, member, payment_reference, amount_kobo
+    db, *, offering, member, payment_reference, amount_kobo, ticket_kind="club_bundle"
 ):
     import secrets
     from services.members_service.services.experience_events import (
@@ -192,7 +192,7 @@ async def reserve_bundle_ticket(
                 phone="",
                 emergency_contact={},
                 waiver_accepted_at=None,
-                ticket_kind="club_bundle",
+                ticket_kind=ticket_kind,
                 price_kobo=amount_kobo,
             )
         ],
@@ -203,7 +203,7 @@ async def reserve_bundle_ticket(
 
 
 async def confirm_bundle_ticket(
-    db, *, offering, member, payment_reference, amount_kobo
+    db, *, offering, member, payment_reference, amount_kobo, ticket_kind="club_bundle"
 ):
     from services.members_service.services.experience_events import (
         effective_capacity,
@@ -216,6 +216,7 @@ async def confirm_bundle_ticket(
         member=member,
         payment_reference=payment_reference,
         amount_kobo=amount_kobo,
+        ticket_kind=ticket_kind,
     )
     if order.status != "confirmed":
         events = await live_events(offering, for_sale=True)

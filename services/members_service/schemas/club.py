@@ -263,6 +263,7 @@ class ClubPaymentContext(BaseModel):
     annual_membership_months: int = 0
     community_experience_selected: bool
     community_experience_fee_kobo: int
+    community_experience_option: Optional[dict[str, Any]] = None
     subtotal_kobo: int
     months: int = 3
 

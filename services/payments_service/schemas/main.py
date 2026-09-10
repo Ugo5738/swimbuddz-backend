@@ -58,6 +58,8 @@ class CreatePaymentIntentRequest(BaseModel):
         Literal["quarterly_prepaid", "transition_per_session"]
     ] = None
     community_experience_offering_id: Optional[uuid.UUID] = None
+    # Optional Club checkout add-on choice. Omitted preserves the application choice.
+    club_community_experience_selected: Optional[bool] = None
 
     cohort_id: Optional[uuid.UUID] = None
     enrollment_id: Optional[uuid.UUID] = None  # For ACADEMY_COHORT payments
