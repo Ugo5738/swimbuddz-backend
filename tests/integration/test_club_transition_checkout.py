@@ -179,7 +179,7 @@ async def test_active_membership_covering_transition_is_not_charged_again(
 
 
 @pytest.mark.asyncio
-async def test_transition_quote_ignores_carried_community_experience_selection(
+async def test_transition_quote_does_not_charge_experience_without_an_offering(
     members_client, db_session, seed_member_row
 ):
     member = await seed_member_row(auth_id=f"transition-no-experience-{uuid.uuid4()}")
@@ -211,8 +211,7 @@ async def test_transition_quote_ignores_carried_community_experience_selection(
         club_id=club.id,
         plan_version_id=plan.id,
         status="approved",
-        # Simulate the quarterly bundle default having been carried on the
-        # application before Admin approved transition_per_session.
+        # A legacy fee-only plan cannot create a fulfillable Experience.
         community_experience_selected=True,
         approved_payment_modes=["transition_per_session"],
         transition_expires_at=date(2026, 12, 31),

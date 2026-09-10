@@ -12,18 +12,28 @@ from services.members_service.services import club_plan_schedule, experience_eve
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "mode,linked,expected_experience",
+    "mode,linked,selected,choice,available,expected_experience",
     [
-        ("quarterly_prepaid", False, 0),
-        ("quarterly_prepaid", True, 3_000_000),
-        ("transition_per_session", False, 0),
-        ("transition_per_session", True, 0),
+        ("quarterly_prepaid", False, True, None, True, 0),
+        ("quarterly_prepaid", True, True, None, True, 3_000_000),
+        ("quarterly_prepaid", True, True, False, True, 0),
+        ("transition_per_session", False, True, None, True, 0),
+        ("transition_per_session", True, True, None, True, 5_000_000),
+        ("transition_per_session", True, True, False, True, 0),
+        ("transition_per_session", True, False, None, True, 0),
+        ("transition_per_session", True, False, True, True, 5_000_000),
+        ("transition_per_session", True, True, True, False, 0),
     ],
 )
-async def test_checkout_only_charges_a_fulfillable_quarterly_experience(
+@pytest.mark.parametrize("membership_covered", [False, True])
+async def test_checkout_only_charges_the_selected_fulfillable_experience(
     monkeypatch,
     mode,
     linked,
+    selected,
+    choice,
+    available,
+    membership_covered,
     expected_experience,
 ):
     class FrozenDate(date):
@@ -39,10 +49,15 @@ async def test_checkout_only_charges_a_fulfillable_quarterly_experience(
     club = SimpleNamespace(id=uuid4(), name="Yaba Club", default_session_day="sat")
     offering = SimpleNamespace(
         id=uuid4(),
-        is_active=True,
+        name="Q4 Community Experience",
+        currency="NGN",
+        period_end=date(2026, 12, 31),
+        is_active=available,
         purchase_opens_at=None,
         purchase_closes_at=None,
         club_bundle_fee_kobo=3_000_000,
+        club_member_fee_kobo=4_000_000,
+        standard_member_fee_kobo=5_000_000,
     )
     plan = SimpleNamespace(
         id=uuid4(),
@@ -56,6 +71,7 @@ async def test_checkout_only_charges_a_fulfillable_quarterly_experience(
         period_end=date(2026, 12, 31),
         community_experience_offering_id=offering.id if linked else None,
         community_experience_fee_kobo=3_000_000,
+        community_experience_default_selected=True,
     )
     application = SimpleNamespace(
         id=uuid4(),
@@ -66,7 +82,7 @@ async def test_checkout_only_charges_a_fulfillable_quarterly_experience(
         approved_payment_modes=[mode],
         selected_payment_mode=None,
         transition_expires_at=date(2026, 12, 31),
-        community_experience_selected=True,
+        community_experience_selected=selected,
     )
     attach_schedule(plan, date(2026, 10, 3))
     monkeypatch.setattr(
@@ -91,7 +107,13 @@ async def test_checkout_only_charges_a_fulfillable_quarterly_experience(
         get=AsyncMock(side_effect=lambda model, _id: records[model]),
         execute=AsyncMock(
             side_effect=[
-                SimpleNamespace(scalar_one_or_none=lambda: None),
+                SimpleNamespace(
+                    scalar_one_or_none=lambda: SimpleNamespace(
+                        community_paid_until=datetime(2027, 1, 1, tzinfo=timezone.utc)
+                    )
+                    if membership_covered
+                    else None
+                ),
                 SimpleNamespace(all=lambda: []),
                 SimpleNamespace(first=lambda: None),
             ]
@@ -102,6 +124,7 @@ async def test_checkout_only_charges_a_fulfillable_quarterly_experience(
     quote = await clubs.get_club_application_payment_context(
         application.id,
         payment_mode=mode,
+        community_experience_selected=choice,
         _service=None,
         db=db,
     )
@@ -109,5 +132,12 @@ async def test_checkout_only_charges_a_fulfillable_quarterly_experience(
     assert quote.community_experience_selected is bool(expected_experience)
     expected_club = 0 if mode == "transition_per_session" else 6_500_000
     assert quote.club_fee_kobo == expected_club
-    assert quote.annual_membership_fee_kobo == 2_000_000
-    assert quote.subtotal_kobo == expected_club + 2_000_000 + expected_experience
+    membership_fee = 0 if membership_covered else 2_000_000
+    assert quote.annual_membership_fee_kobo == membership_fee
+    assert quote.subtotal_kobo == expected_club + membership_fee + expected_experience
+    if linked and available:
+        assert quote.community_experience_option["amount_kobo"] == (
+            5_000_000 if mode == "transition_per_session" else 3_000_000
+        )
+    else:
+        assert quote.community_experience_option is None

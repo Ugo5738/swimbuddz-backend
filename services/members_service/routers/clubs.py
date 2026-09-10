@@ -766,7 +766,10 @@ async def list_club_applications_for_review(
     applications = list(
         (await db.execute(query.order_by(ClubApplication.created_at.desc()))).scalars()
     )
-    return [await _application_out(application, db) for application in applications]
+    return [
+        await _application_out(application, db, include_internal_notes=True)
+        for application in applications
+    ]
 
 
 @router.put(
@@ -830,46 +833,29 @@ async def complete_observed_club_assessment(
     if body.send_result_email:
         member = await db.get(Member, application.member_id)
         club = await db.get(Club, application.club_id)
-        outcome_copy = {
-            "club_ready": "You are Club-ready.",
-            "club_ready_modified": "You are Club-ready with modified participation while we rebuild your fundamentals.",
-            "academy_first": "We recommend the Academy first so you can build the safety and technique base needed for Club practice.",
-        }[body.outcome]
-        lines = [
-            f"Hi {member.first_name},",
-            "",
-            outcome_copy,
-            f"Location: {club.name}",
-        ]
-        if body.primary_technique_focus:
-            lines.append(f"Primary technique focus: {body.primary_technique_focus}")
-        if body.first_club_milestone:
-            lines.append(f"First milestone: {body.first_club_milestone}")
-        if application.status == "approved":
-            lines.append("")
-            if application.approved_payment_modes == [TRANSITION_PER_SESSION]:
-                lines.extend(
-                    [
-                        "Your approved arrangement is the 2026 Club Transition — Pay Per Session.",
-                        "Sign in to activate it and review any annual SwimBuddz Membership due. "
-                        "Your Club session rate is charged when you book.",
-                    ]
-                )
-            else:
-                lines.append(
-                    "Sign in to choose from your approved payment arrangements and "
-                    "review the server-calculated total."
-                )
-        sent = await get_email_client().send(
+        sent = await get_email_client().send_template(
+            template_type="club_assessment_result",
             to_email=member.email,
-            subject="Your SwimBuddz Club readiness result",
-            body="\n".join(lines),
+            template_data={
+                "member_name": member.first_name,
+                "club_name": club.name,
+                "application_id": str(application.id),
+                "outcome": body.outcome,
+                "approved_payment_modes": application.approved_payment_modes,
+                "transition_expires_at": (
+                    application.transition_expires_at.isoformat()
+                    if application.transition_expires_at
+                    else None
+                ),
+                "primary_technique_focus": body.primary_technique_focus,
+                "first_club_milestone": body.first_club_milestone,
+            },
         )
         if sent:
             assessment.result_email_sent_at = utc_now()
             await db.commit()
     await db.refresh(application)
-    return await _application_out(application, db)
+    return await _application_out(application, db, include_internal_notes=True)
 
 
 @router.get(
@@ -881,6 +867,7 @@ async def get_club_application_payment_context(
     payment_mode: Literal["quarterly_prepaid", "transition_per_session"] | None = Query(
         default=None
     ),
+    community_experience_selected: bool | None = None,
     _service: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -940,7 +927,7 @@ async def get_club_application_payment_context(
         club_items.append(
             {
                 "plan_version_id": str(plan.id),
-                "name": "2026 Club Transition Enrollment",
+                "name": "Pay-per-swim Club access",
                 "period_start": date.today().isoformat(),
                 "period_end": transition_end.isoformat(),
                 "sessions_included": 0,
@@ -972,27 +959,22 @@ async def get_club_application_payment_context(
         if chosen_mode == TRANSITION_PER_SESSION
         else max(selected.period_end for selected in selected_plans)
     )
-    annual_membership_months, annual_membership_fee = annual_membership_extension(
-        paid_until=(membership.community_paid_until if membership else None),
-        coverage_end=last_period_end,
-        annual_fee_kobo=int(
-            getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20_000) * 100
-        ),
-        now=utc_now(),
-    )
     experience_fee = 0
-    # Community Experience is a quarterly bundle choice. A transition
-    # activation is deliberately limited to Membership (when due) plus the
-    # zero-cost transition enrollment; Experiences remain separate purchases.
+    # Only an explicit checkout choice or the saved application choice opts in.
+    # The plan's merchandising default is never used here.
     experience_selected = (
-        chosen_mode == QUARTERLY_PREPAID and application.community_experience_selected
+        application.community_experience_selected
+        if community_experience_selected is None
+        else community_experience_selected
     )
     primary_offering = (
         await db.get(CommunityExperienceOffering, plan.community_experience_offering_id)
         if plan.community_experience_offering_id
         else None
     )
-    if experience_selected and primary_offering:
+    experience_available = False
+    experience_option_fee = 0
+    if primary_offering:
         now = utc_now()
         purchasable = (
             primary_offering.is_active
@@ -1005,16 +987,15 @@ async def get_club_application_payment_context(
                 or primary_offering.purchase_closes_at >= now
             )
         )
-        if not purchasable:
-            experience_selected = False
-        else:
-            experience_fee = primary_offering.club_bundle_fee_kobo
-    elif experience_selected:
-        # An Experience is a distinct product and must have an offering to
-        # price and fulfil. A plan with no linked offering cannot charge a
-        # legacy fee-only line that would create no purchase entitlement.
-        experience_selected = False
-    if experience_selected and primary_offering:
+        experience_available = (
+            purchasable and primary_offering.currency == plan.currency
+        )
+        experience_option_fee = (
+            primary_offering.standard_member_fee_kobo
+            if chosen_mode == TRANSITION_PER_SESSION
+            else primary_offering.club_bundle_fee_kobo
+        )
+    if experience_available:
         existing_experience = (
             await db.execute(
                 select(CommunityExperiencePurchase.id).where(
@@ -1024,8 +1005,7 @@ async def get_club_application_payment_context(
             )
         ).first()
         if existing_experience:
-            experience_selected = False
-            experience_fee = 0
+            experience_available = False
         else:
             from services.members_service.services.experience_events import live_events
 
@@ -1034,7 +1014,21 @@ async def get_club_application_payment_context(
             except HTTPException as exc:
                 if exc.status_code != 409:
                     raise
-                experience_selected, experience_fee = False, 0
+                experience_available = False
+    experience_selected = bool(experience_selected and experience_available)
+    experience_fee = experience_option_fee if experience_selected else 0
+    annual_membership_months, annual_membership_fee = annual_membership_extension(
+        paid_until=(membership.community_paid_until if membership else None),
+        coverage_end=(
+            max(last_period_end, primary_offering.period_end)
+            if experience_selected
+            else last_period_end
+        ),
+        annual_fee_kobo=int(
+            getattr(settings, "COMMUNITY_ANNUAL_FEE_NGN", 20_000) * 100
+        ),
+        now=utc_now(),
+    )
     subtotal = club_fee + annual_membership_fee + experience_fee
     if subtotal <= 0 and chosen_mode != TRANSITION_PER_SESSION:
         raise HTTPException(
@@ -1063,6 +1057,18 @@ async def get_club_application_payment_context(
         annual_membership_months=annual_membership_months,
         community_experience_selected=experience_selected,
         community_experience_fee_kobo=experience_fee,
+        community_experience_option=(
+            {
+                "offering_id": str(primary_offering.id),
+                "name": primary_offering.name,
+                "amount_kobo": experience_option_fee,
+                "price_context": "standard_member"
+                if chosen_mode == TRANSITION_PER_SESSION
+                else "club_bundle",
+            }
+            if experience_available
+            else None
+        ),
         subtotal_kobo=subtotal,
         months=3 * len(selected_plans),
     )
@@ -1144,11 +1150,7 @@ async def reserve_club_application_capacity(
 
     expires_at = now + timedelta(minutes=CLUB_CHECKOUT_RESERVATION_MINUTES)
     if body.community_experience_selected:
-        if (
-            chosen_mode != QUARTERLY_PREPAID
-            or not application.community_experience_selected
-            or not plans[0].community_experience_offering_id
-        ):
+        if not plans[0].community_experience_offering_id:
             raise HTTPException(
                 422, "Community Experience is not part of this checkout"
             )
@@ -1158,7 +1160,20 @@ async def reserve_club_application_capacity(
         )
 
         offering = await lock_offering(db, plans[0].community_experience_offering_id)
-        if offering.club_bundle_fee_kobo != body.community_experience_fee_kobo:
+        price_context = (
+            "standard_member"
+            if chosen_mode == TRANSITION_PER_SESSION
+            else "club_bundle"
+        )
+        expected_fee = (
+            offering.standard_member_fee_kobo
+            if chosen_mode == TRANSITION_PER_SESSION
+            else offering.club_bundle_fee_kobo
+        )
+        if (
+            offering.currency != plans[0].currency
+            or expected_fee != body.community_experience_fee_kobo
+        ):
             raise HTTPException(409, "Experience price changed; review a fresh quote")
         member = await db.get(Member, application.member_id)
         await reserve_bundle_ticket(
@@ -1167,6 +1182,7 @@ async def reserve_club_application_capacity(
             member=member,
             payment_reference=body.payment_reference,
             amount_kobo=body.community_experience_fee_kobo,
+            ticket_kind=price_context,
         )
     for plan in plans:
         reservation = existing.get(plan.id)
@@ -1382,8 +1398,7 @@ async def activate_club_application(
         created_enrollments.append(enrollment)
     primary_plan = selected_plans[0]
     if (
-        chosen_mode == QUARTERLY_PREPAID
-        and body.community_experience_selected
+        body.community_experience_selected
         and primary_plan.community_experience_offering_id
     ):
         from services.members_service.routers.experience_admin import lock_offering
@@ -1411,6 +1426,9 @@ async def activate_club_application(
                     member=member,
                     payment_reference=body.payment_reference,
                     amount_kobo=body.community_experience_fee_kobo,
+                    ticket_kind="standard_member"
+                    if chosen_mode == TRANSITION_PER_SESSION
+                    else "club_bundle",
                 )
             # Historical paid intents predate Event packages. Preserve their
             # entitlement without inventing participant safety consent.
@@ -1421,7 +1439,9 @@ async def activate_club_application(
                     club_enrollment_id=(
                         created_enrollments[0].id if created_enrollments else None
                     ),
-                    price_context="club_bundle",
+                    price_context="standard_member"
+                    if chosen_mode == TRANSITION_PER_SESSION
+                    else "club_bundle",
                     amount_paid_kobo=body.community_experience_fee_kobo,
                     payment_reference=body.payment_reference,
                 )

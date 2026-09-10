@@ -259,6 +259,7 @@ class EmailClient:
         - coach_application_rejected: Coach application rejected
         - coach_application_more_info: More info requested from applicant
         - member_approved: Member application approved
+        - club_assessment_result: Club assessment outcome and next-step link
         - member_rejected: Member application rejected
 
         Args:

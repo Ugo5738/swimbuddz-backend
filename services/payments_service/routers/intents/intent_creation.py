@@ -93,13 +93,22 @@ async def _member_for_payment_quote(member_auth_id: str) -> dict:
 
 
 async def _approved_club_application_context(
-    application_id: uuid.UUID, payment_mode: str | None
+    application_id: uuid.UUID,
+    payment_mode: str | None,
+    community_experience_selected: bool | None = None,
 ) -> dict:
     headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+    params = {}
+    if payment_mode:
+        params["payment_mode"] = payment_mode
+    if community_experience_selected is not None:
+        params["community_experience_selected"] = str(
+            community_experience_selected
+        ).lower()
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.get(
             f"{settings.MEMBERS_SERVICE_URL}/clubs/internal/applications/{application_id}/payment-context",
-            params={"payment_mode": payment_mode} if payment_mode else None,
+            params=params or None,
             headers=headers,
         )
     if response.status_code >= 400:
@@ -752,6 +761,7 @@ async def create_payment_intent(
             context = await _approved_club_application_context(
                 payload.club_application_id,
                 payload.club_payment_mode,
+                payload.club_community_experience_selected,
             )
             if context.get("member_auth_id") != current_user.user_id:
                 raise HTTPException(
@@ -781,6 +791,9 @@ async def create_payment_intent(
                 "community_experience_selected": context[
                     "community_experience_selected"
                 ],
+                "community_experience_option": context.get(
+                    "community_experience_option"
+                ),
                 "community_extension_months": int(
                     context.get("annual_membership_months") or 0
                 ),
