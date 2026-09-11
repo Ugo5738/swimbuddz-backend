@@ -44,6 +44,10 @@ from services.payments_service.schemas import (
 from services.payments_service.services.recurring_payout_extensions import (
     extend_recurring_payout_schedules,
 )
+from services.payments_service.services.academy_pricing import (
+    academy_payment_context,
+    academy_payment_metadata,
+)
 from services.payments_service.services.additional_charges import (
     calculate_additional_charges,
 )
@@ -227,6 +231,30 @@ async def internal_initialize_payment(
         purpose_enum = PaymentPurpose(str(req.purpose).lower())
     except ValueError:
         purpose_enum = None
+
+    if purpose_enum == PaymentPurpose.ACADEMY_COHORT:
+        try:
+            enrollment_id = uuid.UUID(str((req.metadata or {}).get("enrollment_id")))
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=422, detail="Academy payments require enrollment_id"
+            )
+        context = await academy_payment_context(
+            enrollment_id=enrollment_id,
+            member_auth_id=req.member_auth_id,
+            use_installments=False,
+        )
+        requested_installment = (req.metadata or {}).get("installment_id")
+        if (
+            requested_installment
+            and str(requested_installment) != context["installment_id"]
+        ):
+            raise HTTPException(
+                status_code=409, detail="This installment is no longer payable"
+            )
+        req.amount = context["subtotal_kobo"] / 100
+        req.currency = context["currency"]
+        req.metadata = {**(req.metadata or {}), **academy_payment_metadata(context)}
 
     final_amount = req.amount
     charge_lines: list[dict] = []

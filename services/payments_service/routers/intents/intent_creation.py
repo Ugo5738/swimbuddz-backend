@@ -43,6 +43,7 @@ from services.payments_service.services.additional_charges import (
 )
 from services.payments_service.services.academy_pricing import (
     academy_payment_context,
+    academy_payment_metadata,
 )
 
 settings = get_settings()
@@ -909,19 +910,7 @@ async def create_payment_intent(
         amount = kobo_to_naira(int(context["subtotal_kobo"]))
         payment_metadata = {
             **(payload.payment_metadata or {}),
-            "enrollment_id": context["enrollment_id"],
-            "cohort_id": context["cohort_id"],
-            "installment_id": context["installment_id"],
-            "installment_number": context["installment_number"],
-            "installment_due_at": context["installment_due_at"],
-            "total_installments": context["total_installments"],
-            "academy_membership_policy": context["membership_policy"],
-            "community_extension_months": context["annual_membership_months"],
-            "academy_payment_amount_kobo": context["academy_amount_kobo"],
-            "components_kobo": {
-                "academy": context["academy_amount_kobo"],
-                "annual_swimbuddz_membership": context["annual_membership_fee_kobo"],
-            },
+            **academy_payment_metadata(context),
         }
 
     # Store order payment

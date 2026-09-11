@@ -1,6 +1,7 @@
 """Volunteer-slot claim + cancel endpoints."""
 
 import uuid
+from zoneinfo import ZoneInfo
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -72,6 +73,10 @@ async def claim_slot(
     ).scalar_one_or_none()
     if not opp:
         raise HTTPException(status_code=404, detail="Opportunity not found")
+    if opp.date < utc_now().astimezone(ZoneInfo("Africa/Lagos")).date():
+        raise HTTPException(
+            status_code=409, detail="This volunteer opportunity has ended"
+        )
     if opp.status not in (OpportunityStatus.OPEN, OpportunityStatus.IN_PROGRESS):
         raise HTTPException(
             status_code=400, detail="Opportunity is not accepting claims"

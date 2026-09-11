@@ -36,6 +36,8 @@ class PodSummary(BaseModel):
 
     id: uuid.UUID
     club_id: uuid.UUID
+    club_name: Optional[str] = None
+    club_location: Optional[str] = None
     name: str
     slug: str
     handle: Optional[str] = None

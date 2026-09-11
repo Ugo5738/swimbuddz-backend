@@ -102,6 +102,12 @@ async def admin_mark_enrollment_paid(
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
 
+    if enrollment.status == EnrollmentStatus.WAITLIST:
+        raise HTTPException(
+            status_code=409,
+            detail="Waitlisted learners cannot be billed or activated until a place is available",
+        )
+
     if payload and payload.paid_at:
         now_dt = payload.paid_at
     else:

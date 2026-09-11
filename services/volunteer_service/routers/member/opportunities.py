@@ -7,7 +7,9 @@ Route ordering: `/opportunities/upcoming` is registered before
 
 import uuid
 from datetime import date, timedelta
-from typing import Optional
+from typing import Literal, Optional
+from zoneinfo import ZoneInfo
+from libs.common.datetime_utils import utc_now
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -31,8 +33,9 @@ async def list_opportunities(
     to_date: Optional[date] = None,
     session_id: Optional[uuid.UUID] = None,
     event_id: Optional[uuid.UUID] = None,
-    skip: int = 0,
-    limit: int = 50,
+    period: Literal["upcoming", "past", "all"] = "upcoming",
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_async_db),
 ):
     """List volunteer opportunities (open ones visible to all authenticated members).
@@ -41,17 +44,22 @@ async def list_opportunities(
     attached to the given session or event — used by the booking and event
     detail pages to surface "claim a volunteer slot at this session" CTAs.
     """
+    today = utc_now().astimezone(ZoneInfo("Africa/Lagos")).date()
     q = (
         select(VolunteerOpportunity)
         .options(selectinload(VolunteerOpportunity.role))
-        .order_by(VolunteerOpportunity.date.asc())
+        .order_by(
+            VolunteerOpportunity.date.desc()
+            if period == "past"
+            else VolunteerOpportunity.date.asc()
+        )
         .offset(skip)
         .limit(limit)
     )
 
     if status_filter:
         q = q.where(VolunteerOpportunity.status == status_filter)
-    else:
+    elif period == "upcoming":
         # Default: show open and in_progress
         q = q.where(
             VolunteerOpportunity.status.in_(
@@ -61,6 +69,13 @@ async def list_opportunities(
                 ]
             )
         )
+
+    else:
+        q = q.where(VolunteerOpportunity.status != OpportunityStatus.DRAFT)
+    if period == "upcoming":
+        q = q.where(VolunteerOpportunity.date >= today)
+    elif period == "past":
+        q = q.where(VolunteerOpportunity.date < today)
 
     if role_id:
         q = q.where(VolunteerOpportunity.role_id == role_id)
@@ -84,7 +99,7 @@ async def list_upcoming_opportunities(
     db: AsyncSession = Depends(get_async_db),
 ):
     """List opportunities in the next 14 days."""
-    today = date.today()
+    today = utc_now().astimezone(ZoneInfo("Africa/Lagos")).date()
     end = today + timedelta(days=14)
     q = (
         select(VolunteerOpportunity)
