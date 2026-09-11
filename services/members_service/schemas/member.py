@@ -13,7 +13,14 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from services.members_service.services.membership_status import (
     build_membership_status_summary,
@@ -608,6 +615,24 @@ class PendingRegistrationCreate(BaseModel):
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+    return_to: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("return_to")
+    @classmethod
+    def local_return_path(cls, value):
+        if value is None:
+            return None
+        from urllib.parse import unquote
+
+        decoded = unquote(value)
+        if (
+            not value.startswith("/")
+            or decoded.startswith("//")
+            or any(c == "\\" or ord(c) <= 32 or ord(c) == 127 for c in decoded)
+        ):
+            raise ValueError("return_to must be a local path")
+        return value
 
     # Profile data (stored as JSON, parsed on completion)
     profile: Optional[MemberProfileInput] = None

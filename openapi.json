@@ -34610,11 +34610,27 @@
             }
           },
           {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "upcoming",
+                "past",
+                "all"
+              ],
+              "type": "string",
+              "default": "upcoming",
+              "title": "Period"
+            }
+          },
+          {
             "name": "skip",
             "in": "query",
             "required": false,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "default": 0,
               "title": "Skip"
             }
@@ -34625,6 +34641,8 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
               "default": 50,
               "title": "Limit"
             }
@@ -47981,6 +47999,178 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/media/vaults/library": {
+      "get": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "List Media Library",
+        "operationId": "list_media_library_media_vaults_library_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vault_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vault Id"
+            }
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Tags"
+            }
+          },
+          {
+            "name": "tag_match",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "any",
+                "all"
+              ],
+              "type": "string",
+              "default": "any",
+              "title": "Tag Match"
+            }
+          },
+          {
+            "name": "media_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "IMAGE",
+                    "VIDEO"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Media Type"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 24,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultMediaListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/tags": {
+      "get": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "List Media Tags",
+        "operationId": "list_media_tags_media_vaults_tags_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "title": "Response List Media Tags Media Vaults Tags Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/media/vaults/{vault_id}": {
@@ -66792,6 +66982,18 @@
             ],
             "title": "Password"
           },
+          "return_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return To"
+          },
           "profile": {
             "anyOf": [
               {
@@ -67025,6 +67227,28 @@
             "type": "string",
             "format": "uuid",
             "title": "Club Id"
+          },
+          "club_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Name"
+          },
+          "club_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Location"
           },
           "name": {
             "type": "string",
@@ -67518,6 +67742,28 @@
             "type": "string",
             "format": "uuid",
             "title": "Club Id"
+          },
+          "club_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Name"
+          },
+          "club_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Location"
           },
           "name": {
             "type": "string",

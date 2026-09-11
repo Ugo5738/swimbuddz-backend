@@ -9,11 +9,11 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import PurePath
-from typing import Optional
+from typing import Literal, Optional
 
 from arq import create_pool
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import String, case, cast, desc, func, or_, select
+from sqlalchemy import String, and_, case, cast, desc, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user, require_admin
@@ -862,6 +862,120 @@ async def list_vaults(
         items=[await _vault_response(db, vault, actor) for vault in vaults],
         total=len(vaults),
     )
+
+
+DEFAULT_VAULT_TAGS = [
+    "Freestyle",
+    "Backstroke",
+    "Breaststroke",
+    "Butterfly",
+    "Drills",
+    "Coaching",
+    "Water confidence",
+    "Progress",
+    "Member stories",
+    "Community",
+]
+
+
+def _library_access_conditions(actor: VaultActor):
+    """Apply the same row visibility as the per-vault view before pagination."""
+    conditions = [
+        MediaItem.vault_id.is_not(None),
+        MediaItem.soft_deleted_at.is_(None),
+        MediaItem.processing_status == "ready",
+    ]
+    if actor.is_admin:
+        return conditions
+    if not actor.member_id:
+        return [*conditions, false()]
+    now = utc_now()
+    grant = (
+        select(MediaVaultGrant.id)
+        .where(
+            MediaVaultGrant.vault_id == MediaItem.vault_id,
+            MediaVaultGrant.member_id == actor.member_id,
+            MediaVaultGrant.revoked_at.is_(None),
+            MediaVaultGrant.starts_at <= now,
+            MediaVaultGrant.expires_at >= now,
+            or_(
+                MediaVaultGrant.role.in_(["curator", "admin"]),
+                and_(
+                    MediaVaultGrant.role == "contributor",
+                    MediaItem.uploaded_by == actor.auth_id,
+                ),
+            ),
+        )
+        .exists()
+    )
+    return [*conditions, grant]
+
+
+@router.get("/library", response_model=VaultMediaListResponse)
+async def list_media_library(
+    vault_id: Optional[uuid.UUID] = None,
+    tags: list[str] = Query(default=[]),
+    tag_match: Literal["any", "all"] = "any",
+    media_type: Optional[Literal["IMAGE", "VIDEO"]] = None,
+    search: Optional[str] = Query(default=None, max_length=200),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=24, ge=1, le=100),
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    actor = await resolve_actor(current_user)
+    conditions = _library_access_conditions(actor)
+    if vault_id:
+        conditions.append(MediaItem.vault_id == vault_id)
+    if media_type:
+        conditions.append(MediaItem.media_type == media_type)
+    if len(tags) > 20 or any(len(tag) > 40 for tag in tags):
+        raise HTTPException(
+            status_code=422, detail="Choose up to 20 tags of at most 40 characters"
+        )
+    if tags:
+        matches = [
+            MediaItem.vault_labels.contains([tag]) for tag in dict.fromkeys(tags)
+        ]
+        conditions.append(and_(*matches) if tag_match == "all" else or_(*matches))
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        conditions.append(
+            or_(
+                MediaItem.original_filename.ilike(term),
+                cast(MediaItem.vault_labels, String).ilike(term),
+            )
+        )
+    total = int(
+        await db.scalar(select(func.count(MediaItem.id)).where(*conditions)) or 0
+    )
+    result = await db.execute(
+        select(MediaItem)
+        .where(*conditions)
+        .order_by(desc(MediaItem.created_at), desc(MediaItem.id))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    return VaultMediaListResponse(
+        items=[await _media_response(item) for item in result.scalars()],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/tags", response_model=list[str])
+async def list_media_tags(
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    actor = await resolve_actor(current_user)
+    rows = await db.execute(
+        select(func.jsonb_array_elements_text(MediaItem.vault_labels))
+        .where(*_library_access_conditions(actor))
+        .distinct()
+    )
+    return sorted(set(DEFAULT_VAULT_TAGS) | set(rows.scalars()), key=str.casefold)
 
 
 @router.post("", response_model=VaultResponse, status_code=201)

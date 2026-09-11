@@ -3,6 +3,7 @@
 import asyncio
 import json
 import re
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
@@ -265,6 +266,8 @@ async def create_pending_registration(
 
         settings = get_settings()
         redirect_url = f"{settings.FRONTEND_URL.rstrip('/')}/confirm"
+        if registration_in.return_to:
+            redirect_url += "?" + urlencode({"next": registration_in.return_to})
         supabase = get_supabase_client()
 
         if not registration_in.password:
@@ -293,6 +296,7 @@ async def create_pending_registration(
                     "last_name": registration_in.last_name,
                     # Preserve tier intent in auth metadata for recovery flows.
                     "requested_membership_tiers": requested_tiers,
+                    "registration_return_to": registration_in.return_to,
                 },
                 "email_redirect_to": redirect_url,
             },

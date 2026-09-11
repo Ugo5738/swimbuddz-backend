@@ -161,3 +161,25 @@ async def test_membership_policy_uses_snapshot_for_full_and_installment_quotes(
     assert context["annual_membership_fee_kobo"] == expected_fee
     assert context["annual_membership_months"] == expected_months
     assert context["subtotal_kobo"] == academy_amount + expected_fee
+
+
+def test_internal_and_member_payments_keep_tuition_separate_from_membership():
+    context = {
+        "enrollment_id": "e",
+        "cohort_id": "c",
+        "installment_id": "i",
+        "installment_number": 1,
+        "installment_due_at": None,
+        "total_installments": 3,
+        "membership_policy": "active_required",
+        "annual_membership_months": 12,
+        "academy_amount_kobo": 5_000_000,
+        "annual_membership_fee_kobo": 2_000_000,
+    }
+    metadata = academy_pricing.academy_payment_metadata(context)
+    assert metadata["academy_payment_amount_kobo"] == 5_000_000
+    assert metadata["community_extension_months"] == 12
+    assert metadata["components_kobo"] == {
+        "academy": 5_000_000,
+        "annual_swimbuddz_membership": 2_000_000,
+    }

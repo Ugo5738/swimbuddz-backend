@@ -421,7 +421,10 @@ async def transfer_member(
 async def serialize_pod_summary(db: AsyncSession, pod: Pod) -> dict:
     """Build the dict that fits PodSummary — adds the computed
     `active_member_count`."""
+    club = await db.get(Club, pod.club_id)
     return {
+        "club_name": club.name if club else None,
+        "club_location": club.location if club else None,
         "id": pod.id,
         "club_id": pod.club_id,
         "name": pod.name,
