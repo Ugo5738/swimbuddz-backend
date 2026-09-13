@@ -72,6 +72,12 @@ class ExperienceOrderAccess(BaseModel):
     access_token: str = Field(min_length=32, max_length=128)
 
 
+class ExperienceOrderCheckout(ExperienceOrderAccess):
+    discount_code: str | None = None
+    bubbles_to_apply: int = Field(default=0, ge=0)
+    expected_total_kobo: int | None = Field(default=None, ge=0)
+
+
 class ExperienceParticipantUpdate(ExperienceOrderAccess):
     participant: ExperienceParticipantInput
 

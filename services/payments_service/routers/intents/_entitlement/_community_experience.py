@@ -17,7 +17,13 @@ async def apply_community_experience(payment: Payment) -> None:
         from libs.common.service_client import internal_post
 
         order_amount = int(metadata["experience_order_amount_kobo"])
-        if naira_to_kobo(payment.amount) != order_amount + int(
+        quote = metadata.get("checkout_quote") or {}
+        settled = (
+            naira_to_kobo(payment.amount)
+            + int(quote.get("bubbles_value_kobo") or 0)
+            + int(quote.get("discount_kobo") or 0)
+        )
+        if settled != order_amount + int(
             metadata.get("additional_charges_total_kobo") or 0
         ):
             raise HTTPException(

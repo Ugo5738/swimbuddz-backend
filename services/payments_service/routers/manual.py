@@ -234,7 +234,11 @@ async def list_refunds_owed(
             if entry.get("disbursed_at"):
                 continue
             refund_kobo = int(entry.get("refund_kobo") or 0)
-            if refund_kobo <= 0:
+            if (
+                refund_kobo <= 0
+                and not entry.get("refund_bubbles")
+                and not entry.get("refund_bubbles_remainder_kobo")
+            ):
                 continue
             total_kobo += refund_kobo
             items.append(
@@ -245,6 +249,13 @@ async def list_refunds_owed(
                     member_auth_id=payment.member_auth_id,
                     refund_kobo=refund_kobo,
                     refund_naira=refund_kobo / 100,
+                    refund_bubbles=int(entry.get("refund_bubbles") or 0),
+                    refund_bubbles_remainder_kobo=int(
+                        entry.get("refund_bubbles_remainder_kobo") or 0
+                    ),
+                    discount_excluded_kobo=int(
+                        entry.get("discount_excluded_kobo") or 0
+                    ),
                     enrollment_id=str(entry.get("enrollment_id") or ""),
                     window=str(entry.get("window") or ""),
                     reason=entry.get("reason"),
@@ -284,7 +295,9 @@ async def mark_refund_disbursed(
     """
     from sqlalchemy.orm.attributes import flag_modified
 
-    result = await db.execute(select(Payment).where(Payment.reference == reference))
+    result = await db.execute(
+        select(Payment).where(Payment.reference == reference).with_for_update()
+    )
     payment = result.scalar_one_or_none()
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
@@ -295,6 +308,36 @@ async def mark_refund_disbursed(
     for entry in owed_list:
         if str(entry.get("enrollment_id")) == payload.enrollment_id:
             if not entry.get("disbursed_at"):
+                if entry.get("refund_bubbles_remainder_kobo"):
+                    raise HTTPException(
+                        409,
+                        "This partial refund includes fractional Bubbles. Reconcile the wallet remainder before marking it fully disbursed; do not pay it as cash.",
+                    )
+                if entry.get("refund_bubbles"):
+                    from libs.common.service_client import credit_member_wallet
+
+                    if not meta.get("wallet_transaction_id"):
+                        raise HTTPException(
+                            409,
+                            "Wallet capture must be reconciled before refunding Bubbles",
+                        )
+                    credited = await credit_member_wallet(
+                        payment.member_auth_id,
+                        amount=int(entry["refund_bubbles"]),
+                        idempotency_key=f"academy-refund:{payment.reference}:{payload.enrollment_id}",
+                        description=f"Academy withdrawal refund {payment.reference}",
+                        calling_service="payments",
+                        transaction_type="refund",
+                        reference_type="academy_refund",
+                        reference_id=str(payment.id),
+                    )
+                    if not credited.get("success"):
+                        raise HTTPException(
+                            502, "Wallet refund was not confirmed; retry this refund"
+                        )
+                    entry["wallet_refund_transaction_id"] = credited.get(
+                        "transaction_id"
+                    )
                 entry["disbursed_at"] = utc_now().isoformat()
                 if payload.note:
                     entry["disbursed_note"] = payload.note
