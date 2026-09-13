@@ -190,6 +190,7 @@ async def send_tier_activated_email(
     currency: str = "NGN",
     duration: str = "",
     dashboard_url: str = "https://swimbuddz.com/account",
+    checkout_quote: dict | None = None,
 ) -> bool:
     """
     Send email when a member's tier payment is confirmed and their tier is activated.
@@ -213,6 +214,11 @@ async def send_tier_activated_email(
         details["Duration"] = duration
     if amount:
         details["Amount Paid"] = f"{currency} {amount:,.0f}"
+    if checkout_quote:
+        from .payment_details import checkout_details
+
+        details.pop("Amount Paid", None)
+        details.update(checkout_details(checkout_quote, currency))
 
     # Plain text
     highlights_text = "\n".join(f"  - {h}" for h in config["highlights"])
@@ -226,6 +232,8 @@ async def send_tier_activated_email(
     )
 
     # HTML
+    if checkout_quote:
+        body += "\n" + "\n".join(f"{key}: {value}" for key, value in details.items())
     highlights_html = "".join(f"<li>{h}</li>" for h in config["highlights"])
     body_html = (
         f"<p>Hi {member_name},</p>"

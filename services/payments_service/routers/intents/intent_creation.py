@@ -41,6 +41,12 @@ from services.payments_service.schemas import (
 from services.payments_service.services.additional_charges import (
     calculate_additional_charges,
 )
+from services.payments_service.services.checkout_pricing import (
+    PRODUCT_PURPOSES,
+    price_product_checkout,
+    product_components,
+    verify_expected_total,
+)
 from services.payments_service.services.academy_pricing import (
     academy_payment_context,
     academy_payment_metadata,
@@ -720,8 +726,23 @@ async def create_payment_intent(
     """
     Create a payment intent (records a pending payment) and (if configured) initializes Paystack checkout.
     """
+    if payload.purpose in PRODUCT_PURPOSES:
+        # Commercial components, wallet capture markers and fulfillment state
+        # belong to the server, never to an arbitrary public metadata object.
+        payload = payload.model_copy(update={"payment_metadata": {}})
     payment_id = uuid.uuid4()
     payment_reference = Payment.generate_reference()
+    if payload.purpose in PRODUCT_PURPOSES and payload.idempotency_key:
+        from services.payments_service.services.product_intent_retry import (
+            find_product_retry,
+            resume_product_payment,
+        )
+
+        payment_reference, previous = await find_product_retry(
+            db, payload, current_user.user_id
+        )
+        if previous:
+            return await resume_product_payment(db, previous, payload)
     session_booking_id: uuid.UUID | None = None
     bundle_reservation_active = False
     club_reservation_active = False
@@ -1267,8 +1288,42 @@ async def create_payment_intent(
     original_amount = amount
     discount_applied = None
     discount_code_used = None
+    checkout_quote = None
+    if payload.purpose in PRODUCT_PURPOSES:
+        checkout_quote = await price_product_checkout(
+            db,
+            purpose=payload.purpose,
+            currency=payload.currency,
+            components=product_components(
+                payload.purpose, naira_to_kobo(amount), payment_metadata
+            ),
+            payment_method=payload.payment_method,
+            discount_code=payload.discount_code,
+            bubbles_to_apply=payload.bubbles_to_apply or 0,
+            consume_discount=True,
+        )
+        verify_expected_total(checkout_quote, payload.expected_total_kobo)
+        if (
+            checkout_quote["total_kobo"]
+            and payload.payment_method == "paystack"
+            and not _paystack_enabled()
+        ):
+            raise HTTPException(
+                503,
+                "Online payment is temporarily unavailable. Please try again later.",
+            )
+        amount = kobo_to_naira(checkout_quote["net_subtotal_kobo"])
+        discount_applied = kobo_to_naira(checkout_quote["discount_kobo"])
+        discount_code_used = checkout_quote["discount_code"]
+        payment_metadata = {
+            **payment_metadata,
+            "checkout_quote": checkout_quote,
+            "discount_code": discount_code_used,
+            "discount_applied": discount_applied,
+            "original_amount": original_amount,
+        }
 
-    if payload.discount_code:
+    if payload.discount_code and checkout_quote is None:
         # Get components for smart discount matching (CLUB_BUNDLE has components in metadata)
         discount_components = (
             payment_metadata.get("components")
@@ -1309,11 +1364,18 @@ async def create_payment_intent(
     # provider will process. Policies are optional and independently scoped by
     # payment purpose and method; inactive/missing policies add nothing.
     subtotal_amount = amount
-    charge_lines, charge_total_kobo = await calculate_additional_charges(
-        db,
-        purpose=payload.purpose,
-        payment_method=payload.payment_method,
-        subtotal_kobo=naira_to_kobo(subtotal_amount),
+    charge_lines, charge_total_kobo = (
+        (
+            checkout_quote["additional_charges"],
+            checkout_quote["additional_charges_total_kobo"],
+        )
+        if checkout_quote is not None
+        else await calculate_additional_charges(
+            db,
+            purpose=payload.purpose,
+            payment_method=payload.payment_method,
+            subtotal_kobo=naira_to_kobo(subtotal_amount),
+        )
     )
     if charge_total_kobo:
         amount = subtotal_amount + kobo_to_naira(charge_total_kobo)
@@ -1325,6 +1387,7 @@ async def create_payment_intent(
         }
 
     bubbles_purposes = {
+        *PRODUCT_PURPOSES,
         PaymentPurpose.SESSION_FEE,
         PaymentPurpose.SESSION_BOOKING,
         PaymentPurpose.SESSION_BUNDLE,
@@ -1358,7 +1421,11 @@ async def create_payment_intent(
             )
 
         amount_kobo = naira_to_kobo(amount)
-        maximum_bubbles = amount_kobo // KOBO_PER_BUBBLE
+        maximum_bubbles = (
+            checkout_quote["maximum_bubbles"]
+            if checkout_quote is not None
+            else amount_kobo // KOBO_PER_BUBBLE
+        )
         if bubbles_to_apply_val > maximum_bubbles:
             await release_active_bundle_reservation()
             raise HTTPException(
@@ -1447,6 +1514,15 @@ async def create_payment_intent(
             bubbles_to_apply_val > 0 and amount <= 0 and original_amount > 0
         ),
     )
+    if checkout_quote is not None and payload.idempotency_key:
+        from services.payments_service.services.product_intent_retry import (
+            request_fingerprint,
+        )
+
+        payment.payment_metadata = {
+            **payment.payment_metadata,
+            "request_fingerprint": request_fingerprint(payload),
+        }
 
     db.add(payment)
     try:
@@ -1537,6 +1613,11 @@ async def create_payment_intent(
                 payment, current_user.email, redirect_path
             )
         except Exception:
+            if checkout_quote is not None and payload.idempotency_key:
+                # Provider may have accepted the request. Retain the reference,
+                # code use and hold; a retry resumes this exact frozen payment.
+                await _set_pending_tier_payment_for_payment(payment)
+                raise
             payment.status = PaymentStatus.FAILED
             payment.payment_metadata = {
                 **(payment.payment_metadata or {}),
@@ -1602,6 +1683,7 @@ async def create_payment_intent(
         currency=payment.currency,
         purpose=payment.purpose,
         status=payment.status,
+        entitlement_applied_at=payment.entitlement_applied_at,
         checkout_url=checkout_url,
         created_at=payment.created_at,
         original_amount=original_amount if discount_applied else None,
@@ -1610,5 +1692,6 @@ async def create_payment_intent(
         subtotal_amount=subtotal_amount,
         additional_charges=charge_lines,
         additional_charges_total=kobo_to_naira(charge_total_kobo),
+        checkout_quote=checkout_quote,
         **response_extension_info,
     )

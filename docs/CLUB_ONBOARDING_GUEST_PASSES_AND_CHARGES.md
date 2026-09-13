@@ -221,6 +221,65 @@ payment processing**. A Paystack processing charge is not VAT and must not be
 presented as VAT. Disabling a policy stops it from being applied to new payments;
 historical payment snapshots do not change.
 
+### Product checkout discounts and Bubbles (September 2026)
+
+Annual Membership, approved Club activation/quarters, Academy enrollment payments
+and named Community Experience orders share the product checkout calculator.
+The order is: server-owned price components → eligible discount → Bubbles →
+processing charges on the remaining cash. Amounts are allocated in integer kobo.
+The preview and payment intent use the same calculation. The optional reviewed
+`expected_total_kobo` prevents an unnoticed price change between review and payment.
+
+- Discount scopes are individual products: `COMMUNITY` (annual Membership),
+  `CLUB`, `ACADEMY_COHORT`, `COMMUNITY_EXPERIENCE` and the explicit opt-in scope
+  `COMMUNITY_EXPERIENCE_BUNDLE`. The historical `CLUB_BUNDLE` scope means Club and
+  annual Membership, not Experience. An empty scope means regular-price items;
+  it does **not** discount the already-reduced Club-bundle Experience price.
+- A scoped discount only reduces its eligible components. A Club code cannot
+  silently discount an annual Membership line, nor can an Academy code. Fixed
+  discounts are capped to eligible value and allocated deterministically.
+- Academy codes apply to the amount due **in this payment**, not automatically
+  to all future installments. Frozen tuition, currency and Membership policy
+  remain unchanged. A fully wallet-funded installment settles only the credited
+  installment amount; zero cash does not clear future installment obligations.
+- Transition enrollment still costs zero; annual Membership is included only
+  when due. Experience is optional/explicit, at its **Standard member** price.
+  A zero-due activation has no coupon/Bubbles controls or processing charge.
+- Bubbles are tender, not a discount. A member can pay all or part of the net
+  product price in whole Bubbles; fractions remain exact cash. Provider charges
+  are not payable in Bubbles. Full-Bubbles/free checkout has no provider charge.
+  Manual transfers cannot be combined with Bubbles. Public Experience guests
+  may use an eligible code but cannot spend a member's wallet with an order token.
+- Wallet holds are created before checkout, captured before entitlement, and
+  captured idempotently on fulfillment retries. Failed capture leaves activation
+  retryable rather than granting unpaid access. An uncertain provider response
+  retains the frozen reference/hold: resume it, do not start a second payment.
+  Member product requests accept a member-scoped `idempotency_key`; the member UI
+  preserves it across retries. Experience uses its existing order reference.
+  Already-started cash-only Experience orders remain cash-only and resumable.
+- Payment metadata `checkout_quote` retains gross/net components, each discount
+  allocation, Bubbles used, cash due and processing charges. Commercial/order
+  amounts remain the original price/credit; this snapshot is the settlement
+  authority. Member Billing receipts and activation/installment emails distinguish
+  cash and Bubbles. Public metadata cannot forge product amounts or wallet capture.
+- Cash ledger entries use only actual cash; wallet journals record Bubbles
+  separately with the matching product source. No zero-value cash entry is emitted.
+- Academy withdrawal policy credit is translated by Payments into the net cash
+  and Bubbles actually refundable, excluding discounts, separate annual Membership
+  and processing fees. Refunds for installments covered by one payment are grouped
+  by reference. Admin's queue shows **cash** and **Bubbles** separately; marking
+  disbursed returns whole Bubbles idempotently to the wallet. A fractional-Bubble
+  remainder requires explicit reconciliation and blocks marking fully disbursed:
+  it is never silently paid as cash, rounded away or rounded up. The existing
+  best-effort Academy→Payments refund annotation remains an operational
+  reconciliation boundary; failed annotations are logged, not a completed payout.
+
+No migration or live price seeding is required for these modifiers. Discount
+scopes and settlement snapshots use existing JSON columns. Unit tests exercise
+the calculator, wallet guards, retry paths, refund allocation and frontend controls.
+PostgreSQL concurrency/hold tests and live provider settlement still need CI or
+staging verification; local Docker/database-backed execution was not performed.
+
 No policy is seeded by the migration. Production charges remain off until an
 admin creates and enables a policy.
 

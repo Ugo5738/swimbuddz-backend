@@ -453,6 +453,7 @@ async def send_templated_email(
                 payment_reference=d.get("payment_reference", ""),
                 paid_at=d.get("paid_at", ""),
                 payment_method=d.get("payment_method", "paystack"),
+                checkout_quote=d.get("checkout_quote"),
             )
         ),
         "academy_access_suspended": lambda d: (
@@ -566,6 +567,7 @@ async def send_templated_email(
             amount=d.get("amount", 0),
             currency=d.get("currency", "NGN"),
             duration=d.get("duration", ""),
+            checkout_quote=d.get("checkout_quote"),
             dashboard_url=d.get("dashboard_url", "https://swimbuddz.com/account"),
         ),
         "member_approved": lambda d: members.send_member_approved_email(

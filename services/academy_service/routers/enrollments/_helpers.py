@@ -30,7 +30,7 @@ async def _annotate_payment_with_refund(
     """
     try:
         _settings = get_settings()
-        await internal_post(
+        response = await internal_post(
             service_url=_settings.PAYMENTS_SERVICE_URL,
             path=f"/internal/payments/{payment_reference}/annotate-refund",
             calling_service=calling_service,
@@ -41,6 +41,7 @@ async def _annotate_payment_with_refund(
                 "reason": reason,
             },
         )
+        response.raise_for_status()
     except Exception:
         logger.warning(
             "Failed to annotate payment %s with refund obligation (best-effort)",

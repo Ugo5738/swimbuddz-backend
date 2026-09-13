@@ -315,6 +315,7 @@ async def withdraw_my_enrollment(
     # across paid installments proportionally so each payment record shows
     # what's owed against it — admins can reconcile via the payment list.
     payment_refs: list[str] = []
+    refund_by_reference: dict[str, int] = {}
     if refund_kobo > 0 and paid_kobo > 0:
         remaining_refund_kobo = refund_kobo
         paid_installments = [
@@ -323,7 +324,6 @@ async def withdraw_my_enrollment(
         for idx, inst in enumerate(paid_installments):
             if not inst.payment_reference:
                 continue
-            payment_refs.append(inst.payment_reference)
             # Last installment absorbs any rounding remainder
             if idx == len(paid_installments) - 1:
                 share_kobo = remaining_refund_kobo
@@ -331,8 +331,13 @@ async def withdraw_my_enrollment(
                 share_kobo = int(round(refund_kobo * (inst.amount / paid_kobo)))
                 share_kobo = min(share_kobo, remaining_refund_kobo)
             remaining_refund_kobo -= share_kobo
+            refund_by_reference[inst.payment_reference] = (
+                refund_by_reference.get(inst.payment_reference, 0) + share_kobo
+            )
+        for reference, share_kobo in refund_by_reference.items():
+            payment_refs.append(reference)
             await _annotate_payment_with_refund(
-                payment_reference=inst.payment_reference,
+                payment_reference=reference,
                 refund_kobo=share_kobo,
                 enrollment_id=str(enrollment.id),
                 window=window,
@@ -363,8 +368,9 @@ async def withdraw_my_enrollment(
     refund_naira = refund_kobo / 100
     if refund_kobo > 0:
         refund_note = (
-            f"Refund of ₦{refund_naira:,.2f} owed (paid via {', '.join(payment_refs)}). "
-            f"Admin: disburse via original payment channel."
+            f"Policy refund credit: ₦{refund_naira:,.2f} (references: {', '.join(payment_refs)}). "
+            "Promotional discounts are excluded from payout; Bubbles return to the wallet. "
+            "Admin: use the cash/Bubbles amounts in the refund queue, not this gross policy credit."
         )
     else:
         refund_note = (

@@ -3677,13 +3677,18 @@
         }
       }
     },
-    "/api/v1/clubs/community-experiences/orders/{order_id}/checkout": {
+    "/api/v1/clubs/community-experiences/orders/{order_id}/checkout-preview": {
       "post": {
         "tags": [
           "experience-tickets"
         ],
-        "summary": "Order Checkout",
-        "operationId": "order_checkout_clubs_community_experiences_orders__order_id__checkout_post",
+        "summary": "Preview Order Checkout",
+        "operationId": "preview_order_checkout_clubs_community_experiences_orders__order_id__checkout_preview_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "order_id",
@@ -3701,7 +3706,63 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ExperienceOrderAccess"
+                "$ref": "#/components/schemas/ExperienceOrderCheckout"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/community-experiences/orders/{order_id}/checkout": {
+      "post": {
+        "tags": [
+          "experience-tickets"
+        ],
+        "summary": "Order Checkout",
+        "operationId": "order_checkout_clubs_community_experiences_orders__order_id__checkout_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperienceOrderCheckout"
               }
             }
           }
@@ -21140,6 +21201,50 @@
         ]
       }
     },
+    "/api/v1/internal/payments/checkout/preview": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Internal Preview Product Checkout",
+        "operationId": "internal_preview_product_checkout_internal_payments_checkout_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalInitializeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/internal/payments/paystack/verify/{reference}": {
       "get": {
         "tags": [
@@ -21461,7 +21566,7 @@
           "internal"
         ],
         "summary": "Annotate Refund Obligation",
-        "description": "Write a refund obligation to a payment's metadata.\n\nIdempotent: multiple calls for the same enrollment_id overwrite the prior\nentry rather than appending duplicates.",
+        "description": "Write a refund obligation to a payment's metadata.\n\nIdempotent: the same enrollment/amount returns the existing obligation,\nincluding its disbursement state. Amount changes require reconciliation.",
         "operationId": "annotate_refund_obligation_internal_payments__reference__annotate_refund_post",
         "security": [
           {
@@ -63187,6 +63292,50 @@
         ],
         "title": "ExperienceOrderAccess"
       },
+      "ExperienceOrderCheckout": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 32,
+            "title": "Access Token"
+          },
+          "discount_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Code"
+          },
+          "bubbles_to_apply": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Bubbles To Apply",
+            "default": 0
+          },
+          "expected_total_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Total Kobo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token"
+        ],
+        "title": "ExperienceOrderCheckout"
+      },
       "ExperienceOrderConfirm": {
         "properties": {
           "payment_reference": {
@@ -81218,6 +81367,7 @@
         "properties": {
           "refund_kobo": {
             "type": "integer",
+            "minimum": 0.0,
             "title": "Refund Kobo"
           },
           "enrollment_id": {
@@ -81531,6 +81681,30 @@
             "title": "Payment Method",
             "default": "paystack"
           },
+          "discount_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Code"
+          },
+          "bubbles_to_apply": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Bubbles To Apply",
+            "default": 0
+          },
+          "years": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Years",
+            "default": 1
+          },
           "club_application_id": {
             "anyOf": [
               {
@@ -81660,6 +81834,55 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Components"
+          },
+          "discount_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Code"
+          },
+          "discount_kobo": {
+            "type": "integer",
+            "title": "Discount Kobo",
+            "default": 0
+          },
+          "discount_allocations_kobo": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Discount Allocations Kobo"
+          },
+          "net_subtotal_kobo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Subtotal Kobo"
+          },
+          "bubbles_to_apply": {
+            "type": "integer",
+            "title": "Bubbles To Apply",
+            "default": 0
+          },
+          "bubbles_value_kobo": {
+            "type": "integer",
+            "title": "Bubbles Value Kobo",
+            "default": 0
+          },
+          "maximum_bubbles": {
+            "type": "integer",
+            "title": "Maximum Bubbles",
+            "default": 0
           }
         },
         "type": "object",
@@ -82360,6 +82583,30 @@
             ],
             "title": "Bubbles To Apply"
           },
+          "expected_total_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Total Kobo"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
           "amount_override_kobo": {
             "anyOf": [
               {
@@ -82980,6 +83227,35 @@
               }
             ],
             "title": "Metadata"
+          },
+          "discount_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Code"
+          },
+          "bubbles_to_apply": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Bubbles To Apply",
+            "default": 0
+          },
+          "expected_total_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Total Kobo"
           }
         },
         "type": "object",
@@ -83038,6 +83314,23 @@
             },
             "type": "array",
             "title": "Additional Charges"
+          },
+          "confirmed": {
+            "type": "boolean",
+            "title": "Confirmed",
+            "default": false
+          },
+          "checkout_quote": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Quote"
           }
         },
         "type": "object",
@@ -83593,6 +83886,18 @@
           "status": {
             "$ref": "#/components/schemas/PaymentStatus"
           },
+          "entitlement_applied_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entitlement Applied At"
+          },
           "checkout_url": {
             "anyOf": [
               {
@@ -83691,6 +83996,18 @@
             "type": "number",
             "title": "Additional Charges Total",
             "default": 0
+          },
+          "checkout_quote": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Quote"
           }
         },
         "type": "object",
@@ -84780,6 +85097,21 @@
           "refund_naira": {
             "type": "number",
             "title": "Refund Naira"
+          },
+          "refund_bubbles": {
+            "type": "integer",
+            "title": "Refund Bubbles",
+            "default": 0
+          },
+          "refund_bubbles_remainder_kobo": {
+            "type": "integer",
+            "title": "Refund Bubbles Remainder Kobo",
+            "default": 0
+          },
+          "discount_excluded_kobo": {
+            "type": "integer",
+            "title": "Discount Excluded Kobo",
+            "default": 0
           },
           "enrollment_id": {
             "type": "string",

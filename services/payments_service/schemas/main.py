@@ -99,6 +99,8 @@ class CreatePaymentIntentRequest(BaseModel):
     # Whole Bubbles to reserve before provider initialization. Any remainder is
     # charged through the external provider without rounding the Bubble value.
     bubbles_to_apply: Optional[int] = Field(default=None, ge=0)
+    expected_total_kobo: Optional[int] = Field(default=None, ge=0)
+    idempotency_key: Optional[uuid.UUID] = None
 
     # Member-initiated mid-cohort payment override (ACADEMY_COHORT only).
     # Default behavior charges the exact stipulated next-installment amount.
@@ -120,6 +122,7 @@ class PaymentIntentResponse(BaseModel):
     currency: str
     purpose: PaymentPurpose
     status: PaymentStatus
+    entitlement_applied_at: Optional[datetime] = None
     checkout_url: Optional[str] = None
     created_at: datetime
     # Discount info
@@ -134,6 +137,7 @@ class PaymentIntentResponse(BaseModel):
     subtotal_amount: Optional[float] = None
     additional_charges: List[dict] = Field(default_factory=list)
     additional_charges_total: float = 0
+    checkout_quote: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -238,6 +242,9 @@ class RefundOwedItem(BaseModel):
     member_auth_id: str
     refund_kobo: int
     refund_naira: float
+    refund_bubbles: int = 0
+    refund_bubbles_remainder_kobo: int = 0
+    discount_excluded_kobo: int = 0
     enrollment_id: str
     window: str  # before_start | mid_entry_window | after_cutoff
     reason: Optional[str] = None
@@ -339,6 +346,9 @@ class InternalInitializeRequest(BaseModel):
     member_auth_id: str
     callback_url: Optional[str] = None  # Redirect path appended to FRONTEND_URL
     metadata: Optional[dict] = None
+    discount_code: Optional[str] = None
+    bubbles_to_apply: int = Field(default=0, ge=0)
+    expected_total_kobo: Optional[int] = Field(default=None, ge=0)
 
 
 class InternalInitializeResponse(BaseModel):
@@ -349,6 +359,8 @@ class InternalInitializeResponse(BaseModel):
     access_code: Optional[str] = None
     amount_kobo: Optional[int] = None
     additional_charges: List[dict] = Field(default_factory=list)
+    confirmed: bool = False
+    checkout_quote: Optional[dict] = None
 
 
 class InternalPaystackVerifyResponse(BaseModel):

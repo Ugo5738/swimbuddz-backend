@@ -13,6 +13,7 @@ to `intents/__init__.py` for the retry worker and route modules):
 """
 
 from datetime import datetime
+import httpx
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -27,6 +28,7 @@ from services.payments_service.models import (
 )
 
 from .._helpers import (
+    _debit_bubbles,
     _clear_pending_tier_payment_for_payment,
     _dispatch_payment_notification,
     _emit_membership_reward_events,
@@ -159,6 +161,24 @@ async def _apply_entitlement(payment: Payment) -> None:
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail=f"Entitlement application not implemented for purpose={payment.purpose}",
         )
+    from services.payments_service.services.checkout_pricing import PRODUCT_PURPOSES
+
+    if payment.purpose in PRODUCT_PURPOSES and (payment.payment_metadata or {}).get(
+        "bubbles_to_apply"
+    ):
+        async with httpx.AsyncClient(timeout=30) as client:
+            transaction_id = await _debit_bubbles(
+                client, payment, reference_type=payment.purpose.value
+            )
+        wallet_meta = payment.payment_metadata or {}
+        if not transaction_id or (
+            wallet_meta.get("wallet_hold_id")
+            and wallet_meta.get("wallet_hold_status") != "captured"
+        ):
+            raise HTTPException(
+                502,
+                "Wallet settlement was not confirmed; access activation will be retried",
+            )
     await handler(payment)
 
 
