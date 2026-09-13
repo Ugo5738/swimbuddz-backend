@@ -6,7 +6,7 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -212,6 +212,20 @@ async def internal_initialize_payment(
 
     Auth: service-role JWT only (via ``require_service_role``).
     """
+    if (
+        req.purpose == "community_experience"
+        and (req.metadata or {}).get("checkout_components_kobo") is not None
+    ):
+        from services.payments_service.services.experience_checkout import (
+            initialize_experience_checkout,
+        )
+
+        return await initialize_experience_checkout(req, db)
+    if req.discount_code or req.bubbles_to_apply:
+        raise HTTPException(
+            422,
+            "Discounts and Bubbles require member product checkout or a named Experience order",
+        )
     if not _paystack_enabled():
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
@@ -391,6 +405,17 @@ async def internal_initialize_payment(
         }
         await db.commit()
     return result
+
+
+@router.post("/checkout/preview", dependencies=[Depends(require_service_role)])
+async def internal_preview_product_checkout(
+    req: InternalInitializeRequest, db: AsyncSession = Depends(get_async_db)
+):
+    from services.payments_service.services.experience_checkout import (
+        preview_experience_checkout,
+    )
+
+    return await preview_experience_checkout(req, db)
 
 
 @router.get(
@@ -818,7 +843,7 @@ class AnnotateRefundRequest(BaseModel):
     disburses and stamps the payment via a separate manual step.
     """
 
-    refund_kobo: int
+    refund_kobo: int = Field(ge=0)
     enrollment_id: str
     window: str  # "before_start" | "mid_entry_window" | "after_cutoff"
     reason: Optional[str] = None
@@ -835,21 +860,43 @@ async def annotate_refund_obligation(
 ):
     """Write a refund obligation to a payment's metadata.
 
-    Idempotent: multiple calls for the same enrollment_id overwrite the prior
-    entry rather than appending duplicates.
+    Idempotent: the same enrollment/amount returns the existing obligation,
+    including its disbursement state. Amount changes require reconciliation.
     """
-    result = await db.execute(select(Payment).where(Payment.reference == reference))
+    result = await db.execute(
+        select(Payment).where(Payment.reference == reference).with_for_update()
+    )
     payment = result.scalar_one_or_none()
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
 
     existing = payment.payment_metadata or {}
+    if existing.get("checkout_quote") and (
+        payment.status != PaymentStatus.PAID
+        or str(existing.get("enrollment_id")) != payload.enrollment_id
+    ):
+        raise HTTPException(409, "Refund must belong to this paid Academy enrollment")
     refunds = existing.get("refund_owed") or []
-    # Drop any prior entry for the same enrollment_id (idempotent overwrite)
-    refunds = [r for r in refunds if r.get("enrollment_id") != payload.enrollment_id]
+    from services.payments_service.services.refund_tenders import academy_refund_tenders
+
+    previous = next(
+        (r for r in refunds if r.get("enrollment_id") == payload.enrollment_id), None
+    )
+    tender = academy_refund_tenders(existing, payload.refund_kobo)
+    if previous:
+        # A retry must never reopen a settled obligation or alter a pending payout.
+        if (
+            previous.get("gross_refund_kobo", previous["refund_kobo"])
+            != payload.refund_kobo
+        ):
+            raise HTTPException(
+                409,
+                "Refund obligation already exists with a different amount; reconcile it before changing it",
+            )
+        return {"reference": reference, "refund_obligations": len(refunds)}
     refunds.append(
         {
-            "refund_kobo": payload.refund_kobo,
+            **tender,
             "enrollment_id": payload.enrollment_id,
             "window": payload.window,
             "reason": payload.reason,

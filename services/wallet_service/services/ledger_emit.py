@@ -34,6 +34,12 @@ logger = get_logger(__name__)
 # A PURCHASE spend's credit account + reporting domain, by (service_source,
 # reference_type), with a fallback on service_source alone.
 SPEND_CREDIT_BY_SOURCE_REF: dict[tuple[str, str], tuple[str, str]] = {
+    ("payments", "community"): ("deferred_revenue_community", "community"),
+    ("payments", "club"): ("deferred_revenue_club", "club"),
+    ("payments", "club_bundle"): ("deferred_revenue_club", "club"),
+    ("payments", "academy_cohort"): ("deferred_revenue_academy", "academy"),
+    ("payments", "academy_refund"): ("deferred_revenue_academy", "academy"),
+    ("payments", "community_experience"): ("deferred_revenue_community", "community"),
     ("attendance", "session"): ("revenue_club_session", "club"),
     ("sessions", "session_booking"): ("revenue_club_session", "club"),
     ("payments_service", "session_fee"): ("revenue_club_session", "club"),

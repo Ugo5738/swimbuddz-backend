@@ -18,6 +18,11 @@ from services.payments_service.models import AdditionalChargePolicy, PaymentPurp
 from services.payments_service.services.additional_charges import (
     calculate_additional_charges,
 )
+from services.payments_service.services.checkout_pricing import (
+    PRODUCT_PURPOSES,
+    price_product_checkout,
+    product_components,
+)
 from services.payments_service.services.academy_pricing import (
     academy_payment_context,
 )
@@ -59,6 +64,9 @@ class ChargePolicyResponse(ChargePolicyCreate):
 class ChargePreviewRequest(BaseModel):
     purpose: PaymentPurpose
     payment_method: str = "paystack"
+    discount_code: Optional[str] = None
+    bubbles_to_apply: int = Field(default=0, ge=0)
+    years: int = Field(default=1, ge=1, le=5)
     club_application_id: Optional[uuid.UUID] = None
     club_payment_mode: Optional[
         Literal["quarterly_prepaid", "transition_per_session"]
@@ -78,6 +86,13 @@ class ChargePreviewResponse(BaseModel):
     additional_charges_total_kobo: int
     total_kobo: int
     components: dict = Field(default_factory=dict)
+    discount_code: Optional[str] = None
+    discount_kobo: int = 0
+    discount_allocations_kobo: dict[str, int] = Field(default_factory=dict)
+    net_subtotal_kobo: Optional[int] = None
+    bubbles_to_apply: int = 0
+    bubbles_value_kobo: int = 0
+    maximum_bubbles: int = 0
 
 
 async def _club_context(
@@ -200,7 +215,10 @@ async def preview_additional_charges(
 ):
     components: dict = {}
     currency = "NGN"
-    if body.purpose == PaymentPurpose.CLUB and body.club_application_id:
+    if body.purpose == PaymentPurpose.COMMUNITY:
+        subtotal_kobo = int(settings.COMMUNITY_ANNUAL_FEE_NGN * 100 * body.years)
+        components = {"annual_swimbuddz_membership": subtotal_kobo}
+    elif body.purpose == PaymentPurpose.CLUB and body.club_application_id:
         context = await _club_context(
             body.club_application_id,
             body.club_payment_mode,
@@ -260,12 +278,29 @@ async def preview_additional_charges(
             "installment_number": context["installment_number"],
             "total_installments": context["total_installments"],
         }
-    elif body.subtotal_kobo is not None:
+    elif body.subtotal_kobo is not None and body.purpose not in PRODUCT_PURPOSES:
         subtotal_kobo = body.subtotal_kobo
     else:
         raise HTTPException(
             status_code=400, detail="An authoritative pricing context is required"
         )
+    if body.purpose in PRODUCT_PURPOSES:
+        metadata = {
+            "components_kobo": components,
+            "community_experience_option": components.get(
+                "community_experience_option"
+            ),
+        }
+        quote = await price_product_checkout(
+            db,
+            purpose=body.purpose,
+            currency=currency,
+            components=product_components(body.purpose, subtotal_kobo, metadata),
+            payment_method=body.payment_method,
+            discount_code=body.discount_code,
+            bubbles_to_apply=body.bubbles_to_apply,
+        )
+        return ChargePreviewResponse(currency=currency, components=components, **quote)
     lines, charge_total = await calculate_additional_charges(
         db,
         purpose=body.purpose,

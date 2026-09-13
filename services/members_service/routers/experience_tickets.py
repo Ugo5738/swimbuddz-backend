@@ -34,6 +34,7 @@ from services.members_service.routers.community_experiences import (
 from services.members_service.routers.experience_admin import lock_offering
 from services.members_service.schemas.experience import (
     ExperienceOrderAccess,
+    ExperienceOrderCheckout,
     ExperienceOrderConfirm,
     ExperienceOrderCreate,
     ExperienceOrderResponse,
@@ -351,11 +352,71 @@ async def complete_member_details(
     return {"completed": True}
 
 
+def ticket_payment_request(order, body, current_user):
+    bubbles = getattr(body, "bubbles_to_apply", 0)
+    if bubbles and (
+        not current_user
+        or getattr(current_user, "user_id", None) != order.member_auth_id
+    ):
+        raise HTTPException(403, "Sign in as the order's member to use Bubbles")
+    components = {"community": order.membership_fee_kobo}
+    for participant in order.participants:
+        scope = (
+            "community_experience_bundle"
+            if participant.ticket_kind == "club_bundle"
+            else "community_experience"
+        )
+        components[scope] = components.get(scope, 0) + participant.price_kobo
+    return {
+        "purpose": "community_experience",
+        "amount": order.amount_kobo / 100,
+        "currency": order.currency,
+        "reference": order.payment_reference,
+        "member_auth_id": order.member_auth_id or f"experience-guest:{order.id}",
+        "callback_url": f"/experiences/{order.offering_id}?order_id={order.id}",
+        "discount_code": getattr(body, "discount_code", None),
+        "bubbles_to_apply": bubbles,
+        "expected_total_kobo": getattr(body, "expected_total_kobo", None),
+        "metadata": {
+            "experience_order_id": str(order.id),
+            "community_experience_offering_id": str(order.offering_id),
+            "payer_email": order.payer_email,
+            "experience_order_amount_kobo": order.amount_kobo,
+            "checkout_components_kobo": components,
+        },
+    }
+
+
+@router.post("/orders/{order_id}/checkout-preview")
+async def preview_order_checkout(
+    order_id: uuid.UUID,
+    body: ExperienceOrderCheckout,
+    current_user: AuthUser | None = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    order = await _order_access(db, order_id, body.access_token)
+    if order.status != "pending_payment" or order.expires_at <= utc_now():
+        raise HTTPException(409, "This order is no longer awaiting payment")
+    response = await internal_post(
+        service_url=get_settings().PAYMENTS_SERVICE_URL,
+        path="/internal/payments/checkout/preview",
+        calling_service="members",
+        json=ticket_payment_request(order, body, current_user),
+    )
+    if response.status_code >= 400:
+        raise HTTPException(
+            response.status_code,
+            response.json().get("detail", "Could not price this checkout"),
+        )
+    return response.json()
+
+
 @router.post("/orders/{order_id}/checkout")
 async def order_checkout(
     order_id: uuid.UUID,
-    body: ExperienceOrderAccess,
+    body: ExperienceOrderCheckout,
     db: AsyncSession = Depends(get_async_db),
+    current_user: AuthUser | None = Depends(get_optional_user),
 ):
     order = await _order_access(db, order_id, body.access_token)
     if order.status == "confirmed":
@@ -382,21 +443,7 @@ async def order_checkout(
             service_url=get_settings().PAYMENTS_SERVICE_URL,
             path="/internal/payments/initialize",
             calling_service="members",
-            json={
-                "purpose": "community_experience",
-                "amount": order.amount_kobo / 100,
-                "currency": order.currency,
-                "reference": order.payment_reference,
-                "member_auth_id": order.member_auth_id
-                or f"experience-guest:{order.id}",
-                "callback_url": f"/experiences/{offering.id}?order_id={order.id}",
-                "metadata": {
-                    "experience_order_id": str(order.id),
-                    "community_experience_offering_id": str(offering.id),
-                    "payer_email": order.payer_email,
-                    "experience_order_amount_kobo": order.amount_kobo,
-                },
-            },
+            json=ticket_payment_request(order, body, current_user),
         )
     except httpx.HTTPError as exc:
         raise HTTPException(
@@ -404,7 +451,10 @@ async def order_checkout(
             "Payment initialization was uncertain; retry this same order, not a new payment",
         ) from exc
     if response.status_code >= 400:
-        raise HTTPException(503, "Could not start payment; retry this order")
+        raise HTTPException(
+            response.status_code,
+            response.json().get("detail", "Could not start payment; retry this order"),
+        )
     checkout = response.json()
     order.checkout_url = checkout.get("authorization_url")
     await db.commit()

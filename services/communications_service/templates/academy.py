@@ -817,6 +817,7 @@ async def send_installment_payment_confirmation_email(
     paid_at: str,
     payment_method: str = "paystack",
     dashboard_url: str = "https://swimbuddz.com/account/academy",
+    checkout_quote: dict | None = None,
 ) -> bool:
     """
     Confirm a successful installment payment to the student.
@@ -826,6 +827,11 @@ async def send_installment_payment_confirmation_email(
     """
     currency_symbol = "₦" if currency == "NGN" else currency
     amount_display = f"{currency_symbol}{amount:,.0f}"
+    from .payment_details import checkout_details
+
+    receipt = checkout_details(checkout_quote, currency)
+    if checkout_quote:
+        amount_display = f"{currency_symbol}{(int(checkout_quote['net_subtotal_kobo']) + int(checkout_quote['additional_charges_total_kobo'])) / 100:,.2f}"
 
     installment_label = (
         f"Installment {installment_number} of {total_installments}"
@@ -836,6 +842,12 @@ async def send_installment_payment_confirmation_email(
     method_display = (
         "SwimBuddz Wallet 🫧" if payment_method == "wallet" else "Card / Bank transfer"
     )
+    if checkout_quote and checkout_quote.get("bubbles_to_apply"):
+        method_display = (
+            "Bubbles + online payment"
+            if checkout_quote.get("total_kobo")
+            else "Bubbles"
+        )
 
     subject = f"✅ Payment Received — {installment_label}"
 
@@ -855,6 +867,8 @@ Thank you!
 — The SwimBuddz Team
 """
 
+    if receipt:
+        body += "\n" + "\n".join(f"{key}: {value}" for key, value in receipt.items())
     body_html = (
         f"<p>Hi {member_name},</p>"
         "<p>We've received your payment. Your academy access remains <strong>active</strong>.</p>"
@@ -865,6 +879,7 @@ Thank you!
                 "Payment Date": paid_at,
                 "Reference": payment_reference,
                 "Method": method_display,
+                **receipt,
             },
             accent_color="#10b981",
         )
@@ -1128,7 +1143,7 @@ async def send_withdrawal_confirmation_email(
     subject = f"Withdrawal confirmed: {cohort_name}"
 
     refund_line = (
-        f"Refund: ₦{refund_naira:,.0f}\n"
+        f"Policy refund credit: ₦{refund_naira:,.0f} (before excluding discounts; Admin will confirm cash/Bubbles payout)\n"
         if refund_naira > 0
         else "Refund: None per our withdrawal policy.\n"
     )
@@ -1156,7 +1171,9 @@ If anything looks wrong, reply to this email and we'll sort it out.
     details: dict = {
         "Program": program_name,
         "Cohort": cohort_name,
-        "Refund": f"₦{refund_naira:,.0f}" if refund_naira > 0 else "None",
+        "Policy refund credit (not cash payout)": f"₦{refund_naira:,.0f}"
+        if refund_naira > 0
+        else "None",
         "Waived installments": str(waived_installment_count),
     }
 
@@ -1204,7 +1221,7 @@ async def send_admin_refund_owed_email(
     withdrawal. Includes the payment references the obligation is recorded
     against so admin can disburse via the original channel.
     """
-    subject = f"💸 Refund owed: ₦{refund_naira:,.0f} for {member_name}"
+    subject = f"💸 Refund review: {member_name} — ₦{refund_naira:,.0f} policy credit"
 
     refs_text = ", ".join(payment_references) if payment_references else "—"
     reason_line = f"\nMember's reason: {reason}\n" if reason else ""
@@ -1215,20 +1232,21 @@ Member: {member_name} ({member_email})
 Program: {program_name}
 Cohort: {cohort_name}
 Withdrawal window: {window}
-Refund owed: ₦{refund_naira:,.0f}
+Policy refund credit (not cash payout): ₦{refund_naira:,.0f}
 Payment references: {refs_text}
 Enrollment ID: {enrollment_id}
 {reason_line}
-Action: disburse the refund via the original payment channel (typically
-direct bank transfer for Paystack-originated payments in Nigeria). Once
-disbursed, annotate the payment's metadata.refund_owed entry with
-"disbursed_at" so this obligation isn't double-paid.
+Action: open /admin/refunds for the actual cash and Bubbles breakdown.
+Promotional discounts are not refundable money. Do not transfer the gross
+policy credit or Bubbles value as cash. After transferring only the cash
+amount shown in the queue, use Mark Disbursed to return any whole Bubbles
+idempotently. Fractional Bubbles require reconciliation first.
 
 — The SwimBuddz System
 """
 
     alert_html = info_box(
-        f"<strong>Refund owed:</strong> ₦{refund_naira:,.0f}<br/>"
+        f"<strong>Policy refund credit (not cash payout):</strong> ₦{refund_naira:,.0f}<br/>"
         f"<strong>Payments to draw from:</strong> {refs_text}<br/>"
         f"<strong>Enrollment ID:</strong> {enrollment_id}",
         bg_color="#fef3c7",
@@ -1243,26 +1261,26 @@ disbursed, annotate the payment's metadata.refund_owed entry with
                 "Program": program_name,
                 "Cohort": cohort_name,
                 "Withdrawal window": window.replace("_", " "),
-                "Refund owed": f"₦{refund_naira:,.0f}",
+                "Policy credit, before discount exclusion": f"₦{refund_naira:,.0f}",
                 "Reason": reason or "—",
             },
             accent_color="#f59e0b",
         )
         + alert_html
         + "<p style='font-size:13px;color:#64748b;'>"
-        "Disburse via the original payment channel (typically direct bank "
-        "transfer for Paystack-originated NG payments). Once disbursed, "
-        "annotate the payment's <code>metadata.refund_owed</code> entry with "
-        "<code>disbursed_at</code> so this obligation isn't double-paid."
+        "Open <strong>/admin/refunds</strong> for the actual cash/Bubbles breakdown. "
+        "Discounts are not refundable money. Do not pay Bubbles as cash. "
+        "Transfer only the cash amount shown, then use <strong>Mark Disbursed</strong> "
+        "to return whole Bubbles idempotently. Reconcile fractional Bubbles first."
         "</p>"
     )
 
     html_body = wrap_html(
-        title="💸 Refund Owed",
+        title="💸 Refund Review",
         subtitle=f"{member_name} — ₦{refund_naira:,.0f}",
         body_html=body_html,
         header_gradient=GRADIENT_AMBER,
-        preheader=f"Refund ₦{refund_naira:,.0f} owed to {member_name}",
+        preheader=f"Review the cash/Bubbles refund breakdown for {member_name}",
     )
 
     return await send_email(to_email, subject, body, html_body)

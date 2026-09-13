@@ -48,7 +48,7 @@ async def apply_academy_cohort(payment: Payment) -> None:
             or round((payment.amount or 0) * KOBO_PER_NAIRA)
         ),
     }
-    if payment.amount <= 0:
+    if payment.amount <= 0 and metadata.get("academy_payment_amount_kobo") is None:
         # Fully discounted enrollment should not retain installment obligations.
         mark_paid_payload["clear_installments"] = True
     if installment_id:
@@ -122,6 +122,7 @@ async def apply_academy_cohort(payment: Payment) -> None:
                             int(total_installments) if total_installments else None
                         ),
                         "amount": payment.amount,
+                        "checkout_quote": metadata.get("checkout_quote"),
                         "currency": payment.currency,
                         "payment_reference": payment.reference,
                         "paid_at": (

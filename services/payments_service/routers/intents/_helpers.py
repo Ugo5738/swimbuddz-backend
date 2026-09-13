@@ -367,6 +367,9 @@ async def _send_tier_activated_email(
                 template_data={
                     "member_name": member_name,
                     "tier": tier,
+                    "checkout_quote": (payment.payment_metadata or {}).get(
+                        "checkout_quote"
+                    ),
                     "amount": float(payment.amount),
                     "currency": payment.currency,
                     "duration": duration,
@@ -453,6 +456,9 @@ async def _dispatch_payment_notification(payment: Payment) -> None:
 
         title, category, icon = label
         amount_str = f"₦{float(payment.amount):,.0f}"
+        quote = (payment.payment_metadata or {}).get("checkout_quote") or {}
+        if quote.get("bubbles_to_apply"):
+            amount_str += f" + {int(quote['bubbles_to_apply'])} Bubbles"
 
         await dispatch_notification(
             type="payment_confirmed",

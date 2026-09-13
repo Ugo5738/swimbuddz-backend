@@ -84,6 +84,10 @@ def build_post_kwargs(payment: Payment) -> dict | None:
         (payment.provider or "").lower(), "bank_operating_ngn"
     )
     amount = to_kobo(payment.amount)
+    if amount <= 0:
+        # Bubbles settlement has its own wallet journal; free/discount credit is
+        # not a cash receipt and must not create zero-value accounting entries.
+        return None
     currency = payment.currency or "NGN"
     entry_date: date = (payment.paid_at or utc_now()).date()
     settings = get_settings()
@@ -135,6 +139,8 @@ async def emit_payment_to_ledger(db: AsyncSession, payment: Payment) -> None:
 
     On failure the intended entry is parked in ledger_post_failures for replay.
     """
+    if to_kobo(payment.amount) <= 0:
+        return
     kwargs = build_post_kwargs(payment)
     if kwargs is None:
         logger.warning(
