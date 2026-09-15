@@ -10165,7 +10165,7 @@
           "bookings"
         ],
         "summary": "Admin Walk In Booking",
-        "description": "Admin creates a CONFIRMED booking for a member who showed up without\npre-booking online. Used by the attendance UI's \"Mark walk-in\" action.\n\nBehavior:\n  - Looks up the session to default ``fee_amount_kobo`` to the session's\n    own ``pool_fee`` when the caller didn't specify one.\n  - Idempotent: if a PENDING or CONFIRMED booking already exists for\n    ``(session_id, member_id)``, returns it instead of creating a new one.\n    Cancelled/expired bookings raise 409 (admin must investigate).\n  - Channel is hard-coded to ``ADMIN`` so the row is distinguishable from\n    member-self bookings in reporting.\n  - Coach payouts pick this up like any other booking \u2014 paying happens\n    when an attendance row records Present/Late for this booking.",
+        "description": "Admin creates a CONFIRMED booking for a member who showed up without\npre-booking online. Used by the attendance UI's \"Mark walk-in\" action.\n\nBehavior:\n  - Tuition-included cohort classes have no additional fee. Other sessions\n    default to ``pool_fee`` unless Admin specifies the originally agreed fee.\n  - Idempotent: if a PENDING or CONFIRMED booking already exists for\n    ``(session_id, member_id)``, returns it instead of creating a new one.\n    Cancelled/expired bookings raise 409 (admin must investigate).\n  - Channel is hard-coded to ``ADMIN`` so the row is distinguishable from\n    member-self bookings in reporting.\n  - Coach payouts pick this up like any other booking \u2014 paying happens\n    when an attendance row records Present/Late for this booking.",
         "operationId": "admin_walk_in_booking_sessions__session_id__admin_walk_in_post",
         "security": [
           {
@@ -10196,6 +10196,65 @@
         },
         "responses": {
           "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/bookings/{booking_id}/admin/reconcile-missing-cohort-fee": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Reconcile Missing Cohort Fee",
+        "description": "Correct only the historical null-access, zero-price cohort booking bug.\n\nAdmin must verify the agreed fee and explain the correction. Paid bookings,\ndeliberately free new bookings, guests and missing sessions are excluded.\nAttendance stays untouched. Record verified funds separately through the\nexisting Payments offline-payment endpoint after this correction.",
+        "operationId": "reconcile_missing_cohort_fee_sessions_bookings__booking_id__admin_reconcile_missing_cohort_fee_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUnpricedCohortBookingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -69370,6 +69429,28 @@
         "title": "AdminPoolFeeRefundRequest",
         "description": "Admin refunds a booking's per-session pool fee to the member's Bubble\nwallet \u2014 the make-up case: a learner paid the ~\u20a63,500 pool fee, couldn't\nattend (rain-out / excused), and is owed it back to fund their make-up.\n\nThe server routes this through the accounted ``session_booking`` refund\npath so the ledger reverses the pool-fee revenue \u2014 never the manual\n\"Adjust Bubbles\" tool. ``reason`` is recorded on the booking for audit.\n\n``refund_heads`` scales the refund for a multi-swimmer booking (member +\nguests): None refunds the whole pool fee; N refunds N of party_size heads\n(e.g. the guests who no-showed at a per-swimmer pool). See O3."
       },
+      "AdminUnpricedCohortBookingRequest": {
+        "properties": {
+          "fee_amount_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Fee Amount Kobo"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fee_amount_kobo",
+          "reason"
+        ],
+        "title": "AdminUnpricedCohortBookingRequest",
+        "description": "Explicit correction of a legacy cohort booking created without a price.\n\nThis is not a general price override and does not collect payment."
+      },
       "AdminWalkInRequest": {
         "properties": {
           "member_id": {
@@ -69407,7 +69488,7 @@
           "member_id"
         ],
         "title": "AdminWalkInRequest",
-        "description": "Admin creates a CONFIRMED booking for a member who showed up without\npre-booking online (the \"walk-in\" case).\n\nUsed by the admin attendance UI. The admin clicks \"Mark walk-in\" on a\ncohort member who paid the pool fee at the door \u2014 this creates the\nbooking record so the financials reconcile. Default fee is the session's\nown ``pool_fee`` (in kobo); override is allowed for unusual cases."
+        "description": "Admin creates a CONFIRMED booking for a member who showed up without\npre-booking online (the \"walk-in\" case).\n\nUsed by the admin attendance UI. The admin clicks \"Mark walk-in\" on a\ncohort member who paid the pool fee at the door \u2014 this creates the\nbooking record so the financials reconcile. Tuition-included classes stay\nzero. Other sessions default to ``pool_fee`` (kobo); an explicit original\nagreed fee may be supplied for historical reconciliation."
       },
       "BookableSlotResponse": {
         "properties": {
@@ -72205,6 +72286,11 @@
             ],
             "title": "Pool Fee"
           },
+          "cohort_fee_mode": {
+            "type": "string",
+            "title": "Cohort Fee Mode",
+            "default": "included"
+          },
           "guest_fee_kobo": {
             "anyOf": [
               {
@@ -72756,6 +72842,15 @@
             "title": "Pool Fee",
             "default": 0.0
           },
+          "cohort_fee_mode": {
+            "type": "string",
+            "enum": [
+              "included",
+              "paid_extra"
+            ],
+            "title": "Cohort Fee Mode",
+            "default": "included"
+          },
           "guest_fee": {
             "anyOf": [
               {
@@ -73243,6 +73338,15 @@
             "type": "number",
             "title": "Pool Fee",
             "default": 0.0
+          },
+          "cohort_fee_mode": {
+            "type": "string",
+            "enum": [
+              "included",
+              "paid_extra"
+            ],
+            "title": "Cohort Fee Mode",
+            "default": "included"
           },
           "guest_fee": {
             "anyOf": [
@@ -74278,6 +74382,21 @@
               }
             ],
             "title": "Pool Fee"
+          },
+          "cohort_fee_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "included",
+                  "paid_extra"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Fee Mode"
           },
           "guest_fee": {
             "anyOf": [
@@ -83781,7 +83900,8 @@
           "proof_of_payment_media_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               {
                 "type": "null"
@@ -84129,7 +84249,8 @@
           "proof_of_payment_media_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               {
                 "type": "null"
@@ -85282,7 +85403,7 @@
         "properties": {
           "proof_media_id": {
             "type": "string",
-            "maxLength": 64,
+            "format": "uuid",
             "title": "Proof Media Id"
           }
         },

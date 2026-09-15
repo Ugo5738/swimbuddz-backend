@@ -261,6 +261,17 @@ def evaluate_session_access(
             reason = "cohort_access_suspended"
         else:
             allowed = True
+            # Regular classes are prepaid through tuition even when pool_fee
+            # contains an operational cost. Extra classes opt in explicitly;
+            # missing/legacy mode remains included to prevent double-charging.
+            access_source = "cohort_enrollment"
+            paid_extra = _value(session, "cohort_fee_mode") == "paid_extra"
+            fee_amount_kobo = (
+                int(_value(session, "pool_fee", 0) or 0) if paid_extra else 0
+            )
+            price_label = (
+                "Extra cohort class" if paid_extra else "Included in Academy tuition"
+            )
     elif session_type == CLUB:
         # Live service callers supply the authoritative, session-dated result
         # from members_service.  ``None`` preserves explicit legacy Club and

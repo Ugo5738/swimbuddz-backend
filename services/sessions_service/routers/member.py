@@ -802,6 +802,21 @@ async def update_session(
 
     resulting_type = update_data.get("session_type", session.session_type)
     resulting_type_value = getattr(resulting_type, "value", resulting_type)
+    resulting_cohort_mode = update_data.get(
+        "cohort_fee_mode", getattr(session, "cohort_fee_mode", "included")
+    )
+    if resulting_cohort_mode not in {"included", "paid_extra"}:
+        raise HTTPException(
+            status_code=422, detail="Choose included or paid_extra for cohort_fee_mode"
+        )
+    if (
+        resulting_type_value != SessionType.COHORT_CLASS.value
+        and resulting_cohort_mode != "included"
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Only a cohort class can be designated as a paid extra class",
+        )
     if "session_type" in update_data and resulting_type_value != SessionType.CLUB.value:
         # A Club/Pod link must never leak across a type change.
         update_data["club_id"] = None

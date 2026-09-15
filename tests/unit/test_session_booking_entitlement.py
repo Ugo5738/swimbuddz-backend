@@ -99,3 +99,78 @@ async def test_session_booking_ride_failure_keeps_fulfillment_retryable(monkeypa
         await _session_booking.apply_session_booking(payment)
 
     assert getattr(exc.value, "status_code", None) == 502
+
+
+async def test_paid_extra_class_fulfillment_confirms_and_links_payment_without_repricing(
+    monkeypatch,
+):
+    from datetime import timedelta
+    from libs.common.datetime_utils import utc_now
+    from services.sessions_service.models import SessionBookingStatus, SessionStatus
+    from services.sessions_service.routers import internal
+    from services.sessions_service.schemas.booking import BookingConfirmRequest
+
+    payment = _payment()
+    payment.payment_metadata = {
+        key: payment.payment_metadata[key]
+        for key in ("booking_id", "session_id", "member_id")
+    }
+    booking = SimpleNamespace(
+        id=uuid.UUID(payment.payment_metadata["booking_id"]),
+        session_id=uuid.UUID(payment.payment_metadata["session_id"]),
+        status=SessionBookingStatus.PENDING,
+        fee_amount_kobo=1500000,
+        member_auth_id=payment.member_auth_id,
+        payment_intent_id=None,
+        wallet_transaction_id=None,
+        expires_at=utc_now() + timedelta(minutes=15),
+    )
+    session = SimpleNamespace(
+        id=booking.session_id,
+        status=SessionStatus.SCHEDULED,
+        starts_at=utc_now() + timedelta(days=1),
+        pool_fee=1800000,
+        cohort_fee_mode="paid_extra",
+    )
+    sync = AsyncMock()
+    monkeypatch.setattr(internal, "sync_booking_attendance", sync)
+    monkeypatch.setattr(
+        _session_booking, "_debit_bubbles", AsyncMock(return_value=None)
+    )
+
+    class ConfirmingClient(FakeClient):
+        async def post(self, url, **kwargs):
+            assert url.endswith(f"/internal/sessions/bookings/{booking.id}/confirm")
+            db = SimpleNamespace(
+                execute=AsyncMock(
+                    side_effect=[
+                        SimpleNamespace(one_or_none=lambda: booking),
+                        SimpleNamespace(scalar_one_or_none=lambda: session),
+                        SimpleNamespace(scalar_one=lambda: booking),
+                    ]
+                ),
+                commit=AsyncMock(),
+                refresh=AsyncMock(),
+            )
+            await internal.internal_confirm_booking(
+                booking.id,
+                BookingConfirmRequest(**kwargs["json"]),
+                SimpleNamespace(),
+                db,
+            )
+            return FakeResponse()
+
+    monkeypatch.setattr(
+        _session_booking.httpx, "AsyncClient", lambda **kwargs: ConfirmingClient([])
+    )
+    assert booking.status == SessionBookingStatus.PENDING
+    await _session_booking.apply_session_booking(payment)
+    assert booking.status == SessionBookingStatus.CONFIRMED
+    assert booking.payment_intent_id == payment.id
+    assert booking.fee_amount_kobo == 1500000
+    assert booking.expires_at is None
+    sync.assert_awaited_once_with(booking)
+    # Duplicate verification/webhook is idempotent and never creates another booking.
+    await _session_booking.apply_session_booking(payment)
+    assert booking.payment_intent_id == payment.id
+    assert booking.fee_amount_kobo == 1500000

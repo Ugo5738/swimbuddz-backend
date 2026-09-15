@@ -36,6 +36,54 @@ _ATTENDANCE = f"{_BOOKINGS}.sync_booking_attendance"
 POOL_FEE_KOBO = 350_000  # ₦3,500
 
 
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "fee_mode,expected_fee,expected_status",
+    [("included", 0, "confirmed"), ("paid_extra", 1500000, "pending")],
+)
+async def test_cohort_tuition_and_extra_class_persist_distinct_booking_prices(
+    sessions_client, db_session, fee_mode, expected_fee, expected_status
+):
+    """CI/PostgreSQL coverage: nonzero pool cost alone never bills tuition twice."""
+    from sqlalchemy import select
+
+    member_id = uuid.uuid4()
+    session = await _session(
+        db_session, cohort_id=uuid.uuid4(), pool_fee=1500000, cohort_fee_mode=fee_mode
+    )
+    with (
+        patch(_RESOLVE_MEMBER, _member_mock(member_id)),
+        patch(_MEMBERSHIP, _club_membership_mock(member_id)),
+        patch(
+            f"{_SESSION_ACCESS}.check_cohort_enrollment",
+            AsyncMock(return_value={"enrolled": True}),
+        ),
+        patch(f"{_BOOKINGS}._send_direct_booking_confirmation", AsyncMock()),
+    ):
+        response = await sessions_client.post(
+            f"/sessions/{session.id}/book",
+            json={
+                "session_id": str(session.id),
+                "fee_amount_kobo": 1,
+                "pay_with_bubbles": False,
+            },
+        )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["status"] == expected_status
+    assert body["fee_amount_kobo"] == expected_fee
+    assert body["member_fee_amount_kobo"] == expected_fee
+    assert body["access_source"] == "cohort_enrollment"
+    persisted = (
+        await db_session.execute(
+            select(SessionBooking).where(SessionBooking.id == uuid.UUID(body["id"]))
+        )
+    ).scalar_one()
+    assert persisted.fee_amount_kobo == expected_fee
+    assert persisted.payment_intent_id is None
+    assert persisted.wallet_transaction_id is None
+
+
 async def _legacy_club_access_mock(checks, **kwargs):
     return {
         check["context_key"]: {
