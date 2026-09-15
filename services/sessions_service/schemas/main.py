@@ -54,6 +54,7 @@ class SessionBase(BaseModel):
     # Capacity & Fees — API layer uses Naira (float); DB stores kobo (int).
     capacity: int = 20
     pool_fee: float = 0.0  # naira input/output
+    cohort_fee_mode: Literal["included", "paid_extra"] = "included"
     guest_fee: Optional[float] = None
     community_dropin_fee: Optional[float] = None
     allows_community_dropins: bool = False
@@ -97,6 +98,13 @@ class SessionCreate(SessionBase):
         ):
             raise ValueError(
                 "Only Club sessions may specify a Club or Club access mode"
+            )
+        if (
+            self.cohort_fee_mode != "included"
+            and self.session_type != SessionType.COHORT_CLASS
+        ):
+            raise ValueError(
+                "Only a cohort class can be designated as a paid extra class"
             )
         try:
             validate_session_discriminator(
@@ -145,6 +153,7 @@ class SessionUpdate(BaseModel):
 
     capacity: Optional[int] = None
     pool_fee: Optional[float] = None  # naira — router converts to kobo on write
+    cohort_fee_mode: Optional[Literal["included", "paid_extra"]] = None
     guest_fee: Optional[float] = None
     community_dropin_fee: Optional[float] = None
     allows_community_dropins: Optional[bool] = None
@@ -231,6 +240,7 @@ class SessionResponse(SessionBase):
             "timezone": obj.timezone,
             "capacity": obj.capacity,
             "pool_fee": pool_fee_kobo / 100.0,
+            "cohort_fee_mode": getattr(obj, "cohort_fee_mode", None) or "included",
             "guest_fee": guest_fee_kobo / 100.0 if guest_fee_kobo is not None else None,
             "community_dropin_fee": (
                 community_dropin_fee_kobo / 100.0

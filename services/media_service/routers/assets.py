@@ -74,7 +74,13 @@ async def resolve_media_urls(
     if not valid_ids:
         return {}
 
-    query = select(MediaItem.id, MediaItem.file_url).where(MediaItem.id.in_(valid_ids))
+    # Receipts must use the authenticated single-item endpoint, not the
+    # anonymous bulk resolver used for public profile/product media.
+    query = select(MediaItem.id, MediaItem.file_url).where(
+        MediaItem.id.in_(valid_ids),
+        func.coalesce(MediaItem.metadata_info["purpose"].astext, "") != "payment_proof",
+        MediaItem.file_url.not_like("%/payment-proofs/%"),
+    )
     result = await db.execute(query)
     rows = result.fetchall()
 

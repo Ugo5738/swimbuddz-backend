@@ -5,7 +5,10 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
+from fastapi import HTTPException
+
 PRICING_KEYS = {
+    "capacity",
     "pricing_mode",
     "pricing_expected_attendees",
     "cost_lines",
@@ -33,6 +36,15 @@ def normalize_pricing_payload(payload: dict[str, Any]) -> dict[str, Any]:
         payload.get("pricing_expected_attendees") or payload.get("capacity") or 1
     )
     expected = max(expected, 1)
+    if (
+        payload.get("pricing_mode") == "cost_plus"
+        and payload.get("capacity") is not None
+        and expected > int(payload["capacity"])
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Expected attendees cannot exceed capacity when calculating the booking price.",
+        )
     normalized_lines: list[dict[str, Any]] = []
     total_cost_kobo = 0
 

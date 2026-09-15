@@ -208,13 +208,24 @@ class AdminWalkInRequest(BaseModel):
 
     Used by the admin attendance UI. The admin clicks "Mark walk-in" on a
     cohort member who paid the pool fee at the door — this creates the
-    booking record so the financials reconcile. Default fee is the session's
-    own ``pool_fee`` (in kobo); override is allowed for unusual cases.
+    booking record so the financials reconcile. Tuition-included classes stay
+    zero. Other sessions default to ``pool_fee`` (kobo); an explicit original
+    agreed fee may be supplied for historical reconciliation.
     """
 
     member_id: uuid.UUID
     fee_amount_kobo: Optional[int] = Field(default=None, ge=0)
     notes: Optional[str] = Field(default=None, max_length=500)
+
+
+class AdminUnpricedCohortBookingRequest(BaseModel):
+    """Explicit correction of a legacy cohort booking created without a price.
+
+    This is not a general price override and does not collect payment.
+    """
+
+    fee_amount_kobo: int = Field(gt=0)
+    reason: str = Field(min_length=10, max_length=500)
 
 
 class AdminPoolFeeRefundRequest(BaseModel):
