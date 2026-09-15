@@ -155,7 +155,7 @@ class PaymentResponse(BaseModel):
     provider_reference: Optional[str] = None
     session_booking_id: Optional[uuid.UUID] = None
     payment_method: Optional[str] = None  # paystack or manual_transfer
-    proof_of_payment_media_id: Optional[str] = None  # Media ID for uploaded proof
+    proof_of_payment_media_id: Optional[uuid.UUID] = None  # Media ID for uploaded proof
     proof_of_payment_url: Optional[str] = None  # Resolved URL for display (not stored)
     admin_review_note: Optional[str] = None  # Note from admin review
     paid_at: Optional[datetime] = None
@@ -204,7 +204,7 @@ class MemberPaymentResponse(BaseModel):
     provider_reference: Optional[str] = None
     session_booking_id: Optional[uuid.UUID] = None
     payment_method: Optional[str] = None
-    proof_of_payment_media_id: Optional[str] = None
+    proof_of_payment_media_id: Optional[uuid.UUID] = None
     proof_of_payment_url: Optional[str] = None
     paid_at: Optional[datetime] = None
     entitlement_applied_at: Optional[datetime] = None
@@ -224,7 +224,7 @@ class CompletePaymentRequest(BaseModel):
 class SubmitProofRequest(BaseModel):
     """Submit proof of payment for manual transfer."""
 
-    proof_media_id: str = Field(..., max_length=64)  # Media ID of uploaded proof
+    proof_media_id: uuid.UUID  # Validated before updating the payment
 
 
 class AdminReviewRequest(BaseModel):

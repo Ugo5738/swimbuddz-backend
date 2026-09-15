@@ -104,9 +104,14 @@ def _require_original_access(
     item: MediaItem,
     current_user: Optional[AuthUser],
 ) -> None:
-    """Keep preserved crop sources private to their uploader and admins."""
+    """Keep original images and payment receipts private to uploader/admins."""
     metadata = item.metadata_info or {}
-    if not metadata.get("presentation_original"):
+    # The path check protects older receipts created before purpose metadata
+    # was persisted. Never issue a signed private receipt URL anonymously.
+    is_receipt = metadata.get("purpose") == "payment_proof" or "/payment-proofs/" in (
+        item.file_url or ""
+    )
+    if not metadata.get("presentation_original") and not is_receipt:
         return
     if current_user and (
         current_user.has_role("admin")
@@ -474,6 +479,7 @@ async def upload_file(
         description=auto_description,
         alt_text=original_name,
         uploaded_by=current_user.user_id,
+        metadata_info={"purpose": purpose, "linked_id": linked_id},
         is_processed=not is_video,  # Videos start as unprocessed
     )
     db.add(db_media)
@@ -758,6 +764,7 @@ async def register_external_url(
         description=description or f"{purpose} - external URL",
         alt_text=auto_title,
         uploaded_by=current_user.user_id,
+        metadata_info={"purpose": purpose, "linked_id": linked_id},
         is_processed=True,
     )
     db.add(db_media)
@@ -780,6 +787,10 @@ async def list_media(
             MediaItem.metadata_info["presentation_original"].as_boolean(),
             False,
         ).is_(False)
+    )
+    query = query.where(
+        func.coalesce(MediaItem.metadata_info["purpose"].astext, "") != "payment_proof",
+        MediaItem.file_url.not_like("%/payment-proofs/%"),
     )
     query = query.order_by(desc(MediaItem.created_at))
 

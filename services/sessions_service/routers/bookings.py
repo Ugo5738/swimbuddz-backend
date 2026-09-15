@@ -18,6 +18,7 @@ See docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §C.
 from __future__ import annotations
 
 import uuid
+import json
 from datetime import datetime, timedelta
 from typing import List, Optional
 from zoneinfo import ZoneInfo
@@ -75,6 +76,7 @@ from services.sessions_service.schemas import (
 from services.sessions_service.services.session_access import (
     evaluate_member_session_access,
 )
+from services.sessions_service.schemas.booking import AdminUnpricedCohortBookingRequest
 from services.sessions_service.services.guest_identity import normalize_guest_phone
 from services.sessions_service.services.booking_capacity import (
     PENDING_TTL_MINUTES,
@@ -415,7 +417,12 @@ async def book_session(
     # member's dated access source; attached guests remain independently priced
     # at guest_fee. The client-sent fee_amount_kobo is always ignored.
     party_size = 1 + len(booking_in.guests) + booking_in.block_guests
-    member_fee_kobo = int(access.fee_amount_kobo or 0)
+    if access.fee_amount_kobo is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not determine the session price. Please try again before booking.",
+        )
+    member_fee_kobo = int(access.fee_amount_kobo)
     guest_count = party_size - 1
     guest_unit_fee_kobo = int(
         session.guest_fee_kobo
@@ -992,8 +999,8 @@ async def admin_walk_in_booking(
     pre-booking online. Used by the attendance UI's "Mark walk-in" action.
 
     Behavior:
-      - Looks up the session to default ``fee_amount_kobo`` to the session's
-        own ``pool_fee`` when the caller didn't specify one.
+      - Tuition-included cohort classes have no additional fee. Other sessions
+        default to ``pool_fee`` unless Admin specifies the originally agreed fee.
       - Idempotent: if a PENDING or CONFIRMED booking already exists for
         ``(session_id, member_id)``, returns it instead of creating a new one.
         Cancelled/expired bookings raise 409 (admin must investigate).
@@ -1023,10 +1030,19 @@ async def admin_walk_in_booking(
             detail="Member is missing auth_id — cannot create a booking.",
         )
 
+    included_class = (
+        getattr(session.session_type, "value", session.session_type) == "cohort_class"
+        and getattr(session, "cohort_fee_mode", "included") != "paid_extra"
+    )
+    if included_class and payload.fee_amount_kobo not in (None, 0):
+        raise HTTPException(
+            422,
+            "This class is included in tuition. Designate a genuine paid extra class before recording an additional fee.",
+        )
     fee_kobo = (
         payload.fee_amount_kobo
         if payload.fee_amount_kobo is not None
-        else int(session.pool_fee or 0)
+        else (0 if included_class else int(session.pool_fee or 0))
     )
 
     # Idempotency: return existing PENDING/CONFIRMED if any.
@@ -1073,6 +1089,8 @@ async def admin_walk_in_booking(
         status=SessionBookingStatus.CONFIRMED,
         channel=BookingChannel.ADMIN,
         fee_amount_kobo=fee_kobo,
+        member_fee_amount_kobo=fee_kobo,
+        access_source="admin_walk_in",
         notes=payload.notes,
         booked_at=now,
         confirmed_at=now,
@@ -1095,6 +1113,97 @@ async def admin_walk_in_booking(
 # ---------------------------------------------------------------------------
 # Member or admin: cancel
 # ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/sessions/bookings/{booking_id}/admin/reconcile-missing-cohort-fee",
+    response_model=SessionBookingResponse,
+)
+async def reconcile_missing_cohort_fee(
+    booking_id: uuid.UUID,
+    payload: AdminUnpricedCohortBookingRequest,
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Correct only the historical null-access, zero-price cohort booking bug.
+
+    Admin must verify the agreed fee and explain the correction. Paid bookings,
+    deliberately free new bookings, guests and missing sessions are excluded.
+    Attendance stays untouched. Record verified funds separately through the
+    existing Payments offline-payment endpoint after this correction.
+    """
+    booking = (
+        await db.execute(
+            select(SessionBooking)
+            .where(SessionBooking.id == booking_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if (
+        booking.status != SessionBookingStatus.CONFIRMED
+        or booking.fee_amount_kobo != 0
+        or booking.member_fee_amount_kobo != 0
+        or booking.access_source is not None
+        or booking.payment_intent_id is not None
+        or booking.wallet_transaction_id is not None
+        or booking.corporate_program_id is not None
+        or booking.party_size != 1
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Only an unpaid legacy zero-price cohort booking can be corrected here. Paid and already-priced bookings cannot be changed.",
+        )
+    session = (
+        await db.execute(select(Session).where(Session.id == booking.session_id))
+    ).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(
+            status_code=409,
+            detail="The original session is missing. Resolve that record before correcting its booking.",
+        )
+    session_type = getattr(session.session_type, "value", session.session_type)
+    if (
+        session_type != "cohort_class"
+        or not session.cohort_id
+        or session.starts_at > utc_now()
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Only a past cohort class is eligible for this correction.",
+        )
+    if session.pool_fee <= 0:
+        raise HTTPException(
+            status_code=409,
+            detail="This session is configured as free; no missing fee can be inferred.",
+        )
+    if getattr(session, "cohort_fee_mode", "included") != "paid_extra":
+        raise HTTPException(
+            status_code=409,
+            detail="This class is included in tuition. Only an explicitly designated paid extra class can have a missing fee corrected.",
+        )
+    reason = payload.reason.strip()
+    if len(reason) < 10:
+        raise HTTPException(
+            status_code=422,
+            detail="Explain the agreed fee and why the booking needs correction.",
+        )
+    correction = {
+        "kind": "missing_cohort_fee_correction",
+        "previous_fee_kobo": 0,
+        "corrected_fee_kobo": payload.fee_amount_kobo,
+        "recorded_at": utc_now().isoformat(),
+        "recorded_by": admin.user_id,
+        "reason": reason,
+    }
+    booking.fee_amount_kobo = payload.fee_amount_kobo
+    booking.member_fee_amount_kobo = payload.fee_amount_kobo
+    booking.access_source = "cohort_fee_reconciliation"
+    booking.notes = "\n".join(filter(None, [booking.notes, json.dumps(correction)]))
+    await db.commit()
+    await db.refresh(booking)
+    return booking
 
 
 @router.post(

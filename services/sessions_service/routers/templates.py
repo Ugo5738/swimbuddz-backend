@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
@@ -130,6 +131,10 @@ async def update_template(
         )
 
     update_data = template_in.model_dump(exclude_unset=True)
+    if update_data.get("is_active", template.is_active) is False:
+        # Archiving preserves all generated sessions and their bookings, and
+        # never leaves background recurrence enabled on an inactive template.
+        update_data["auto_generate"] = False
     if "pricing_settings" in update_data:
         update_data["pricing_settings"] = update_data["pricing_settings"] or {}
     # Convert naira fee inputs (float) to kobo (int) for DB storage.
@@ -200,8 +205,15 @@ async def delete_template(
             status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
         )
 
-    await db.delete(template)
-    await db.commit()
+    try:
+        await db.delete(template)
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="This template is in use. Archive it to preserve existing sessions and bookings.",
+        ) from exc
 
 
 @router.post("/{template_id}/sync-volunteer-opportunities")
@@ -286,6 +298,11 @@ async def generate_sessions(
     if not template:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+        )
+
+    if not template.is_active:
+        raise HTTPException(
+            409, "Restore this archived template before generating sessions."
         )
 
     if (

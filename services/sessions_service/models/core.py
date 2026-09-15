@@ -48,6 +48,10 @@ class Session(Base):
     # and the unused booking_id column.
     __table_args__ = (
         CheckConstraint(
+            "cohort_fee_mode IN ('included','paid_extra') AND (session_type = 'cohort_class' OR cohort_fee_mode = 'included')",
+            name="ck_sessions_cohort_fee_mode",
+        ),
+        CheckConstraint(
             "club_access_mode IN ('plan_included','active_club','paid_addon') AND (session_type = 'club' OR (club_id IS NULL AND club_access_mode = 'plan_included')) AND (club_access_mode = 'plan_included' OR club_id IS NOT NULL)",
             name="ck_sessions_club_access_mode",
         ),
@@ -136,6 +140,11 @@ class Session(Base):
     # === Capacity & Fees (stored in kobo — divide by 100 for naira display) ===
     capacity: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
     pool_fee: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Tuition covers regular cohort classes regardless of the stored pool
+    # cost. Only an explicitly designated extra class is separately charged.
+    cohort_fee_mode: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="included", server_default="included"
+    )
     # Kept separate even when values currently match: guests can move to a
     # higher trial rate without changing registered Community drop-ins.
     guest_fee_kobo: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

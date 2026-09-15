@@ -3,6 +3,10 @@
 This document is the operating contract for the location-aware Club registration
 and standalone guest-pass flows introduced in August 2026.
 
+For tuition-included versus paid extra classes, historical bank receipts,
+shared-cost calculations and archive/delete behavior, see
+[Session extra classes and payment reconciliation](SESSION_EXTRA_CLASSES_AND_PAYMENT_RECONCILIATION.md).
+
 ## Club pricing and registration
 
 Club pricing is configured as a versioned plan for one Club location. A plan

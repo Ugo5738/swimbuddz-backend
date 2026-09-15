@@ -1,7 +1,5 @@
 """Manual/bank transfer payment endpoints: proof submission and admin review."""
 
-import uuid
-
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
@@ -60,13 +58,21 @@ async def submit_proof_of_payment(
             status_code=400, detail="Proof upload is only for manual transfer payments"
         )
 
+    # A lost response after commit must not turn a successful upload into an
+    # error on retry. A different receipt still requires an explicit review.
+    if (
+        payment.status == PaymentStatus.PENDING_REVIEW
+        and payment.proof_of_payment_media_id == payload.proof_media_id
+    ):
+        return payment
+
     if payment.status not in [PaymentStatus.PENDING, PaymentStatus.FAILED]:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot upload proof for payment in status: {payment.status.value}",
         )
 
-    payment.proof_of_payment_media_id = uuid.UUID(payload.proof_media_id)
+    payment.proof_of_payment_media_id = payload.proof_media_id
     payment.status = PaymentStatus.PENDING_REVIEW
     payment.admin_review_note = None  # Clear any previous rejection note
 
