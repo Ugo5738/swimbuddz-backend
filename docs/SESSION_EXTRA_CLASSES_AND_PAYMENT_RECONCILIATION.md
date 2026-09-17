@@ -71,6 +71,23 @@ system, but remain distinct outgoing `CoachPayout` and incoming `Payment` record
    ₦25,200 credit may cover ₦20,000 Membership plus a ₦5,200 swim, not two ₦25,200
    payments. Choosing bank transfer still requires receipt review/approval.
 
+Annual Membership checkout now exposes Bank Transfer directly. Billing's
+**Already paid by bank transfer? Submit your receipt** opens that method and
+**Continue to upload receipt** creates a pending reference, then opens Billing's
+receipt section. Neither action marks the payment paid. The receiving account
+display is shared across frontend checkout, Billing and session sign-in:
+Swimbuddz Limited, Moniepoint MFB, 6567710856. Historical receipts sent to an old
+account must still be checked against the original bank statement; the display
+change does not rewrite payment history.
+
+For a combined receipt, review each allocation explicitly. A 20,000 Membership
+allocation and a 5,200 session allocation must not be recorded as two full 25,200
+payments. The existing Admin **Record paid** supports session receipts; the
+Membership receipt/review flow remains separate. Deployment does not reconcile
+either automatically. Membership activation currently begins at approval (or
+the existing later expiry), not the original transfer date; historical coverage
+dates need an explicit Admin review, not an inferred or silent backdate.
+
 The receipt viewer resolves the stored media UUID through authenticated media
 access. Only uploader/admin can resolve payment-proof media, including legacy
 `payment-proofs` paths; anonymous media lists and batch URL resolution exclude it.

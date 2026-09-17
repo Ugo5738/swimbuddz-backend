@@ -21,6 +21,9 @@ from services.members_service.models import (
     CommunityExperienceOffering,
 )
 from services.members_service.schemas import ClubPlanCreate, ClubPlanResponse
+from services.members_service.schemas.club_merchandising import (
+    AttachClubExperienceRequest,
+)
 from services.members_service.routers._club_pricing import plan_response
 from services.members_service.services.club_plan_schedule import (
     fetch_schedule,
@@ -69,6 +72,50 @@ async def _plan(db, plan_id, *, draft=False):
             409, "Published commercial terms are immutable; create a new draft"
         )
     return plan
+
+
+@router.put("/{plan_id}/community-experience", response_model=ClubPlanResponse)
+async def attach_plan_experience(
+    plan_id: uuid.UUID,
+    body: AttachClubExperienceRequest,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Attach a newly available optional offering, including after publication.
+
+    Existing links cannot be replaced: pending checkouts and paid fulfillments
+    may rely on that identity. Adding a previously absent offer never selects it
+    on an application, changes Club prices/schedules, or touches a payment.
+    """
+    plan = await _plan(db, plan_id)
+    club = await db.get(Club, plan.club_id)
+    if plan.community_experience_offering_id:
+        if plan.community_experience_offering_id != body.offering_id:
+            raise HTTPException(
+                409,
+                "An existing Experience link cannot be replaced; create a new plan draft",
+            )
+        await hydrate_schedules([plan])
+        return plan_response(plan, club)
+    offering = await db.get(CommunityExperienceOffering, body.offering_id)
+    if (
+        not offering
+        or not offering.is_active
+        or offering.currency != plan.currency
+        or offering.period_start != plan.period_start
+        or offering.period_end != plan.period_end
+    ):
+        raise HTTPException(
+            422, "Link an active Experience in the same quarter and currency"
+        )
+    from services.members_service.services.experience_events import live_events
+
+    await live_events(offering, for_sale=True)
+    plan.community_experience_offering_id = offering.id
+    plan.community_experience_fee_kobo = offering.club_bundle_fee_kobo
+    plan.community_experience_default_selected = False
+    await db.commit()
+    await hydrate_schedules([plan])
+    return plan_response(plan, club)
 
 
 @router.get("/{plan_id}/schedule")
