@@ -4138,6 +4138,65 @@
         }
       }
     },
+    "/api/v1/clubs/admin/plans/{plan_id}/community-experience": {
+      "put": {
+        "tags": [
+          "club-plan-drafts"
+        ],
+        "summary": "Attach Plan Experience",
+        "description": "Attach a newly available optional offering, including after publication.\n\nExisting links cannot be replaced: pending checkouts and paid fulfillments\nmay rely on that identity. Adding a previously absent offer never selects it\non an application, changes Club prices/schedules, or touches a payment.",
+        "operationId": "attach_plan_experience_clubs_admin_plans__plan_id__community_experience_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachClubExperienceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubPlanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/clubs/admin/plans/{plan_id}/schedule": {
       "get": {
         "tags": [
@@ -56618,6 +56677,21 @@
         ],
         "title": "AssessmentSubmit",
         "description": "Request body for submitting an assessment."
+      },
+      "AttachClubExperienceRequest": {
+        "properties": {
+          "offering_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Offering Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "offering_id"
+        ],
+        "title": "AttachClubExperienceRequest"
       },
       "BankAccountCreate": {
         "properties": {
