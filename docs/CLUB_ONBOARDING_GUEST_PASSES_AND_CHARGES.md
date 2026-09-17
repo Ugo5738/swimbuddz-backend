@@ -355,3 +355,18 @@ contract.
 - `POST /api/v1/sessions/{id}/guest-passes`
 - `GET /api/v1/guest-passes/{id}` (redacted public receipt)
 - `GET|POST /api/v1/admin/guest-passes...`
+
+## Attaching an offering after Club publication
+
+Creating a Community Experience does not automatically attach it to every Club.
+In **Admin → Club Pricing**, a published plan with no Experience now has an
+**Attach optional Experience** action. It accepts an active same-quarter,
+same-currency offering with a published, correctly bound future Event. It changes
+no Club fee, Session inclusion, application selection or payment. The new option
+starts unselected. Existing offering links cannot be replaced through this action,
+so already-paid and pending checkouts keep their offering identity.
+
+Quarterly checkout uses the linked offering's bundle price; transition checkout
+uses its standard member price only when explicitly selected. An already-purchased
+Experience, a closed purchase window or an unavailable Event still suppresses the
+checkout option. Standalone Experience purchasing stays separate.
