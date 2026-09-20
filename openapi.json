@@ -48498,6 +48498,46 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Delete Vault",
+        "description": "Remove a vault from use while retaining originals for recovery.\n\nExisting S3 objects are deliberately not deleted here. Admins can remove\nindividual files from storage through the separate, explicit media action.",
+        "operationId": "delete_vault_media_vaults__vault_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vault_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Vault Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/media/vaults/{vault_id}/grants": {
@@ -49729,6 +49769,16 @@
               "type": "string",
               "format": "uuid",
               "title": "Item Id"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Force"
             }
           }
         ],
