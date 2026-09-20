@@ -222,6 +222,12 @@ async def _media_response(item: MediaItem) -> VaultMediaResponse:
     metadata = dict(item.metadata_info or {})
     if item.processing_status != "ready":
         preview_status = "unavailable"
+    elif item.media_type == MediaType.VIDEO and metadata.get("proxy_status") in {
+        "pending",
+        "processing",
+    }:
+        preview_status = str(metadata["proxy_status"])
+        preview_url = None
     elif preview_url:
         preview_status = "ready"
     elif thumbnail_url:
@@ -259,7 +265,12 @@ async def _guest_link_or_404(
 ) -> MediaVaultGuestLink:
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     result = await db.execute(
-        select(MediaVaultGuestLink).where(MediaVaultGuestLink.token_hash == token_hash)
+        select(MediaVaultGuestLink)
+        .join(MediaVault, MediaVault.id == MediaVaultGuestLink.vault_id)
+        .where(
+            MediaVaultGuestLink.token_hash == token_hash,
+            MediaVault.deleted_at.is_(None),
+        )
     )
     link = result.scalar_one_or_none()
     if not link:
@@ -556,6 +567,7 @@ async def _complete_upload(
     payload: MultipartCompleteRequest,
     guest_link: Optional[MediaVaultGuestLink] = None,
 ) -> VaultMediaResponse:
+    await get_vault_or_404(db, batch.vault_id)
     if item.processing_status == "ready":
         return await _media_response(item)
     if item.processing_status != "uploading" or not item.multipart_upload_id:
@@ -604,7 +616,7 @@ async def _complete_upload(
     vault = await db.scalar(
         select(MediaVault).where(MediaVault.id == batch.vault_id).with_for_update()
     )
-    if not vault:
+    if not vault or vault.deleted_at is not None:
         raise HTTPException(status_code=409, detail="Media vault no longer exists")
     vault.used_bytes += actual_size
     if guest_link:
@@ -838,7 +850,7 @@ async def list_vaults(
     db: AsyncSession = Depends(get_async_db),
 ):
     actor = await resolve_actor(current_user)
-    query = select(MediaVault)
+    query = select(MediaVault).where(MediaVault.deleted_at.is_(None))
     if not actor.is_admin:
         if not actor.member_id:
             return VaultListResponse(items=[], total=0)
@@ -882,6 +894,12 @@ def _library_access_conditions(actor: VaultActor):
     """Apply the same row visibility as the per-vault view before pagination."""
     conditions = [
         MediaItem.vault_id.is_not(None),
+        select(MediaVault.id)
+        .where(
+            MediaVault.id == MediaItem.vault_id,
+            MediaVault.deleted_at.is_(None),
+        )
+        .exists(),
         MediaItem.soft_deleted_at.is_(None),
         MediaItem.processing_status == "ready",
     ]
@@ -1058,6 +1076,48 @@ async def update_vault(
     await db.commit()
     await db.refresh(vault)
     return await _vault_response(db, vault, actor)
+
+
+@router.delete("/{vault_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_vault(
+    vault_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Remove a vault from use while retaining originals for recovery.
+
+    Existing S3 objects are deliberately not deleted here. Admins can remove
+    individual files from storage through the separate, explicit media action.
+    """
+    vault = await get_vault_or_404(db, vault_id)
+    deleted_at = utc_now()
+    vault.deleted_at = deleted_at
+    vault.status = "archived"
+    grants = await db.scalars(
+        select(MediaVaultGrant).where(
+            MediaVaultGrant.vault_id == vault_id,
+            MediaVaultGrant.revoked_at.is_(None),
+        )
+    )
+    for grant in grants:
+        grant.revoked_at = deleted_at
+    links = await db.scalars(
+        select(MediaVaultGuestLink).where(
+            MediaVaultGuestLink.vault_id == vault_id,
+            MediaVaultGuestLink.revoked_at.is_(None),
+        )
+    )
+    for link in links:
+        link.revoked_at = deleted_at
+    await write_audit(
+        db,
+        action="media.vault.delete",
+        actor=current_user,
+        entity_id=vault_id,
+        entity_type="media_vault",
+        new_value={"deleted_at": deleted_at.isoformat(), "storage_deleted": False},
+    )
+    await db.commit()
 
 
 @router.get("/{vault_id}/grants", response_model=list[VaultGrantResponse])
@@ -1762,6 +1822,7 @@ async def publish_items(
 async def request_item_preview(
     vault_id: uuid.UUID,
     item_id: uuid.UUID,
+    force: bool = False,
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -1780,8 +1841,10 @@ async def request_item_preview(
     if not item:
         raise HTTPException(status_code=404, detail="Vault media not found")
     is_video = item.media_type == MediaType.VIDEO
-    if (is_video and item.proxy_object_key) or (
-        not is_video and item.thumbnail_object_key
+    force = force and is_video
+    if not force and (
+        (is_video and item.proxy_object_key)
+        or (not is_video and item.thumbnail_object_key)
     ):
         return {"status": "ready"}
     metadata = dict(item.metadata_info or {})
@@ -1795,6 +1858,7 @@ async def request_item_preview(
             "task_build_vault_preview",
             str(item.id),
             is_video,
+            force and is_video,
             _queue_name="arq:media",
         )
     return {"status": metadata.get(status_key, "pending")}

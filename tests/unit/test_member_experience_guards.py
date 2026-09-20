@@ -133,6 +133,7 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
     conn.executescript("""
         CREATE TABLE media_items (id TEXT, vault_id TEXT, soft_deleted_at TEXT, processing_status TEXT, uploaded_by TEXT);
         CREATE TABLE media_vault_grants (id TEXT, vault_id TEXT, member_id TEXT, revoked_at TEXT, starts_at TEXT, expires_at TEXT, role TEXT);
+        CREATE TABLE media_vaults (id TEXT, deleted_at TEXT);
     """)
     expected = []
     for role, state in [
@@ -144,6 +145,7 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
         ("curator", "other-member"),
     ]:
         vault_id = uuid4().hex
+        conn.execute("INSERT INTO media_vaults VALUES (?,?)", (vault_id, None))
         conn.execute(
             "INSERT INTO media_vault_grants VALUES (?,?,?,?,?,?,?)",
             (
@@ -173,6 +175,14 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
             "INSERT INTO media_items VALUES (?,?,?,?,?)",
             (uuid4().hex, vault_id, deleted, processing, actor.auth_id.hex),
         )
+    removed_vault_id = uuid4().hex
+    conn.execute(
+        "INSERT INTO media_vaults VALUES (?,?)", (removed_vault_id, "2026-09-10")
+    )
+    conn.execute(
+        "INSERT INTO media_items VALUES (?,?,?,?,?)",
+        (uuid4().hex, removed_vault_id, None, "ready", actor.auth_id.hex),
+    )
 
     def visible(current_actor):
         query = select(MediaItem.id).where(

@@ -34,6 +34,10 @@ def _run_video_proxy(input_path: str, proxy_path: str) -> None:
             "25",
             "-preset",
             "fast",
+            "-pix_fmt",
+            "yuv420p",
+            "-profile:v",
+            "high",
             "-vf",
             "scale='min(1280,iw)':-2",
             "-c:a",
@@ -78,7 +82,9 @@ def _run_video_thumbnail(input_path: str, thumbnail_path: str) -> None:
 
 
 async def build_vault_preview(
-    media_item_id: str, generate_video_proxy: bool = True
+    media_item_id: str,
+    generate_video_proxy: bool = True,
+    force_video_proxy: bool = False,
 ) -> dict:
     item_uuid = uuid.UUID(media_item_id)
     async with AsyncSessionLocal() as db:
@@ -91,7 +97,7 @@ async def build_vault_preview(
             if is_video and generate_video_proxy
             else item.thumbnail_object_key
         )
-        if derivative_exists:
+        if derivative_exists and not (is_video and force_video_proxy):
             return {"status": "ready"}
         metadata = dict(item.metadata_info or {})
         status_key = (
@@ -117,7 +123,7 @@ async def build_vault_preview(
                 input_path,
             )
             derivative_prefix = f"vault-derivatives/{vault_id}/{item_uuid}"
-            proxy_key = existing_proxy_key
+            proxy_key = None if force_video_proxy else existing_proxy_key
             thumbnail_key = existing_thumbnail_key
 
             if media_type == MediaType.VIDEO:

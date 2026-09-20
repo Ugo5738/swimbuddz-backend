@@ -55,12 +55,17 @@ async def task_build_vault_export(ctx: dict, export_id: str):
 
 
 async def task_build_vault_preview(
-    ctx: dict, media_item_id: str, generate_video_proxy: bool = True
+    ctx: dict,
+    media_item_id: str,
+    generate_video_proxy: bool = True,
+    force_video_proxy: bool = False,
 ):
     """Generate a thumbnail, and a video proxy only when requested."""
     from services.media_service.tasks.vault_previews import build_vault_preview
 
-    return await build_vault_preview(media_item_id, generate_video_proxy)
+    return await build_vault_preview(
+        media_item_id, generate_video_proxy, force_video_proxy
+    )
 
 
 async def task_cleanup_vault_exports(ctx: dict):

@@ -70,6 +70,7 @@ async def write_audit(
     action: str,
     actor: AuthUser,
     entity_id: uuid.UUID,
+    entity_type: str = "media_item",
     request: Optional[Request] = None,
     reason: Optional[str] = None,
     old_value: Optional[dict] = None,
@@ -86,7 +87,7 @@ async def write_audit(
     try:
         row = MediaAuditLog(
             domain="media",
-            entity_type="media_item",
+            entity_type=entity_type,
             entity_id=entity_id,
             action=action,
             actor_id=uuid.UUID(actor.user_id)
