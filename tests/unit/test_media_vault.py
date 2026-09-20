@@ -9,7 +9,11 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from services.media_service.routers.vaults import _media_type_for, _safe_filename
+from services.media_service.routers.vaults import (
+    _media_type_for,
+    _safe_filename,
+    delete_vault,
+)
 from services.media_service.schemas.vault import (
     MultipartInitiateRequest,
     UploadBatchCreate,
@@ -192,6 +196,7 @@ async def test_admin_can_bypass_closed_upload_window_but_not_archive():
         upload_opens_at=now - timedelta(days=4),
         upload_closes_at=now - timedelta(days=1),
         status="review",
+        deleted_at=None,
     )
 
     with pytest.raises(HTTPException, match="upload window has closed"):
@@ -202,6 +207,54 @@ async def test_admin_can_bypass_closed_upload_window_but_not_archive():
     vault.status = "archived"
     with pytest.raises(HTTPException, match="vault is archived"):
         await require_upload_window(vault, bypass_time_window=True)
+
+    vault.deleted_at = now
+    with pytest.raises(HTTPException) as raised:
+        await require_upload_window(vault, bypass_time_window=True)
+    assert raised.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_deleting_vault_revokes_access_but_keeps_storage(monkeypatch):
+    from services.media_service.routers import vaults
+
+    vault = SimpleNamespace(id=uuid.uuid4(), deleted_at=None, status="open")
+    grant = SimpleNamespace(revoked_at=None)
+    link = SimpleNamespace(revoked_at=None)
+    db = SimpleNamespace(
+        scalars=AsyncMock(side_effect=[[grant], [link]]),
+        commit=AsyncMock(),
+    )
+    monkeypatch.setattr(vaults, "get_vault_or_404", AsyncMock(return_value=vault))
+    audit = AsyncMock()
+    monkeypatch.setattr(vaults, "write_audit", audit)
+
+    await delete_vault(vault.id, current_user=SimpleNamespace(), db=db)
+
+    assert vault.deleted_at is not None
+    assert vault.status == "archived"
+    assert grant.revoked_at == vault.deleted_at
+    assert link.revoked_at == vault.deleted_at
+    assert audit.await_args.kwargs["new_value"]["storage_deleted"] is False
+    db.commit.assert_awaited_once()
+
+
+def test_review_proxy_uses_mobile_playable_h264(monkeypatch):
+    from services.media_service.tasks import vault_previews
+
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(vault_previews.subprocess, "run", fake_run)
+    vault_previews._run_video_proxy("original.mov", "review.mp4")
+    args = calls[0]
+    assert args[args.index("-c:v") + 1] == "libx264"
+    assert args[args.index("-pix_fmt") + 1] == "yuv420p"
+    assert args[args.index("-c:a") + 1] == "aac"
+    assert "+faststart" in args
 
 
 def test_session_vault_defaults_use_local_date_and_coverage_standard():

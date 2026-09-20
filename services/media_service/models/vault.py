@@ -68,6 +68,9 @@ class MediaVault(Base):
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="scheduled", index=True
     )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     upload_opens_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

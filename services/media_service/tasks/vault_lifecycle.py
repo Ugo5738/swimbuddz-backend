@@ -121,6 +121,10 @@ async def sync_session_vaults() -> dict[str, int | str]:
             )
             if vault:
                 existing += 1
+                # A deleted session vault is a tombstone: the scheduler must
+                # not recreate it or silently restore volunteer access.
+                if vault.deleted_at is not None:
+                    continue
                 try:
                     if extend_existing_session_vault_window(vault, session, now=now):
                         await db.commit()

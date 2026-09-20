@@ -86,6 +86,8 @@ async def require_upload_window(
     vault: MediaVault, *, bypass_time_window: bool = False
 ) -> None:
     now = utc_now()
+    if vault.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Media vault not found")
     if vault.status == "archived":
         raise HTTPException(status_code=409, detail="This vault is archived")
     if bypass_time_window:
@@ -97,7 +99,11 @@ async def require_upload_window(
 
 
 async def get_vault_or_404(db: AsyncSession, vault_id: uuid.UUID) -> MediaVault:
-    result = await db.execute(select(MediaVault).where(MediaVault.id == vault_id))
+    result = await db.execute(
+        select(MediaVault).where(
+            MediaVault.id == vault_id, MediaVault.deleted_at.is_(None)
+        )
+    )
     vault = result.scalar_one_or_none()
     if not vault:
         raise HTTPException(status_code=404, detail="Media vault not found")
