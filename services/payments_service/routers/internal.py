@@ -277,6 +277,9 @@ async def internal_initialize_payment(
         req.currency = context["currency"]
         req.metadata = {**(req.metadata or {}), **academy_payment_metadata(context)}
 
+    if req.payment_method == "manual_transfer" and req.currency != "NGN":
+        raise HTTPException(422, "The bank-transfer account accepts NGN only")
+
     final_amount = req.amount
     charge_lines: list[dict] = []
     charge_total_kobo = 0

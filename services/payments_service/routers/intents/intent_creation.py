@@ -930,6 +930,8 @@ async def create_payment_intent(
             use_installments=payload.use_installments,
             amount_override_kobo=payload.amount_override_kobo,
         )
+        if context["currency"] != payload.currency:
+            raise HTTPException(409, "Use the enrollment's frozen checkout currency")
         amount = kobo_to_naira(int(context["subtotal_kobo"]))
         payment_metadata = {
             **(payload.payment_metadata or {}),
