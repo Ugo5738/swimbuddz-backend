@@ -74179,6 +74179,27 @@
       },
       "SessionTemplateCreate": {
         "properties": {
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id"
+          },
+          "cohort_fee_mode": {
+            "type": "string",
+            "enum": [
+              "included",
+              "paid_extra"
+            ],
+            "title": "Cohort Fee Mode",
+            "default": "included"
+          },
           "club_id": {
             "anyOf": [
               {
@@ -74343,6 +74364,27 @@
       },
       "SessionTemplateResponse": {
         "properties": {
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id"
+          },
+          "cohort_fee_mode": {
+            "type": "string",
+            "enum": [
+              "included",
+              "paid_extra"
+            ],
+            "title": "Cohort Fee Mode",
+            "default": "included"
+          },
           "club_id": {
             "anyOf": [
               {
@@ -74537,6 +74579,33 @@
       },
       "SessionTemplateUpdate": {
         "properties": {
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id"
+          },
+          "cohort_fee_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "included",
+                  "paid_extra"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Fee Mode"
+          },
           "club_id": {
             "anyOf": [
               {

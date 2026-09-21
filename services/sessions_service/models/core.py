@@ -307,6 +307,10 @@ class SessionTemplate(Base):
     __tablename__ = "session_templates"
     __table_args__ = (
         CheckConstraint(
+            "cohort_fee_mode IN ('included','paid_extra') AND (session_type = 'cohort_class' OR (cohort_id IS NULL AND cohort_fee_mode = 'included'))",
+            name="ck_session_templates_cohort_context",
+        ),
+        CheckConstraint(
             "club_access_mode IN ('plan_included','active_club','paid_addon') AND (session_type = 'club' OR (club_id IS NULL AND club_access_mode = 'plan_included')) AND (club_access_mode = 'plan_included' OR club_id IS NOT NULL)",
             name="ck_session_templates_club_access_mode",
         ),
@@ -367,6 +371,14 @@ class SessionTemplate(Base):
     )
 
     # Capacity & Fees
+    # Academy owns cohorts; validate over HTTP, not a cross-service foreign key.
+    # Legacy templates have no cohort until an Admin explicitly assigns one.
+    cohort_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    cohort_fee_mode: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="included", server_default="included"
+    )
     capacity: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
     pool_fee: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     ride_share_fee: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

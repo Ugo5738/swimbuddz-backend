@@ -34,6 +34,10 @@ from services.sessions_service.services.notifications import (
     trigger_session_published_notifications,
 )
 from services.sessions_service.services.club_scope import require_valid_club_scope
+from services.sessions_service.services.template_context import (
+    require_template_cohort,
+    validate_template_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +101,7 @@ async def create_template(
         pod_id=template_in.pod_id,
     )
     template_data = template_in.model_dump()
+    await require_template_cohort(template_in.cohort_id)
     from services.sessions_service.routers.club_operations import validate_club_scope
 
     await validate_club_scope(template_data)
@@ -162,6 +167,21 @@ async def update_template(
         update_data["club_id"] = scope.get("club_id")
 
     effective_type = update_data.get("session_type", template.session_type)
+    if "cohort_fee_mode" in update_data and update_data["cohort_fee_mode"] is None:
+        raise HTTPException(422, "Choose included or paid_extra for class billing.")
+    if "session_type" in update_data and effective_type != SessionType.COHORT_CLASS:
+        update_data["cohort_id"] = None
+        update_data["cohort_fee_mode"] = "included"
+    if {"session_type", "cohort_id", "cohort_fee_mode"} & update_data.keys():
+        cohort_id = update_data.get("cohort_id", getattr(template, "cohort_id", None))
+        mode = update_data.get(
+            "cohort_fee_mode", getattr(template, "cohort_fee_mode", "included")
+        )
+        try:
+            validate_template_context(effective_type, cohort_id, mode)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        await require_template_cohort(cohort_id)
     scope_fields = {"session_type", "club_id", "pod_id"}
     if scope_fields & set(update_data):
         effective_type_value = getattr(effective_type, "value", effective_type)
@@ -305,6 +325,16 @@ async def generate_sessions(
             409, "Restore this archived template before generating sessions."
         )
 
+    # Older Academy templates lacked context; fail clearly before flushing any
+    # rows rather than surfacing the Session discriminator as an internal error.
+    cohort_id = getattr(template, "cohort_id", None)
+    cohort_fee_mode = getattr(template, "cohort_fee_mode", None) or "included"
+    try:
+        validate_template_context(template.session_type, cohort_id, cohort_fee_mode)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    await require_template_cohort(cohort_id)
+
     if (
         template.session_type == SessionType.CLUB
         and template.club_access_mode == "plan_included"
@@ -407,6 +437,8 @@ async def generate_sessions(
             pool_id=template.pool_id,
             location_name=session_location_name,
             session_type=template.session_type,
+            cohort_id=cohort_id,
+            cohort_fee_mode=cohort_fee_mode,
             pod_id=template.pod_id,
             club_access_mode=template.club_access_mode,
             pool_fee=template.pool_fee,  # both are kobo integers after migration

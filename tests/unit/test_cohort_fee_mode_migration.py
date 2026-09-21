@@ -9,7 +9,10 @@ def test_new_migration_follows_current_sessions_head_without_backfilling_charges
     scripts = ScriptDirectory.from_config(
         Config("services/sessions_service/alembic.ini")
     )
-    assert scripts.get_current_head() == "c6e8a0b2d914"
+    assert len(scripts.get_heads()) == 1
+    assert "c6e8a0b2d914" in {
+        revision.revision for revision in scripts.walk_revisions()
+    }
     migration = scripts.get_revision("c6e8a0b2d914")
     assert migration.down_revision == "b4d8f0a2c613"
     column = Session.__table__.c.cohort_fee_mode
