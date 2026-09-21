@@ -76,7 +76,7 @@ async def initiate_topup(
     await db.refresh(topup)
 
     # 4. Call payments service to initialize Paystack
-    if payment_method == PaymentMethod.PAYSTACK:
+    if payment_method in {PaymentMethod.PAYSTACK, PaymentMethod.BANK_TRANSFER}:
         try:
             resp = await internal_post(
                 service_url=settings.PAYMENTS_SERVICE_URL,
@@ -84,6 +84,9 @@ async def initiate_topup(
                 calling_service="wallet",
                 json={
                     "purpose": "wallet_topup",
+                    "payment_method": "manual_transfer"
+                    if payment_method == PaymentMethod.BANK_TRANSFER
+                    else "paystack",
                     "amount": naira_amount,  # Naira (payments service converts to kobo)
                     "currency": "NGN",
                     "reference": reference,
@@ -189,7 +192,7 @@ async def confirm_topup(
         amount=topup.bubbles_amount,
         idempotency_key=f"topup-{topup.id}",
         transaction_type=TransactionType.TOPUP,
-        description=f"Added {topup.bubbles_amount} 🫧 via Paystack",
+        description=f"Added {topup.bubbles_amount} 🫧 via {topup.payment_method.value}",
         service_source="wallet_service",
         reference_type="topup",
         reference_id=str(topup.id),

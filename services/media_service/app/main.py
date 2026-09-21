@@ -13,6 +13,9 @@ from services.media_service.routers.assets import router as assets_router
 from services.media_service.routers.audio import router as audio_router
 from services.media_service.routers.internal import router as internal_router
 from services.media_service.routers.media import router as media_router
+from services.media_service.routers.payment_proofs import (
+    router as payment_proofs_router,
+)
 from services.media_service.routers.vaults import router as vaults_router
 
 settings = get_settings()
@@ -35,6 +38,7 @@ app.add_middleware(
 # Include routers
 app.include_router(albums_router)
 app.include_router(media_router)
+app.include_router(payment_proofs_router)
 app.include_router(assets_router)
 app.include_router(audio_router)
 app.include_router(internal_router)

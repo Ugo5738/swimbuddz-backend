@@ -107,6 +107,7 @@ async def initialize_store_payment(
     reference: str | None = None,
     bubbles_to_apply: int = 0,
     wallet_hold_id: str | None = None,
+    payment_method: str = "paystack",
     calling_service: str,
 ) -> dict:
     """Initialize a Paystack transaction for a store order via payments_service.
@@ -122,6 +123,7 @@ async def initialize_store_payment(
         calling_service=calling_service,
         json={
             "purpose": "store_order",
+            "payment_method": payment_method,
             "amount": amount_ngn,
             "currency": "NGN",
             "reference": payment_reference,

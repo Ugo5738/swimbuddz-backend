@@ -97,13 +97,22 @@ async def resume_product_payment(db, payment, payload):
             "paystack": {"authorization_url": checkout_url, "access_code": code},
         }
         await db.commit()
+    if (
+        payment.payment_method == "manual_transfer"
+        and payment.status != PaymentStatus.PAID
+    ):
+        from services.payments_service.services.manual_transfer import (
+            transfer_checkout_url,
+        )
+
+        checkout_url = transfer_checkout_url(payment.reference)
     return PaymentIntentResponse(
         reference=payment.reference,
         amount=payment.amount,
         currency=payment.currency,
         purpose=payment.purpose,
         status=payment.status,
-        checkout_url=checkout_url if payment.status == PaymentStatus.PENDING else None,
+        checkout_url=checkout_url if payment.status != PaymentStatus.PAID else None,
         created_at=payment.created_at,
         checkout_quote=quote,
         original_amount=quote["subtotal_kobo"] / 100,

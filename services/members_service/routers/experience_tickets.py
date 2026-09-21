@@ -369,6 +369,7 @@ def ticket_payment_request(order, body, current_user):
         components[scope] = components.get(scope, 0) + participant.price_kobo
     return {
         "purpose": "community_experience",
+        "payment_method": body.payment_method,
         "amount": order.amount_kobo / 100,
         "currency": order.currency,
         "reference": order.payment_reference,
@@ -379,6 +380,9 @@ def ticket_payment_request(order, body, current_user):
         "expected_total_kobo": getattr(body, "expected_total_kobo", None),
         "metadata": {
             "experience_order_id": str(order.id),
+            "reservation_expires_at": order.expires_at.isoformat()
+            if order.expires_at
+            else None,
             "community_experience_offering_id": str(order.offering_id),
             "payer_email": order.payer_email,
             "experience_order_amount_kobo": order.amount_kobo,

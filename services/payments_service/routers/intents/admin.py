@@ -127,6 +127,7 @@ class AdminBookingOfflinePaymentRequest(BaseModel):
     received_at: Optional[datetime] = None
     external_reference: Optional[str] = Field(default=None, max_length=128)
     note: Optional[str] = Field(default=None, max_length=500)
+    proof_media_id: uuid.UUID | None = None
 
     @field_validator("external_reference", "note")
     @classmethod
@@ -207,6 +208,13 @@ async def admin_record_booking_offline_payment(
             detail="Booking has no outstanding session fee.",
         )
 
+    from services.payments_service.services.manual_transfer import (
+        lock_external_reference,
+    )
+
+    await lock_external_reference(db, payload.external_reference)
+    await lock_external_reference(db, f"booking:{booking_id}")
+
     existing_paid = await _find_paid_booking_payment(db, booking_id)
     if existing_paid is not None:
         raise HTTPException(
@@ -223,7 +231,6 @@ async def admin_record_booking_offline_payment(
                 select(Payment)
                 .where(
                     Payment.status == PaymentStatus.PAID,
-                    Payment.provider == "offline",
                     func.lower(Payment.provider_reference)
                     == payload.external_reference.lower(),
                 )
@@ -286,8 +293,18 @@ async def admin_record_booking_offline_payment(
             "admin_note": payload.note,
         },
     )
+    if payload.proof_media_id:
+        from services.payments_service.services.manual_transfer import (
+            validate_receipt_media,
+        )
+
+        await validate_receipt_media(payload.proof_media_id, payment, current_user)
+        payment.proof_of_payment_media_id = payload.proof_media_id
     db.add(payment)
-    await db.commit()
+    # Keep the receipt/booking advisory locks through the PAID transition.
+    # Committing the pending row here would let a second recorder pass the
+    # duplicate checks before the first payment is settled.
+    await db.flush()
     await db.refresh(payment)
 
     payment = await _mark_paid_and_apply(

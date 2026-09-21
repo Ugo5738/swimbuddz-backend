@@ -118,6 +118,8 @@ async def price_product_checkout(
     bubbles_to_apply: int = 0,
     consume_discount: bool = False,
 ) -> dict:
+    if payment_method == "manual_transfer" and currency != "NGN":
+        raise HTTPException(422, "The bank-transfer account accepts NGN only")
     if currency != "NGN" and (discount_code or bubbles_to_apply):
         raise HTTPException(400, "Discounts and Bubbles currently require NGN checkout")
     allocations = {}

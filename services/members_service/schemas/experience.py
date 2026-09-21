@@ -73,6 +73,7 @@ class ExperienceOrderAccess(BaseModel):
 
 
 class ExperienceOrderCheckout(ExperienceOrderAccess):
+    payment_method: Literal["paystack", "manual_transfer"] = "paystack"
     discount_code: str | None = None
     bubbles_to_apply: int = Field(default=0, ge=0)
     expected_total_kobo: int | None = Field(default=None, ge=0)
