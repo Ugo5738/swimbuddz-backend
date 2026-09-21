@@ -89,6 +89,7 @@ async def test_product_key_is_member_scoped_and_keeps_pay_prefix():
 def test_existing_cash_experience_is_resumable_but_modifiers_are_locked():
     req = SimpleNamespace(
         member_auth_id="ay",
+        payment_method="paystack",
         currency="NGN",
         discount_code=None,
         bubbles_to_apply=0,
@@ -99,6 +100,7 @@ def test_existing_cash_experience_is_resumable_but_modifiers_are_locked():
     )
     payment = SimpleNamespace(
         member_auth_id="ay",
+        payment_method="paystack",
         currency="NGN",
         amount=50100,
         payment_metadata={

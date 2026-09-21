@@ -125,6 +125,32 @@ async def approve_manual_payment(
             detail=f"Cannot approve payment in status: {payment.status.value}",
         )
 
+    submitted = (payment.payment_metadata or {}).get("submitted_transfer")
+    if submitted:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from libs.common.currency import naira_to_kobo
+        from services.payments_service.schemas.manual_recording import (
+            OfflinePaymentRecord,
+        )
+        from services.payments_service.services.manual_transfer import settle_offline
+
+        return await settle_offline(
+            db,
+            payment,
+            OfflinePaymentRecord(
+                amount_kobo=naira_to_kobo(payment.amount),
+                payment_method="bank_transfer",
+                received_at=datetime.fromisoformat(submitted["received_date"]).replace(
+                    tzinfo=ZoneInfo("Africa/Lagos")
+                ),
+                external_reference=submitted["external_reference"],
+                note=(payload.note or "Bank credit verified by Admin")[:440]
+                + "; received date supplied, exact time unspecified",
+            ),
+            current_user,
+        )
+
     payment.status = PaymentStatus.PAID
     payment.provider = "manual_transfer"
     payment.paid_at = utc_now()

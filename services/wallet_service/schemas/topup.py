@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from services.wallet_service.models.enums import PaymentMethod, TopupStatus
@@ -12,7 +12,9 @@ class TopupInitiateRequest(BaseModel):
     bubbles_amount: int = Field(
         ..., ge=25, le=5000, description="Bubbles to purchase (25–5,000)"
     )
-    payment_method: PaymentMethod = PaymentMethod.PAYSTACK
+    payment_method: Literal[PaymentMethod.PAYSTACK, PaymentMethod.BANK_TRANSFER] = (
+        PaymentMethod.PAYSTACK
+    )
     callback_url: Optional[str] = Field(
         None,
         description="Frontend path to redirect to after payment (e.g. /coach/wallet). Defaults to /account/wallet.",

@@ -1,6 +1,6 @@
 import uuid
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
@@ -19,6 +19,7 @@ class GuestPassOffer(BaseModel):
 
 
 class GuestPassCreate(BaseModel):
+    payment_method: Literal["paystack", "manual_transfer"] = "paystack"
     full_name: str = Field(..., min_length=2, max_length=160)
     email: EmailStr
     phone: str = Field(..., min_length=7, max_length=32)

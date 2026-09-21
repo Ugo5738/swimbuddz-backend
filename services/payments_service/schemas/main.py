@@ -46,7 +46,7 @@ class SessionRideConfig(BaseModel):
 class CreatePaymentIntentRequest(BaseModel):
     purpose: PaymentPurpose
     currency: str = Field(default="NGN", min_length=3, max_length=8)
-    payment_method: str = Field(default="paystack")  # paystack or manual_transfer
+    payment_method: Literal["paystack", "manual_transfer"] = "paystack"
 
     years: int = Field(default=1, ge=1, le=5)
     months: int = Field(default=1, ge=1, le=24)
@@ -340,6 +340,7 @@ class InternalInitializeRequest(BaseModel):
     """
 
     purpose: str  # e.g. "wallet_topup"
+    payment_method: Literal["paystack", "manual_transfer"] = "paystack"
     amount: float  # Naira amount (will be converted to kobo internally)
     currency: str = "NGN"
     reference: str
