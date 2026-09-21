@@ -25,7 +25,7 @@ Internal route (service-role only):
 from __future__ import annotations
 
 import uuid
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_service_role
@@ -79,6 +79,10 @@ class FoundingMemberStatus(BaseModel):
 class FoundingInitializeResponse(BaseModel):
     authorization_url: str
     reference: str
+
+
+class FoundingInitializeRequest(BaseModel):
+    payment_method: Literal["paystack", "manual_transfer"] = "paystack"
 
 
 class FoundingClaimRequest(BaseModel):
@@ -239,6 +243,7 @@ async def my_founding_status(
     summary="Start a Paystack checkout for a founding-member spot",
 )
 async def initialize_founding_payment(
+    body: FoundingInitializeRequest = FoundingInitializeRequest(),
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ) -> FoundingInitializeResponse:
@@ -261,6 +266,7 @@ async def initialize_founding_payment(
             calling_service="ai",
             json={
                 "purpose": "strokelab_founding",
+                "payment_method": body.payment_method,
                 "amount": _PRICE_NGN,  # Naira; payments converts to kobo
                 "currency": "NGN",
                 "reference": reference,

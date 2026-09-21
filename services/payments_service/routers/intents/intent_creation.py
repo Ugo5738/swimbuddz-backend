@@ -726,6 +726,8 @@ async def create_payment_intent(
     """
     Create a payment intent (records a pending payment) and (if configured) initializes Paystack checkout.
     """
+    if payload.payment_method == "manual_transfer" and payload.currency != "NGN":
+        raise HTTPException(422, "The bank-transfer account accepts NGN only")
     if payload.purpose in PRODUCT_PURPOSES:
         # Commercial components, wallet capture markers and fulfillment state
         # belong to the server, never to an arbitrary public metadata object.
@@ -928,6 +930,8 @@ async def create_payment_intent(
             use_installments=payload.use_installments,
             amount_override_kobo=payload.amount_override_kobo,
         )
+        if context["currency"] != payload.currency:
+            raise HTTPException(409, "Use the enrollment's frozen checkout currency")
         amount = kobo_to_naira(int(context["subtotal_kobo"]))
         payment_metadata = {
             **(payload.payment_metadata or {}),
@@ -1095,6 +1099,7 @@ async def create_payment_intent(
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "booking_id": str(booking_id),
+            "reservation_expires_at": booking_quote.get("expires_at"),
             "session_id": str(booking_session_id),
             "member_id": str(booking_quote["member_id"]),
             "ride_config_id": (str(ride_line["ride_config_id"]) if ride_line else None),
@@ -1117,11 +1122,6 @@ async def create_payment_intent(
 
     # Session bundle — book multiple sessions in one payment intent
     elif payload.purpose == PaymentPurpose.SESSION_BUNDLE:
-        if payload.payment_method != "paystack":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Session bundles must be settled during online checkout",
-            )
         if not payload.session_ids or len(payload.session_ids) == 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1204,6 +1204,7 @@ async def create_payment_intent(
             "session_ids": [str(sid) for sid in payload.session_ids],
             "session_count": len(payload.session_ids),
             "booking_ids": [str(line["booking_id"]) for line in reservation["lines"]],
+            "reservation_expires_at": reservation.get("expires_at"),
             "member_id": str(reservation["member_id"]),
             "session_ride_configs": quoted_ride_configs or None,
             "bundle_price": {
@@ -1676,6 +1677,16 @@ async def create_payment_intent(
                 else None
             ),
         }
+
+    if (
+        payload.payment_method == "manual_transfer"
+        and payment.status == PaymentStatus.PENDING
+    ):
+        from services.payments_service.services.manual_transfer import (
+            transfer_checkout_url,
+        )
+
+        checkout_url = transfer_checkout_url(payment.reference)
 
     return PaymentIntentResponse(
         reference=payment.reference,

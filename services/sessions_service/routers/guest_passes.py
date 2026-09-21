@@ -213,6 +213,7 @@ async def create_guest_pass(
             calling_service="sessions",
             json={
                 "purpose": "guest_pass",
+                "payment_method": body.payment_method,
                 "amount": price_kobo / 100,
                 "currency": "NGN",
                 "reference": guest_pass.payment_reference,
@@ -220,6 +221,7 @@ async def create_guest_pass(
                 "callback_url": f"/guest-pass/{guest_pass.id}",
                 "metadata": {
                     "guest_pass_id": str(guest_pass.id),
+                    "reservation_expires_at": guest_pass.reservation_expires_at.isoformat(),
                     "session_id": str(session.id),
                     "payer_email": guest_pass.email,
                     "referral_code": guest_pass.referral_code,

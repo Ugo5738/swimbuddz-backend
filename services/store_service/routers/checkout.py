@@ -186,6 +186,9 @@ async def initialize_payment(
             detail="Order total is zero — no payment required",
         )
 
+    if request.payment_method == "manual_transfer" and order.bubbles_applied:
+        raise HTTPException(422, "Remove Bubbles before choosing bank transfer")
+
     # Check if already initialized (idempotent — return existing reference)
     if order.payment_reference:
         try:
@@ -218,6 +221,7 @@ async def initialize_payment(
                     order_number=order.order_number,
                     callback_url=_STORE_PAYMENT_CALLBACK,
                     reference=order.payment_reference,
+                    payment_method=request.payment_method,
                     bubbles_to_apply=order.bubbles_applied or 0,
                     wallet_hold_id=order.wallet_hold_id,
                     calling_service="store",
@@ -307,6 +311,7 @@ async def initialize_payment(
             order_number=order.order_number,
             callback_url=_STORE_PAYMENT_CALLBACK,
             reference=payment_reference,
+            payment_method=request.payment_method,
             bubbles_to_apply=order.bubbles_applied or 0,
             wallet_hold_id=order.wallet_hold_id,
             calling_service="store",

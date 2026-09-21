@@ -2,7 +2,7 @@
 
 import uuid
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -56,6 +56,7 @@ class PaymentInitRequest(BaseModel):
     """Initialize payment for order."""
 
     order_id: uuid.UUID
+    payment_method: Literal["paystack", "manual_transfer"] = "paystack"
 
 
 class PaymentInitResponse(BaseModel):

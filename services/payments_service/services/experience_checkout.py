@@ -56,6 +56,7 @@ def frozen_quote(payment, req):
         not quote
         or payment.member_auth_id != req.member_auth_id
         or payment.currency != req.currency
+        or payment.payment_method != req.payment_method
         or meta.get("experience_order_id")
         != (req.metadata or {}).get("experience_order_id")
     ):
@@ -93,6 +94,7 @@ async def preview_experience_checkout(req, db, *, consume_discount=False):
             PaymentPurpose.COMMUNITY_EXPERIENCE, naira_to_kobo(req.amount), req.metadata
         ),
         discount_code=req.discount_code,
+        payment_method=req.payment_method,
         bubbles_to_apply=req.bubbles_to_apply,
         consume_discount=consume_discount,
     )
@@ -132,7 +134,7 @@ async def initialize_experience_checkout(req, db):
                 confirmed=bool(payment.entitlement_applied_at),
                 checkout_quote=quote,
             )
-        if payment.status != PaymentStatus.PENDING:
+        if payment.status not in {PaymentStatus.PENDING, PaymentStatus.PENDING_REVIEW}:
             raise HTTPException(
                 409,
                 "This payment is closed. Check its status before starting a new order.",
@@ -144,7 +146,11 @@ async def initialize_experience_checkout(req, db):
     else:
         quote = await preview_experience_checkout(req, db, consume_discount=True)
         verify_expected_total(quote, req.expected_total_kobo)
-        if quote["total_kobo"] and not _paystack_enabled():
+        if (
+            quote["total_kobo"]
+            and req.payment_method == "paystack"
+            and not _paystack_enabled()
+        ):
             raise HTTPException(503, "Online payment is currently unavailable")
         payment_id = uuid.uuid4()
         hold_id = None
@@ -183,7 +189,7 @@ async def initialize_experience_checkout(req, db):
             amount=quote["total_kobo"] / 100,
             currency=req.currency,
             status=PaymentStatus.PENDING,
-            payment_method="paystack",
+            payment_method=req.payment_method,
             payment_metadata={
                 **req.metadata,
                 "checkout_quote": quote,
@@ -223,6 +229,24 @@ async def initialize_experience_checkout(req, db):
             confirmed=bool(payment.entitlement_applied_at),
             checkout_quote=quote,
         )
+    if req.payment_method == "manual_transfer":
+        from services.payments_service.services.manual_transfer import (
+            transfer_checkout_url,
+        )
+
+        response = InternalInitializeResponse(
+            reference=req.reference,
+            authorization_url=transfer_checkout_url(req.reference),
+            amount_kobo=quote["total_kobo"],
+            additional_charges=quote["additional_charges"],
+            checkout_quote=quote,
+        )
+        payment.payment_metadata = {
+            **payment.payment_metadata,
+            "internal_checkout": response.model_dump(),
+        }
+        await db.commit()
+        return response
     # Persisted choices/hold survive an uncertain provider response. Retry this
     # reference; never reserve a second wallet debit or consume a second code use.
     authorization_url, access_code = await _initialize_paystack(

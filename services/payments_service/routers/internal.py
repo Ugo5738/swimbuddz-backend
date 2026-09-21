@@ -204,7 +204,7 @@ async def internal_initialize_payment(
     req: InternalInitializeRequest,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Initialize a Paystack transaction on behalf of another service.
+    """Initialize an online or manual-transfer checkout for another service.
 
     Called by wallet_service for topups, or any service needing Paystack.
     If purpose maps to PaymentPurpose, a Payment intent record is persisted
@@ -212,6 +212,13 @@ async def internal_initialize_payment(
 
     Auth: service-role JWT only (via ``require_service_role``).
     """
+    if req.payment_method == "manual_transfer" and req.currency != "NGN":
+        raise HTTPException(422, "The bank-transfer account accepts NGN only")
+    if req.payment_method == "manual_transfer" and (
+        (req.metadata or {}).get("bubbles_to_apply")
+        or (req.metadata or {}).get("wallet_hold_id")
+    ):
+        raise HTTPException(422, "Bubbles cannot be combined with bank transfer")
     if (
         req.purpose == "community_experience"
         and (req.metadata or {}).get("checkout_components_kobo") is not None
@@ -226,7 +233,7 @@ async def internal_initialize_payment(
             422,
             "Discounts and Bubbles require member product checkout or a named Experience order",
         )
-    if not _paystack_enabled():
+    if req.payment_method == "paystack" and not _paystack_enabled():
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail="Paystack is not configured.",
@@ -270,6 +277,9 @@ async def internal_initialize_payment(
         req.currency = context["currency"]
         req.metadata = {**(req.metadata or {}), **academy_payment_metadata(context)}
 
+    if req.payment_method == "manual_transfer" and req.currency != "NGN":
+        raise HTTPException(422, "The bank-transfer account accepts NGN only")
+
     final_amount = req.amount
     charge_lines: list[dict] = []
     charge_total_kobo = 0
@@ -277,7 +287,7 @@ async def internal_initialize_payment(
         charge_lines, charge_total_kobo = await calculate_additional_charges(
             db,
             purpose=purpose_enum,
-            payment_method="paystack",
+            payment_method=req.payment_method,
             subtotal_kobo=_to_kobo(req.amount),
         )
         final_amount = req.amount + (charge_total_kobo / 100)
@@ -305,9 +315,11 @@ async def internal_initialize_payment(
                 amount=final_amount,
                 currency=req.currency,
                 status=PaymentStatus.PENDING,
-                provider="paystack",
-                provider_reference=req.reference,
-                payment_method="paystack",
+                provider="paystack" if req.payment_method == "paystack" else None,
+                provider_reference=req.reference
+                if req.payment_method == "paystack"
+                else None,
+                payment_method=req.payment_method,
                 session_booking_id=session_booking_id,
                 payment_metadata={
                     **(req.metadata or {}),
@@ -325,6 +337,7 @@ async def internal_initialize_payment(
             frozen = payment.payment_metadata or {}
             if (
                 payment.member_auth_id != req.member_auth_id
+                or payment.payment_method != req.payment_method
                 or payment.purpose != purpose_enum
                 or payment.currency != req.currency
                 or int(frozen.get("subtotal_kobo", _to_kobo(payment.amount)))
@@ -339,6 +352,36 @@ async def internal_initialize_payment(
             charge_total_kobo = int(frozen.get("additional_charges_total_kobo", 0))
             if frozen.get("internal_checkout"):
                 return InternalInitializeResponse(**frozen["internal_checkout"])
+
+    if req.payment_method == "manual_transfer":
+        from services.payments_service.services.manual_transfer import (
+            transfer_checkout_url,
+        )
+
+        if payment is None or req.currency != "NGN":
+            raise HTTPException(422, "Bank transfer requires a supported NGN payment")
+        if _to_kobo(final_amount) == 0 and payment.status != PaymentStatus.PAID:
+            payment = await _mark_paid_and_apply(
+                db,
+                payment,
+                provider="free",
+                provider_reference=req.reference,
+                paid_at=utc_now(),
+                provider_payload={"zero_amount": True},
+            )
+        result = InternalInitializeResponse(
+            reference=req.reference,
+            authorization_url=transfer_checkout_url(req.reference),
+            access_code="",
+            amount_kobo=_to_kobo(final_amount),
+            additional_charges=charge_lines,
+        )
+        payment.payment_metadata = {
+            **(payment.payment_metadata or {}),
+            "internal_checkout": result.model_dump(),
+        }
+        await db.commit()
+        return result
 
     # Build callback URL
     callback = _callback_url(req.reference, req.callback_url)
@@ -429,6 +472,18 @@ async def internal_verify_paystack_reference(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Verify a Paystack reference for internal fulfillment reconciliation."""
+    stored = (
+        await db.execute(select(Payment).where(Payment.reference == reference))
+    ).scalar_one_or_none()
+    if stored and stored.payment_method != "paystack":
+        return InternalPaystackVerifyResponse(
+            reference=reference,
+            status="completed" if stored.status == PaymentStatus.PAID else "pending",
+            provider_status=stored.status.value,
+            paid_at=stored.paid_at,
+            amount_kobo=_to_kobo(stored.amount),
+            currency=stored.currency,
+        )
     data = await _verify_paystack_transaction(reference)
     provider_status = str((data.get("status") or "")).lower()
 
