@@ -1,7 +1,8 @@
 """Recurring Club sessions use the same inherited costs and margin as Session edits."""
 
+import calendar
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
@@ -14,12 +15,82 @@ from services.sessions_service.schemas.templates import ClubTemplatePricing
 from services.sessions_service.services.pricing import normalize_pricing_payload
 
 
+def _month_index(value: date) -> int:
+    return value.year * 12 + value.month - 1
+
+
+def _nth_weekday(year: int, month: int, weekday: int, occurrence: int) -> int:
+    last_day = calendar.monthrange(year, month)[1]
+    if occurrence == -1:
+        last = date(year, month, last_day)
+        return last_day - ((last.weekday() - weekday) % 7)
+    first = date(year, month, 1)
+    candidate = 1 + ((weekday - first.weekday()) % 7) + (occurrence - 1) * 7
+    return candidate if candidate <= last_day else -1
+
+
+def _matches_month_day(template, candidate: date) -> bool:
+    week_of_month = getattr(template, "week_of_month", None)
+    if week_of_month is not None:
+        return candidate.day == _nth_weekday(
+            candidate.year,
+            candidate.month,
+            template.day_of_week,
+            week_of_month,
+        )
+    requested_day = getattr(template, "day_of_month", None)
+    if requested_day is None:
+        requested_day = getattr(template, "starts_on", candidate).day
+    target = min(requested_day, calendar.monthrange(candidate.year, candidate.month)[1])
+    return candidate.day == target
+
+
+def _matches_recurrence(template, candidate: date, anchor: date) -> bool:
+    frequency = getattr(template, "frequency", None) or "weekly"
+    interval = getattr(template, "interval", None) or 1
+    if frequency == "weekly":
+        week_index = (candidate - anchor).days // 7
+        return (
+            candidate.weekday() == template.day_of_week and week_index % interval == 0
+        )
+
+    months_since_start = _month_index(candidate) - _month_index(anchor)
+    if months_since_start < 0:
+        return False
+    if frequency == "monthly":
+        return months_since_start % interval == 0 and _matches_month_day(
+            template, candidate
+        )
+    if frequency == "quarterly":
+        return months_since_start % (3 * interval) == 0 and _matches_month_day(
+            template, candidate
+        )
+    if frequency == "annual":
+        target_month = getattr(template, "month_of_year", None) or anchor.month
+        year_index = candidate.year - anchor.year
+        return (
+            year_index >= 0
+            and year_index % interval == 0
+            and candidate.month == target_month
+            and _matches_month_day(template, candidate)
+        )
+    return False
+
+
 def recurrence_dates(template, start, end, excluded=()):
-    current = start + timedelta(days=(template.day_of_week - start.weekday()) % 7)
-    while current <= end:
-        if current not in excluded:
+    """Yield persisted template occurrences inside an inclusive date range."""
+
+    starts_on = getattr(template, "starts_on", None) or start
+    ends_on = getattr(template, "ends_on", None)
+    current = max(start, starts_on)
+    effective_end = min(end, ends_on) if ends_on else end
+    excluded_dates = set(excluded)
+    while current <= effective_end:
+        if current not in excluded_dates and _matches_recurrence(
+            template, current, starts_on
+        ):
             yield current
-        current += timedelta(days=7)
+        current += timedelta(days=1)
 
 
 def club_instance_id(template_id, starts, pod_id):

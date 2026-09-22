@@ -75,24 +75,27 @@ def _as_time(value: Any) -> time:
     raise ValueError("Use a valid Excel time")
 
 
-def _map_audience(value: Any) -> tuple[str, Optional[str]]:
+def _map_audience(value: Any) -> tuple[str, list[str], Optional[str]]:
     text = _key(value)
-    if "academy" in text and "club" not in text:
-        return "academy", None
-    if "club" in text and "community" not in text and "academy" not in text:
-        return "club", None
-    if "academy" in text and "club" in text:
-        return (
-            "academy",
-            "Combined Academy/Club audience is shown in the Academy calendar lane.",
+    if text in {"all", "everyone"}:
+        return "community", ["community", "club", "academy"], None
+
+    found = [
+        audience for audience in ("community", "club", "academy") if audience in text
+    ]
+    if text == "full community" and "community" not in found:
+        found.append("community")
+    if found:
+        # Community owns the primary presentation lane when explicitly named;
+        # otherwise Academy retains the historical Academy + Club lane choice.
+        primary = (
+            "community"
+            if "community" in found
+            else "academy"
+            if "academy" in found
+            else "club"
         )
-    if "community" in text and "club" in text:
-        return (
-            "community",
-            "Community includes Club members; the event uses the Community lane.",
-        )
-    if text in {"all", "everyone", "full community", "community"}:
-        return "community", None
+        return primary, found, None
     raise ValueError("Audience must identify Community, Club, or Academy")
 
 
@@ -243,7 +246,9 @@ def parse_calendar_import(content: bytes) -> CalendarImportPreviewResponse:
             if ends_at <= starts_at:
                 raise ValueError("End date/time must be after start date/time")
 
-            audience, audience_warning = _map_audience(value(row, "audience"))
+            primary_audience, audiences, audience_warning = _map_audience(
+                value(row, "audience")
+            )
             if audience_warning:
                 warnings.append(audience_warning)
             visibility = _map_visibility(value(row, "visibility"))
@@ -276,7 +281,9 @@ def parse_calendar_import(content: bytes) -> CalendarImportPreviewResponse:
                 title=title,
                 description=str(value(row, "description") or "").strip() or None,
                 event_type=event_type,
-                audience=audience,
+                primary_audience=primary_audience,
+                audiences=audiences,
+                audience=primary_audience,
                 visibility=visibility,
                 status="draft",
                 location_type=_map_location_type(value(row, "location type")),

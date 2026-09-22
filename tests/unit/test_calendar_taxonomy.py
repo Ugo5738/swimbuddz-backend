@@ -27,6 +27,8 @@ def test_public_academy_assessment_keeps_academy_audience():
             "id": "assessment-1",
             "title": "Free Intro-to-Water Assessment",
             "event_type": "assessment",
+            "primary_audience": "academy",
+            "audiences": ["academy"],
             "audience": "academy",
             "visibility": "public",
             "tier_access": "public",
@@ -35,6 +37,8 @@ def test_public_academy_assessment_keeps_academy_audience():
     )
 
     assert item is not None
+    assert item.primary_audience == "academy"
+    assert item.audiences == ["academy"]
     assert item.audience == "academy"
     assert item.visibility == "public"
     assert item.access_level == "public"

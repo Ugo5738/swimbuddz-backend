@@ -18,12 +18,12 @@ The backend uses a **microservices architecture** where each domain service runs
 1. **Shared libraries (`libs/`)** – common configuration, database access, and authentication helpers.
 2. **Domain services (`services/`)** – each runs as a standalone FastAPI application:
    - `members_service` (Port 8001): member registration and profiles.
-   - `sessions_service` (Port 8002): all swim sessions and events.
+   - `sessions_service` (Port 8002): operational swim sessions, booking context, and recurring session templates.
    - `attendance_service` (Port 8003): session sign-ins, ride-share, pool lists.
    - `communications_service` (Port 8004): announcements / noticeboard.
    - `payments_service` (Port 8005): payment records and status.
    - `academy_service` (Port 8006): cohort-based programs and curriculum.
-   - `events_service` (Port 8007): community events (basic implementation).
+   - `events_service` (Port 8007): discoverable activities and social/community event planning.
    - `media_service` (Port 8008): photo/video galleries (basic implementation).
    - `transport_service` (Port 8009): ride-sharing and route management.
    - `store_service` (Port 8010): e-commerce platform (extensive models, basic routes).
@@ -154,7 +154,7 @@ services/<service_name>/
 | communications_service | 8004 | Production          | Announcement                          | `/announcements`                                       |
 | payments_service       | 8005 | Production          | PaymentRecord, PaymentIntent          | `/checkout`, `/account/billing`                        |
 | academy_service        | 8006 | Production          | Program, Cohort, Enrollment, Progress | `/academy/*`, `/account/academy/*`, `/admin/academy/*` |
-| events_service         | 8007 | Minimal             | Event, EventRSVP                      | `/community/events/*`                                  |
+| events_service         | 8007 | Production          | Event, EventTemplate, EventRSVP       | `/community/events/*`                                  |
 | media_service          | 8008 | Minimal             | MediaItem, Album, Gallery             | `/gallery/*`                                           |
 | transport_service      | 8009 | Production          | RideArea, PickupLocation, RideBooking | `/admin/transport/*`                                   |
 | store_service          | 8010 | Minimal             | Product, Order, Cart, Inventory       | `/store/*`, `/admin/store/*`                           |
@@ -175,7 +175,8 @@ services/<service_name>/
 ### 3.2 Sessions Service (`services/sessions_service/`) - Port 8002
 
 - **Responsibilities**
-  - Represent all SwimBuddz sessions/events: Yaba club, Sunfit, Federal Palace meetups, trips, camps, open water, scuba, etc.
+  - Represent operational swims with capacity, pricing, booking, attendance, ride-share, volunteer, and pool context.
+  - Generate session occurrences from reusable weekly or calendar-based recurrence templates.
 - **Key Capabilities**
   - Create and edit sessions (admin).
   - Publish upcoming sessions.
@@ -227,9 +228,12 @@ services/<service_name>/
 ### 3.7 Events Service (`services/events_service/`) - Port 8007
 
 - **Responsibilities**
-  - Community events distinct from recurring sessions (one-off meets, trips, camps).
-- **Status:** Minimal implementation - basic models and routes only.
-- **Key Models:** Event, EventRSVP
+  - Own discoverable activities and social/community events distinct from the operational swim workflow.
+  - Support reusable event templates, recurrence planning, imports, RSVP, visibility, access, and multi-audience presentation.
+- **Status:** Production implementation.
+- **Key Models:** Event, EventTemplate, EventRSVP
+- **Cross-domain rule:** An official Community Swim is an Event for discovery plus a linked `event` Session for booking and operations. A social hangout can remain Event-only, while member-created `open_swim` remains a peer-organised Event type.
+- **Projection:** The Gateway calendar projects domain-owned Sessions and Events without becoming their system of record. See [Calendar Activity Projection](architecture/CALENDAR_ACTIVITY_PROJECTION.md).
 
 ### 3.8 Media Service (`services/media_service/`) - Port 8008
 

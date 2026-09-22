@@ -18,6 +18,7 @@ from services.events_service.schemas.main import (
     MarginType,
     ReminderHour,
 )
+from services.events_service.services.audiences import normalize_event_audiences
 
 EventFrequency = Literal["weekly", "monthly", "quarterly", "annual"]
 
@@ -26,7 +27,12 @@ class EventTemplateBase(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: Optional[str] = None
     event_type: str = Field(min_length=1, max_length=80)
-    audience: EventAudience = "community"
+    primary_audience: Optional[EventAudience] = None
+    audiences: list[EventAudience] = Field(default_factory=list)
+    audience: Optional[EventAudience] = Field(
+        None,
+        description="Deprecated compatibility alias for primary_audience.",
+    )
     visibility: EventVisibility = "public"
     location_type: EventLocationType = "physical"
     timezone: str = "Africa/Lagos"
@@ -57,6 +63,14 @@ class EventTemplateBase(BaseModel):
 
     @model_validator(mode="after")
     def validate_rule(self) -> "EventTemplateBase":
+        primary, audiences = normalize_event_audiences(
+            primary_audience=self.primary_audience,
+            audiences=self.audiences,
+            audience=self.audience,
+        )
+        self.primary_audience = primary  # type: ignore[assignment]
+        self.audiences = audiences  # type: ignore[assignment]
+        self.audience = primary  # type: ignore[assignment]
         try:
             ZoneInfo(self.timezone)
         except ZoneInfoNotFoundError as exc:
@@ -82,6 +96,8 @@ class EventTemplateUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = None
     event_type: Optional[str] = Field(None, min_length=1, max_length=80)
+    primary_audience: Optional[EventAudience] = None
+    audiences: Optional[list[EventAudience]] = None
     audience: Optional[EventAudience] = None
     visibility: Optional[EventVisibility] = None
     location_type: Optional[EventLocationType] = None

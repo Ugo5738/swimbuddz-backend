@@ -35,12 +35,17 @@ def _session(
     }
 
 
-def _event(event_id: str, audience: str) -> dict:
+def _event(event_id: str, audience: str, *, audiences: list[str] | None = None) -> dict:
     return {
         "id": event_id,
         "title": f"{audience} event",
         "description": None,
         "event_type": "social",
+        "primary_audience": audience,
+        "audiences": audiences or [audience],
+        "audience": audience,
+        "visibility": "public",
+        "status": "published",
         "start_time": datetime(2026, 8, 15, 16, tzinfo=timezone.utc).isoformat(),
         "end_time": None,
         "location": "Lagos",
@@ -50,7 +55,9 @@ def _event(event_id: str, audience: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_public_calendar_only_returns_community_items(client):
+async def test_public_calendar_returns_public_events_without_using_audience_as_access(
+    client,
+):
     original_clients = (clients.sessions_client, clients.events_client)
     clients.sessions_client = RoutingClient(
         {
@@ -85,8 +92,9 @@ async def test_public_calendar_only_returns_community_items(client):
     assert {item["id"] for item in data["items"]} == {
         "community-session",
         "community-event",
+        "club-event",
     }
-    assert data["available_audiences"] == ["community"]
+    assert data["available_audiences"] == ["community", "club"]
 
 
 @pytest.mark.asyncio
@@ -155,5 +163,45 @@ async def test_member_calendar_honors_session_access_and_paid_event_tiers(client
         "club-session",
         "community-event",
         "club-event",
+        "academy-event",
     }
-    assert data["available_audiences"] == ["community", "club"]
+    assert data["available_audiences"] == ["community", "club", "academy"]
+
+
+@pytest.mark.asyncio
+async def test_calendar_projects_all_event_audiences_and_dynamic_activity_types(client):
+    original_clients = (clients.sessions_client, clients.events_client)
+    clients.sessions_client = RoutingClient(
+        {("GET", "/sessions/?types=community"): make_response(200, [])}
+    )
+    clients.events_client = RoutingClient(
+        {
+            ("GET", "/events/?upcoming_only=false"): make_response(
+                200,
+                [
+                    {
+                        **_event(
+                            "clinic",
+                            "community",
+                            audiences=["community", "club", "academy"],
+                        ),
+                        "event_type": "stroke_endurance_clinic",
+                    }
+                ],
+            )
+        }
+    )
+
+    try:
+        response = await client.get(f"/api/v1/calendar{RANGE_QUERY}")
+    finally:
+        clients.sessions_client, clients.events_client = original_clients
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["items"][0]["primary_audience"] == "community"
+    assert data["items"][0]["audiences"] == ["community", "club", "academy"]
+    assert data["available_audiences"] == ["community", "club", "academy"]
+    assert data["available_activity_types"] == [
+        {"key": "stroke_endurance_clinic", "label": "Stroke Endurance Clinic"}
+    ]

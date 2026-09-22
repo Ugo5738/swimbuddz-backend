@@ -102,7 +102,11 @@ def merge_openapi_schemas():
         for path in ("/api/v1/calendar",):
             if path in gateway_schema.get("paths", {}):
                 combined["paths"][path] = gateway_schema["paths"][path]
-        for name in ("CalendarItemResponse", "CalendarResponse"):
+        for name in (
+            "CalendarActivityType",
+            "CalendarItemResponse",
+            "CalendarResponse",
+        ):
             definition = (
                 gateway_schema.get("components", {}).get("schemas", {}).get(name)
             )

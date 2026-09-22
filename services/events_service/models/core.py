@@ -6,6 +6,7 @@ from typing import Optional
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     String,
     Time,
     UniqueConstraint,
+    text as sql_text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -39,6 +41,19 @@ class Event(Base):
     """Community events like social gatherings, beach days, etc."""
 
     __tablename__ = "events"
+    __table_args__ = (
+        CheckConstraint(
+            "primary_audience IN ('community','club','academy')",
+            name="ck_events_primary_audience",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(audiences) = 'array' "
+            "AND jsonb_array_length(audiences) > 0 "
+            'AND audiences <@ \'["community","club","academy"]\'::jsonb '
+            "AND audiences @> jsonb_build_array(primary_audience)",
+            name="ck_events_audiences_array",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -48,11 +63,21 @@ class Event(Base):
     event_type: Mapped[str] = mapped_column(
         String, nullable=False
     )  # social/volunteer/beach_day/watch_party/cleanup/training
-    # Audience describes the programme lane shown on the calendar. It is
-    # intentionally separate from tier_access: an Academy assessment can be
-    # public and open to prospects while still belonging to Academy.
+    # ``primary_audience`` owns the presentation lane while ``audiences``
+    # preserves every programme group for whom the event is relevant. The
+    # legacy ``audience`` column mirrors ``primary_audience`` during the staged
+    # API migration and must not be used as a second source of truth.
     audience: Mapped[str] = mapped_column(
         String, nullable=False, default="community", server_default="community"
+    )
+    primary_audience: Mapped[str] = mapped_column(
+        String, nullable=False, default="community", server_default="community"
+    )
+    audiences: Mapped[list] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=lambda: ["community"],
+        server_default=sql_text("'[\"community\"]'::jsonb"),
     )
     visibility: Mapped[str] = mapped_column(
         String, nullable=False, default="public", server_default="public"
@@ -155,6 +180,19 @@ class EventTemplate(Base):
     """Reusable rule for generating draft community calendar events."""
 
     __tablename__ = "event_templates"
+    __table_args__ = (
+        CheckConstraint(
+            "primary_audience IN ('community','club','academy')",
+            name="ck_event_templates_primary_audience",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(audiences) = 'array' "
+            "AND jsonb_array_length(audiences) > 0 "
+            'AND audiences <@ \'["community","club","academy"]\'::jsonb '
+            "AND audiences @> jsonb_build_array(primary_audience)",
+            name="ck_event_templates_audiences_array",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -164,6 +202,15 @@ class EventTemplate(Base):
     event_type: Mapped[str] = mapped_column(String, nullable=False)
     audience: Mapped[str] = mapped_column(
         String, nullable=False, default="community", server_default="community"
+    )
+    primary_audience: Mapped[str] = mapped_column(
+        String, nullable=False, default="community", server_default="community"
+    )
+    audiences: Mapped[list] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=lambda: ["community"],
+        server_default=sql_text("'[\"community\"]'::jsonb"),
     )
     visibility: Mapped[str] = mapped_column(
         String, nullable=False, default="public", server_default="public"

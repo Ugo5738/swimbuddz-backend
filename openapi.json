@@ -9446,7 +9446,7 @@
           "session-templates"
         ],
         "summary": "Generate Sessions",
-        "description": "Generate sessions from a template for the specified number of weeks.",
+        "description": "Generate template occurrences for a rolling window, range, or exact dates.",
         "operationId": "generate_sessions_sessions_templates__template_id__generate_post",
         "security": [
           {
@@ -11612,6 +11612,23 @@
                 }
               ],
               "title": "Cohort Id"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Id"
             }
           },
           {
@@ -71045,11 +71062,51 @@
       "GenerateSessionsRequest": {
         "properties": {
           "weeks": {
-            "type": "integer",
-            "maximum": 52.0,
-            "exclusiveMinimum": 0.0,
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 52.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Weeks",
-            "description": "Number of weeks to generate"
+            "description": "Legacy rolling window, measured in weeks."
+          },
+          "from_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Date"
+          },
+          "to_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Date"
+          },
+          "dates": {
+            "items": {
+              "type": "string",
+              "format": "date"
+            },
+            "type": "array",
+            "maxItems": 52,
+            "title": "Dates"
           },
           "skip_conflicts": {
             "type": "boolean",
@@ -71059,9 +71116,6 @@
           }
         },
         "type": "object",
-        "required": [
-          "weeks"
-        ],
         "title": "GenerateSessionsRequest"
       },
       "GuestConvertRequest": {
@@ -74300,6 +74354,80 @@
             "title": "Day Of Week",
             "description": "0=Monday, 6=Sunday"
           },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "weekly",
+              "monthly",
+              "quarterly",
+              "annual"
+            ],
+            "title": "Frequency",
+            "default": "weekly"
+          },
+          "interval": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Interval",
+            "default": 1
+          },
+          "week_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": -1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week Of Month"
+          },
+          "day_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Month"
+          },
+          "month_of_year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month Of Year"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
           "start_time": {
             "type": "string",
             "format": "time",
@@ -74463,6 +74591,80 @@
             "minimum": 0.0,
             "title": "Day Of Week",
             "description": "0=Monday, 6=Sunday"
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "weekly",
+              "monthly",
+              "quarterly",
+              "annual"
+            ],
+            "title": "Frequency",
+            "default": "weekly"
+          },
+          "interval": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Interval",
+            "default": 1
+          },
+          "week_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": -1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week Of Month"
+          },
+          "day_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Month"
+          },
+          "month_of_year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month Of Year"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
           },
           "start_time": {
             "type": "string",
@@ -74700,6 +74902,99 @@
               }
             ],
             "title": "Day Of Week"
+          },
+          "frequency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "weekly",
+                  "monthly",
+                  "quarterly",
+                  "annual"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frequency"
+          },
+          "interval": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval"
+          },
+          "week_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": -1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week Of Month"
+          },
+          "day_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Month"
+          },
+          "month_of_year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 12.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month Of Year"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
           },
           "start_time": {
             "anyOf": [
@@ -112281,15 +112576,50 @@
             "type": "string",
             "title": "Event Type"
           },
+          "primary_audience": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "community",
+                  "club",
+                  "academy"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Audience"
+          },
+          "audiences": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "community",
+                "club",
+                "academy"
+              ]
+            },
+            "type": "array",
+            "title": "Audiences"
+          },
           "audience": {
-            "type": "string",
-            "enum": [
-              "community",
-              "club",
-              "academy"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "community",
+                  "club",
+                  "academy"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
             "title": "Audience",
-            "default": "community"
+            "description": "Deprecated compatibility alias for primary_audience."
           },
           "visibility": {
             "type": "string",
@@ -112652,15 +112982,50 @@
             "type": "string",
             "title": "Event Type"
           },
+          "primary_audience": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "community",
+                  "club",
+                  "academy"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Audience"
+          },
+          "audiences": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "community",
+                "club",
+                "academy"
+              ]
+            },
+            "type": "array",
+            "title": "Audiences"
+          },
           "audience": {
-            "type": "string",
-            "enum": [
-              "community",
-              "club",
-              "academy"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "community",
+                  "club",
+                  "academy"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
             "title": "Audience",
-            "default": "community"
+            "description": "Deprecated compatibility alias for primary_audience."
           },
           "visibility": {
             "type": "string",
@@ -113037,6 +113402,27 @@
             "type": "string",
             "title": "Event Type"
           },
+          "primary_audience": {
+            "type": "string",
+            "enum": [
+              "community",
+              "club",
+              "academy"
+            ],
+            "title": "Primary Audience"
+          },
+          "audiences": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "community",
+                "club",
+                "academy"
+              ]
+            },
+            "type": "array",
+            "title": "Audiences"
+          },
           "audience": {
             "type": "string",
             "enum": [
@@ -113308,6 +113694,8 @@
           "id",
           "title",
           "event_type",
+          "primary_audience",
+          "audiences",
           "audience",
           "visibility",
           "status",
@@ -113348,15 +113736,50 @@
             "minLength": 1,
             "title": "Event Type"
           },
+          "primary_audience": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "community",
+                  "club",
+                  "academy"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Audience"
+          },
+          "audiences": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "community",
+                "club",
+                "academy"
+              ]
+            },
+            "type": "array",
+            "title": "Audiences"
+          },
           "audience": {
-            "type": "string",
-            "enum": [
-              "community",
-              "club",
-              "academy"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "community",
+                  "club",
+                  "academy"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
             "title": "Audience",
-            "default": "community"
+            "description": "Deprecated compatibility alias for primary_audience."
           },
           "visibility": {
             "type": "string",
@@ -113652,15 +114075,50 @@
             "minLength": 1,
             "title": "Event Type"
           },
+          "primary_audience": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "community",
+                  "club",
+                  "academy"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Audience"
+          },
+          "audiences": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "community",
+                "club",
+                "academy"
+              ]
+            },
+            "type": "array",
+            "title": "Audiences"
+          },
           "audience": {
-            "type": "string",
-            "enum": [
-              "community",
-              "club",
-              "academy"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "community",
+                  "club",
+                  "academy"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
             "title": "Audience",
-            "default": "community"
+            "description": "Deprecated compatibility alias for primary_audience."
           },
           "visibility": {
             "type": "string",
@@ -113993,6 +114451,41 @@
               }
             ],
             "title": "Event Type"
+          },
+          "primary_audience": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "community",
+                  "club",
+                  "academy"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Audience"
+          },
+          "audiences": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "community",
+                    "club",
+                    "academy"
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audiences"
           },
           "audience": {
             "anyOf": [
@@ -114407,6 +114900,41 @@
               }
             ],
             "title": "Event Type"
+          },
+          "primary_audience": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "community",
+                  "club",
+                  "academy"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Audience"
+          },
+          "audiences": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "community",
+                    "club",
+                    "academy"
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audiences"
           },
           "audience": {
             "anyOf": [
@@ -125467,6 +125995,25 @@
         ],
         "title": "TrialBalanceRow"
       },
+      "CalendarActivityType": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "CalendarActivityType",
+        "description": "One activity type represented in the current calendar result."
+      },
       "CalendarItemResponse": {
         "properties": {
           "id": {
@@ -125475,11 +126022,30 @@
           },
           "source": {
             "type": "string",
-            "enum": [
-              "session",
-              "event"
-            ],
+            "minLength": 1,
             "title": "Source"
+          },
+          "primary_audience": {
+            "type": "string",
+            "enum": [
+              "community",
+              "club",
+              "academy"
+            ],
+            "title": "Primary Audience"
+          },
+          "audiences": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "community",
+                "club",
+                "academy"
+              ]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Audiences"
           },
           "audience": {
             "type": "string",
@@ -125613,6 +126179,8 @@
         "required": [
           "id",
           "source",
+          "primary_audience",
+          "audiences",
           "audience",
           "kind",
           "title",
@@ -125652,6 +126220,13 @@
             },
             "type": "array",
             "title": "Available Audiences"
+          },
+          "available_activity_types": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarActivityType"
+            },
+            "type": "array",
+            "title": "Available Activity Types"
           },
           "errors": {
             "additionalProperties": {
