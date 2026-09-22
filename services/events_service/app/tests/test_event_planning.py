@@ -8,6 +8,7 @@ from openpyxl import Workbook
 
 from services.events_service.models import EventTemplate
 from services.events_service.services.calendar_import import parse_calendar_import
+from services.events_service.services.audiences import audience_fields
 from services.events_service.services.recurrence import build_occurrences
 
 
@@ -16,6 +17,8 @@ def _template(**overrides) -> EventTemplate:
         "id": uuid.uuid4(),
         "title": "Intro-to-Water Assessment",
         "event_type": "assessment",
+        "primary_audience": "academy",
+        "audiences": ["academy"],
         "audience": "academy",
         "visibility": "public",
         "location_type": "physical",
@@ -33,6 +36,25 @@ def _template(**overrides) -> EventTemplate:
     }
     values.update(overrides)
     return EventTemplate(**values)
+
+
+def test_legacy_audience_write_resets_the_canonical_audience_set() -> None:
+    assert audience_fields(audience="club", audiences=["club"]) == {
+        "primary_audience": "club",
+        "audiences": ["club"],
+        "audience": "club",
+    }
+
+
+def test_primary_audience_is_always_included_in_multi_audience_write() -> None:
+    assert audience_fields(
+        primary_audience="community",
+        audiences=["club", "academy"],
+    ) == {
+        "primary_audience": "community",
+        "audiences": ["community", "club", "academy"],
+        "audience": "community",
+    }
 
 
 def test_monthly_second_sunday_occurrences() -> None:
@@ -132,11 +154,61 @@ def test_calendar_import_parses_controlled_sheet_as_drafts() -> None:
     assert preview.invalid_count == 0
     assert preview.rows[0].event is not None
     assert preview.rows[0].event.status == "draft"
+    assert preview.rows[0].event.primary_audience == "academy"
+    assert preview.rows[0].event.audiences == ["academy"]
     assert preview.rows[0].event.audience == "academy"
     assert preview.rows[0].event.tier_access == "public"
     assert preview.rows[0].warnings == [
         "Confirm the venue or meeting link before publishing."
     ]
+
+
+def test_calendar_import_preserves_combined_audiences() -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Calendar Import"
+    sheet.append(
+        [
+            "Import",
+            "Start Date",
+            "Start Time",
+            "End Date",
+            "End Time",
+            "Title",
+            "Audience",
+            "Visibility",
+            "Tier Access",
+            "Event Type",
+            "Location Type",
+            "Timezone",
+            "External Key",
+        ]
+    )
+    sheet.append(
+        [
+            "Yes",
+            date(2027, 3, 6),
+            time(9),
+            date(2027, 3, 6),
+            time(11),
+            "Community Swim",
+            "Community + Club + Academy",
+            "Public",
+            "All",
+            "community_swim",
+            "Physical",
+            "Africa/Lagos",
+            "community-swim-2027-03",
+        ]
+    )
+    output = BytesIO()
+    workbook.save(output)
+
+    event = parse_calendar_import(output.getvalue()).rows[0].event
+
+    assert event is not None
+    assert event.primary_audience == "community"
+    assert event.audiences == ["community", "club", "academy"]
 
 
 def test_calendar_import_reports_row_errors_without_aborting_preview() -> None:

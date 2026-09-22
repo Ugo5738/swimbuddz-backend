@@ -23,6 +23,7 @@ from services.events_service.schemas.planning import (
     EventTemplateUpdate,
 )
 from services.events_service.services.calendar_import import parse_calendar_import
+from services.events_service.services.audiences import audience_fields
 from services.events_service.services.pricing import (
     PRICING_KEYS,
     event_pricing_response,
@@ -49,7 +50,9 @@ def _template_dict(template: EventTemplate) -> dict:
         "title": template.title,
         "description": template.description,
         "event_type": template.event_type,
-        "audience": template.audience,
+        "primary_audience": template.primary_audience,
+        "audiences": template.audiences or [template.primary_audience],
+        "audience": template.primary_audience,
         "visibility": template.visibility,
         "location_type": template.location_type,
         "timezone": template.timezone,
@@ -135,7 +138,29 @@ async def update_event_template(
         for key, value in _template_dict(template).items()
         if key in EventTemplateCreate.model_fields
     }
-    merged.update(payload.model_dump(exclude_unset=True))
+    updates = payload.model_dump(exclude_unset=True)
+    audience_keys = {"primary_audience", "audiences", "audience"}
+    if audience_keys & updates.keys():
+        legacy_only = (
+            "audience" in updates
+            and "primary_audience" not in updates
+            and "audiences" not in updates
+        )
+        updates.update(
+            audience_fields(
+                primary_audience=updates.pop(
+                    "primary_audience",
+                    updates.get("audience") or template.primary_audience,
+                ),
+                audiences=(
+                    [updates["audience"]]
+                    if legacy_only
+                    else updates.pop("audiences", template.audiences)
+                ),
+                audience=updates.pop("audience", None),
+            )
+        )
+    merged.update(updates)
     validated = EventTemplateCreate.model_validate(merged)
     for field, value in _template_values(validated).items():
         setattr(template, field, value)
@@ -241,7 +266,9 @@ async def generate_event_drafts(
                 title=template.title,
                 description=template.description,
                 event_type=template.event_type,
-                audience=template.audience,
+                primary_audience=template.primary_audience,
+                audiences=template.audiences,
+                audience=template.primary_audience,
                 visibility=template.visibility,
                 status="draft",
                 location_type=template.location_type,

@@ -211,6 +211,7 @@ async def list_sessions(
     response: Response,
     types: Optional[str] = None,
     cohort_id: Optional[uuid.UUID] = None,
+    event_id: Optional[uuid.UUID] = None,
     status_filter: Optional[SessionStatus] = Query(
         default=None,
         alias="status",
@@ -288,6 +289,8 @@ async def list_sessions(
 
     if cohort_id:
         query = query.where(Session.cohort_id == cohort_id)
+    if event_id:
+        query = query.where(Session.event_id == event_id)
 
     if (
         effective_from is not None

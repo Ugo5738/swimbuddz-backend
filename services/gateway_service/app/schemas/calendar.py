@@ -6,7 +6,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 CalendarAudience = Literal["community", "club", "academy"]
-CalendarSource = Literal["session", "event"]
+CalendarSource = str
 CalendarVisibility = Literal["public", "members_only", "invite_only"]
 CalendarLocationType = Literal["physical", "online", "hybrid"]
 
@@ -15,7 +15,10 @@ class CalendarItemResponse(BaseModel):
     """One visible item from a domain-owned session or event."""
 
     id: str
-    source: CalendarSource
+    source: CalendarSource = Field(min_length=1)
+    primary_audience: CalendarAudience
+    audiences: list[CalendarAudience] = Field(min_length=1)
+    # Deprecated compatibility alias for primary_audience.
     audience: CalendarAudience
     kind: str
     visibility: CalendarVisibility = "public"
@@ -35,6 +38,13 @@ class CalendarItemResponse(BaseModel):
     viewer_can_attend: bool = False
 
 
+class CalendarActivityType(BaseModel):
+    """One activity type represented in the current calendar result."""
+
+    key: str
+    label: str
+
+
 class CalendarResponse(BaseModel):
     """Calendar items plus range and partial-service status."""
 
@@ -42,4 +52,5 @@ class CalendarResponse(BaseModel):
     range_start: datetime
     range_end: datetime
     available_audiences: list[CalendarAudience] = Field(default_factory=list)
+    available_activity_types: list[CalendarActivityType] = Field(default_factory=list)
     errors: dict[str, str] = Field(default_factory=dict)

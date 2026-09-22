@@ -122,6 +122,59 @@ async def test_create_free_event_keeps_cost_null(events_client, db_session):
     assert resp.json()["cost_naira"] is None
 
 
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_multi_audience_event_round_trips_and_keeps_legacy_alias(
+    events_client, db_session
+):
+    await _setup_member(db_session)
+    e, r = _silence_chat_sync()
+    with e, r:
+        created = await events_client.post(
+            "/events/",
+            json=_event_payload(
+                event_type="community_swim",
+                primary_audience="community",
+                audiences=["community", "club", "academy"],
+            ),
+        )
+
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["primary_audience"] == "community"
+    assert body["audiences"] == ["community", "club", "academy"]
+    assert body["audience"] == "community"
+
+    updated = await events_client.patch(
+        f"/events/{body['id']}",
+        json={
+            "primary_audience": "club",
+            "audiences": ["community", "club"],
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["primary_audience"] == "club"
+    assert updated.json()["audiences"] == ["community", "club"]
+    assert updated.json()["audience"] == "club"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_legacy_audience_write_backfills_canonical_fields(
+    events_client, db_session
+):
+    await _setup_member(db_session)
+    e, r = _silence_chat_sync()
+    with e, r:
+        created = await events_client.post(
+            "/events/", json=_event_payload(audience="academy")
+        )
+
+    assert created.status_code == 201, created.text
+    assert created.json()["primary_audience"] == "academy"
+    assert created.json()["audiences"] == ["academy"]
+
+
 # ---------------------------------------------------------------------------
 # get / update / delete lifecycle
 # ---------------------------------------------------------------------------
