@@ -19,7 +19,7 @@ When you modify Pydantic schemas or add new endpoints:
 ```bash
 # 1. Generate OpenAPI schema from FastAPI
 cd swimbuddz-backend
-python scripts/generate_openapi.py > openapi.json
+python scripts/api/generate-openapi.py > openapi.json
 
 # 2. Generate TypeScript types from OpenAPI
 cd swimbuddz-frontend

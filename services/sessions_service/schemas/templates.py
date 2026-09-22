@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Dict, List, Optional, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -9,6 +9,8 @@ from services.sessions_service.schemas.main import SessionCostLine
 from services.sessions_service.services.template_context import (
     validate_template_context,
 )
+
+SessionTemplateFrequency = Literal["weekly", "monthly", "quarterly", "annual"]
 
 
 class ClubTemplatePricing(BaseModel):
@@ -45,6 +47,13 @@ class SessionTemplateBase(BaseModel):
     ride_share_fee: float = 0.0
     capacity: int = Field(default=20, ge=1, le=500)
     day_of_week: int = Field(..., ge=0, le=6, description="0=Monday, 6=Sunday")
+    frequency: SessionTemplateFrequency = "weekly"
+    interval: int = Field(1, ge=1, le=12)
+    week_of_month: Optional[int] = Field(None, ge=-1, le=5)
+    day_of_month: Optional[int] = Field(None, ge=1, le=31)
+    month_of_year: Optional[int] = Field(None, ge=1, le=12)
+    starts_on: date = Field(default_factory=date.today)
+    ends_on: Optional[date] = None
     start_time: time
     duration_minutes: int = Field(ge=15, le=480)
     auto_generate: bool = False
@@ -71,6 +80,14 @@ class SessionTemplateCreate(SessionTemplateBase):
             self.club_id is not None or self.pod_id is not None
         ):
             raise ValueError("Only club session templates may set club_id or pod_id")
+        if self.ends_on and self.ends_on < self.starts_on:
+            raise ValueError("ends_on must be on or after starts_on")
+        if self.week_of_month == 0:
+            raise ValueError("week_of_month must be 1-5 or -1 for last")
+        if self.week_of_month is not None and self.frequency == "weekly":
+            raise ValueError("week_of_month is only valid for monthly-style rules")
+        if self.frequency == "annual" and self.month_of_year is None:
+            self.month_of_year = self.starts_on.month
         return self
 
 
@@ -93,6 +110,13 @@ class SessionTemplateUpdate(BaseModel):
     ride_share_fee: Optional[float] = None  # naira — router converts to kobo on write
     capacity: Optional[int] = Field(None, ge=1, le=500)
     day_of_week: Optional[int] = Field(None, ge=0, le=6)
+    frequency: Optional[SessionTemplateFrequency] = None
+    interval: Optional[int] = Field(None, ge=1, le=12)
+    week_of_month: Optional[int] = Field(None, ge=-1, le=5)
+    day_of_month: Optional[int] = Field(None, ge=1, le=31)
+    month_of_year: Optional[int] = Field(None, ge=1, le=12)
+    starts_on: Optional[date] = None
+    ends_on: Optional[date] = None
     start_time: Optional[time] = None
     duration_minutes: Optional[int] = Field(None, ge=15, le=480)
     auto_generate: Optional[bool] = None
@@ -101,6 +125,10 @@ class SessionTemplateUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_pod_scope(self) -> "SessionTemplateUpdate":
+        if self.session_type == SessionType.EVENT:
+            raise ValueError(
+                "Create Event sessions from a concrete Event occurrence so event_id is preserved"
+            )
         if self.session_type and self.session_type != SessionType.CLUB:
             if self.club_id is not None or self.pod_id is not None:
                 raise ValueError(
@@ -144,6 +172,13 @@ class SessionTemplateResponse(SessionTemplateBase):
             "ride_share_fee": (obj.ride_share_fee or 0) / 100.0,
             "capacity": obj.capacity,
             "day_of_week": obj.day_of_week,
+            "frequency": getattr(obj, "frequency", "weekly"),
+            "interval": getattr(obj, "interval", 1),
+            "week_of_month": getattr(obj, "week_of_month", None),
+            "day_of_month": getattr(obj, "day_of_month", None),
+            "month_of_year": getattr(obj, "month_of_year", None),
+            "starts_on": getattr(obj, "starts_on", date.today()),
+            "ends_on": getattr(obj, "ends_on", None),
             "start_time": obj.start_time,
             "duration_minutes": obj.duration_minutes,
             "auto_generate": obj.auto_generate,
@@ -156,7 +191,32 @@ class SessionTemplateResponse(SessionTemplateBase):
 
 
 class GenerateSessionsRequest(BaseModel):
-    weeks: int = Field(..., gt=0, le=52, description="Number of weeks to generate")
+    weeks: Optional[int] = Field(
+        None,
+        gt=0,
+        le=52,
+        description="Legacy rolling window, measured in weeks.",
+    )
+    from_date: Optional[date] = None
+    to_date: Optional[date] = None
+    dates: list[date] = Field(default_factory=list, max_length=52)
     skip_conflicts: bool = Field(
         True, description="Skip dates that already have sessions"
     )
+
+    @model_validator(mode="after")
+    def validate_generation_window(self) -> "GenerateSessionsRequest":
+        has_range = self.from_date is not None or self.to_date is not None
+        modes = int(self.weeks is not None) + int(has_range) + int(bool(self.dates))
+        if modes != 1:
+            raise ValueError("Choose weeks, a date range, or specific dates")
+        if has_range:
+            if self.from_date is None or self.to_date is None:
+                raise ValueError("from_date and to_date are required together")
+            if self.to_date < self.from_date:
+                raise ValueError("to_date must be on or after from_date")
+            if (self.to_date - self.from_date).days > 730:
+                raise ValueError("Date ranges cannot exceed two years")
+        if len(set(self.dates)) != len(self.dates):
+            raise ValueError("Specific dates must be unique")
+        return self

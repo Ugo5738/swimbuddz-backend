@@ -21,6 +21,15 @@ logger = get_logger(__name__)
 
 _AUDIENCE_ORDER = ("community", "club", "academy")
 _MAX_RANGE = timedelta(days=400)
+_ACTIVITY_LABELS = {
+    "cohort_class": "Academy Class",
+    "community": "Community Swim",
+    "club": "Club Training",
+    "open_swim": "Open Swim",
+    "online_talk": "Online Talk",
+    "community_swim": "Community Swim",
+    "bring_a_buddy": "Bring-a-Buddy",
+}
 
 
 def _aware(value: datetime) -> datetime:
@@ -112,11 +121,42 @@ def _event_audience(tier_access: Any) -> str:
     return normalized if normalized in _AUDIENCE_ORDER else "community"
 
 
+def _event_audiences(payload: dict[str, Any]) -> tuple[str, list[str]]:
+    primary = _event_audience(
+        payload.get("primary_audience")
+        or payload.get("audience")
+        or payload.get("tier_access")
+    )
+    values = payload.get("audiences")
+    audiences = (
+        [
+            str(value).strip().lower()
+            for value in values
+            if str(value).strip().lower() in _AUDIENCE_ORDER
+        ]
+        if isinstance(values, list)
+        else []
+    )
+    audiences = list(dict.fromkeys(audiences))
+    if primary not in audiences:
+        audiences.insert(0, primary)
+    return primary, audiences
+
+
+def _activity_label(key: str) -> str:
+    if key in _ACTIVITY_LABELS:
+        return _ACTIVITY_LABELS[key]
+    return " ".join(
+        part.capitalize() for part in key.replace("-", "_").split("_") if part
+    )
+
+
 def _session_item(payload: dict[str, Any]) -> Optional[CalendarItemResponse]:
     starts_at = _parse_datetime(payload.get("starts_at"))
     if starts_at is None:
         return None
     session_type = str(payload.get("session_type") or "community").lower()
+    audience = _session_audience(session_type)
     access = payload.get("access") if isinstance(payload.get("access"), dict) else {}
     location_name = (
         payload.get("location_name")
@@ -126,7 +166,9 @@ def _session_item(payload: dict[str, Any]) -> Optional[CalendarItemResponse]:
     return CalendarItemResponse(
         id=str(payload["id"]),
         source="session",
-        audience=_session_audience(session_type),
+        primary_audience=audience,
+        audiences=[audience],
+        audience=audience,
         kind=session_type,
         visibility=(
             "invite_only"
@@ -157,10 +199,13 @@ def _event_item(payload: dict[str, Any]) -> Optional[CalendarItemResponse]:
     if starts_at is None:
         return None
     event_type = str(payload.get("event_type") or "event").lower()
+    primary_audience, audiences = _event_audiences(payload)
     return CalendarItemResponse(
         id=str(payload["id"]),
         source="event",
-        audience=_event_audience(payload.get("audience") or payload.get("tier_access")),
+        primary_audience=primary_audience,
+        audiences=audiences,
+        audience=primary_audience,
         kind=event_type,
         visibility=str(payload.get("visibility") or "public"),
         access_level=str(payload.get("tier_access") or "public"),
@@ -309,12 +354,16 @@ async def get_calendar(
     available = [
         audience
         for audience in _AUDIENCE_ORDER
-        if any(item.audience == audience for item in items)
+        if any(audience in item.audiences for item in items)
     ]
+    activity_keys = list(dict.fromkeys(item.kind for item in items))
     return CalendarResponse(
         items=items,
         range_start=start,
         range_end=end,
         available_audiences=available,
+        available_activity_types=[
+            {"key": key, "label": _activity_label(key)} for key in activity_keys
+        ],
         errors=errors,
     )

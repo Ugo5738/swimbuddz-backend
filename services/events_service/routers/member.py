@@ -7,7 +7,7 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import (
@@ -45,6 +45,7 @@ from services.events_service.services.chat_sync import (
     ensure_event_channel,
     reconcile_event_membership,
 )
+from services.events_service.services.audiences import audience_fields
 from services.events_service.services.pricing import (
     PRICING_KEYS,
     event_pricing_payload,
@@ -172,7 +173,10 @@ def _event_response_dict(
         "title": event.title,
         "description": event.description,
         "event_type": event.event_type,
-        "audience": event.audience,
+        "primary_audience": event.primary_audience,
+        "audiences": event.audiences or [event.primary_audience],
+        # Deprecated response alias retained while older clients migrate.
+        "audience": event.primary_audience,
         "visibility": event.visibility,
         "status": event.status,
         "location_type": event.location_type,
@@ -223,7 +227,12 @@ async def list_events(
     if event_type:
         query = query.where(Event.event_type == event_type)
     if audience:
-        query = query.where(Event.audience == audience)
+        query = query.where(
+            or_(
+                Event.primary_audience == audience,
+                Event.audiences.contains([audience]),
+            )
+        )
     if visibility:
         query = query.where(Event.visibility == visibility)
     if location_type:
@@ -740,6 +749,27 @@ async def update_event(
 
     # Update only provided fields. Pricing values need Naira→kobo normalization.
     update_fields = event_data.model_dump(exclude_unset=True)
+    audience_keys = {"primary_audience", "audiences", "audience"}
+    if audience_keys & update_fields.keys():
+        legacy_only = (
+            "audience" in update_fields
+            and "primary_audience" not in update_fields
+            and "audiences" not in update_fields
+        )
+        update_fields.update(
+            audience_fields(
+                primary_audience=update_fields.pop(
+                    "primary_audience",
+                    update_fields.get("audience") or event.primary_audience,
+                ),
+                audiences=(
+                    [update_fields["audience"]]
+                    if legacy_only
+                    else update_fields.pop("audiences", event.audiences)
+                ),
+                audience=update_fields.pop("audience", None),
+            )
+        )
     if event.community_experience_offering_id and any(
         key in update_fields and update_fields[key] != getattr(event, key)
         for key in (

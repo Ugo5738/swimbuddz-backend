@@ -1,6 +1,6 @@
 """Academy templates must retain both enrollment scope and explicit billing."""
 
-from datetime import time
+from datetime import date, time
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
@@ -61,8 +61,16 @@ def academy_response(status=200):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["included", "paid_extra"])
+@pytest.mark.parametrize(
+    "window",
+    [
+        {"weeks": 2},
+        {"from_date": "2026-10-01", "to_date": "2026-10-14"},
+        {"dates": ["2026-10-04", "2026-10-11"]},
+    ],
+)
 async def test_generated_academy_class_preserves_cohort_price_and_billing(
-    mode, monkeypatch
+    mode, window, monkeypatch
 ):
     saved = saved_template(cohort_fee_mode=mode)
     db = database(saved)
@@ -76,7 +84,7 @@ async def test_generated_academy_class_preserves_cohort_price_and_billing(
         AsyncMock(return_value={"created_count": 0}),
     )
     response = await templates.generate_sessions(
-        saved.id, GenerateSessionsRequest(weeks=2, skip_conflicts=False), db, None
+        saved.id, GenerateSessionsRequest(**window, skip_conflicts=False), db, None
     )
     assert response["created"] == 2
     for call in db.add.call_args_list:
@@ -95,6 +103,44 @@ async def test_generated_academy_class_preserves_cohort_price_and_billing(
     db.commit.assert_awaited_once()
     assert notify.await_count == 2
     assert get.call_args.kwargs["path"] == f"/academy/cohorts/{saved.cohort_id}"
+
+
+@pytest.mark.asyncio
+async def test_monthly_paid_extra_classes_keep_cohort_and_price(monkeypatch):
+    saved = saved_template(
+        frequency="monthly",
+        interval=1,
+        week_of_month=1,
+        starts_on=date(2026, 10, 1),
+    )
+    db = database(saved)
+    monkeypatch.setattr(
+        template_context, "internal_get", AsyncMock(return_value=academy_response())
+    )
+    monkeypatch.setattr(
+        templates, "trigger_session_published_notifications", AsyncMock()
+    )
+    monkeypatch.setattr(
+        templates,
+        "materialise_opportunities_from_session_template",
+        AsyncMock(return_value={}),
+    )
+    response = await templates.generate_sessions(
+        saved.id,
+        GenerateSessionsRequest(
+            from_date="2026-10-01", to_date="2026-11-30", skip_conflicts=False
+        ),
+        db,
+        None,
+    )
+    assert [item["date"] for item in response["sessions"]] == [
+        "2026-10-04",
+        "2026-11-01",
+    ]
+    for call in db.add.call_args_list:
+        assert call.args[0].cohort_id == saved.cohort_id
+        assert call.args[0].cohort_fee_mode == "paid_extra"
+        assert call.args[0].pool_fee == 1500000
 
 
 @pytest.mark.asyncio

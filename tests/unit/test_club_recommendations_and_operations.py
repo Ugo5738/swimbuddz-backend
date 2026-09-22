@@ -113,6 +113,24 @@ def test_template_recurrence_has_thirteen_q4_swims_and_explicit_exclusions():
     )
 
 
+def test_template_recurrence_supports_first_saturday_and_month_intervals():
+    days = list(
+        generation.recurrence_dates(
+            template(
+                frequency="monthly",
+                interval=2,
+                week_of_month=1,
+                starts_on=date(2027, 1, 1),
+                ends_on=None,
+            ),
+            date(2027, 1, 1),
+            date(2027, 6, 30),
+        )
+    )
+
+    assert days == [date(2027, 1, 2), date(2027, 3, 6), date(2027, 5, 1)]
+
+
 @pytest.mark.asyncio
 async def test_new_dates_use_inherited_effective_pool_rates_not_old_manual_fee(
     monkeypatch,

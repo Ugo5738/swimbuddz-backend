@@ -59,6 +59,32 @@ async def test_list_sessions_with_type_filter(sessions_client, db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+async def test_list_sessions_filters_event_occurrences_by_event_id(
+    sessions_client, db_session
+):
+    """An Event detail can resolve only its linked operational Session."""
+    target_event_id = uuid.uuid4()
+    linked = SessionFactory.create(
+        title="Official Community Swim",
+        event_id=target_event_id,
+    )
+    other = SessionFactory.create(
+        title="Another event session",
+        event_id=uuid.uuid4(),
+    )
+    db_session.add_all([linked, other])
+    await db_session.commit()
+
+    response = await sessions_client.get(
+        f"/sessions/?types=event&event_id={target_event_id}"
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [str(linked.id)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 async def test_list_sessions_defaults_to_upcoming_and_reports_page_metadata(
     sessions_client, db_session
 ):

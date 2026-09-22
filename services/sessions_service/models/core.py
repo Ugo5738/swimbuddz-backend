@@ -1,11 +1,12 @@
 import uuid
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Optional
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Date,
     ForeignKey,
     Index,
     Integer,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     Text,
     Time,
     event,
+    text as sql_text,
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -318,6 +320,16 @@ class SessionTemplate(Base):
             "session_type = 'club' OR (club_id IS NULL AND pod_id IS NULL)",
             name="ck_session_templates_club_scope",
         ),
+        CheckConstraint(
+            "frequency IN ('weekly','monthly','quarterly','annual') "
+            "AND interval >= 1 "
+            "AND (week_of_month IS NULL OR week_of_month IN (-1,1,2,3,4,5)) "
+            "AND (day_of_month IS NULL OR day_of_month BETWEEN 1 AND 31) "
+            "AND (month_of_year IS NULL OR month_of_year BETWEEN 1 AND 12) "
+            "AND (ends_on IS NULL OR ends_on >= starts_on) "
+            "AND (frequency <> 'weekly' OR week_of_month IS NULL)",
+            name="ck_session_templates_recurrence",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -390,6 +402,22 @@ class SessionTemplate(Base):
     day_of_week: Mapped[int] = mapped_column(
         Integer, nullable=False
     )  # 0=Monday, 6=Sunday
+    frequency: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="weekly", server_default="weekly"
+    )
+    interval: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    week_of_month: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    day_of_month: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    month_of_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    starts_on: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+        default=date.today,
+        server_default=sql_text("CURRENT_DATE"),
+    )
+    ends_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     start_time: Mapped[time] = mapped_column(
         Time, nullable=False
     )  # Time of day (e.g., 09:00)

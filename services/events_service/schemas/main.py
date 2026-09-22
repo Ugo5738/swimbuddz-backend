@@ -4,7 +4,9 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from services.events_service.services.audiences import normalize_event_audiences
 
 EventAudience = Literal["community", "club", "academy"]
 EventVisibility = Literal["public", "members_only", "invite_only"]
@@ -32,7 +34,12 @@ class EventBase(BaseModel):
     title: str
     description: Optional[str] = None
     event_type: str  # social/volunteer/beach_day/watch_party/cleanup/training
-    audience: EventAudience = "community"
+    primary_audience: Optional[EventAudience] = None
+    audiences: list[EventAudience] = Field(default_factory=list)
+    audience: Optional[EventAudience] = Field(
+        None,
+        description="Deprecated compatibility alias for primary_audience.",
+    )
     visibility: EventVisibility = "public"
     status: EventStatus = "published"
     location_type: EventLocationType = "physical"
@@ -54,6 +61,18 @@ class EventBase(BaseModel):
     margin_value: float = Field(default=0, ge=0)
     email_reminder_hours: list[ReminderHour] = Field(default_factory=list, max_length=8)
 
+    @model_validator(mode="after")
+    def normalize_audiences(self) -> "EventBase":
+        primary, audiences = normalize_event_audiences(
+            primary_audience=self.primary_audience,
+            audiences=self.audiences,
+            audience=self.audience,
+        )
+        self.primary_audience = primary  # type: ignore[assignment]
+        self.audiences = audiences  # type: ignore[assignment]
+        self.audience = primary  # type: ignore[assignment]
+        return self
+
 
 class EventCreate(EventBase):
     """Schema for creating an event."""
@@ -67,6 +86,8 @@ class EventUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     event_type: Optional[str] = None
+    primary_audience: Optional[EventAudience] = None
+    audiences: Optional[list[EventAudience]] = None
     audience: Optional[EventAudience] = None
     visibility: Optional[EventVisibility] = None
     status: Optional[EventStatus] = None
@@ -97,6 +118,8 @@ class EventResponse(BaseModel):
     title: str
     description: Optional[str] = None
     event_type: str
+    primary_audience: EventAudience
+    audiences: list[EventAudience]
     audience: EventAudience
     visibility: EventVisibility
     status: EventStatus
