@@ -5,12 +5,20 @@ from sqlalchemy import create_mock_engine
 from services.sessions_service.models import Session
 
 
-def test_cohort_fee_migration_remains_in_the_linear_sessions_history():
+def test_cohort_and_recurrence_migrations_share_one_sessions_head():
     scripts = ScriptDirectory.from_config(
         Config("services/sessions_service/alembic.ini")
     )
-    assert scripts.get_current_head() == "e7f9a1b3c425"
+    assert len(scripts.get_heads()) == 1
+    assert {"c6e8a0b2d914", "e7f9a1b3c425", "f8a0b2c4d637"} <= {
+        revision.revision for revision in scripts.walk_revisions()
+    }
     assert scripts.get_revision("e7f9a1b3c425").down_revision == "c6e8a0b2d914"
+    assert scripts.get_revision("f8a0b2c4d637").down_revision == "c6e8a0b2d914"
+    assert set(scripts.get_revision("a9b1c3d5e748").down_revision) == {
+        "e7f9a1b3c425",
+        "f8a0b2c4d637",
+    }
     migration = scripts.get_revision("c6e8a0b2d914")
     assert migration.down_revision == "b4d8f0a2c613"
     column = Session.__table__.c.cohort_fee_mode

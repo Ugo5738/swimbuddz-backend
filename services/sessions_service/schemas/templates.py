@@ -6,6 +6,9 @@ from pydantic import BaseModel, Field, model_validator
 
 from services.sessions_service.models import SessionType
 from services.sessions_service.schemas.main import SessionCostLine
+from services.sessions_service.services.template_context import (
+    validate_template_context,
+)
 
 SessionTemplateFrequency = Literal["weekly", "monthly", "quarterly", "annual"]
 
@@ -20,6 +23,8 @@ class ClubTemplatePricing(BaseModel):
 
 
 class SessionTemplateBase(BaseModel):
+    cohort_id: Optional[uuid.UUID] = None
+    cohort_fee_mode: Literal["included", "paid_extra"] = "included"
     club_id: Optional[uuid.UUID] = None
     club_access_mode: Literal["plan_included", "active_club", "paid_addon"] = (
         "plan_included"
@@ -58,10 +63,9 @@ class SessionTemplateBase(BaseModel):
 class SessionTemplateCreate(SessionTemplateBase):
     @model_validator(mode="after")
     def _require_pool_reference(self) -> "SessionTemplateCreate":
-        if self.session_type == SessionType.EVENT:
-            raise ValueError(
-                "Create Event sessions from a concrete Event occurrence so event_id is preserved"
-            )
+        validate_template_context(
+            self.session_type, self.cohort_id, self.cohort_fee_mode
+        )
         if self.session_type != SessionType.CLUB and (
             self.club_id or self.club_access_mode != "plan_included"
         ):
@@ -88,6 +92,8 @@ class SessionTemplateCreate(SessionTemplateBase):
 
 
 class SessionTemplateUpdate(BaseModel):
+    cohort_id: Optional[uuid.UUID] = None
+    cohort_fee_mode: Optional[Literal["included", "paid_extra"]] = None
     club_id: Optional[uuid.UUID] = None
     club_access_mode: Optional[
         Literal["plan_included", "active_club", "paid_addon"]
@@ -156,6 +162,8 @@ class SessionTemplateResponse(SessionTemplateBase):
             "location": obj.location,
             "location_name": obj.location_name,
             "session_type": obj.session_type,
+            "cohort_id": getattr(obj, "cohort_id", None),
+            "cohort_fee_mode": getattr(obj, "cohort_fee_mode", None) or "included",
             "club_id": getattr(obj, "club_id", None),
             "pod_id": obj.pod_id,
             "club_access_mode": getattr(obj, "club_access_mode", "plan_included"),
