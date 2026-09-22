@@ -252,7 +252,10 @@ def test_review_proxy_uses_mobile_playable_h264(monkeypatch):
     vault_previews._run_video_proxy("original.mov", "review.mp4")
     args = calls[0]
     assert args[args.index("-c:v") + 1] == "libx264"
+    assert args[args.index("-preset") + 1] == "veryfast"
+    assert args[args.index("-crf") + 1] == "27"
     assert args[args.index("-pix_fmt") + 1] == "yuv420p"
+    assert "min(960,iw)" in args[args.index("-vf") + 1]
     assert args[args.index("-c:a") + 1] == "aac"
     assert "+faststart" in args
 
