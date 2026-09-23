@@ -12,13 +12,22 @@ from typing import List, Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
-from libs.common.service_client import get_member_by_auth_id
+from libs.common.logging import get_logger
+from libs.common.config import get_settings
+from libs.common.service_client import (
+    cancel_opportunities_for_context,
+    dispatch_notification,
+    get_member_by_auth_id,
+    internal_post,
+    reconcile_session_ride_schedule,
+    reconcile_volunteer_session_schedule,
+)
 from libs.common.session_access import denial_message
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
@@ -29,6 +38,7 @@ from services.sessions_service.models import (
     SessionBookingStatus,
     SessionCoach,
     SessionStatus,
+    SessionType,
 )
 from services.sessions_service.schemas import (
     BookingConfirmRequest,
@@ -55,8 +65,13 @@ from services.sessions_service.services.session_access import (
     evaluate_session_access_for_member,
     get_member_session_access_payload,
 )
+from services.sessions_service.services.pricing import (
+    normalize_pricing_payload,
+    pricing_payload_from_session,
+)
 
 router = APIRouter(prefix="/internal/sessions", tags=["internal"])
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +165,42 @@ class SessionListSummary(BaseModel):
     location: Optional[str] = None
     club_id: Optional[str] = None
     pod_id: Optional[str] = None
+
+
+class EventSessionLink(BaseModel):
+    id: uuid.UUID
+    status: str
+
+
+class EventSessionLinks(BaseModel):
+    event_id: uuid.UUID
+    linked_count: int
+    active_count: int
+    sessions: list[EventSessionLink]
+
+
+class EventSessionSync(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    timezone: str | None = None
+    pool_id: uuid.UUID | None = None
+    location_name: str | None = None
+    capacity: int | None = Field(default=None, ge=1)
+    cancel: bool = False
+    cancellation_reason: str | None = None
+
+
+class EventSessionSyncResult(BaseModel):
+    event_id: uuid.UUID
+    linked_count: int
+    updated_count: int
+    cancelled_count: int
+
+
+class EventSessionLinksBatchRequest(BaseModel):
+    event_ids: list[uuid.UUID] = Field(default_factory=list, max_length=200)
 
 
 # ---------------------------------------------------------------------------
@@ -610,6 +661,386 @@ async def get_session_summaries_batch(
         for session_id in session_ids
         if (session := by_id.get(session_id)) is not None
     ]
+
+
+@router.get("/events/{event_id}/links", response_model=EventSessionLinks)
+async def get_event_session_links(
+    event_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    sessions = list(
+        (
+            await db.execute(
+                select(Session)
+                .where(
+                    Session.session_type == SessionType.EVENT,
+                    Session.event_id == event_id,
+                )
+                .order_by(Session.starts_at, Session.id)
+            )
+        ).scalars()
+    )
+    active = [item for item in sessions if item.status != SessionStatus.CANCELLED]
+    return EventSessionLinks(
+        event_id=event_id,
+        linked_count=len(sessions),
+        active_count=len(active),
+        sessions=[
+            EventSessionLink(id=item.id, status=item.status.value) for item in sessions
+        ],
+    )
+
+
+@router.post("/events/links/batch", response_model=dict[str, EventSessionLinks])
+async def get_event_session_links_batch(
+    payload: EventSessionLinksBatchRequest,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    event_ids = list(dict.fromkeys(payload.event_ids))
+    if not event_ids:
+        return {}
+    sessions = list(
+        (
+            await db.execute(
+                select(Session)
+                .where(
+                    Session.session_type == SessionType.EVENT,
+                    Session.event_id.in_(event_ids),
+                )
+                .order_by(Session.starts_at, Session.id)
+            )
+        ).scalars()
+    )
+    grouped: dict[uuid.UUID, list[Session]] = {event_id: [] for event_id in event_ids}
+    for session in sessions:
+        if session.event_id is not None:
+            grouped.setdefault(session.event_id, []).append(session)
+    return {
+        str(event_id): EventSessionLinks(
+            event_id=event_id,
+            linked_count=len(items),
+            active_count=sum(item.status != SessionStatus.CANCELLED for item in items),
+            sessions=[
+                EventSessionLink(id=item.id, status=item.status.value) for item in items
+            ],
+        )
+        for event_id, items in grouped.items()
+    }
+
+
+@router.patch("/events/{event_id}/sync", response_model=EventSessionSyncResult)
+async def sync_event_sessions(
+    event_id: uuid.UUID,
+    payload: EventSessionSync,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Apply Event-owned shared fields atomically to linked Sessions.
+
+    Historical/in-progress Sessions cannot be silently rewritten. Event
+    cancellation is different: every non-completed linked Session is cancelled
+    while completed history remains intact.
+    """
+    sessions = list(
+        (
+            await db.execute(
+                select(Session)
+                .where(
+                    Session.session_type == SessionType.EVENT,
+                    Session.event_id == event_id,
+                )
+                .with_for_update()
+            )
+        ).scalars()
+    )
+    values = payload.model_dump(
+        exclude_unset=True,
+        exclude={"cancel", "cancellation_reason"},
+    )
+    required_shared = {"title", "starts_at", "ends_at", "timezone", "capacity"}
+    cleared_required = [
+        field for field in required_shared if field in values and values[field] is None
+    ]
+    if cleared_required:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Linked Event Sessions cannot clear required shared fields: "
+                + ", ".join(sorted(cleared_required))
+            ),
+        )
+    editable = {SessionStatus.DRAFT, SessionStatus.SCHEDULED}
+    if values:
+        blocked = [
+            item
+            for item in sessions
+            if item.status not in editable and item.status != SessionStatus.CANCELLED
+        ]
+        if blocked:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "The Event has an in-progress or completed Session. Its shared "
+                    "schedule fields can no longer be changed."
+                ),
+            )
+
+    if "capacity" in values:
+        editable_ids = [item.id for item in sessions if item.status in editable]
+        occupied_by_session: dict[uuid.UUID, int] = {}
+        if editable_ids:
+            now = utc_now()
+            occupied_rows = (
+                await db.execute(
+                    select(
+                        SessionBooking.session_id,
+                        func.coalesce(func.sum(SessionBooking.party_size), 0),
+                    )
+                    .where(
+                        SessionBooking.session_id.in_(editable_ids),
+                        or_(
+                            SessionBooking.status == SessionBookingStatus.CONFIRMED,
+                            and_(
+                                SessionBooking.status == SessionBookingStatus.PENDING,
+                                or_(
+                                    SessionBooking.expires_at.is_(None),
+                                    SessionBooking.expires_at > now,
+                                ),
+                            ),
+                        ),
+                    )
+                    .group_by(SessionBooking.session_id)
+                )
+            ).all()
+            occupied_by_session = {
+                session_id: int(occupied or 0) for session_id, occupied in occupied_rows
+            }
+            guest_rows = (
+                await db.execute(
+                    select(GuestPass.session_id, func.count(GuestPass.id))
+                    .where(
+                        GuestPass.session_id.in_(editable_ids),
+                        or_(
+                            GuestPass.status.in_(["confirmed", "attended"]),
+                            and_(
+                                GuestPass.status == "pending_payment",
+                                GuestPass.reservation_expires_at.is_not(None),
+                                GuestPass.reservation_expires_at > now,
+                            ),
+                        ),
+                    )
+                    .group_by(GuestPass.session_id)
+                )
+            ).all()
+            for session_id, occupied in guest_rows:
+                occupied_by_session[session_id] = occupied_by_session.get(
+                    session_id, 0
+                ) + int(occupied or 0)
+        requested_capacity = int(values["capacity"])
+        for session in sessions:
+            occupied = occupied_by_session.get(session.id, 0)
+            if session.status in editable and requested_capacity < occupied:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"{session.title} already has {occupied} occupied places; "
+                        f"capacity cannot be reduced to {requested_capacity}."
+                    ),
+                )
+
+    updated_count = 0
+    cancelled: list[Session] = []
+    changed_snapshots: list[tuple[Session, dict]] = []
+    for session in sessions:
+        if session.status in editable:
+            before = {
+                "starts_at": session.starts_at,
+                "ends_at": session.ends_at,
+                "timezone": session.timezone,
+                "pool_id": session.pool_id,
+                "location_name": session.location_name,
+            }
+            if "capacity" in values and (
+                session.pricing_expected_attendees is None
+                or session.pricing_expected_attendees > int(values["capacity"])
+            ):
+                pricing_payload = pricing_payload_from_session(session)
+                pricing_payload["capacity"] = int(values["capacity"])
+                pricing_payload["pricing_expected_attendees"] = int(values["capacity"])
+                normalized_pricing = normalize_pricing_payload(pricing_payload)
+                for field, value in normalized_pricing.items():
+                    if field == "pool_fee":
+                        session.pool_fee = round(float(value) * 100)
+                    else:
+                        setattr(session, field, value)
+            for field, value in values.items():
+                setattr(session, field, value)
+            resulting_start = values.get("starts_at", session.starts_at)
+            resulting_end = values.get("ends_at", session.ends_at)
+            if resulting_end is not None and resulting_end <= resulting_start:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Event end time must be later than its start time",
+                )
+            if values:
+                updated_count += 1
+                changed_snapshots.append((session, before))
+        if payload.cancel and session.status not in {
+            SessionStatus.CANCELLED,
+            SessionStatus.COMPLETED,
+        }:
+            session.status = SessionStatus.CANCELLED
+            cancelled.append(session)
+
+    await db.commit()
+
+    settings = get_settings()
+    for session, before in changed_snapshots:
+        schedule_changed = (
+            before["starts_at"] != session.starts_at
+            or before["ends_at"] != session.ends_at
+            or before["timezone"] != session.timezone
+        )
+        venue_changed = (
+            before["pool_id"] != session.pool_id
+            or before["location_name"] != session.location_name
+        )
+        if before["starts_at"] != session.starts_at:
+            try:
+                await reconcile_session_ride_schedule(
+                    session_id=str(session.id),
+                    old_starts_at=before["starts_at"].isoformat(),
+                    new_starts_at=session.starts_at.isoformat(),
+                    calling_service="sessions",
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Could not reconcile ride departures for Event Session %s: %s",
+                    session.id,
+                    exc,
+                )
+        if schedule_changed or venue_changed:
+            try:
+                await reconcile_volunteer_session_schedule(
+                    session_id=str(session.id),
+                    old_starts_at=before["starts_at"].isoformat(),
+                    old_ends_at=before["ends_at"].isoformat(),
+                    new_starts_at=session.starts_at.isoformat(),
+                    new_ends_at=session.ends_at.isoformat(),
+                    old_timezone=before["timezone"],
+                    new_timezone=session.timezone,
+                    old_location_name=before["location_name"],
+                    new_location_name=session.location_name,
+                    calling_service="sessions",
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Could not reconcile volunteer opportunities for Event Session %s: %s",
+                    session.id,
+                    exc,
+                )
+
+            member_ids = [
+                str(member_id)
+                for member_id in (
+                    await db.execute(
+                        select(SessionBooking.member_id).where(
+                            SessionBooking.session_id == session.id,
+                            SessionBooking.status.in_(
+                                [
+                                    SessionBookingStatus.PENDING,
+                                    SessionBookingStatus.CONFIRMED,
+                                ]
+                            ),
+                        )
+                    )
+                ).scalars()
+            ]
+            message = (
+                f"{session.title} was updated. It now runs from "
+                f"{session.starts_at.isoformat()} to {session.ends_at.isoformat()} "
+                f"at {session.location_name or 'the updated venue'}. Your booking "
+                "and amount paid are unchanged."
+            )
+            await dispatch_notification(
+                type="session_updated",
+                category="sessions",
+                member_ids=sorted(set(member_ids)),
+                title="Swimming session updated",
+                body=message,
+                action_url=f"/sessions/{session.id}",
+                calling_service="sessions",
+                metadata={"event_id": str(event_id), "session_id": str(session.id)},
+            )
+            guest_emails = list(
+                (
+                    await db.execute(
+                        select(GuestPass.email).where(
+                            GuestPass.session_id == session.id,
+                            GuestPass.status.in_(["confirmed", "pending_payment"]),
+                        )
+                    )
+                ).scalars()
+            )
+            for email in sorted(set(guest_emails)):
+                try:
+                    await internal_post(
+                        service_url=settings.COMMUNICATIONS_SERVICE_URL,
+                        path="/email/send",
+                        calling_service="sessions",
+                        json={
+                            "to_email": email,
+                            "subject": "Swimming session updated",
+                            "body": message,
+                        },
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Could not notify guest %s for Event Session %s: %s",
+                        email,
+                        session.id,
+                        exc,
+                    )
+
+    for session in cancelled:
+        try:
+            await internal_post(
+                service_url=settings.COMMUNICATIONS_SERVICE_URL,
+                path="/internal/communications/session-cancelled",
+                calling_service="sessions",
+                json={
+                    "session_id": str(session.id),
+                    "cancellation_reason": payload.cancellation_reason
+                    or "Linked event cancelled",
+                },
+            )
+        except Exception as exc:
+            logger.warning(
+                "Could not send cancellation notice for Event Session %s: %s",
+                session.id,
+                exc,
+            )
+        try:
+            await cancel_opportunities_for_context(
+                calling_service="sessions",
+                session_id=str(session.id),
+                reason=payload.cancellation_reason or "Linked event cancelled",
+            )
+        except Exception as exc:
+            logger.warning(
+                "Could not cancel volunteer opportunities for Event Session %s: %s",
+                session.id,
+                exc,
+            )
+
+    return EventSessionSyncResult(
+        event_id=event_id,
+        linked_count=len(sessions),
+        updated_count=updated_count,
+        cancelled_count=len(cancelled),
+    )
 
 
 @router.get("/durations")

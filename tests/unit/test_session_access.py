@@ -50,7 +50,7 @@ def test_required_tier_by_session_type():
     assert required_tier_for_session_type("academy") == "academy"
     assert required_tier_for_session_type("club") == "club"
     assert required_tier_for_session_type("community") == "community"
-    assert required_tier_for_session_type("event") == "community"
+    assert required_tier_for_session_type("event") == "event"
 
 
 def test_paid_products_do_not_expand_a_tier_hierarchy():
@@ -79,15 +79,49 @@ def test_legacy_academy_prompt_access_is_scoped_elsewhere():
     assert has_paid_session_access(_member(), "academy", NOW)
 
 
-def test_paid_community_can_book_community_and_event_sessions():
+def test_event_session_uses_event_policy_instead_of_community_membership():
     member = _member(community_paid_until=FUTURE)
 
     assert evaluate_session_access(member, _session(), now=NOW).bookable
-    assert evaluate_session_access(
+    missing_policy = evaluate_session_access(
         member,
         _session(session_type="event"),
         now=NOW,
-    ).bookable
+    )
+    public_event = evaluate_session_access(
+        _member(academy_paid_until=FUTURE),
+        _session(session_type="event", pool_fee=520_000),
+        now=NOW,
+        event_access_result={
+            "allowed": True,
+            "tier_access": "public",
+            "source": "event_public",
+        },
+    )
+
+    assert not missing_policy.bookable
+    assert missing_policy.reason == "event_policy_unavailable"
+    assert public_event.bookable
+    assert public_event.required_tier == "public"
+    assert public_event.access_source == "event_public"
+    assert public_event.fee_amount_kobo == 520_000
+
+
+@pytest.mark.parametrize("tier", ["community", "club", "academy", "invite_only"])
+def test_event_session_accepts_authoritative_event_eligibility(tier):
+    decision = evaluate_session_access(
+        _member(),
+        _session(session_type="event"),
+        now=NOW,
+        event_access_result={
+            "allowed": True,
+            "tier_access": tier,
+            "source": "event_invitation" if tier == "invite_only" else f"event_{tier}",
+        },
+    )
+
+    assert decision.bookable
+    assert decision.required_tier == tier
 
 
 def test_paid_club_member_can_book_club_and_community():

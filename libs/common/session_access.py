@@ -59,6 +59,13 @@ DENIAL_MESSAGES: dict[str, str] = {
         "the SwimBuddz team for more information."
     ),
     "pod_required": "This club session is restricted to its assigned pod.",
+    "event_access_required": (
+        "This event session is not available to your membership or invitations."
+    ),
+    "event_unavailable": "The linked event is not available for booking.",
+    "event_policy_unavailable": (
+        "We could not verify access to the linked event. Please try again."
+    ),
 }
 
 
@@ -99,6 +106,8 @@ def required_tier_for_session_type(session_type: Any) -> str:
         return ACADEMY
     if normalized == CLUB:
         return CLUB
+    if normalized == EVENT:
+        return EVENT
     return COMMUNITY
 
 
@@ -172,8 +181,12 @@ def has_paid_session_access(
     normalized = _normalized(session_type)
     paid_tiers = active_paid_tiers(member, now)
 
-    if normalized == COMMUNITY or normalized == EVENT:
+    if normalized == COMMUNITY:
         return COMMUNITY in paid_tiers
+    if normalized == EVENT:
+        # Event eligibility is owned by Events (public, tier-scoped, or
+        # invite-only). A Session type alone cannot answer this question.
+        return False
     if normalized == CLUB:
         # Academy is a distinct programme, not an implicit Club purchase.
         # Dated ClubEnrollment checks are supplied by service adapters; this
@@ -203,6 +216,7 @@ def evaluate_session_access(
     confirmed_booking: bool = False,
     club_product_access: bool | None = None,
     club_access_result: Mapping[str, Any] | None = None,
+    event_access_result: Mapping[str, Any] | None = None,
 ) -> SessionAccessDecision:
     """Evaluate member access for a single session.
 
@@ -212,6 +226,8 @@ def evaluate_session_access(
     now = now or utc_now()
     session_type = _normalized(_value(session, "session_type"))
     required_tier = required_tier_for_session_type(session_type)
+    if session_type == EVENT and event_access_result:
+        required_tier = _normalized(event_access_result.get("tier_access")) or EVENT
     status = _normalized(_value(session, "status")) or SCHEDULED
     starts_at = _parse_datetime(_value(session, "starts_at"))
     ends_at = _parse_datetime(_value(session, "ends_at"))
@@ -335,7 +351,17 @@ def evaluate_session_access(
                     # rate is selected explicitly by this resolver.
                     fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
                     price_label = "Club session rate"
-    elif session_type in {COMMUNITY, EVENT}:
+    elif session_type == EVENT:
+        if event_access_result is None:
+            reason = "event_policy_unavailable"
+        elif bool(event_access_result.get("allowed")):
+            allowed = True
+            access_source = str(event_access_result.get("source") or "event_policy")
+            fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
+            price_label = "Event session rate"
+        else:
+            reason = str(event_access_result.get("reason") or "event_access_required")
+    elif session_type == COMMUNITY:
         if COMMUNITY in paid_tiers:
             allowed = True
             access_source = "community_membership"

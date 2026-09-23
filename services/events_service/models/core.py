@@ -47,6 +47,14 @@ class Event(Base):
             name="ck_events_primary_audience",
         ),
         CheckConstraint(
+            "audience = primary_audience",
+            name="ck_events_audience_mirrors_primary",
+        ),
+        CheckConstraint(
+            "(visibility = 'invite_only') = (tier_access = 'invite_only')",
+            name="ck_events_invite_visibility_access",
+        ),
+        CheckConstraint(
             "jsonb_typeof(audiences) = 'array' "
             "AND jsonb_array_length(audiences) > 0 "
             'AND audiences <@ \'["community","club","academy"]\'::jsonb '
@@ -184,6 +192,14 @@ class EventTemplate(Base):
         CheckConstraint(
             "primary_audience IN ('community','club','academy')",
             name="ck_event_templates_primary_audience",
+        ),
+        CheckConstraint(
+            "audience = primary_audience",
+            name="ck_event_templates_audience_mirrors_primary",
+        ),
+        CheckConstraint(
+            "(visibility = 'invite_only') = (tier_access = 'invite_only')",
+            name="ck_event_templates_invite_visibility_access",
         ),
         CheckConstraint(
             "jsonb_typeof(audiences) = 'array' "

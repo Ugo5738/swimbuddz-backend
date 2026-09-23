@@ -9,8 +9,10 @@ from datetime import datetime
 import httpx
 from fastapi import HTTPException
 
+from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import (
+    check_event_attendance_batch,
     check_club_access_batch,
     check_cohort_enrollment,
     check_cohort_enrollments_batch,
@@ -18,7 +20,7 @@ from libs.common.service_client import (
     get_pod_by_id,
     get_pod_rosters_batch,
 )
-from libs.common.session_access import evaluate_session_access
+from libs.common.session_access import active_paid_tiers, evaluate_session_access
 from services.sessions_service.models import Session
 
 logger = get_logger(__name__)
@@ -27,6 +29,11 @@ logger = get_logger(__name__)
 def _is_club_session(session: Session) -> bool:
     value = getattr(session.session_type, "value", session.session_type)
     return str(value).lower() == "club"
+
+
+def _is_event_session(session: Session) -> bool:
+    value = getattr(session.session_type, "value", session.session_type)
+    return str(value).lower() == "event"
 
 
 def _club_access_check(session: Session, member_id: str) -> dict:
@@ -145,6 +152,51 @@ async def evaluate_session_access_for_member(
     else:
         club_access_result = None
 
+    event_access_result = None
+    if _is_event_session(session) and not confirmed_booking:
+        if session.event_id is None:
+            event_access_result = {
+                "allowed": False,
+                "tier_access": "event",
+                "source": "event_policy",
+                "reason": "event_unavailable",
+            }
+        else:
+            try:
+                decisions = await check_event_attendance_batch(
+                    checks=[
+                        {
+                            "context_key": str(session.id),
+                            "event_id": str(session.event_id),
+                            "paid_tiers": sorted(
+                                active_paid_tiers(
+                                    member_payload,
+                                    session.starts_at or now,
+                                )
+                            ),
+                        }
+                    ],
+                    member_id=member_id,
+                    calling_service=calling_service,
+                )
+            except httpx.HTTPError as e:
+                logger.warning(
+                    "check_event_attendance_batch failed for session=%s member=%s: %s",
+                    session.id,
+                    member_id,
+                    e,
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail="Could not verify Event access. Please try again.",
+                ) from e
+            event_access_result = decisions.get(str(session.id)) or {
+                "allowed": False,
+                "tier_access": "event",
+                "source": "event_policy",
+                "reason": "event_unavailable",
+            }
+
     return evaluate_session_access(
         member_payload,
         session,
@@ -153,6 +205,7 @@ async def evaluate_session_access_for_member(
         pod_member_ids=pod_member_ids,
         confirmed_booking=confirmed_booking,
         club_access_result=club_access_result,
+        event_access_result=event_access_result,
     )
 
 
@@ -161,8 +214,9 @@ async def get_sessions_access_context(
     sessions: list[Session],
     member_payload: dict,
     confirmed_session_ids: set[uuid.UUID],
+    now: datetime | None = None,
     calling_service: str = "sessions",
-) -> tuple[dict[str, dict], dict[str, list[str]], dict[str, dict]]:
+) -> tuple[dict[str, dict], dict[str, list[str]], dict[str, dict], dict[str, dict]]:
     """Batch all cross-service context needed to evaluate a session list."""
     cohort_ids = sorted(
         {
@@ -184,9 +238,23 @@ async def get_sessions_access_context(
         for session in sessions
         if _is_club_session(session) and session.id not in confirmed_session_ids
     ]
+    now = now or utc_now()
+    event_checks = [
+        {
+            "context_key": str(session.id),
+            "event_id": str(session.event_id),
+            "paid_tiers": sorted(
+                active_paid_tiers(member_payload, session.starts_at or now)
+            ),
+        }
+        for session in sessions
+        if _is_event_session(session)
+        and session.event_id is not None
+        and session.id not in confirmed_session_ids
+    ]
 
     try:
-        cohort_access, pod_rosters, club_access = await asyncio.gather(
+        cohort_access, pod_rosters, club_access, event_access = await asyncio.gather(
             check_cohort_enrollments_batch(
                 cohort_ids,
                 member_id,
@@ -198,6 +266,11 @@ async def get_sessions_access_context(
             ),
             check_club_access_batch(
                 club_checks,
+                calling_service=calling_service,
+            ),
+            check_event_attendance_batch(
+                checks=event_checks,
+                member_id=member_id,
                 calling_service=calling_service,
             ),
         )
@@ -212,7 +285,7 @@ async def get_sessions_access_context(
             detail="Could not verify session access. Please try again.",
         ) from exc
 
-    return cohort_access, pod_rosters, club_access
+    return cohort_access, pod_rosters, club_access, event_access
 
 
 def evaluate_session_access_from_context(
@@ -224,6 +297,7 @@ def evaluate_session_access_from_context(
     cohort_access: dict[str, dict],
     pod_rosters: dict[str, list[str]],
     club_access: dict[str, dict],
+    event_access: dict[str, dict],
 ):
     """Evaluate one list item using already-batched cross-service context."""
     cohort_enrollment = None
@@ -248,6 +322,15 @@ def evaluate_session_access_from_context(
             "source": "none",
         }
 
+    event_access_result = None
+    if _is_event_session(session) and not confirmed_booking:
+        event_access_result = event_access.get(str(session.id)) or {
+            "allowed": False,
+            "tier_access": "event",
+            "source": "event_policy",
+            "reason": "event_unavailable",
+        }
+
     return evaluate_session_access(
         member_payload,
         session,
@@ -256,6 +339,7 @@ def evaluate_session_access_from_context(
         pod_member_ids=pod_member_ids,
         confirmed_booking=confirmed_booking,
         club_access_result=club_access_result,
+        event_access_result=event_access_result,
     )
 
 

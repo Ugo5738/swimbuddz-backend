@@ -73,6 +73,7 @@ jobs:
           alembic -c services/sessions_service/alembic.ini upgrade head
           alembic -c services/store_service/alembic.ini upgrade head
           alembic -c services/transport_service/alembic.ini upgrade head
+          alembic -c services/volunteer_service/alembic.ini upgrade head
           alembic -c services/wallet_service/alembic.ini upgrade head
 
       - name: Run unit tests
@@ -127,6 +128,15 @@ jobs:
 
           pytest -v \
             tests/integration/test_store_cart.py::test_mixed_checkout_creates_hold_at_payment_initialization
+
+          pytest -v \
+            tests/integration/test_community_swim_contract.py
+
+          pytest -v \
+            tests/integration/test_transport_schedule_reconciliation.py
+
+          pytest -v \
+            tests/integration/test_volunteer_schedule_reconciliation.py
 
       # Guards against the frontend's TypeScript types drifting from backend
       # schemas. The husky pre-commit hook regenerates these locally; this

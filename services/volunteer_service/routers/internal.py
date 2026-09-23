@@ -5,8 +5,9 @@ via service-role JWT, not by frontend clients.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -452,6 +453,165 @@ async def cancel_opportunities_for_context(
         ctx_uuid,
     )
     return CancelByContextResponse(success=True, cancelled_count=cancelled)
+
+
+# ---------------------------------------------------------------------------
+# Session schedule reconciliation
+# ---------------------------------------------------------------------------
+
+
+class ReconcileSessionScheduleRequest(BaseModel):
+    """Old and new Session schedule snapshots supplied by Sessions service."""
+
+    old_starts_at: datetime
+    old_ends_at: datetime
+    new_starts_at: datetime
+    new_ends_at: datetime
+    old_timezone: str
+    new_timezone: str
+    old_location_name: Optional[str] = None
+    new_location_name: Optional[str] = None
+
+
+class ReconcileSessionScheduleResponse(BaseModel):
+    updated: int
+
+
+def _naive_time(value: datetime):
+    """Return a wall-clock time suitable for a PostgreSQL TIME column."""
+
+    return value.replace(tzinfo=None).time()
+
+
+@router.patch(
+    "/sessions/{session_id}/schedule",
+    response_model=ReconcileSessionScheduleResponse,
+)
+async def reconcile_session_schedule(
+    session_id: uuid.UUID,
+    body: ReconcileSessionScheduleRequest,
+    _service: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Move active volunteer shifts with a rescheduled Session.
+
+    Shift-specific offsets are preserved, inherited venues follow the Session,
+    and a reconciliation marker makes retries of the same transition a no-op.
+    Completed/cancelled opportunities and volunteer claims are never changed.
+    """
+    try:
+        old_zone = ZoneInfo(body.old_timezone)
+        new_zone = ZoneInfo(body.new_timezone)
+    except ZoneInfoNotFoundError as exc:
+        raise HTTPException(status_code=422, detail=f"Unknown timezone: {exc}") from exc
+
+    datetimes = (
+        body.old_starts_at,
+        body.old_ends_at,
+        body.new_starts_at,
+        body.new_ends_at,
+    )
+    if any(value.tzinfo is None or value.utcoffset() is None for value in datetimes):
+        raise HTTPException(
+            status_code=422,
+            detail="Session schedule timestamps must include a timezone offset",
+        )
+    if body.old_ends_at <= body.old_starts_at or body.new_ends_at <= body.new_starts_at:
+        raise HTTPException(
+            status_code=422,
+            detail="Session end time must be later than its start time",
+        )
+
+    old_session_start_local = body.old_starts_at.astimezone(old_zone)
+    new_session_start_local = body.new_starts_at.astimezone(new_zone)
+    transition = {
+        "old_starts_at": body.old_starts_at.isoformat(),
+        "old_ends_at": body.old_ends_at.isoformat(),
+        "new_starts_at": body.new_starts_at.isoformat(),
+        "new_ends_at": body.new_ends_at.isoformat(),
+        "old_timezone": body.old_timezone,
+        "new_timezone": body.new_timezone,
+        "old_location_name": body.old_location_name,
+        "new_location_name": body.new_location_name,
+    }
+
+    opportunities = list(
+        (
+            await db.execute(
+                select(VolunteerOpportunity)
+                .where(
+                    VolunteerOpportunity.session_id == session_id,
+                    VolunteerOpportunity.status.notin_(
+                        [OpportunityStatus.COMPLETED, OpportunityStatus.CANCELLED]
+                    ),
+                )
+                .with_for_update()
+            )
+        ).scalars()
+    )
+
+    updated = 0
+    for opportunity in opportunities:
+        metadata = dict(opportunity.metadata_json or {})
+        if metadata.get("session_schedule_reconciliation") == transition:
+            continue
+
+        changed = False
+        if opportunity.start_time is None:
+            if opportunity.date != new_session_start_local.date():
+                opportunity.date = new_session_start_local.date()
+                changed = True
+        else:
+            old_opportunity_start = datetime.combine(
+                opportunity.date,
+                opportunity.start_time,
+                tzinfo=old_zone,
+            )
+            start_offset = old_opportunity_start - old_session_start_local
+            new_opportunity_start = new_session_start_local + start_offset
+            new_date = new_opportunity_start.date()
+            new_start_time = _naive_time(new_opportunity_start)
+            if opportunity.date != new_date:
+                opportunity.date = new_date
+                changed = True
+            if opportunity.start_time != new_start_time:
+                opportunity.start_time = new_start_time
+                changed = True
+
+            if opportunity.end_time is not None:
+                old_opportunity_end = datetime.combine(
+                    old_opportunity_start.date(),
+                    opportunity.end_time,
+                    tzinfo=old_zone,
+                )
+                if old_opportunity_end <= old_opportunity_start:
+                    old_opportunity_end += timedelta(days=1)
+                end_offset = old_opportunity_end - old_session_start_local
+                new_opportunity_end = new_session_start_local + end_offset
+                new_end_time = _naive_time(new_opportunity_end)
+                if opportunity.end_time != new_end_time:
+                    opportunity.end_time = new_end_time
+                    changed = True
+
+        if opportunity.location_name == body.old_location_name:
+            if opportunity.location_name != body.new_location_name:
+                opportunity.location_name = body.new_location_name
+                changed = True
+
+        # Persist the transition even when only the marker changes so a retry
+        # cannot apply the schedule delta twice.
+        metadata["session_schedule_reconciliation"] = transition
+        opportunity.metadata_json = metadata
+        if changed:
+            updated += 1
+
+    await db.commit()
+    logger.info(
+        "Reconciled %d volunteer opportunities for rescheduled session %s",
+        updated,
+        session_id,
+    )
+    return ReconcileSessionScheduleResponse(updated=updated)
 
 
 # ---------------------------------------------------------------------------

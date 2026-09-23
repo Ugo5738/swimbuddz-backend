@@ -19,13 +19,17 @@ from libs.auth.dependencies import (
 from libs.auth.models import AuthUser
 from libs.common.currency import kobo_to_bubbles, kobo_to_bubbles_exact, naira_to_kobo
 from libs.common.datetime_utils import utc_now
+from libs.common.logging import get_logger
 from libs.common.service_client import (
     credit_member_wallet,
     debit_member_wallet,
+    get_event_session_links,
+    get_event_session_links_batch,
     get_member_by_id,
     get_member_membership,
     get_members_bulk,
     get_partner_pool,
+    sync_event_sessions,
 )
 from libs.common.session_access import active_paid_tiers
 from libs.db.session import get_async_db
@@ -41,11 +45,11 @@ from services.events_service.schemas import (
     RSVPCreate,
     RSVPResponse,
 )
+from services.events_service.services.audiences import audience_fields
 from services.events_service.services.chat_sync import (
     ensure_event_channel,
     reconcile_event_membership,
 )
-from services.events_service.services.audiences import audience_fields
 from services.events_service.services.pricing import (
     PRICING_KEYS,
     event_pricing_payload,
@@ -54,6 +58,54 @@ from services.events_service.services.pricing import (
 )
 
 router = APIRouter(prefix="/events", tags=["events"])
+logger = get_logger(__name__)
+
+EVENT_SESSION_SHARED_FIELDS = {
+    "title",
+    "description",
+    "start_time",
+    "end_time",
+    "timezone",
+    "pool_id",
+    "location",
+    "max_capacity",
+}
+
+
+def _session_sync_payload(event: Event, updates: dict) -> dict:
+    mapping = {
+        "title": "title",
+        "description": "description",
+        "start_time": "starts_at",
+        "end_time": "ends_at",
+        "timezone": "timezone",
+        "pool_id": "pool_id",
+        "location": "location_name",
+        "max_capacity": "capacity",
+    }
+    return {
+        target: updates.get(source, getattr(event, source))
+        for source, target in mapping.items()
+        if source in updates
+    }
+
+
+def _session_contract_http_error(exc: httpx.HTTPError) -> HTTPException:
+    if isinstance(exc, httpx.HTTPStatusError):
+        response = exc.response
+        try:
+            detail = response.json().get("detail")
+        except (ValueError, AttributeError):
+            detail = None
+        if response.status_code in {409, 422}:
+            return HTTPException(
+                status_code=response.status_code,
+                detail=detail or "The linked Session could not be synchronized",
+            )
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Could not synchronize the linked Session. Please try again.",
+    )
 
 
 @dataclass(frozen=True)
@@ -98,29 +150,44 @@ async def _resolve_event_actor(
 def _can_view_event(event: Event, actor: EventActor, *, invited: bool) -> bool:
     if actor.is_admin:
         return True
+
     if event.status != "published":
         return False
+
     if event.visibility == "public":
         return True
-    if not actor.is_authenticated:
-        return False
+
+    if event.visibility == "members_only":
+        # Discovery requires a SwimBuddz member profile, not merely an auth
+        # account. Programme eligibility is evaluated separately below.
+        return actor.member_id is not None
+
     if event.visibility == "invite_only":
-        return invited
-    if event.tier_access == "public":
-        return True
-    return event.tier_access in ({"community"} | set(actor.paid_tiers))
+        return actor.member_id is not None and invited
+
+    return False
 
 
 def _can_attend_event(event: Event, actor: EventActor, *, invited: bool) -> bool:
     if actor.is_admin:
         return True
-    if event.status != "published" or not actor.is_authenticated:
+
+    # Event participation is member-based even when discovery is public.
+    if event.status != "published" or actor.member_id is None:
+        return False
+
+    # Visibility is a privacy boundary, not merely a discovery hint. Enforce
+    # it independently even if malformed legacy data says the attendance tier
+    # is public.
+    if event.visibility == "invite_only" and not invited:
         return False
     if event.tier_access == "public":
         return True
     if event.tier_access == "invite_only":
         return invited
-    return event.tier_access in ({"community"} | set(actor.paid_tiers))
+
+    # Community, Club, and Academy are independent paid entitlements.
+    return event.tier_access in actor.paid_tiers
 
 
 async def get_current_member(
@@ -162,11 +229,18 @@ def _event_response_dict(
     *,
     actor: Optional[EventActor] = None,
     invited: bool = False,
+    linked_session_count: int = 0,
+    linked_state_available: bool = True,
 ) -> dict:
     """Build an EventResponse-compatible dict, converting kobo → naira."""
     total_kobo = _total_charge_kobo(event)
     viewer_can_attend = bool(actor and _can_attend_event(event, actor, invited=invited))
     hide_location = bool(event.is_location_private and not viewer_can_attend)
+    participation_unknown = (
+        not linked_state_available
+        and not event.community_experience_offering_id
+        and event.event_type != OPEN_SWIM_TYPE
+    )
     return {
         "id": event.id,
         "community_experience_offering_id": event.community_experience_offering_id,
@@ -203,9 +277,45 @@ def _event_response_dict(
         "created_by": event.created_by,
         "created_at": event.created_at,
         "updated_at": event.updated_at,
-        "rsvp_count": rsvp_count or {},
+        "rsvp_count": (
+            {}
+            if linked_session_count
+            or participation_unknown
+            or event.community_experience_offering_id
+            else (rsvp_count or {})
+        ),
         "viewer_can_attend": viewer_can_attend,
         "viewer_invited": invited,
+        "participation_mode": (
+            "experience"
+            if event.community_experience_offering_id
+            else "unavailable"
+            if participation_unknown
+            else "session"
+            if linked_session_count
+            else "rsvp"
+        ),
+        "linked_session_count": linked_session_count,
+        "participation_state_available": not participation_unknown,
+    }
+
+
+async def _linked_session_counts(events: list[Event]) -> dict[str, int] | None:
+    if not events:
+        return {}
+    try:
+        links = await get_event_session_links_batch(
+            [str(event.id) for event in events], calling_service="events"
+        )
+    except httpx.HTTPError as exc:
+        # Event discovery must remain available when Sessions is temporarily
+        # down. The response is explicitly marked unavailable so clients fail
+        # closed and never fall back to duplicate Event RSVP.
+        logger.warning("Could not enrich Event participation state: %s", exc)
+        return None
+    return {
+        event_id: int(payload.get("linked_count", 0))
+        for event_id, payload in links.items()
     }
 
 
@@ -247,6 +357,9 @@ async def list_events(
 
     result = await db.execute(query)
     events = result.scalars().all()
+    linked_counts_result = await _linked_session_counts(list(events))
+    linked_state_available = linked_counts_result is not None
+    linked_counts = linked_counts_result or {}
     invited_event_ids: set[uuid.UUID] = set()
     if actor.member_id and events:
         invited_event_ids = set(
@@ -284,6 +397,8 @@ async def list_events(
                     rsvp_counts,
                     actor=actor,
                     invited=invited,
+                    linked_session_count=linked_counts.get(str(event.id), 0),
+                    linked_state_available=linked_state_available,
                 )
             )
         )
@@ -342,6 +457,9 @@ async def get_event(
 
     rsvp_result = await db.execute(rsvp_query)
     rsvp_counts = {row[0]: row[1] for row in rsvp_result.all()}
+    linked_counts_result = await _linked_session_counts([event])
+    linked_state_available = linked_counts_result is not None
+    linked_counts = linked_counts_result or {}
 
     return EventResponse.model_validate(
         _event_response_dict(
@@ -349,6 +467,8 @@ async def get_event(
             rsvp_counts,
             actor=actor,
             invited=invited,
+            linked_session_count=linked_counts.get(str(event.id), 0),
+            linked_state_available=linked_state_available,
         )
     )
 
@@ -747,6 +867,12 @@ async def update_event(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
+    if event.status == "cancelled" and event_data.status not in {None, "cancelled"}:
+        raise HTTPException(
+            status_code=409,
+            detail="A cancelled Event cannot be reopened. Create a new Event instead.",
+        )
+
     # Update only provided fields. Pricing values need Naira→kobo normalization.
     update_fields = event_data.model_dump(exclude_unset=True)
     audience_keys = {"primary_audience", "audiences", "audience"}
@@ -793,6 +919,100 @@ async def update_event(
         pricing_payload = event_pricing_payload(event)
         pricing_payload.update(pricing_updates)
         update_fields.update(normalize_event_pricing(pricing_payload))
+
+    next_visibility = update_fields.get("visibility", event.visibility)
+    next_tier_access = update_fields.get("tier_access", event.tier_access)
+    if (next_visibility == "invite_only") != (next_tier_access == "invite_only"):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Invite-only Events must use invite-only attendance access, and "
+                "invite-only attendance access requires invite-only visibility."
+            ),
+        )
+
+    next_event_type = update_fields.get("event_type", event.event_type)
+    if "event_type" in update_fields and next_event_type in {
+        "community_swim",
+        "open_swim",
+    }:
+        try:
+            type_change_links = await get_event_session_links(
+                str(event.id), calling_service="events"
+            )
+        except httpx.HTTPError as exc:
+            raise _session_contract_http_error(exc) from exc
+        active_count = int(type_change_links.get("active_count", 0))
+        if next_event_type == "community_swim" and active_count > 1:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "A Community Swim can have only one active Session. Cancel or "
+                    "remove the extra Sessions before changing this activity type."
+                ),
+            )
+        if next_event_type == "open_swim" and type_change_links.get("linked_count", 0):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "A member-hosted open swim uses Event RSVP and cannot retain "
+                    "linked Sessions."
+                ),
+            )
+
+    changed_shared_fields = {
+        field
+        for field in EVENT_SESSION_SHARED_FIELDS & update_fields.keys()
+        if update_fields[field] != getattr(event, field)
+    }
+    cancelling = (
+        update_fields.get("status") == "cancelled" and event.status != "cancelled"
+    )
+    if changed_shared_fields or cancelling:
+        changed_shared_values = {
+            field: update_fields[field] for field in changed_shared_fields
+        }
+        sync_payload = _session_sync_payload(event, changed_shared_values)
+        if (
+            "max_capacity" in changed_shared_fields
+            and update_fields["max_capacity"] is None
+        ):
+            try:
+                links = await get_event_session_links(
+                    str(event.id), calling_service="events"
+                )
+            except httpx.HTTPError as exc:
+                raise _session_contract_http_error(exc) from exc
+            if links.get("linked_count", 0):
+                raise HTTPException(
+                    status_code=422,
+                    detail="A linked Event Session must keep an explicit capacity.",
+                )
+            sync_payload.pop("capacity", None)
+        if "end_time" in changed_shared_fields and update_fields["end_time"] is None:
+            try:
+                links = await get_event_session_links(
+                    str(event.id), calling_service="events"
+                )
+            except httpx.HTTPError as exc:
+                raise _session_contract_http_error(exc) from exc
+            if links.get("linked_count", 0):
+                raise HTTPException(
+                    status_code=422,
+                    detail="A linked Event Session must keep an explicit end time.",
+                )
+            sync_payload.pop("ends_at", None)
+        if cancelling:
+            sync_payload.update(
+                cancel=True,
+                cancellation_reason="Linked Event cancelled",
+            )
+        try:
+            await sync_event_sessions(
+                str(event.id), payload=sync_payload, calling_service="events"
+            )
+        except httpx.HTTPError as exc:
+            raise _session_contract_http_error(exc) from exc
     for field, value in update_fields.items():
         setattr(event, field, value)
 
@@ -808,8 +1028,17 @@ async def update_event(
 
     rsvp_result = await db.execute(rsvp_query)
     rsvp_counts = {row[0]: row[1] for row in rsvp_result.all()}
-
-    return EventResponse.model_validate(_event_response_dict(event, rsvp_counts))
+    linked_counts_result = await _linked_session_counts([event])
+    linked_state_available = linked_counts_result is not None
+    linked_counts = linked_counts_result or {}
+    return EventResponse.model_validate(
+        _event_response_dict(
+            event,
+            rsvp_counts,
+            linked_session_count=linked_counts.get(str(event.id), 0),
+            linked_state_available=linked_state_available,
+        )
+    )
 
 
 @router.delete("/{event_id}", status_code=204)
@@ -830,6 +1059,30 @@ async def delete_event(
         raise HTTPException(
             409, "Unlink this Event from its Community Experience before deleting it"
         )
+
+    try:
+        links = await get_event_session_links(str(event.id), calling_service="events")
+    except httpx.HTTPError as exc:
+        raise _session_contract_http_error(exc) from exc
+
+    if links.get("linked_count", 0):
+        try:
+            await sync_event_sessions(
+                str(event.id),
+                payload={
+                    "cancel": True,
+                    "cancellation_reason": "Linked Event removed by an administrator",
+                },
+                calling_service="events",
+            )
+        except httpx.HTTPError as exc:
+            raise _session_contract_http_error(exc) from exc
+        # Keep the Event as a cancelled historical parent so Session.event_id
+        # never becomes a dangling soft reference.
+        event.status = "cancelled"
+        await db.execute(delete(EventRSVP).where(EventRSVP.event_id == event_id))
+        await db.commit()
+        return None
 
     # Delete associated RSVPs first
     await db.execute(delete(EventRSVP).where(EventRSVP.event_id == event_id))
@@ -861,6 +1114,19 @@ async def create_or_update_rsvp(
 
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
+
+    try:
+        links = await get_event_session_links(str(event.id), calling_service="events")
+    except httpx.HTTPError as exc:
+        raise _session_contract_http_error(exc) from exc
+    if links.get("linked_count", 0):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Participation for this Event is managed through its linked "
+                "Session. Book the Session instead of creating an Event RSVP."
+            ),
+        )
 
     if event.community_experience_offering_id:
         raise HTTPException(

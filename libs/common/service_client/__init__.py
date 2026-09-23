@@ -27,6 +27,7 @@ from .core import (
     internal_post,
     internal_request,
 )
+from .events import check_event_attendance_batch, get_event_session_contract
 from .media import (
     create_media_direct_upload,
     delete_media_object,
@@ -77,13 +78,17 @@ from .sessions import (
     get_session_ids_for_cohort,
     get_sessions_by_ids,
     list_scheduled_sessions,
+    get_event_session_links,
+    get_event_session_links_batch,
+    sync_event_sessions,
 )
-from .transport import attach_session_ride_configs
+from .transport import attach_session_ride_configs, reconcile_session_ride_schedule
 from .volunteer import (
     cancel_opportunities_for_context,
     get_media_vault_assignments,
     grant_challenge_volunteer_hours,
     materialise_opportunities_from_session_template,
+    reconcile_volunteer_session_schedule,
 )
 from .wallet import (
     capture_wallet_hold,
@@ -106,6 +111,9 @@ __all__ = [
     "internal_post",
     "internal_patch",
     "internal_delete",
+    # Events
+    "check_event_attendance_batch",
+    "get_event_session_contract",
     # Media
     "create_media_direct_upload",
     "verify_media_object",
@@ -148,8 +156,12 @@ __all__ = [
     "get_next_session_for_cohort",
     "get_session_ids_for_cohort",
     "list_scheduled_sessions",
+    "get_event_session_links",
+    "get_event_session_links_batch",
+    "sync_event_sessions",
     # Transport
     "attach_session_ride_configs",
+    "reconcile_session_ride_schedule",
     # Wallet
     "get_wallet_balance",
     "grant_pool_submission_reward",
@@ -166,6 +178,7 @@ __all__ = [
     "get_media_vault_assignments",
     "cancel_opportunities_for_context",
     "materialise_opportunities_from_session_template",
+    "reconcile_volunteer_session_schedule",
     # Payments / Paystack
     "initialize_store_payment",
     "verify_store_payment",
