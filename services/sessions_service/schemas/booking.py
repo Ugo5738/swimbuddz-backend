@@ -11,10 +11,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from services.sessions_service.models.enums import (
-    BookingChannel,
-    SessionBookingStatus,
-)
+from services.sessions_service.models.enums import BookingChannel, SessionBookingStatus
 
 
 class GuestIntent(str, enum.Enum):
@@ -129,7 +126,19 @@ class SessionBookingCreate(BaseModel):
     campaign_key: Optional[str] = Field(default=None, min_length=1, max_length=80)
 
 
+class BookingConfirmationDetails(BaseModel):
+    """Payment-owned totals supplied only by service-role fulfillment."""
+
+    amount_paid: float = Field(ge=0)
+    currency: str = Field(default="NGN", max_length=3)
+    bubbles_applied: Optional[int] = Field(default=None, ge=0)
+    bubbles_amount_ngn: Optional[float] = Field(default=None, ge=0)
+    payment_reference: Optional[str] = Field(default=None, max_length=128)
+    bundle_info: Optional[str] = Field(default=None, max_length=200)
+
+
 class BookingConfirmRequest(BaseModel):
+    confirmation_details: Optional[BookingConfirmationDetails] = None
     """Transition a PENDING booking to CONFIRMED after payment cleared."""
 
     member_auth_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
@@ -168,6 +177,7 @@ class BundleBookingReserveResponse(BaseModel):
 
 
 class BundleBookingConfirmRequest(BaseModel):
+    confirmation_details: Optional[BookingConfirmationDetails] = None
     """Atomically confirm every reservation owned by one bundle payment."""
 
     member_auth_id: str = Field(min_length=1, max_length=128)

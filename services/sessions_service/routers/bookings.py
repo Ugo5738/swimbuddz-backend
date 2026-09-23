@@ -17,11 +17,10 @@ See docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §C.
 
 from __future__ import annotations
 
-import uuid
 import json
+import uuid
 from datetime import datetime, timedelta
 from typing import List, Optional
-from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -35,20 +34,15 @@ from libs.auth.dependencies import (
     require_coach,
 )
 from libs.auth.models import AuthUser
-from libs.common.currency import (
-    kobo_to_bubbles,
-    kobo_to_bubbles_exact,
-    kobo_to_naira,
-)
+from libs.common.currency import kobo_to_bubbles, kobo_to_bubbles_exact
 from libs.common.datetime_utils import utc_now
-from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
-from libs.common.session_access import denial_message
 from libs.common.service_client import (
     credit_member_wallet,
     debit_member_wallet,
     get_member_by_auth_id,
 )
+from libs.common.session_access import denial_message
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     BookingChannel,
@@ -73,17 +67,21 @@ from services.sessions_service.schemas import (
     TrialGuestCreate,
     UnpaidBookingResponse,
 )
-from services.sessions_service.services.session_access import (
-    evaluate_member_session_access,
-)
 from services.sessions_service.schemas.booking import AdminUnpricedCohortBookingRequest
-from services.sessions_service.services.guest_identity import normalize_guest_phone
+from services.sessions_service.services.booking_attendance import (
+    sync_booking_attendance,
+)
 from services.sessions_service.services.booking_capacity import (
     PENDING_TTL_MINUTES,
     assert_booking_capacity,
 )
-from services.sessions_service.services.booking_attendance import (
-    sync_booking_attendance,
+from services.sessions_service.services.booking_confirmation import (
+    deliver_confirmation,
+    queue_confirmation,
+)
+from services.sessions_service.services.guest_identity import normalize_guest_phone
+from services.sessions_service.services.session_access import (
+    evaluate_member_session_access,
 )
 
 logger = get_logger(__name__)
@@ -174,78 +172,6 @@ async def _debit_booking_fee(
         raise
     txn = result_txn.get("transaction_id")
     return uuid.UUID(txn) if txn else None
-
-
-async def _send_direct_booking_confirmation(
-    *,
-    current_user: AuthUser,
-    member_id: uuid.UUID,
-    session: Session,
-    fee_amount_kobo: int,
-    paid_with_bubbles: bool,
-) -> None:
-    """Send the standard receipt for a free or full-Bubbles confirmation.
-
-    Paystack fulfilment sends this template from payments_service. Direct
-    confirmations happen entirely in sessions_service, so they need the
-    equivalent call here. Delivery is best-effort and never rolls back a seat.
-    """
-
-    try:
-        member = await get_member_by_auth_id(
-            current_user.user_id, calling_service="sessions"
-        )
-        member_email = member.get("email") if member else None
-        if not member_email:
-            return
-        member_name = (
-            " ".join(
-                part
-                for part in [member.get("first_name"), member.get("last_name")]
-                if part
-            )
-            or "Member"
-        )
-        try:
-            session_timezone = ZoneInfo(session.timezone or "Africa/Lagos")
-        except (KeyError, ValueError):
-            session_timezone = ZoneInfo("Africa/Lagos")
-        starts_at = session.starts_at.astimezone(session_timezone)
-        ends_at = session.ends_at.astimezone(session_timezone)
-        legacy_location = getattr(session.location, "value", session.location)
-        bubbles = (
-            kobo_to_bubbles_exact(fee_amount_kobo)
-            if paid_with_bubbles and fee_amount_kobo > 0
-            else None
-        )
-        await get_email_client().send_template(
-            template_type="session_confirmation",
-            to_email=member_email,
-            template_data={
-                "member_name": member_name,
-                "member_id": str(member_id),
-                "session_title": session.title,
-                "session_date": starts_at.strftime("%A, %d %B %Y"),
-                "session_time": (
-                    f"{starts_at.strftime('%H:%M')} – {ends_at.strftime('%H:%M')}"
-                ),
-                "session_location": session.location_name
-                or str(legacy_location or "Location TBA"),
-                "session_address": session.location_address or "",
-                "amount_paid": kobo_to_naira(fee_amount_kobo),
-                "currency": "NGN",
-                "bubbles_applied": bubbles,
-                "bubbles_amount_ngn": (
-                    kobo_to_naira(fee_amount_kobo) if bubbles else None
-                ),
-            },
-        )
-    except Exception:
-        logger.warning(
-            "Could not send direct booking confirmation for session %s",
-            session.id,
-            exc_info=True,
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -495,17 +421,17 @@ async def book_session(
         await _replace_guests(
             db, existing.id, booking_in.guests, booking_in.block_guests
         )
+        email_key = (
+            await queue_confirmation(db, existing.id)
+            if existing.status == SessionBookingStatus.CONFIRMED
+            else None
+        )
         await db.commit()
         await db.refresh(existing)
+        if email_key:
+            await deliver_confirmation(db, email_key)
         if existing.status == SessionBookingStatus.CONFIRMED:
             await sync_booking_attendance(existing)
-            await _send_direct_booking_confirmation(
-                current_user=current_user,
-                member_id=member_id,
-                session=session,
-                fee_amount_kobo=fee_kobo,
-                paid_with_bubbles=booking_in.pay_with_bubbles,
-            )
         return existing
 
     # No prior booking for this (session, member) → create one.
@@ -543,16 +469,11 @@ async def book_session(
         await _replace_guests(
             db, booking.id, booking_in.guests, booking_in.block_guests
         )
+        email_key = await queue_confirmation(db, booking.id)
         await db.commit()
         await db.refresh(booking)
+        await deliver_confirmation(db, email_key)
         await sync_booking_attendance(booking)
-        await _send_direct_booking_confirmation(
-            current_user=current_user,
-            member_id=member_id,
-            session=session,
-            fee_amount_kobo=fee_kobo,
-            paid_with_bubbles=booking_in.pay_with_bubbles,
-        )
         return booking
 
     # Default Paystack path: create PENDING; frontend confirms after verify.
@@ -834,11 +755,7 @@ async def confirm_booking(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Flip a PENDING booking to CONFIRMED.
-
-    Member can only confirm their own bookings. PENDING and not-yet-expired
-    only — EXPIRED/CANCELLED/already-CONFIRMED are rejected.
-    """
+    """Return authoritative confirmation after server-side payment fulfillment."""
     booking = (
         await db.execute(select(SessionBooking).where(SessionBooking.id == booking_id))
     ).scalar_one_or_none()
@@ -846,30 +763,21 @@ async def confirm_booking(
         raise HTTPException(status_code=404, detail="Booking not found")
     if booking.member_auth_id != current_user.user_id:
         raise HTTPException(
-            status_code=403, detail="You can only confirm your own bookings."
+            status_code=403, detail="You can only confirm your own bookings"
         )
-    if booking.status == SessionBookingStatus.CONFIRMED:
-        await sync_booking_attendance(booking)
-        return booking
-    if booking.status != SessionBookingStatus.PENDING:
+    if booking.status != SessionBookingStatus.CONFIRMED:
         raise HTTPException(
-            status_code=422,
-            detail=f"Cannot confirm a booking with status={booking.status.value}.",
+            status_code=409,
+            detail="Payment is still being confirmed. Refresh after payment verification completes.",
         )
-    if booking.expires_at and booking.expires_at < utc_now():
-        raise HTTPException(
-            status_code=422,
-            detail="This booking expired before payment cleared. Please re-book.",
-        )
-
-    booking.status = SessionBookingStatus.CONFIRMED
-    booking.confirmed_at = utc_now()
-    if confirm_in.payment_intent_id is not None:
-        booking.payment_intent_id = confirm_in.payment_intent_id
-    if confirm_in.wallet_transaction_id is not None:
-        booking.wallet_transaction_id = confirm_in.wallet_transaction_id
-    await db.commit()
-    await db.refresh(booking)
+    if (
+        booking.fee_amount_kobo == 0
+        or booking.payment_intent_id
+        or booking.wallet_transaction_id
+    ):
+        key = await queue_confirmation(db, booking.id)
+        await db.commit()
+        await deliver_confirmation(db, key)
     await sync_booking_attendance(booking)
     return booking
 

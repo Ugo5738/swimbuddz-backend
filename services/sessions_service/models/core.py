@@ -5,8 +5,8 @@ from typing import Optional
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
-    DateTime,
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -14,9 +14,9 @@ from sqlalchemy import (
     Text,
     Time,
     event,
-    text as sql_text,
 )
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy import text as sql_text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,6 +49,18 @@ class Session(Base):
     # four after dropping the aspirational ONE_ON_ONE / GROUP_BOOKING types
     # and the unused booking_id column.
     __table_args__ = (
+        CheckConstraint(
+            "guest_booking_mode IN ('disabled','public','member_invite','approval_required')",
+            name="ck_sessions_guest_booking_mode",
+        ),
+        CheckConstraint(
+            "guest_reconciliation_days BETWEEN 0 AND 30",
+            name="ck_sessions_guest_reconciliation_days",
+        ),
+        CheckConstraint(
+            "guest_fee_kobo IS NULL OR guest_fee_kobo >= 0",
+            name="ck_sessions_guest_fee_nonnegative",
+        ),
         CheckConstraint(
             "cohort_fee_mode IN ('included','paid_extra') AND (session_type = 'cohort_class' OR cohort_fee_mode = 'included')",
             name="ck_sessions_cohort_fee_mode",
@@ -197,6 +209,19 @@ class Session(Base):
     # via a non-MEMBER_SELF channel, separately from this eligibility flag.
     allows_guests: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
+    )
+    # Independent self-paying guest access, separate from attached BookingGuests.
+    guest_booking_mode: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="disabled", server_default="disabled"
+    )
+    guest_booking_closes_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    guest_reconciliation_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3, server_default="3"
+    )
+    guest_location_private: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
     # Cap on guests per booking (party_size - 1). 0 disables guests for this
     # session even when allows_guests is true.

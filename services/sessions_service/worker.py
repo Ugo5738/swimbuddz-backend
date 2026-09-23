@@ -5,6 +5,7 @@ docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §C.
 """
 
 from arq import cron
+
 from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
 
@@ -25,13 +26,29 @@ async def task_sweep_complete_makeups(ctx: dict):
     await sweep_complete_makeups()
 
 
+async def task_retry_booking_confirmations(ctx: dict):
+    from services.sessions_service.services.booking_confirmation import (
+        retry_confirmations,
+    )
+
+    await retry_confirmations()
+
+
 class WorkerSettings:
     redis_settings = get_redis_settings()
     queue_name = "arq:sessions"
 
-    functions = [task_sweep_expired_pending_bookings, task_sweep_complete_makeups]
+    functions = [
+        task_sweep_expired_pending_bookings,
+        task_sweep_complete_makeups,
+        task_retry_booking_confirmations,
+    ]
 
     cron_jobs = [
+        cron(
+            task_retry_booking_confirmations,
+            minute={1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56},
+        ),
         # Every 5 minutes — flips PENDING bookings past their 15-min TTL
         # to EXPIRED so the seat is released back to other members.
         cron(

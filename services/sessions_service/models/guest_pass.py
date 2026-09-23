@@ -48,11 +48,27 @@ class GuestPass(Base):
     referrer_auth_id: Mapped[Optional[str]] = mapped_column(
         String, nullable=True, index=True
     )
+    booking_mode: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="reservation", server_default="reservation"
+    )
+    booking_source: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    campaign_key: Mapped[Optional[str]] = mapped_column(
+        String(120), nullable=True, index=True
+    )
+    safety_acknowledgement_version: Mapped[Optional[str]] = mapped_column(
+        String(40), nullable=True
+    )
+    confirmation_email_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     price_kobo: Mapped[int] = mapped_column(Integer, nullable=False)
     additional_charges: Mapped[list] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
     )
     total_kobo: Mapped[int] = mapped_column(Integer, nullable=False)
+    payment_method: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="paystack", server_default="paystack"
+    )
     payment_reference: Mapped[str] = mapped_column(
         String(128), nullable=False, unique=True
     )
@@ -90,6 +106,10 @@ class GuestPass(Base):
     )
 
     __table_args__ = (
+        CheckConstraint(
+            "booking_mode IN ('reservation','settlement')",
+            name="ck_guest_pass_booking_mode",
+        ),
         UniqueConstraint("session_id", "phone", name="uq_guest_pass_session_phone"),
         CheckConstraint("price_kobo >= 0", name="ck_guest_pass_price_nonnegative"),
         CheckConstraint("total_kobo >= price_kobo", name="ck_guest_pass_total_valid"),

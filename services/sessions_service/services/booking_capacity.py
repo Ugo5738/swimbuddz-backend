@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.datetime_utils import utc_now
 from services.sessions_service.models import (
+    GuestPass,
     Session,
     SessionBooking,
     SessionBookingStatus,
@@ -48,6 +49,22 @@ async def assert_booking_capacity(
             )
         )
     ).scalar_one()
+    guest_holds = (
+        await db.execute(
+            select(func.count(GuestPass.id)).where(
+                GuestPass.session_id == session.id,
+                GuestPass.booking_mode == "reservation",
+                or_(
+                    GuestPass.status.in_(["confirmed", "attended"]),
+                    and_(
+                        GuestPass.status.in_(["pending_payment", "payment_failed"]),
+                        GuestPass.reservation_expires_at > now,
+                    ),
+                ),
+            )
+        )
+    ).scalar_one()
+    used = int(used) + int(guest_holds)
     if int(used) + new_party_size > session.capacity:
         raise HTTPException(
             status_code=409,

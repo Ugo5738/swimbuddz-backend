@@ -2,6 +2,8 @@
 Session-related email templates.
 """
 
+from html import escape
+
 from libs.common.config import get_settings
 from libs.common.emails.core import send_email
 from services.communications_service.templates.base import (
@@ -37,6 +39,10 @@ async def send_session_confirmation_email(
     bubbles_applied: int | None = None,
     bubbles_amount_ngn: float | None = None,
     bundle_info: str | None = None,
+    guest_booking_url: str | None = None,
+    booking_reference: str | None = None,
+    payment_reference: str | None = None,
+    post_session: bool = False,
 ) -> bool:
     """
     Send session confirmation email to a member after successful payment.
@@ -163,10 +169,10 @@ See you in the water! 🏊‍♂️
     )
 
     body_html = (
-        f"<p>Hi {member_name},</p>"
+        f"<p>Hi {escape(member_name)},</p>"
         "<p>Your session has been confirmed! Here are your details:</p>"
         + bundle_html
-        + detail_box(details)
+        + detail_box({key: escape(str(value)) for key, value in details.items()})
         + ride_share_html
         + ecard_html
         + checklist_box(
@@ -184,9 +190,36 @@ See you in the water! 🏊‍♂️
         + sign_off("See you in the water! 🏊\u200d♂️")
     )
 
+    if post_session:
+        body = f"Hi {member_name},\n\nThank you for completing your swim booking.\n{bundle_line}\n"
+        body += "\n".join(f"{key}: {value}" for key, value in details.items() if value)
+        body += "\n\nKeep this confirmation for your records. Contact SwimBuddz if you need help.\n\nThe SwimBuddz Team\n"
+        body_html = (
+            f"<p>Hi {escape(member_name)},</p><p>Thank you for completing your swim booking.</p>"
+            + bundle_html
+            + detail_box({key: escape(str(value)) for key, value in details.items()})
+            + "<p>Keep this confirmation for your records. Contact SwimBuddz if you need help.</p>"
+            + sign_off("Thank you for swimming with us!")
+        )
+
+    if guest_booking_url:
+        from services.communications_service.templates.base import cta_button
+
+        invitation = "Know someone who joined this swim? Share this link so they can complete their guest booking." if post_session else "Invite someone to this swim: they can book and pay for their own guest spot."
+        body += f"\n{invitation}\n{guest_booking_url}\n"
+        body_html += (
+            f"<h3>{'Guest booking link' if post_session else 'Bring someone along'}</h3><p>{invitation}</p>"
+            + cta_button("Guest booking link", escape(guest_booking_url, quote=True))
+        )
+    if payment_reference:
+        body += f"\nPayment reference: {payment_reference}\n"
+        body_html += f"<p>Payment reference: {escape(payment_reference)}</p>"
+    if booking_reference:
+        body += f"\nBooking reference: {booking_reference}\n"
+        body_html += f"<p>Booking reference: {escape(booking_reference)}</p>"
     html_body = wrap_html(
         title="🏊\u200d♂️ Session Confirmed!",
-        subtitle=session_title,
+        subtitle=escape(session_title),
         body_html=body_html,
         header_gradient=GRADIENT_CYAN,
         preheader=f"Your session on {session_date} is confirmed",

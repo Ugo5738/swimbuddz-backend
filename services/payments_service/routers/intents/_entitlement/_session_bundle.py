@@ -6,15 +6,11 @@ contract end-to-end; the dispatcher (`_dispatcher._apply_entitlement`)
 just routes by `payment.purpose`.
 """
 
-from datetime import datetime
-
 import httpx
 from fastapi import HTTPException, status
 
 from libs.auth.dependencies import _service_role_jwt
 from libs.common.config import get_settings
-from libs.common.currency import bubbles_to_naira
-from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from services.payments_service.models import Payment
 
@@ -69,6 +65,17 @@ async def apply_session_bundle(payment: Payment) -> None:
                 "payment_intent_id": str(payment.id),
                 "booking_ids": booking_ids,
                 "wallet_transaction_id": wallet_transaction_id,
+                "confirmation_details": {
+                    "amount_paid": float(payment.amount),
+                    "currency": payment.currency,
+                    "bubbles_applied": int(
+                        (payment.payment_metadata or {}).get("bubbles_to_apply") or 0
+                    ),
+                    "bubbles_amount_ngn": float(
+                        (payment.payment_metadata or {}).get("bubbles_value_ngn") or 0
+                    ),
+                    "payment_reference": payment.reference,
+                },
             },
             headers=headers,
         )
@@ -80,7 +87,6 @@ async def apply_session_bundle(payment: Payment) -> None:
                     f"({booking_resp.status_code}): {booking_resp.text}"
                 ),
             )
-        confirmed = list(session_ids)
 
         # Create ride bookings for any sessions with ride configs in metadata.
         ride_configs = (payment.payment_metadata or {}).get(
@@ -120,114 +126,4 @@ async def apply_session_bundle(payment: Payment) -> None:
                     ),
                 )
 
-        # Send one confirmation email per booked session in the bundle.
-        try:
-            member_email = member_data.get("email") or payment.payer_email
-            member_name = (
-                f"{member_data.get('first_name', '')} "
-                f"{member_data.get('last_name', '')}"
-            ).strip()
-            session_count = len(session_ids)
-            per_session_amount = (
-                float(payment.amount) / session_count if session_count else 0.0
-            )
-            # Partial Bubbles applied to the bundle, pro-rated per session
-            bundle_bubbles = int(
-                (payment.payment_metadata or {}).get("bubbles_to_apply") or 0
-            )
-            bundle_bubbles_ngn = float(
-                (payment.payment_metadata or {}).get("bubbles_value_ngn")
-                or bubbles_to_naira(bundle_bubbles)
-            )
-            per_session_bubbles = (
-                bundle_bubbles // session_count if session_count else 0
-            )
-            per_session_bubbles_ngn = (
-                bundle_bubbles_ngn / session_count if session_count else 0.0
-            )
-            if member_email:
-                email_client = get_email_client()
-                for idx, session_id in enumerate(session_ids, start=1):
-                    if session_id not in confirmed:
-                        continue
-                    try:
-                        session_resp = await client.get(
-                            f"{settings.SESSIONS_SERVICE_URL}/sessions/{session_id}",
-                            headers=headers,
-                        )
-                        session_data = (
-                            session_resp.json()
-                            if session_resp.status_code < 400
-                            else {}
-                        )
-                        starts_at = session_data.get("starts_at", "")
-                        session_date = ""
-                        session_time = ""
-                        if starts_at:
-                            try:
-                                dt = datetime.fromisoformat(
-                                    starts_at.replace("Z", "+00:00")
-                                )
-                                session_date = dt.strftime("%A, %B %d, %Y")
-                                session_time = f"{dt.strftime('%I:%M %p')} - "
-                                ends_at = session_data.get("ends_at", "")
-                                if ends_at:
-                                    end_dt = datetime.fromisoformat(
-                                        ends_at.replace("Z", "+00:00")
-                                    )
-                                    session_time += end_dt.strftime("%I:%M %p")
-                            except Exception:
-                                session_date = (
-                                    starts_at[:10]
-                                    if len(starts_at) >= 10
-                                    else starts_at
-                                )
-
-                        await email_client.send_template(
-                            template_type="session_confirmation",
-                            to_email=member_email,
-                            template_data={
-                                "member_name": member_name or "Member",
-                                "member_id": str(member_id),
-                                "session_title": session_data.get(
-                                    "title", "Swimming Session"
-                                ),
-                                "session_date": session_date,
-                                "session_time": session_time,
-                                "session_location": session_data.get(
-                                    "location_name", ""
-                                )
-                                or session_data.get("location", ""),
-                                "session_address": session_data.get("address", ""),
-                                "amount_paid": per_session_amount,
-                                "currency": payment.currency,
-                                "bubbles_applied": (
-                                    per_session_bubbles
-                                    if per_session_bubbles > 0
-                                    else None
-                                ),
-                                "bubbles_amount_ngn": (
-                                    per_session_bubbles_ngn
-                                    if per_session_bubbles > 0
-                                    else None
-                                ),
-                                "bundle_info": (
-                                    f"Session {idx} of {session_count} in your booking"
-                                    if session_count > 1
-                                    else None
-                                ),
-                            },
-                        )
-                    except Exception as inner_e:
-                        logger.warning(
-                            "Failed to send bundle confirmation for session %s: %s",
-                            session_id,
-                            inner_e,
-                        )
-                logger.info(
-                    f"Bundle confirmation emails sent ({len(confirmed)}) to {member_email}"
-                )
-        except Exception as e:
-            logger.error(f"Failed to send bundle confirmation emails: {e}")
-
-    # Clear pending payment reference on success
+        # Sessions owns the per-booking confirmation outbox, including retries.

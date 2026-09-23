@@ -69,7 +69,10 @@ async def test_cohort_booking_uses_explicit_inclusion_not_pool_cost(
     monkeypatch.setattr(bookings, "_replace_guests", AsyncMock())
     sync = AsyncMock()
     monkeypatch.setattr(bookings, "sync_booking_attendance", sync)
-    monkeypatch.setattr(bookings, "_send_direct_booking_confirmation", AsyncMock())
+    monkeypatch.setattr(
+        bookings, "queue_confirmation", AsyncMock(return_value="email-key")
+    )
+    monkeypatch.setattr(bookings, "deliver_confirmation", AsyncMock())
     debit = AsyncMock(return_value=uuid.uuid4() if fee and wallet else None)
     monkeypatch.setattr(bookings, "_debit_booking_fee", debit)
     result = await bookings.book_session(
@@ -115,6 +118,7 @@ def test_legacy_regular_class_with_nonzero_pool_cost_is_included_in_tuition():
 
 def test_new_cohort_sessions_default_to_included_and_extra_mode_is_cohort_only():
     from pydantic import ValidationError
+
     from services.sessions_service.schemas.main import SessionCreate
 
     session = cohort_session(1500000)

@@ -20,6 +20,18 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
 from libs.common.datetime_utils import utc_now
 from libs.db.base import Base
 from services.sessions_service.models.enums import (
@@ -27,11 +39,6 @@ from services.sessions_service.models.enums import (
     SessionBookingStatus,
     enum_values,
 )
-from sqlalchemy import DateTime
-from sqlalchemy import Enum as SAEnum
-from sqlalchemy import CheckConstraint, Integer, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
 
 
 class SessionBooking(Base):
@@ -134,6 +141,9 @@ class SessionBooking(Base):
         DateTime(timezone=True), default=utc_now
     )
     confirmed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    confirmation_email_sent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     cancelled_at: Mapped[Optional[datetime]] = mapped_column(
