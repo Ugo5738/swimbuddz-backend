@@ -6,7 +6,7 @@ from typing import Optional
 
 from libs.common.config import get_settings
 
-from .core import internal_get, internal_post
+from .core import internal_get, internal_patch, internal_post
 
 
 async def get_media_vault_assignments(
@@ -132,6 +132,44 @@ async def cancel_opportunities_for_context(
             "session_id": session_id,
             "event_id": event_id,
             "reason": reason,
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def reconcile_volunteer_session_schedule(
+    *,
+    session_id: str,
+    old_starts_at: str,
+    old_ends_at: str,
+    new_starts_at: str,
+    new_ends_at: str,
+    old_timezone: str,
+    new_timezone: str,
+    old_location_name: Optional[str],
+    new_location_name: Optional[str],
+    calling_service: str,
+) -> dict:
+    """Preserve volunteer-shift offsets when a Session is rescheduled.
+
+    The volunteer endpoint is idempotent, so callers may safely retry this
+    best-effort reconciliation after a transient service failure.
+    """
+    settings = get_settings()
+    resp = await internal_patch(
+        service_url=settings.VOLUNTEER_SERVICE_URL,
+        path=f"/internal/volunteer/sessions/{session_id}/schedule",
+        calling_service=calling_service,
+        json={
+            "old_starts_at": old_starts_at,
+            "old_ends_at": old_ends_at,
+            "new_starts_at": new_starts_at,
+            "new_ends_at": new_ends_at,
+            "old_timezone": old_timezone,
+            "new_timezone": new_timezone,
+            "old_location_name": old_location_name,
+            "new_location_name": new_location_name,
         },
     )
     resp.raise_for_status()

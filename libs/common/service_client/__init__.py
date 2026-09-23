@@ -88,6 +88,7 @@ from .volunteer import (
     get_media_vault_assignments,
     grant_challenge_volunteer_hours,
     materialise_opportunities_from_session_template,
+    reconcile_volunteer_session_schedule,
 )
 from .wallet import (
     capture_wallet_hold,
@@ -177,6 +178,7 @@ __all__ = [
     "get_media_vault_assignments",
     "cancel_opportunities_for_context",
     "materialise_opportunities_from_session_template",
+    "reconcile_volunteer_session_schedule",
     # Payments / Paystack
     "initialize_store_payment",
     "verify_store_payment",

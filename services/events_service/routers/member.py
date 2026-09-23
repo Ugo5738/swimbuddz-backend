@@ -23,12 +23,12 @@ from libs.common.logging import get_logger
 from libs.common.service_client import (
     credit_member_wallet,
     debit_member_wallet,
+    get_event_session_links,
+    get_event_session_links_batch,
     get_member_by_id,
     get_member_membership,
     get_members_bulk,
     get_partner_pool,
-    get_event_session_links,
-    get_event_session_links_batch,
     sync_event_sessions,
 )
 from libs.common.session_access import active_paid_tiers
@@ -45,11 +45,11 @@ from services.events_service.schemas import (
     RSVPCreate,
     RSVPResponse,
 )
+from services.events_service.services.audiences import audience_fields
 from services.events_service.services.chat_sync import (
     ensure_event_channel,
     reconcile_event_membership,
 )
-from services.events_service.services.audiences import audience_fields
 from services.events_service.services.pricing import (
     PRICING_KEYS,
     event_pricing_payload,
@@ -150,24 +150,32 @@ async def _resolve_event_actor(
 def _can_view_event(event: Event, actor: EventActor, *, invited: bool) -> bool:
     if actor.is_admin:
         return True
+
     if event.status != "published":
         return False
+
     if event.visibility == "public":
         return True
-    if not actor.is_authenticated:
-        return False
+
+    if event.visibility == "members_only":
+        # Discovery requires a SwimBuddz member profile, not merely an auth
+        # account. Programme eligibility is evaluated separately below.
+        return actor.member_id is not None
+
     if event.visibility == "invite_only":
-        return invited
-    if event.tier_access == "public":
-        return True
-    return event.tier_access in ({"community"} | set(actor.paid_tiers))
+        return actor.member_id is not None and invited
+
+    return False
 
 
 def _can_attend_event(event: Event, actor: EventActor, *, invited: bool) -> bool:
     if actor.is_admin:
         return True
-    if event.status != "published" or not actor.is_authenticated:
+
+    # Event participation is member-based even when discovery is public.
+    if event.status != "published" or actor.member_id is None:
         return False
+
     # Visibility is a privacy boundary, not merely a discovery hint. Enforce
     # it independently even if malformed legacy data says the attendance tier
     # is public.
@@ -177,7 +185,9 @@ def _can_attend_event(event: Event, actor: EventActor, *, invited: bool) -> bool
         return True
     if event.tier_access == "invite_only":
         return invited
-    return event.tier_access in ({"community"} | set(actor.paid_tiers))
+
+    # Community, Club, and Academy are independent paid entitlements.
+    return event.tier_access in actor.paid_tiers
 
 
 async def get_current_member(

@@ -51,50 +51,43 @@ async def test_event_attendance_policy_allows_every_member_product_and_scopes_re
 ):
     creator = uuid.uuid4()
     public_event = _event(created_by=creator, tier_access="public")
+    community_event = _event(created_by=creator, tier_access="community")
     club_event = _event(created_by=creator, tier_access="club")
     academy_event = _event(created_by=creator, tier_access="academy")
-    db_session.add_all([public_event, club_event, academy_event])
+    db_session.add_all([public_event, community_event, club_event, academy_event])
     await db_session.commit()
 
-    for paid_tier in ("community", "club", "academy"):
-        context_key = f"public-{paid_tier}"
-        public_check = await events_client.post(
-            "/internal/events/attendance/checks",
-            json={
-                "checks": [
-                    {
-                        "context_key": context_key,
-                        "event_id": str(public_event.id),
-                        "paid_tiers": [paid_tier],
-                    }
-                ],
-                "member_id": str(uuid.uuid4()),
-            },
-        )
-        assert public_check.status_code == 200
-        assert public_check.json()[context_key]["allowed"] is True
-
-    restricted = await events_client.post(
+    checks = [
+        ("public-community", public_event, ["community"], True),
+        ("public-club", public_event, ["club"], True),
+        ("public-academy", public_event, ["academy"], True),
+        ("community-community", community_event, ["community"], True),
+        ("community-unpaid", community_event, [], False),
+        ("community-club", community_event, ["club"], False),
+        ("community-academy", community_event, ["academy"], False),
+        ("club-club", club_event, ["club"], True),
+        ("club-academy", club_event, ["academy"], False),
+        ("academy-academy", academy_event, ["academy"], True),
+        ("academy-club", academy_event, ["club"], False),
+    ]
+    response = await events_client.post(
         "/internal/events/attendance/checks",
         json={
             "checks": [
                 {
-                    "context_key": "club-check",
-                    "event_id": str(club_event.id),
-                    "paid_tiers": ["academy"],
-                },
-                {
-                    "context_key": "academy-check",
-                    "event_id": str(academy_event.id),
-                    "paid_tiers": ["academy"],
-                },
+                    "context_key": context_key,
+                    "event_id": str(event.id),
+                    "paid_tiers": paid_tiers,
+                }
+                for context_key, event, paid_tiers, _expected in checks
             ],
             "member_id": str(uuid.uuid4()),
         },
     )
-    assert restricted.status_code == 200
-    assert restricted.json()["club-check"]["allowed"] is False
-    assert restricted.json()["academy-check"]["allowed"] is True
+    assert response.status_code == 200, response.text
+    decisions = response.json()
+    for context_key, _event_item, _paid_tiers, expected in checks:
+        assert decisions[context_key]["allowed"] is expected
 
 
 @pytest.mark.asyncio
@@ -161,11 +154,16 @@ async def test_event_shared_fields_sync_and_cancellation_preserve_session_histor
     next_start = session.starts_at + timedelta(days=7)
 
     reconcile_rides = AsyncMock(return_value={"updated": 1})
+    reconcile_volunteers = AsyncMock(return_value={"updated": 1})
     notify_members = AsyncMock(return_value={"dispatched": 1})
     with (
         patch(
             "services.sessions_service.routers.internal.reconcile_session_ride_schedule",
             reconcile_rides,
+        ),
+        patch(
+            "services.sessions_service.routers.internal.reconcile_volunteer_session_schedule",
+            reconcile_volunteers,
         ),
         patch(
             "services.sessions_service.routers.internal.dispatch_notification",
@@ -189,6 +187,7 @@ async def test_event_shared_fields_sync_and_cancellation_preserve_session_histor
     assert session.capacity == 40
     assert session.pricing_expected_attendees == 40
     reconcile_rides.assert_awaited_once()
+    reconcile_volunteers.assert_awaited_once()
     notify_members.assert_awaited_once()
 
     reduced = await sessions_client.patch(

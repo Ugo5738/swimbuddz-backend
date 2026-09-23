@@ -38040,6 +38040,65 @@
         ]
       }
     },
+    "/api/v1/internal/volunteer/sessions/{session_id}/schedule": {
+      "patch": {
+        "tags": [
+          "internal-volunteer"
+        ],
+        "summary": "Reconcile Session Schedule",
+        "description": "Move active volunteer shifts with a rescheduled Session.\n\nShift-specific offsets are preserved, inherited venues follow the Session,\nand a reconciliation marker makes retries of the same transition a no-op.\nCompleted/cancelled opportunities and volunteer claims are never changed.",
+        "operationId": "reconcile_session_schedule_internal_volunteer_sessions__session_id__schedule_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReconcileSessionScheduleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconcileSessionScheduleResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/volunteer/opportunities/from-session-template": {
       "post": {
         "tags": [
@@ -100134,6 +100193,84 @@
           "gold"
         ],
         "title": "RecognitionTier"
+      },
+      "ReconcileSessionScheduleRequest": {
+        "properties": {
+          "old_starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Old Starts At"
+          },
+          "old_ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Old Ends At"
+          },
+          "new_starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "New Starts At"
+          },
+          "new_ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "New Ends At"
+          },
+          "old_timezone": {
+            "type": "string",
+            "title": "Old Timezone"
+          },
+          "new_timezone": {
+            "type": "string",
+            "title": "New Timezone"
+          },
+          "old_location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Location Name"
+          },
+          "new_location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Location Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "old_starts_at",
+          "old_ends_at",
+          "new_starts_at",
+          "new_ends_at",
+          "old_timezone",
+          "new_timezone"
+        ],
+        "title": "ReconcileSessionScheduleRequest",
+        "description": "Old and new Session schedule snapshots supplied by Sessions service."
+      },
+      "ReconcileSessionScheduleResponse": {
+        "properties": {
+          "updated": {
+            "type": "integer",
+            "title": "Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "updated"
+        ],
+        "title": "ReconcileSessionScheduleResponse"
       },
       "RewardType": {
         "type": "string",

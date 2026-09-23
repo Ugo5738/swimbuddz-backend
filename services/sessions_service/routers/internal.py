@@ -26,6 +26,7 @@ from libs.common.service_client import (
     get_member_by_auth_id,
     internal_post,
     reconcile_session_ride_schedule,
+    reconcile_volunteer_session_schedule,
 )
 from libs.common.session_access import denial_message
 from libs.db.session import get_async_db
@@ -857,6 +858,7 @@ async def sync_event_sessions(
             before = {
                 "starts_at": session.starts_at,
                 "ends_at": session.ends_at,
+                "timezone": session.timezone,
                 "pool_id": session.pool_id,
                 "location_name": session.location_name,
             }
@@ -899,6 +901,7 @@ async def sync_event_sessions(
         schedule_changed = (
             before["starts_at"] != session.starts_at
             or before["ends_at"] != session.ends_at
+            or before["timezone"] != session.timezone
         )
         venue_changed = (
             before["pool_id"] != session.pool_id
@@ -919,6 +922,26 @@ async def sync_event_sessions(
                     exc,
                 )
         if schedule_changed or venue_changed:
+            try:
+                await reconcile_volunteer_session_schedule(
+                    session_id=str(session.id),
+                    old_starts_at=before["starts_at"].isoformat(),
+                    old_ends_at=before["ends_at"].isoformat(),
+                    new_starts_at=session.starts_at.isoformat(),
+                    new_ends_at=session.ends_at.isoformat(),
+                    old_timezone=before["timezone"],
+                    new_timezone=session.timezone,
+                    old_location_name=before["location_name"],
+                    new_location_name=session.location_name,
+                    calling_service="sessions",
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Could not reconcile volunteer opportunities for Event Session %s: %s",
+                    session.id,
+                    exc,
+                )
+
             member_ids = [
                 str(member_id)
                 for member_id in (
