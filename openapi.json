@@ -12922,6 +12922,163 @@
         ]
       }
     },
+    "/api/v1/internal/sessions/events/{event_id}/links": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Event Session Links",
+        "operationId": "get_event_session_links_internal_sessions_events__event_id__links_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventSessionLinks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/sessions/events/links/batch": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Event Session Links Batch",
+        "operationId": "get_event_session_links_batch_internal_sessions_events_links_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventSessionLinksBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/EventSessionLinks"
+                  },
+                  "type": "object",
+                  "title": "Response Get Event Session Links Batch Internal Sessions Events Links Batch Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/sessions/events/{event_id}/sync": {
+      "patch": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Sync Event Sessions",
+        "description": "Apply Event-owned shared fields atomically to linked Sessions.\n\nHistorical/in-progress Sessions cannot be silently rewritten. Event\ncancellation is different: every non-completed linked Session is cancelled\nwhile completed history remains intact.",
+        "operationId": "sync_event_sessions_internal_sessions_events__event_id__sync_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventSessionSync"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventSessionSyncResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/sessions/durations": {
       "get": {
         "tags": [
@@ -46138,6 +46295,104 @@
         ]
       }
     },
+    "/api/v1/internal/events/{event_id}/session-contract": {
+      "get": {
+        "tags": [
+          "internal-events"
+        ],
+        "summary": "Get Session Contract",
+        "operationId": "get_session_contract_internal_events__event_id__session_contract_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventSessionContract"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/events/attendance/checks": {
+      "post": {
+        "tags": [
+          "internal-events"
+        ],
+        "summary": "Check Attendance",
+        "operationId": "check_attendance_internal_events_attendance_checks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventAttendanceChecksRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/EventAttendanceDecision"
+                  },
+                  "type": "object",
+                  "title": "Response Check Attendance Internal Events Attendance Checks Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/media/albums": {
       "post": {
         "tags": [
@@ -70874,6 +71129,215 @@
           "session_ids"
         ],
         "title": "CreateBundleCartRequest"
+      },
+      "EventSessionLink": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "EventSessionLink"
+      },
+      "EventSessionLinks": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "linked_count": {
+            "type": "integer",
+            "title": "Linked Count"
+          },
+          "active_count": {
+            "type": "integer",
+            "title": "Active Count"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/EventSessionLink"
+            },
+            "type": "array",
+            "title": "Sessions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "linked_count",
+          "active_count",
+          "sessions"
+        ],
+        "title": "EventSessionLinks"
+      },
+      "EventSessionLinksBatchRequest": {
+        "properties": {
+          "event_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Event Ids"
+          }
+        },
+        "type": "object",
+        "title": "EventSessionLinksBatchRequest"
+      },
+      "EventSessionSync": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
+          },
+          "capacity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity"
+          },
+          "cancel": {
+            "type": "boolean",
+            "title": "Cancel",
+            "default": false
+          },
+          "cancellation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancellation Reason"
+          }
+        },
+        "type": "object",
+        "title": "EventSessionSync"
+      },
+      "EventSessionSyncResult": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "linked_count": {
+            "type": "integer",
+            "title": "Linked Count"
+          },
+          "updated_count": {
+            "type": "integer",
+            "title": "Updated Count"
+          },
+          "cancelled_count": {
+            "type": "integer",
+            "title": "Cancelled Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "linked_count",
+          "updated_count",
+          "cancelled_count"
+        ],
+        "title": "EventSessionSyncResult"
       },
       "ExtraPractice": {
         "properties": {
@@ -112972,6 +113436,75 @@
         ],
         "title": "CalendarImportPreviewResponse"
       },
+      "EventAttendanceChecksRequest": {
+        "properties": {
+          "event_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Event Ids"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "paid_tiers": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "community",
+                "club",
+                "academy"
+              ]
+            },
+            "type": "array",
+            "title": "Paid Tiers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id"
+        ],
+        "title": "EventAttendanceChecksRequest"
+      },
+      "EventAttendanceDecision": {
+        "properties": {
+          "allowed": {
+            "type": "boolean",
+            "title": "Allowed"
+          },
+          "tier_access": {
+            "type": "string",
+            "title": "Tier Access"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "allowed",
+          "tier_access",
+          "source"
+        ],
+        "title": "EventAttendanceDecision"
+      },
       "EventCostLine": {
         "properties": {
           "category": {
@@ -113756,6 +114289,21 @@
             "type": "boolean",
             "title": "Viewer Invited",
             "default": false
+          },
+          "participation_mode": {
+            "type": "string",
+            "enum": [
+              "rsvp",
+              "session",
+              "experience"
+            ],
+            "title": "Participation Mode",
+            "default": "rsvp"
+          },
+          "linked_session_count": {
+            "type": "integer",
+            "title": "Linked Session Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -113779,6 +114327,117 @@
         ],
         "title": "EventResponse",
         "description": "Event response schema \u2014 cost_naira converted from cost_kobo on read."
+      },
+      "EventSessionContract": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "tier_access": {
+            "type": "string",
+            "title": "Tier Access"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "starts_at": {
+            "type": "string",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
+          },
+          "capacity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity"
+          },
+          "expected_session_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Session Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "event_type",
+          "status",
+          "tier_access",
+          "title",
+          "starts_at",
+          "timezone"
+        ],
+        "title": "EventSessionContract"
       },
       "EventTemplateCreate": {
         "properties": {

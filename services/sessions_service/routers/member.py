@@ -21,6 +21,7 @@ from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import (
     cancel_opportunities_for_context,
+    get_event_session_contract,
     get_member_by_auth_id,
     internal_post,
 )
@@ -157,7 +158,12 @@ async def _decorate_sessions_for_user(
         .scalars()
         .all()
     )
-    cohort_access, pod_rosters, club_access = await get_sessions_access_context(
+    (
+        cohort_access,
+        pod_rosters,
+        club_access,
+        event_access,
+    ) = await get_sessions_access_context(
         sessions=sessions,
         member_payload=member_payload,
         confirmed_session_ids=confirmed_session_ids,
@@ -173,6 +179,7 @@ async def _decorate_sessions_for_user(
             cohort_access=cohort_access,
             pod_rosters=pod_rosters,
             club_access=club_access,
+            event_access=event_access,
         )
         decorated.append(_session_payload(session, access))
     return decorated
@@ -507,6 +514,70 @@ async def create_session(
         pod_id=session_in.pod_id,
     )
 
+    event_contract: dict | None = None
+    if session_in.session_type == SessionType.EVENT and session_in.event_id:
+        try:
+            event_contract = await get_event_session_contract(
+                str(session_in.event_id), calling_service="sessions"
+            )
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not validate the linked Event. Please try again.",
+            ) from exc
+        if event_contract is None:
+            raise HTTPException(status_code=422, detail="Linked Event does not exist")
+        if event_contract.get("status") == "cancelled":
+            raise HTTPException(
+                status_code=409, detail="A cancelled Event cannot add Sessions"
+            )
+        if event_contract.get("event_type") == "open_swim":
+            raise HTTPException(
+                status_code=409,
+                detail="Member-hosted open swims use Event RSVP and cannot add Sessions",
+            )
+        if event_contract.get("ends_at") is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Set the Event end time before adding its operational Session",
+            )
+        if event_contract.get("capacity") is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Set the Event capacity before adding its operational Session",
+            )
+        expected_count = event_contract.get("expected_session_count")
+        if expected_count is not None:
+            # Serialize Community Swim session creation per Event. Without this
+            # transaction-scoped lock, two concurrent admin requests could both
+            # observe zero linked Sessions and create duplicates. PostgreSQL is
+            # the production database; other dialects still keep the explicit
+            # count check for local/test compatibility.
+            bind = db.get_bind()
+            if bind.dialect.name == "postgresql":
+                lock_key = session_in.event_id.int % (2**63)
+                await db.execute(select(func.pg_advisory_xact_lock(lock_key)))
+            existing_count = int(
+                (
+                    await db.execute(
+                        select(func.count(Session.id)).where(
+                            Session.session_type == SessionType.EVENT,
+                            Session.event_id == session_in.event_id,
+                            Session.status != SessionStatus.CANCELLED,
+                        )
+                    )
+                ).scalar_one()
+                or 0
+            )
+            if existing_count >= int(expected_count):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "This Community Swim already has its operational Session. "
+                        "Manage that Session instead of adding another."
+                    ),
+                )
+
     # Validate cohort_id exists via academy-service (avoid cross-service DB reads)
     if session_in.cohort_id:
         headers = {"Authorization": f"Bearer {_service_role_jwt('sessions')}"}
@@ -527,6 +598,25 @@ async def create_session(
                 )
 
     session_data = session_in.model_dump()
+    if event_contract is not None:
+        # Event is canonical for shared discovery/schedule fields. Session is
+        # canonical for pricing, guests, bookings, attendance and operations.
+        session_data.update(
+            {
+                "title": event_contract["title"],
+                "description": event_contract.get("description"),
+                "starts_at": datetime.fromisoformat(
+                    str(event_contract["starts_at"]).replace("Z", "+00:00")
+                ),
+                "timezone": event_contract.get("timezone") or "Africa/Lagos",
+                "pool_id": event_contract.get("pool_id"),
+                "location_name": event_contract.get("location_name"),
+            }
+        )
+        session_data["ends_at"] = datetime.fromisoformat(
+            str(event_contract["ends_at"]).replace("Z", "+00:00")
+        )
+        session_data["capacity"] = int(event_contract["capacity"])
     from services.sessions_service.routers.club_operations import validate_club_scope
 
     await validate_club_scope(session_data)
@@ -801,6 +891,33 @@ async def update_session(
             raise HTTPException(
                 409,
                 "Use Club rescheduling for a published practice; its location and access promise cannot be silently changed",
+            )
+
+    if session.session_type == SessionType.EVENT:
+        event_owned_fields = {
+            "title",
+            "description",
+            "starts_at",
+            "ends_at",
+            "timezone",
+            "pool_id",
+            "location_name",
+            "capacity",
+            "event_id",
+            "session_type",
+        }
+        changed = [
+            key
+            for key in event_owned_fields
+            if key in update_data and update_data[key] != getattr(session, key)
+        ]
+        if changed:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Edit the linked Event to change its title, schedule, venue or "
+                    "capacity. Those shared fields are synchronized to this Session."
+                ),
             )
 
     resulting_type = update_data.get("session_type", session.session_type)

@@ -155,6 +155,8 @@ class EventResponse(BaseModel):
     rsvp_count: Optional[dict] = None  # {"going": 5, "maybe": 2, "not_going": 1}
     viewer_can_attend: bool = False
     viewer_invited: bool = False
+    participation_mode: Literal["rsvp", "session", "experience"] = "rsvp"
+    linked_session_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 

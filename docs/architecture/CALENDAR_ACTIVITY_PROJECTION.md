@@ -58,6 +58,29 @@ operational swim from an occurrence is explicit because the Session must retain
 that concrete Event's `event_id`; EventTemplate and SessionTemplate are not
 silently paired.
 
+### Event-backed Session contract
+
+An Event may have zero or many operational Sessions. `community_swim` is the
+deliberate exception in the workflow: it permits one active Session, while a
+future competition may use several Sessions or heats.
+
+- Events owns attendance eligibility (`public`, programme tier, or explicit
+  invitation). `session_type=event` never implies Community membership.
+- Events is the admin edit point for shared title, description, start/end,
+  timezone, pool/venue, and capacity. Those fields are synchronized to every
+  editable linked Session through the Sessions internal API. Direct Session
+  edits to those fields are rejected.
+- Sessions enforces the synchronized capacity and owns admission prices, guest
+  policy, booking, payment, attendance, volunteer operations, and ride-share.
+  Member and admin UI must not present Event RSVP counts or Event pricing as an
+  alternative source once a linked Session exists.
+- Cancelling or deleting a linked Event cancels its non-completed Sessions and
+  retains the Event as the cancelled historical parent. This prevents dangling
+  `event_id` references. Completed Session history is never rewritten.
+- Event RSVP fails closed while any Session is linked. A draft Session therefore
+  cannot accidentally make the Event RSVP flow reappear before Session booking
+  is published.
+
 ## Session recurrence and generation
 
 Session templates support:

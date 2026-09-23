@@ -6,7 +6,51 @@ from typing import Optional
 
 from libs.common.config import get_settings
 
-from .core import internal_get, internal_post
+from .core import internal_get, internal_patch, internal_post
+
+
+async def get_event_session_links(event_id: str, *, calling_service: str) -> dict:
+    """Return linked Session counts without exposing Session persistence."""
+    settings = get_settings()
+    response = await internal_get(
+        service_url=settings.SESSIONS_SERVICE_URL,
+        path=f"/internal/sessions/events/{event_id}/links",
+        calling_service=calling_service,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+async def get_event_session_links_batch(
+    event_ids: list[str], *, calling_service: str
+) -> dict[str, dict]:
+    if not event_ids:
+        return {}
+    settings = get_settings()
+    response = await internal_post(
+        service_url=settings.SESSIONS_SERVICE_URL,
+        path="/internal/sessions/events/links/batch",
+        calling_service=calling_service,
+        json={"event_ids": event_ids},
+    )
+    response.raise_for_status()
+    payload = response.json()
+    return payload if isinstance(payload, dict) else {}
+
+
+async def sync_event_sessions(
+    event_id: str, *, payload: dict, calling_service: str
+) -> dict:
+    """Synchronize Event-owned shared fields into every linked Session."""
+    settings = get_settings()
+    response = await internal_patch(
+        service_url=settings.SESSIONS_SERVICE_URL,
+        path=f"/internal/sessions/events/{event_id}/sync",
+        calling_service=calling_service,
+        json=payload,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 async def get_session_by_id(session_id: str, *, calling_service: str) -> Optional[dict]:

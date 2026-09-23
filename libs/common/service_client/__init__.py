@@ -27,6 +27,7 @@ from .core import (
     internal_post,
     internal_request,
 )
+from .events import check_event_attendance_batch, get_event_session_contract
 from .media import (
     create_media_direct_upload,
     delete_media_object,
@@ -77,6 +78,9 @@ from .sessions import (
     get_session_ids_for_cohort,
     get_sessions_by_ids,
     list_scheduled_sessions,
+    get_event_session_links,
+    get_event_session_links_batch,
+    sync_event_sessions,
 )
 from .transport import attach_session_ride_configs
 from .volunteer import (
@@ -106,6 +110,9 @@ __all__ = [
     "internal_post",
     "internal_patch",
     "internal_delete",
+    # Events
+    "check_event_attendance_batch",
+    "get_event_session_contract",
     # Media
     "create_media_direct_upload",
     "verify_media_object",
@@ -148,6 +155,9 @@ __all__ = [
     "get_next_session_for_cohort",
     "get_session_ids_for_cohort",
     "list_scheduled_sessions",
+    "get_event_session_links",
+    "get_event_session_links_batch",
+    "sync_event_sessions",
     # Transport
     "attach_session_ride_configs",
     # Wallet

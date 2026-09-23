@@ -9,6 +9,7 @@ from libs.common.health import register_health_check
 from services.events_service.routers.admin_tasks import router as admin_tasks_router
 from services.events_service.routers.member import router as events_router
 from services.events_service.routers.planning import router as planning_router
+from services.events_service.routers.internal import router as internal_router
 
 
 def create_app() -> FastAPI:
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(experience_links_router)
     app.include_router(planning_router)
     app.include_router(admin_tasks_router)
+    app.include_router(internal_router)
 
     return app
 

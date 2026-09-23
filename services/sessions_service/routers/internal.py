@@ -18,7 +18,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
-from libs.common.service_client import get_member_by_auth_id
+from libs.common.logging import get_logger
+from libs.common.config import get_settings
+from libs.common.service_client import (
+    cancel_opportunities_for_context,
+    get_member_by_auth_id,
+    internal_post,
+)
 from libs.common.session_access import denial_message
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
@@ -29,6 +35,7 @@ from services.sessions_service.models import (
     SessionBookingStatus,
     SessionCoach,
     SessionStatus,
+    SessionType,
 )
 from services.sessions_service.schemas import (
     BookingConfirmRequest,
@@ -57,6 +64,7 @@ from services.sessions_service.services.session_access import (
 )
 
 router = APIRouter(prefix="/internal/sessions", tags=["internal"])
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +158,42 @@ class SessionListSummary(BaseModel):
     location: Optional[str] = None
     club_id: Optional[str] = None
     pod_id: Optional[str] = None
+
+
+class EventSessionLink(BaseModel):
+    id: uuid.UUID
+    status: str
+
+
+class EventSessionLinks(BaseModel):
+    event_id: uuid.UUID
+    linked_count: int
+    active_count: int
+    sessions: list[EventSessionLink]
+
+
+class EventSessionSync(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    timezone: str | None = None
+    pool_id: uuid.UUID | None = None
+    location_name: str | None = None
+    capacity: int | None = Field(default=None, ge=1)
+    cancel: bool = False
+    cancellation_reason: str | None = None
+
+
+class EventSessionSyncResult(BaseModel):
+    event_id: uuid.UUID
+    linked_count: int
+    updated_count: int
+    cancelled_count: int
+
+
+class EventSessionLinksBatchRequest(BaseModel):
+    event_ids: list[uuid.UUID] = Field(default_factory=list, max_length=200)
 
 
 # ---------------------------------------------------------------------------
@@ -610,6 +654,182 @@ async def get_session_summaries_batch(
         for session_id in session_ids
         if (session := by_id.get(session_id)) is not None
     ]
+
+
+@router.get("/events/{event_id}/links", response_model=EventSessionLinks)
+async def get_event_session_links(
+    event_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    sessions = list(
+        (
+            await db.execute(
+                select(Session)
+                .where(
+                    Session.session_type == SessionType.EVENT,
+                    Session.event_id == event_id,
+                )
+                .order_by(Session.starts_at, Session.id)
+            )
+        ).scalars()
+    )
+    active = [item for item in sessions if item.status != SessionStatus.CANCELLED]
+    return EventSessionLinks(
+        event_id=event_id,
+        linked_count=len(sessions),
+        active_count=len(active),
+        sessions=[
+            EventSessionLink(id=item.id, status=item.status.value) for item in sessions
+        ],
+    )
+
+
+@router.post("/events/links/batch", response_model=dict[str, EventSessionLinks])
+async def get_event_session_links_batch(
+    payload: EventSessionLinksBatchRequest,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    event_ids = list(dict.fromkeys(payload.event_ids))
+    if not event_ids:
+        return {}
+    sessions = list(
+        (
+            await db.execute(
+                select(Session)
+                .where(
+                    Session.session_type == SessionType.EVENT,
+                    Session.event_id.in_(event_ids),
+                )
+                .order_by(Session.starts_at, Session.id)
+            )
+        ).scalars()
+    )
+    grouped: dict[uuid.UUID, list[Session]] = {event_id: [] for event_id in event_ids}
+    for session in sessions:
+        if session.event_id is not None:
+            grouped.setdefault(session.event_id, []).append(session)
+    return {
+        str(event_id): EventSessionLinks(
+            event_id=event_id,
+            linked_count=len(items),
+            active_count=sum(item.status != SessionStatus.CANCELLED for item in items),
+            sessions=[
+                EventSessionLink(id=item.id, status=item.status.value) for item in items
+            ],
+        )
+        for event_id, items in grouped.items()
+    }
+
+
+@router.patch("/events/{event_id}/sync", response_model=EventSessionSyncResult)
+async def sync_event_sessions(
+    event_id: uuid.UUID,
+    payload: EventSessionSync,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Apply Event-owned shared fields atomically to linked Sessions.
+
+    Historical/in-progress Sessions cannot be silently rewritten. Event
+    cancellation is different: every non-completed linked Session is cancelled
+    while completed history remains intact.
+    """
+    sessions = list(
+        (
+            await db.execute(
+                select(Session)
+                .where(
+                    Session.session_type == SessionType.EVENT,
+                    Session.event_id == event_id,
+                )
+                .with_for_update()
+            )
+        ).scalars()
+    )
+    values = payload.model_dump(
+        exclude_unset=True,
+        exclude={"cancel", "cancellation_reason"},
+    )
+    editable = {SessionStatus.DRAFT, SessionStatus.SCHEDULED}
+    if values:
+        blocked = [
+            item
+            for item in sessions
+            if item.status not in editable and item.status != SessionStatus.CANCELLED
+        ]
+        if blocked:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "The Event has an in-progress or completed Session. Its shared "
+                    "schedule fields can no longer be changed."
+                ),
+            )
+
+    updated_count = 0
+    cancelled: list[Session] = []
+    for session in sessions:
+        if session.status in editable:
+            for field, value in values.items():
+                setattr(session, field, value)
+            resulting_start = values.get("starts_at", session.starts_at)
+            resulting_end = values.get("ends_at", session.ends_at)
+            if resulting_end is not None and resulting_end <= resulting_start:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Event end time must be later than its start time",
+                )
+            if values:
+                updated_count += 1
+        if payload.cancel and session.status not in {
+            SessionStatus.CANCELLED,
+            SessionStatus.COMPLETED,
+        }:
+            session.status = SessionStatus.CANCELLED
+            cancelled.append(session)
+
+    await db.commit()
+
+    settings = get_settings()
+    for session in cancelled:
+        try:
+            await internal_post(
+                service_url=settings.COMMUNICATIONS_SERVICE_URL,
+                path="/internal/communications/session-cancelled",
+                calling_service="sessions",
+                json={
+                    "session_id": str(session.id),
+                    "cancellation_reason": payload.cancellation_reason
+                    or "Linked event cancelled",
+                },
+            )
+        except Exception as exc:
+            logger.warning(
+                "Could not send cancellation notice for Event Session %s: %s",
+                session.id,
+                exc,
+            )
+        try:
+            await cancel_opportunities_for_context(
+                calling_service="sessions",
+                session_id=str(session.id),
+                reason=payload.cancellation_reason or "Linked event cancelled",
+            )
+        except Exception as exc:
+            logger.warning(
+                "Could not cancel volunteer opportunities for Event Session %s: %s",
+                session.id,
+                exc,
+            )
+
+    return EventSessionSyncResult(
+        event_id=event_id,
+        linked_count=len(sessions),
+        updated_count=updated_count,
+        cancelled_count=len(cancelled),
+    )
 
 
 @router.get("/durations")
