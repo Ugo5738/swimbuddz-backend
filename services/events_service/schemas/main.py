@@ -71,6 +71,10 @@ class EventBase(BaseModel):
         self.primary_audience = primary  # type: ignore[assignment]
         self.audiences = audiences  # type: ignore[assignment]
         self.audience = primary  # type: ignore[assignment]
+        if (self.visibility == "invite_only") != (self.tier_access == "invite_only"):
+            raise ValueError(
+                "invite-only visibility and attendance access must be selected together"
+            )
         return self
 
 
@@ -155,8 +159,9 @@ class EventResponse(BaseModel):
     rsvp_count: Optional[dict] = None  # {"going": 5, "maybe": 2, "not_going": 1}
     viewer_can_attend: bool = False
     viewer_invited: bool = False
-    participation_mode: Literal["rsvp", "session", "experience"] = "rsvp"
+    participation_mode: Literal["rsvp", "session", "experience", "unavailable"] = "rsvp"
     linked_session_count: int = 0
+    participation_state_available: bool = True
 
     model_config = ConfigDict(from_attributes=True)
 

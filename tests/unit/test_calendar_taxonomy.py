@@ -3,11 +3,15 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+import pytest
+from pydantic import ValidationError
+
 from services.events_service.routers.member import (
     EventActor,
     _can_attend_event,
     _can_view_event,
 )
+from services.events_service.schemas import EventCreate
 from services.gateway_service.app.routers.calendar import _event_item
 
 
@@ -59,3 +63,23 @@ def test_invite_only_event_requires_explicit_invite():
     assert not _can_view_event(event, actor, invited=False)
     assert _can_view_event(event, actor, invited=True)
     assert _can_attend_event(event, actor, invited=True)
+
+
+def test_invite_visibility_cannot_be_bypassed_by_malformed_public_tier():
+    actor = EventActor(None, frozenset({"club"}), True, False)
+    malformed = _event(visibility="invite_only", tier_access="public")
+
+    assert not _can_view_event(malformed, actor, invited=False)
+    assert not _can_attend_event(malformed, actor, invited=False)
+    assert _can_attend_event(malformed, actor, invited=True)
+
+
+def test_event_schema_rejects_mismatched_invite_visibility_and_access():
+    with pytest.raises(ValidationError):
+        EventCreate(
+            title="Private swim",
+            event_type="community_swim",
+            visibility="invite_only",
+            tier_access="public",
+            start_time=datetime(2026, 10, 1, 9, tzinfo=timezone.utc),
+        )

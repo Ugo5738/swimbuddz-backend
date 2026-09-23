@@ -43,6 +43,15 @@ class InternalSessionRideConfigAttachResponse(BaseModel):
     created: int
 
 
+class InternalSessionScheduleChange(BaseModel):
+    old_starts_at: datetime
+    new_starts_at: datetime
+
+
+class InternalSessionScheduleChangeResponse(BaseModel):
+    updated: int
+
+
 class BundleRideQuoteSelection(BaseModel):
     session_id: uuid.UUID
     ride_config_id: uuid.UUID
@@ -246,3 +255,40 @@ async def attach_ride_configs_internal(
 
     await db.commit()
     return InternalSessionRideConfigAttachResponse(created=len(configs_in))
+
+
+@router.patch(
+    "/sessions/{session_id}/schedule",
+    response_model=InternalSessionScheduleChangeResponse,
+)
+async def reconcile_session_schedule_internal(
+    session_id: uuid.UUID,
+    payload: InternalSessionScheduleChange,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Keep explicit ride departures at the same offset after a reschedule.
+
+    Route-derived departures already use the live Session start time. Only
+    explicit per-Session departure overrides need to be shifted here.
+    """
+    delta = payload.new_starts_at - payload.old_starts_at
+    if not delta:
+        return InternalSessionScheduleChangeResponse(updated=0)
+
+    configs = list(
+        (
+            await db.execute(
+                select(SessionRideConfig)
+                .where(SessionRideConfig.session_id == session_id)
+                .with_for_update()
+            )
+        ).scalars()
+    )
+    updated = 0
+    for config in configs:
+        if config.departure_time is not None:
+            config.departure_time += delta
+            updated += 1
+    await db.commit()
+    return InternalSessionScheduleChangeResponse(updated=updated)

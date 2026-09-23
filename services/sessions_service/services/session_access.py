@@ -9,6 +9,7 @@ from datetime import datetime
 import httpx
 from fastapi import HTTPException
 
+from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import (
     check_event_attendance_batch,
@@ -163,9 +164,19 @@ async def evaluate_session_access_for_member(
         else:
             try:
                 decisions = await check_event_attendance_batch(
-                    event_ids=[str(session.event_id)],
+                    checks=[
+                        {
+                            "context_key": str(session.id),
+                            "event_id": str(session.event_id),
+                            "paid_tiers": sorted(
+                                active_paid_tiers(
+                                    member_payload,
+                                    session.starts_at or now,
+                                )
+                            ),
+                        }
+                    ],
                     member_id=member_id,
-                    paid_tiers=sorted(active_paid_tiers(member_payload, now)),
                     calling_service=calling_service,
                 )
             except httpx.HTTPError as e:
@@ -179,7 +190,7 @@ async def evaluate_session_access_for_member(
                     status_code=503,
                     detail="Could not verify Event access. Please try again.",
                 ) from e
-            event_access_result = decisions.get(str(session.event_id)) or {
+            event_access_result = decisions.get(str(session.id)) or {
                 "allowed": False,
                 "tier_access": "event",
                 "source": "event_policy",
@@ -203,6 +214,7 @@ async def get_sessions_access_context(
     sessions: list[Session],
     member_payload: dict,
     confirmed_session_ids: set[uuid.UUID],
+    now: datetime | None = None,
     calling_service: str = "sessions",
 ) -> tuple[dict[str, dict], dict[str, list[str]], dict[str, dict], dict[str, dict]]:
     """Batch all cross-service context needed to evaluate a session list."""
@@ -226,15 +238,20 @@ async def get_sessions_access_context(
         for session in sessions
         if _is_club_session(session) and session.id not in confirmed_session_ids
     ]
-    event_ids = sorted(
+    now = now or utc_now()
+    event_checks = [
         {
-            str(session.event_id)
-            for session in sessions
-            if _is_event_session(session)
-            and session.event_id is not None
-            and session.id not in confirmed_session_ids
+            "context_key": str(session.id),
+            "event_id": str(session.event_id),
+            "paid_tiers": sorted(
+                active_paid_tiers(member_payload, session.starts_at or now)
+            ),
         }
-    )
+        for session in sessions
+        if _is_event_session(session)
+        and session.event_id is not None
+        and session.id not in confirmed_session_ids
+    ]
 
     try:
         cohort_access, pod_rosters, club_access, event_access = await asyncio.gather(
@@ -252,9 +269,8 @@ async def get_sessions_access_context(
                 calling_service=calling_service,
             ),
             check_event_attendance_batch(
-                event_ids=event_ids,
+                checks=event_checks,
                 member_id=member_id,
-                paid_tiers=sorted(active_paid_tiers(member_payload)),
                 calling_service=calling_service,
             ),
         )
@@ -308,7 +324,7 @@ def evaluate_session_access_from_context(
 
     event_access_result = None
     if _is_event_session(session) and not confirmed_booking:
-        event_access_result = event_access.get(str(session.event_id)) or {
+        event_access_result = event_access.get(str(session.id)) or {
             "allowed": False,
             "tier_access": "event",
             "source": "event_policy",

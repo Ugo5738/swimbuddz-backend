@@ -12,7 +12,7 @@ from typing import List, Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_service_role
@@ -22,8 +22,10 @@ from libs.common.logging import get_logger
 from libs.common.config import get_settings
 from libs.common.service_client import (
     cancel_opportunities_for_context,
+    dispatch_notification,
     get_member_by_auth_id,
     internal_post,
+    reconcile_session_ride_schedule,
 )
 from libs.common.session_access import denial_message
 from libs.db.session import get_async_db
@@ -61,6 +63,10 @@ from services.sessions_service.services.booking_capacity import (
 from services.sessions_service.services.session_access import (
     evaluate_session_access_for_member,
     get_member_session_access_payload,
+)
+from services.sessions_service.services.pricing import (
+    normalize_pricing_payload,
+    pricing_payload_from_session,
 )
 
 router = APIRouter(prefix="/internal/sessions", tags=["internal"])
@@ -752,6 +758,18 @@ async def sync_event_sessions(
         exclude_unset=True,
         exclude={"cancel", "cancellation_reason"},
     )
+    required_shared = {"title", "starts_at", "ends_at", "timezone", "capacity"}
+    cleared_required = [
+        field for field in required_shared if field in values and values[field] is None
+    ]
+    if cleared_required:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Linked Event Sessions cannot clear required shared fields: "
+                + ", ".join(sorted(cleared_required))
+            ),
+        )
     editable = {SessionStatus.DRAFT, SessionStatus.SCHEDULED}
     if values:
         blocked = [
@@ -768,10 +786,93 @@ async def sync_event_sessions(
                 ),
             )
 
+    if "capacity" in values:
+        editable_ids = [item.id for item in sessions if item.status in editable]
+        occupied_by_session: dict[uuid.UUID, int] = {}
+        if editable_ids:
+            now = utc_now()
+            occupied_rows = (
+                await db.execute(
+                    select(
+                        SessionBooking.session_id,
+                        func.coalesce(func.sum(SessionBooking.party_size), 0),
+                    )
+                    .where(
+                        SessionBooking.session_id.in_(editable_ids),
+                        or_(
+                            SessionBooking.status == SessionBookingStatus.CONFIRMED,
+                            and_(
+                                SessionBooking.status == SessionBookingStatus.PENDING,
+                                or_(
+                                    SessionBooking.expires_at.is_(None),
+                                    SessionBooking.expires_at > now,
+                                ),
+                            ),
+                        ),
+                    )
+                    .group_by(SessionBooking.session_id)
+                )
+            ).all()
+            occupied_by_session = {
+                session_id: int(occupied or 0) for session_id, occupied in occupied_rows
+            }
+            guest_rows = (
+                await db.execute(
+                    select(GuestPass.session_id, func.count(GuestPass.id))
+                    .where(
+                        GuestPass.session_id.in_(editable_ids),
+                        or_(
+                            GuestPass.status.in_(["confirmed", "attended"]),
+                            and_(
+                                GuestPass.status == "pending_payment",
+                                GuestPass.reservation_expires_at.is_not(None),
+                                GuestPass.reservation_expires_at > now,
+                            ),
+                        ),
+                    )
+                    .group_by(GuestPass.session_id)
+                )
+            ).all()
+            for session_id, occupied in guest_rows:
+                occupied_by_session[session_id] = occupied_by_session.get(
+                    session_id, 0
+                ) + int(occupied or 0)
+        requested_capacity = int(values["capacity"])
+        for session in sessions:
+            occupied = occupied_by_session.get(session.id, 0)
+            if session.status in editable and requested_capacity < occupied:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"{session.title} already has {occupied} occupied places; "
+                        f"capacity cannot be reduced to {requested_capacity}."
+                    ),
+                )
+
     updated_count = 0
     cancelled: list[Session] = []
+    changed_snapshots: list[tuple[Session, dict]] = []
     for session in sessions:
         if session.status in editable:
+            before = {
+                "starts_at": session.starts_at,
+                "ends_at": session.ends_at,
+                "pool_id": session.pool_id,
+                "location_name": session.location_name,
+            }
+            if "capacity" in values and (
+                session.pricing_expected_attendees is None
+                or session.pricing_expected_attendees > int(values["capacity"])
+            ):
+                pricing_payload = pricing_payload_from_session(session)
+                pricing_payload["capacity"] = int(values["capacity"])
+                pricing_payload["pricing_expected_attendees"] = int(values["capacity"])
+                normalized_pricing = normalize_pricing_payload(pricing_payload)
+                for field, value in normalized_pricing.items():
+                    if field == "pool_fee":
+                        session.pool_fee = round(float(value) * 100)
+                    else:
+                        setattr(session, field, value)
             for field, value in values.items():
                 setattr(session, field, value)
             resulting_start = values.get("starts_at", session.starts_at)
@@ -783,6 +884,7 @@ async def sync_event_sessions(
                 )
             if values:
                 updated_count += 1
+                changed_snapshots.append((session, before))
         if payload.cancel and session.status not in {
             SessionStatus.CANCELLED,
             SessionStatus.COMPLETED,
@@ -793,6 +895,92 @@ async def sync_event_sessions(
     await db.commit()
 
     settings = get_settings()
+    for session, before in changed_snapshots:
+        schedule_changed = (
+            before["starts_at"] != session.starts_at
+            or before["ends_at"] != session.ends_at
+        )
+        venue_changed = (
+            before["pool_id"] != session.pool_id
+            or before["location_name"] != session.location_name
+        )
+        if before["starts_at"] != session.starts_at:
+            try:
+                await reconcile_session_ride_schedule(
+                    session_id=str(session.id),
+                    old_starts_at=before["starts_at"].isoformat(),
+                    new_starts_at=session.starts_at.isoformat(),
+                    calling_service="sessions",
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Could not reconcile ride departures for Event Session %s: %s",
+                    session.id,
+                    exc,
+                )
+        if schedule_changed or venue_changed:
+            member_ids = [
+                str(member_id)
+                for member_id in (
+                    await db.execute(
+                        select(SessionBooking.member_id).where(
+                            SessionBooking.session_id == session.id,
+                            SessionBooking.status.in_(
+                                [
+                                    SessionBookingStatus.PENDING,
+                                    SessionBookingStatus.CONFIRMED,
+                                ]
+                            ),
+                        )
+                    )
+                ).scalars()
+            ]
+            message = (
+                f"{session.title} was updated. It now runs from "
+                f"{session.starts_at.isoformat()} to {session.ends_at.isoformat()} "
+                f"at {session.location_name or 'the updated venue'}. Your booking "
+                "and amount paid are unchanged."
+            )
+            await dispatch_notification(
+                type="session_updated",
+                category="sessions",
+                member_ids=sorted(set(member_ids)),
+                title="Swimming session updated",
+                body=message,
+                action_url=f"/sessions/{session.id}",
+                calling_service="sessions",
+                metadata={"event_id": str(event_id), "session_id": str(session.id)},
+            )
+            guest_emails = list(
+                (
+                    await db.execute(
+                        select(GuestPass.email).where(
+                            GuestPass.session_id == session.id,
+                            GuestPass.status.in_(["confirmed", "pending_payment"]),
+                        )
+                    )
+                ).scalars()
+            )
+            for email in sorted(set(guest_emails)):
+                try:
+                    await internal_post(
+                        service_url=settings.COMMUNICATIONS_SERVICE_URL,
+                        path="/email/send",
+                        calling_service="sessions",
+                        json={
+                            "to_email": email,
+                            "subject": "Swimming session updated",
+                            "body": message,
+                        },
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Could not notify guest %s for Event Session %s: %s",
+                        email,
+                        session.id,
+                        exc,
+                    )
+
     for session in cancelled:
         try:
             await internal_post(

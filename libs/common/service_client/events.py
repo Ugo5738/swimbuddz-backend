@@ -27,13 +27,12 @@ async def get_event_session_contract(
 
 async def check_event_attendance_batch(
     *,
-    event_ids: list[str],
+    checks: list[dict[str, Any]],
     member_id: str,
-    paid_tiers: list[str],
     calling_service: str,
 ) -> dict[str, dict[str, Any]]:
     """Ask Events to evaluate attendance for several linked Event Sessions."""
-    if not event_ids:
+    if not checks:
         return {}
     settings = get_settings()
     response = await internal_post(
@@ -41,9 +40,8 @@ async def check_event_attendance_batch(
         path="/internal/events/attendance/checks",
         calling_service=calling_service,
         json={
-            "event_ids": event_ids,
+            "checks": checks,
             "member_id": member_id,
-            "paid_tiers": paid_tiers,
         },
     )
     response.raise_for_status()

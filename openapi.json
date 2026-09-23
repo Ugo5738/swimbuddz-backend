@@ -33494,6 +33494,65 @@
         }
       }
     },
+    "/api/v1/internal/transport/sessions/{session_id}/schedule": {
+      "patch": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Reconcile Session Schedule Internal",
+        "description": "Keep explicit ride departures at the same offset after a reschedule.\n\nRoute-derived departures already use the live Session start time. Only\nexplicit per-Session departure overrides need to be shifted here.",
+        "operationId": "reconcile_session_schedule_internal_internal_transport_sessions__session_id__schedule_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalSessionScheduleChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalSessionScheduleChangeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/score/cohort-complexity": {
       "post": {
         "tags": [
@@ -95854,6 +95913,39 @@
         ],
         "title": "InternalSessionRideConfigCreate"
       },
+      "InternalSessionScheduleChange": {
+        "properties": {
+          "old_starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Old Starts At"
+          },
+          "new_starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "New Starts At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "old_starts_at",
+          "new_starts_at"
+        ],
+        "title": "InternalSessionScheduleChange"
+      },
+      "InternalSessionScheduleChangeResponse": {
+        "properties": {
+          "updated": {
+            "type": "integer",
+            "title": "Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "updated"
+        ],
+        "title": "InternalSessionScheduleChangeResponse"
+      },
       "MemberTransportSummary": {
         "properties": {
           "rides_taken": {
@@ -113436,21 +113528,18 @@
         ],
         "title": "CalendarImportPreviewResponse"
       },
-      "EventAttendanceChecksRequest": {
+      "EventAttendanceCheck": {
         "properties": {
-          "event_ids": {
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "type": "array",
-            "maxItems": 200,
-            "title": "Event Ids"
+          "context_key": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Context Key"
           },
-          "member_id": {
+          "event_id": {
             "type": "string",
             "format": "uuid",
-            "title": "Member Id"
+            "title": "Event Id"
           },
           "paid_tiers": {
             "items": {
@@ -113463,6 +113552,29 @@
             },
             "type": "array",
             "title": "Paid Tiers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "context_key",
+          "event_id"
+        ],
+        "title": "EventAttendanceCheck"
+      },
+      "EventAttendanceChecksRequest": {
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/EventAttendanceCheck"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Checks"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
           }
         },
         "type": "object",
@@ -114295,7 +114407,8 @@
             "enum": [
               "rsvp",
               "session",
-              "experience"
+              "experience",
+              "unavailable"
             ],
             "title": "Participation Mode",
             "default": "rsvp"
@@ -114304,6 +114417,11 @@
             "type": "integer",
             "title": "Linked Session Count",
             "default": 0
+          },
+          "participation_state_available": {
+            "type": "boolean",
+            "title": "Participation State Available",
+            "default": true
           }
         },
         "type": "object",

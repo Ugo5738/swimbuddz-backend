@@ -141,6 +141,15 @@ async def _decorate_sessions_for_user(
 
     member_payload = await _access_member_payload_for_user(current_user)
     if member_payload is None:
+        if current_user is None:
+            # Event visibility and private venue rules are owned by Events.
+            # Anonymous callers cannot receive the raw linked Session and
+            # bypass that parent policy.
+            return [
+                session
+                for session in sessions
+                if session.session_type != SessionType.EVENT
+            ]
         return sessions
 
     now = utc_now()
@@ -167,6 +176,7 @@ async def _decorate_sessions_for_user(
         sessions=sessions,
         member_payload=member_payload,
         confirmed_session_ids=confirmed_session_ids,
+        now=now,
         calling_service="sessions",
     )
     decorated: list[dict] = []
@@ -181,6 +191,8 @@ async def _decorate_sessions_for_user(
             club_access=club_access,
             event_access=event_access,
         )
+        if session.session_type == SessionType.EVENT and not access.visible:
+            continue
         decorated.append(_session_payload(session, access))
     return decorated
 
@@ -192,6 +204,11 @@ async def _decorate_session_for_user(
 ) -> dict | Session:
     member_payload = await _access_member_payload_for_user(current_user)
     if member_payload is None:
+        if current_user is None and session.session_type == SessionType.EVENT:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found",
+            )
         return session
 
     confirmed_booking = (
@@ -210,6 +227,11 @@ async def _decorate_session_for_user(
         calling_service="sessions",
         confirmed_booking=confirmed_booking is not None,
     )
+    if session.session_type == SessionType.EVENT and not access.visible:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found",
+        )
     return _session_payload(session, access)
 
 
@@ -337,10 +359,15 @@ async def list_sessions(
     decorated = await _decorate_sessions_for_user(sessions, current_user, db)
     access_ms = (time.perf_counter() - access_started_at) * 1000
     total_ms = (time.perf_counter() - started_at) * 1000
+    visible_count = len(decorated)
+    # If Event privacy removed any rows, do not leak hidden inventory through
+    # pagination metadata. A later access-aware cursor can improve pagination
+    # without weakening this boundary.
+    visible_has_more = has_more and visible_count == len(sessions)
 
-    response.headers["X-Result-Count"] = str(len(sessions))
-    response.headers["X-Has-More"] = str(has_more).lower()
-    if has_more:
+    response.headers["X-Result-Count"] = str(visible_count)
+    response.headers["X-Has-More"] = str(visible_has_more).lower()
+    if visible_has_more:
         response.headers["X-Next-Offset"] = str(offset + limit)
     response.headers["Server-Timing"] = (
         f"sessions_db;dur={db_ms:.2f}, "
@@ -352,8 +379,8 @@ async def list_sessions(
         "Sessions list completed",
         extra={
             "extra_fields": {
-                "result_count": len(sessions),
-                "has_more": has_more,
+                "result_count": visible_count,
+                "has_more": visible_has_more,
                 "offset": offset,
                 "limit": limit,
                 "db_ms": round(db_ms, 2),

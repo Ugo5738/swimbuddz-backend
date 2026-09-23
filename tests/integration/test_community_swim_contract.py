@@ -5,13 +5,20 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from sqlalchemy import select
 
 from libs.common.datetime_utils import utc_now
 from services.events_service.models import Event
 from services.events_service.routers.member import get_current_member
-from services.sessions_service.models import Session, SessionStatus
+from services.sessions_service.models import (
+    BookingChannel,
+    Session,
+    SessionBooking,
+    SessionBookingStatus,
+    SessionStatus,
+)
 from tests.factories import SessionFactory
 
 
@@ -50,28 +57,44 @@ async def test_event_attendance_policy_allows_every_member_product_and_scopes_re
     await db_session.commit()
 
     for paid_tier in ("community", "club", "academy"):
+        context_key = f"public-{paid_tier}"
         public_check = await events_client.post(
             "/internal/events/attendance/checks",
             json={
-                "event_ids": [str(public_event.id)],
+                "checks": [
+                    {
+                        "context_key": context_key,
+                        "event_id": str(public_event.id),
+                        "paid_tiers": [paid_tier],
+                    }
+                ],
                 "member_id": str(uuid.uuid4()),
-                "paid_tiers": [paid_tier],
             },
         )
         assert public_check.status_code == 200
-        assert public_check.json()[str(public_event.id)]["allowed"] is True
+        assert public_check.json()[context_key]["allowed"] is True
 
     restricted = await events_client.post(
         "/internal/events/attendance/checks",
         json={
-            "event_ids": [str(club_event.id), str(academy_event.id)],
+            "checks": [
+                {
+                    "context_key": "club-check",
+                    "event_id": str(club_event.id),
+                    "paid_tiers": ["academy"],
+                },
+                {
+                    "context_key": "academy-check",
+                    "event_id": str(academy_event.id),
+                    "paid_tiers": ["academy"],
+                },
+            ],
             "member_id": str(uuid.uuid4()),
-            "paid_tiers": ["academy"],
         },
     )
     assert restricted.status_code == 200
-    assert restricted.json()[str(club_event.id)]["allowed"] is False
-    assert restricted.json()[str(academy_event.id)]["allowed"] is True
+    assert restricted.json()["club-check"]["allowed"] is False
+    assert restricted.json()["academy-check"]["allowed"] is True
 
 
 @pytest.mark.asyncio
@@ -137,21 +160,45 @@ async def test_event_shared_fields_sync_and_cancellation_preserve_session_histor
     await db_session.commit()
     next_start = session.starts_at + timedelta(days=7)
 
-    synced = await sessions_client.patch(
-        f"/internal/sessions/events/{event_id}/sync",
-        json={
-            "title": "Updated Community Swim",
-            "starts_at": next_start.isoformat(),
-            "ends_at": (next_start + timedelta(hours=3)).isoformat(),
-            "location_name": "New Pool",
-            "capacity": 40,
-        },
-    )
+    reconcile_rides = AsyncMock(return_value={"updated": 1})
+    notify_members = AsyncMock(return_value={"dispatched": 1})
+    with (
+        patch(
+            "services.sessions_service.routers.internal.reconcile_session_ride_schedule",
+            reconcile_rides,
+        ),
+        patch(
+            "services.sessions_service.routers.internal.dispatch_notification",
+            notify_members,
+        ),
+    ):
+        synced = await sessions_client.patch(
+            f"/internal/sessions/events/{event_id}/sync",
+            json={
+                "title": "Updated Community Swim",
+                "starts_at": next_start.isoformat(),
+                "ends_at": (next_start + timedelta(hours=3)).isoformat(),
+                "location_name": "New Pool",
+                "capacity": 40,
+            },
+        )
     assert synced.status_code == 200, synced.text
     await db_session.refresh(session)
     assert session.title == "Updated Community Swim"
     assert session.location_name == "New Pool"
     assert session.capacity == 40
+    assert session.pricing_expected_attendees == 40
+    reconcile_rides.assert_awaited_once()
+    notify_members.assert_awaited_once()
+
+    reduced = await sessions_client.patch(
+        f"/internal/sessions/events/{event_id}/sync",
+        json={"capacity": 25},
+    )
+    assert reduced.status_code == 200
+    await db_session.refresh(session)
+    assert session.capacity == 25
+    assert session.pricing_expected_attendees == 25
 
     with (
         patch(
@@ -171,6 +218,40 @@ async def test_event_shared_fields_sync_and_cancellation_preserve_session_histor
     persisted = await db_session.scalar(select(Session).where(Session.id == session.id))
     assert persisted is not None
     assert persisted.status == SessionStatus.CANCELLED
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_event_capacity_cannot_drop_below_occupied_places(
+    sessions_client, db_session
+):
+    event_id = uuid.uuid4()
+    session = SessionFactory.create(
+        event_id=event_id,
+        capacity=30,
+        pricing_expected_attendees=30,
+    )
+    booking = SessionBooking(
+        session_id=session.id,
+        member_id=uuid.uuid4(),
+        member_auth_id="occupied-event-member",
+        status=SessionBookingStatus.CONFIRMED,
+        channel=BookingChannel.MEMBER_SELF,
+        party_size=20,
+        fee_amount_kobo=0,
+    )
+    db_session.add_all([session, booking])
+    await db_session.commit()
+
+    response = await sessions_client.patch(
+        f"/internal/sessions/events/{event_id}/sync",
+        json={"capacity": 10},
+    )
+
+    assert response.status_code == 409
+    assert "20 occupied places" in response.json()["detail"]
+    await db_session.refresh(session)
+    assert session.capacity == 30
 
 
 @pytest.mark.asyncio
@@ -222,3 +303,66 @@ async def test_linked_event_rejects_rsvp_and_delete_soft_cancels_parent(
     sync.assert_awaited_once()
     await db_session.refresh(event)
     assert event.status == "cancelled"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_unchanged_shared_fields_do_not_block_unrelated_event_edit(
+    events_client, db_session
+):
+    event = _event(created_by=uuid.uuid4())
+    db_session.add(event)
+    await db_session.commit()
+    sync = AsyncMock()
+    links_batch = AsyncMock(
+        return_value={str(event.id): {"linked_count": 1, "active_count": 1}}
+    )
+
+    with (
+        patch(
+            "services.events_service.routers.member.sync_event_sessions",
+            sync,
+        ),
+        patch(
+            "services.events_service.routers.member.get_event_session_links_batch",
+            links_batch,
+        ),
+    ):
+        response = await events_client.patch(
+            f"/events/{event.id}",
+            json={
+                "title": event.title,
+                "description": event.description,
+                "start_time": event.start_time.isoformat(),
+                "end_time": event.end_time.isoformat(),
+                "location": event.location,
+                "max_capacity": event.max_capacity,
+                "tier_access": "academy",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["tier_access"] == "academy"
+    sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_event_catalogue_degrades_closed_when_sessions_is_unavailable(
+    events_client, db_session
+):
+    event = _event(created_by=uuid.uuid4())
+    db_session.add(event)
+    await db_session.commit()
+
+    with patch(
+        "services.events_service.routers.member.get_event_session_links_batch",
+        new=AsyncMock(side_effect=httpx.ConnectError("sessions unavailable")),
+    ):
+        response = await events_client.get("/events/?upcoming_only=false")
+
+    assert response.status_code == 200, response.text
+    item = next(row for row in response.json() if row["id"] == str(event.id))
+    assert item["participation_mode"] == "unavailable"
+    assert item["participation_state_available"] is False
+    assert item["rsvp_count"] == {}

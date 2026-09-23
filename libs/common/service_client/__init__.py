@@ -82,7 +82,7 @@ from .sessions import (
     get_event_session_links_batch,
     sync_event_sessions,
 )
-from .transport import attach_session_ride_configs
+from .transport import attach_session_ride_configs, reconcile_session_ride_schedule
 from .volunteer import (
     cancel_opportunities_for_context,
     get_media_vault_assignments,
@@ -160,6 +160,7 @@ __all__ = [
     "sync_event_sessions",
     # Transport
     "attach_session_ride_configs",
+    "reconcile_session_ride_schedule",
     # Wallet
     "get_wallet_balance",
     "grant_pool_submission_reward",

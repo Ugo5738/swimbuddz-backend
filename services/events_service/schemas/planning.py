@@ -71,6 +71,10 @@ class EventTemplateBase(BaseModel):
         self.primary_audience = primary  # type: ignore[assignment]
         self.audiences = audiences  # type: ignore[assignment]
         self.audience = primary  # type: ignore[assignment]
+        if (self.visibility == "invite_only") != (self.tier_access == "invite_only"):
+            raise ValueError(
+                "invite-only visibility and attendance access must be selected together"
+            )
         try:
             ZoneInfo(self.timezone)
         except ZoneInfoNotFoundError as exc:

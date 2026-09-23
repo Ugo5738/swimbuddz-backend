@@ -40,12 +40,17 @@ class EventSessionContract(BaseModel):
     expected_session_count: int | None = None
 
 
-class EventAttendanceChecksRequest(BaseModel):
-    event_ids: list[uuid.UUID] = Field(default_factory=list, max_length=200)
-    member_id: uuid.UUID
+class EventAttendanceCheck(BaseModel):
+    context_key: str = Field(min_length=1, max_length=100)
+    event_id: uuid.UUID
     paid_tiers: list[Literal["community", "club", "academy"]] = Field(
         default_factory=list
     )
+
+
+class EventAttendanceChecksRequest(BaseModel):
+    checks: list[EventAttendanceCheck] = Field(default_factory=list, max_length=200)
+    member_id: uuid.UUID
 
 
 class EventAttendanceDecision(BaseModel):
@@ -90,18 +95,17 @@ async def check_attendance(
     _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
-    if not payload.event_ids:
+    if not payload.checks:
         return {}
+    event_ids = list(dict.fromkeys(check.event_id for check in payload.checks))
     events = list(
-        (
-            await db.execute(select(Event).where(Event.id.in_(payload.event_ids)))
-        ).scalars()
+        (await db.execute(select(Event).where(Event.id.in_(event_ids)))).scalars()
     )
     invites = set(
         (
             await db.execute(
                 select(EventInvite.event_id).where(
-                    EventInvite.event_id.in_(payload.event_ids),
+                    EventInvite.event_id.in_(event_ids),
                     EventInvite.member_id == payload.member_id,
                 )
             )
@@ -109,15 +113,24 @@ async def check_attendance(
         .scalars()
         .all()
     )
-    actor = EventActor(
-        member_id=payload.member_id,
-        paid_tiers=frozenset(payload.paid_tiers),
-        is_authenticated=True,
-        is_admin=False,
-    )
+    events_by_id = {event.id: event for event in events}
     decisions: dict[str, EventAttendanceDecision] = {}
-    found_ids = {event.id for event in events}
-    for event in events:
+    for check in payload.checks:
+        event = events_by_id.get(check.event_id)
+        if event is None:
+            decisions[check.context_key] = EventAttendanceDecision(
+                allowed=False,
+                tier_access="event",
+                source="event_policy",
+                reason="event_unavailable",
+            )
+            continue
+        actor = EventActor(
+            member_id=payload.member_id,
+            paid_tiers=frozenset(check.paid_tiers),
+            is_authenticated=True,
+            is_admin=False,
+        )
         invited = event.id in invites
         allowed = _can_attend_event(event, actor, invited=invited)
         source = (
@@ -127,18 +140,10 @@ async def check_attendance(
             if allowed
             else "event_policy"
         )
-        decisions[str(event.id)] = EventAttendanceDecision(
+        decisions[check.context_key] = EventAttendanceDecision(
             allowed=allowed,
             tier_access=event.tier_access,
             source=source,
             reason=None if allowed else "event_access_required",
         )
-    for event_id in payload.event_ids:
-        if event_id not in found_ids:
-            decisions[str(event_id)] = EventAttendanceDecision(
-                allowed=False,
-                tier_access="event",
-                source="event_policy",
-                reason="event_unavailable",
-            )
     return decisions
