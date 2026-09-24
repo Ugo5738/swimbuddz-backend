@@ -80,6 +80,11 @@ jobs:
         run: |
           pytest tests/unit/ -v
 
+      - name: Run guest booking PostgreSQL tests
+        run: |
+          GUEST_TEST_DATABASE_URL="$DATABASE_SESSION_URL" \
+            pytest -v tests/unit/test_guest_booking_database.py
+
       - name: Run critical entitlement and booking integration tests
         run: |
           # Keep service model registries isolated. Several services map a
