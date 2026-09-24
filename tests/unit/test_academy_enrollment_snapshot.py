@@ -16,6 +16,7 @@ def result(value):
         scalar_one_or_none=lambda: value,
         scalar_one=lambda: value,
         scalar=lambda: value,
+        scalars=lambda: SimpleNamespace(all=lambda: [] if value is None else [value]),
     )
 
 

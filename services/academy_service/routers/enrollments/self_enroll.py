@@ -129,9 +129,10 @@ async def self_enroll(
 
     # 3. Check Existing Enrollment/Request
     # Block creating a new enrollment when the member already has an active
-    # enrollment in this program (any cohort). Prevents accidental duplicate
-    # signups across cohorts of the same program — to switch cohorts the
-    # member must drop or have an admin drop the existing enrollment first.
+    # enrollment in this program. Completed/cancelled cohorts are historical
+    # even if their enrollments still say ENROLLED; they must not prevent a
+    # member from joining a later cohort. Live and unassigned requests still
+    # block duplicate signups, as does an existing request for this cohort.
     if program_id:
         query = (
             select(Enrollment)
@@ -149,7 +150,17 @@ async def self_enroll(
             .options(selectinload(Enrollment.cohort))
         )
         result = await db.execute(query)
-        existing = result.scalar_one_or_none()
+        existing = next(
+            (
+                enrollment
+                for enrollment in result.scalars().all()
+                if enrollment.cohort_id == cohort_id
+                or enrollment.cohort is None
+                or enrollment.cohort.status
+                not in (CohortStatus.COMPLETED, CohortStatus.CANCELLED)
+            ),
+            None,
+        )
 
         if existing:
             if existing.cohort_id == cohort_id:
