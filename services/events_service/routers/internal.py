@@ -36,6 +36,9 @@ class EventSessionContract(BaseModel):
     timezone: str
     pool_id: uuid.UUID | None = None
     location_name: str | None = None
+    visibility: str = "public"
+    is_location_private: bool = False
+    location_area: str | None = None
     capacity: int | None = None
     expected_session_count: int | None = None
 
@@ -81,6 +84,9 @@ async def get_session_contract(
         timezone=event.timezone,
         pool_id=event.pool_id,
         location_name=event.location,
+        visibility=event.visibility,
+        is_location_private=event.is_location_private,
+        location_area=event.location_area,
         capacity=event.max_capacity,
         expected_session_count=1 if event.event_type == "community_swim" else None,
     )

@@ -49,7 +49,14 @@ def create_app() -> FastAPI:
         # the attack surface (any allowed origin can fire any custom-headered
         # request). Enumerate the verbs and headers we actually use.
         allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Accept"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Accept",
+            "X-Guest-Pass-Token",
+            "X-Guest-Booking-Token",
+            "X-Guest-Invite-Token",
+        ],
         expose_headers=[
             "Server-Timing",
             "X-Request-ID",
@@ -219,6 +226,22 @@ def create_app() -> FastAPI:
             clients.sessions_client, f"/sessions/{session_id}/book", request
         )
 
+    @app.api_route("/api/v1/sessions/{session_id}/guest-passes", methods=["POST"])
+    @limiter.limit("10/minute")
+    async def proxy_guest_booking(session_id: str, request: Request):
+        return await proxy_request(
+            clients.sessions_client, f"/sessions/{session_id}/guest-passes", request
+        )
+
+    @app.api_route("/api/v1/sessions/{session_id}/guest-link-events", methods=["POST"])
+    @limiter.limit("30/minute")
+    async def proxy_guest_link_events(session_id: str, request: Request):
+        return await proxy_request(
+            clients.sessions_client,
+            f"/sessions/{session_id}/guest-link-events",
+            request,
+        )
+
     @app.api_route(
         "/api/v1/sessions/{path:path}",
         methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -229,11 +252,24 @@ def create_app() -> FastAPI:
             clients.sessions_client, f"/sessions/{path}", request
         )
 
+    @app.api_route("/api/v1/guest-passes/{guest_pass_id}/checkout", methods=["POST"])
+    @limiter.limit("10/minute")
+    async def proxy_guest_checkout(guest_pass_id: str, request: Request):
+        return await proxy_request(
+            clients.sessions_client, f"/guest-passes/{guest_pass_id}/checkout", request
+        )
+
     @app.api_route("/api/v1/guest-passes/{path:path}", methods=["GET"])
     async def proxy_guest_pass_status(path: str, request: Request):
         """Proxy the redacted public guest-pass receipt/status surface."""
         return await proxy_request(
             clients.sessions_client, f"/guest-passes/{path}", request
+        )
+
+    @app.api_route("/api/v1/admin/guest-booking-links/{path:path}", methods=["DELETE"])
+    async def proxy_guest_booking_links(path: str, request: Request):
+        return await proxy_request(
+            clients.sessions_client, f"/admin/guest-booking-links/{path}", request
         )
 
     @app.api_route("/api/v1/admin/guest-passes", methods=["GET"])

@@ -311,6 +311,7 @@ async def send_templated_email(
         analyzer,
         club,
         coaching,
+        guest_passes,
         members,
         payments,
         reports,
@@ -607,6 +608,24 @@ async def send_templated_email(
             )
         ),
         # --- Session templates ---
+        "guest_pass_confirmation": lambda d: guest_passes.send_guest_pass_confirmation_email(
+            to_email=request.to_email,
+            guest_name=d.get("guest_name", "Guest"),
+            session_title=d.get("session_title", "Swim"),
+            session_date=d.get("session_date", ""),
+            session_time=d.get("session_time", ""),
+            session_location=d.get("session_location", ""),
+            session_address=d.get("session_address", ""),
+            amount_paid=d.get("amount_paid", 0),
+            payment_reference=d.get("payment_reference", ""),
+            receipt_url=d.get("receipt_url", ""),
+            post_session=d.get("post_session", False),
+        ),
+        "guest_pass_assessment": lambda d: guest_passes.send_guest_assessment_email(
+            to_email=request.to_email,
+            guest_name=d.get("guest_name", "Guest"),
+            assessment=d.get("assessment", {}),
+        ),
         "session_confirmation": lambda d: sessions.send_session_confirmation_email(
             to_email=request.to_email,
             member_name=d.get("member_name", ""),
@@ -627,6 +646,10 @@ async def send_templated_email(
             bubbles_applied=d.get("bubbles_applied"),
             bubbles_amount_ngn=d.get("bubbles_amount_ngn"),
             bundle_info=d.get("bundle_info"),
+            guest_booking_url=d.get("guest_booking_url"),
+            booking_reference=d.get("booking_reference"),
+            payment_reference=d.get("payment_reference"),
+            post_session=d.get("post_session", False),
         ),
         "ride_share_confirmation": lambda d: (
             sessions.send_ride_share_confirmation_email(

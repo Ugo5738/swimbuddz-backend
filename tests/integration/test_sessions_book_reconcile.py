@@ -58,7 +58,8 @@ async def test_cohort_tuition_and_extra_class_persist_distinct_booking_prices(
             f"{_SESSION_ACCESS}.check_cohort_enrollment",
             AsyncMock(return_value={"enrolled": True}),
         ),
-        patch(f"{_BOOKINGS}._send_direct_booking_confirmation", AsyncMock()),
+        patch(f"{_BOOKINGS}.queue_confirmation", AsyncMock(return_value="email-key")),
+        patch(f"{_BOOKINGS}.deliver_confirmation", AsyncMock()),
     ):
         response = await sessions_client.post(
             f"/sessions/{session.id}/book",

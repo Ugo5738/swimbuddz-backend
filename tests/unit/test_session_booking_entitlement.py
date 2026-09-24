@@ -34,6 +34,8 @@ def _payment():
     return SimpleNamespace(
         id=uuid.uuid4(),
         reference="PAY-SESSION-1",
+        amount=3500,
+        currency="NGN",
         member_auth_id="member-auth-1",
         payment_metadata={
             "booking_id": str(uuid.uuid4()),
@@ -105,6 +107,7 @@ async def test_paid_extra_class_fulfillment_confirms_and_links_payment_without_r
     monkeypatch,
 ):
     from datetime import timedelta
+
     from libs.common.datetime_utils import utc_now
     from services.sessions_service.models import SessionBookingStatus, SessionStatus
     from services.sessions_service.routers import internal
@@ -134,6 +137,10 @@ async def test_paid_extra_class_fulfillment_confirms_and_links_payment_without_r
     )
     sync = AsyncMock()
     monkeypatch.setattr(internal, "sync_booking_attendance", sync)
+    monkeypatch.setattr(
+        internal, "queue_confirmation", AsyncMock(return_value="email-key")
+    )
+    monkeypatch.setattr(internal, "deliver_confirmation", AsyncMock())
     monkeypatch.setattr(
         _session_booking, "_debit_bubbles", AsyncMock(return_value=None)
     )

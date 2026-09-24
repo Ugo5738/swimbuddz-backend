@@ -367,8 +367,8 @@ def test_bank_reference_required_and_arbitrary_fields_rejected():
 async def test_bank_topup_initializes_a_payments_record_instead_of_orphan_request(
     monkeypatch,
 ):
-    from services.wallet_service.services import topup_service
     from services.wallet_service.models import PaymentMethod, TopupStatus
+    from services.wallet_service.services import topup_service
 
     db = db_for(None)
     monkeypatch.setattr(
@@ -431,6 +431,7 @@ def test_admin_and_service_routes_keep_required_authentication():
 
 async def test_upload_stores_only_media_id_and_does_not_mark_paid(monkeypatch):
     import io
+
     from fastapi import UploadFile
 
     payment = row()
@@ -486,3 +487,47 @@ async def test_zero_manual_checkout_settles_without_waiting_for_bank_credit(
     )
     apply.assert_awaited_once()
     assert db.add.call_args.args[0].status == PaymentStatus.PAID
+
+
+async def test_guest_recovery_refreshes_transfer_deadline_without_changing_bill(
+    monkeypatch,
+):
+    checkout = dict(
+        reference="PAY-TRANSFER",
+        authorization_url="/payments/transfer/PAY-TRANSFER#token=test",
+        access_code="",
+        amount_kobo=2100000,
+        additional_charges=[{"label": "Original charge", "amount_kobo": 100000}],
+    )
+    payment = row(
+        purpose=PaymentPurpose.GUEST_PASS,
+        amount=21000,
+        payment_metadata={
+            "subtotal_kobo": 2000000,
+            "reservation_expires_at": "2026-01-01T10:00:00Z",
+            "internal_checkout": checkout,
+        },
+    )
+    db = db_for(payment)
+    monkeypatch.setattr(
+        internal,
+        "calculate_additional_charges",
+        AsyncMock(
+            return_value=([{"label": "New charge", "amount_kobo": 999999}], 999999)
+        ),
+    )
+    response = await internal.internal_initialize_payment(
+        InternalInitializeRequest(
+            purpose="guest_pass",
+            payment_method="manual_transfer",
+            amount=20000,
+            reference=payment.reference,
+            member_auth_id="member",
+            metadata={"booking_mode": "settlement", "reservation_expires_at": None},
+        ),
+        db,
+    )
+    assert response.amount_kobo == 2100000
+    assert response.additional_charges == checkout["additional_charges"]
+    assert payment.payment_metadata["reservation_expires_at"] is None
+    assert payment.payment_metadata["booking_mode"] == "settlement"

@@ -41,15 +41,15 @@ from services.payments_service.schemas import (
     MakeupObligationResponse,
     MakeupScheduleRequest,
 )
-from services.payments_service.services.recurring_payout_extensions import (
-    extend_recurring_payout_schedules,
-)
 from services.payments_service.services.academy_pricing import (
     academy_payment_context,
     academy_payment_metadata,
 )
 from services.payments_service.services.additional_charges import (
     calculate_additional_charges,
+)
+from services.payments_service.services.recurring_payout_extensions import (
+    extend_recurring_payout_schedules,
 )
 
 router = APIRouter(prefix="/internal/payments", tags=["internal"])
@@ -350,6 +350,16 @@ async def internal_initialize_payment(
             final_amount = float(payment.amount)
             charge_lines = frozen.get("additional_charges", [])
             charge_total_kobo = int(frozen.get("additional_charges_total_kobo", 0))
+            if purpose_enum == PaymentPurpose.GUEST_PASS:
+                # Sessions owns restored holds / post-start settlement. Keep the
+                # transfer page's deadline current while preserving the frozen bill.
+                metadata = req.metadata or {}
+                payment.payment_metadata = {
+                    **frozen,
+                    "reservation_expires_at": metadata.get("reservation_expires_at"),
+                    "booking_mode": metadata.get("booking_mode", "reservation"),
+                }
+                await db.commit()
             if frozen.get("internal_checkout"):
                 return InternalInitializeResponse(**frozen["internal_checkout"])
 

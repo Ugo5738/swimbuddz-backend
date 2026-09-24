@@ -64,6 +64,17 @@ async def apply_session_booking(payment: Payment) -> None:
                 "member_auth_id": payment.member_auth_id,
                 "payment_intent_id": str(payment.id),
                 "wallet_transaction_id": wallet_transaction_id,
+                "confirmation_details": {
+                    "amount_paid": float(payment.amount),
+                    "currency": payment.currency,
+                    "bubbles_applied": int(
+                        (payment.payment_metadata or {}).get("bubbles_to_apply") or 0
+                    ),
+                    "bubbles_amount_ngn": float(
+                        (payment.payment_metadata or {}).get("bubbles_value_ngn") or 0
+                    ),
+                    "payment_reference": payment.reference,
+                },
             },
             headers=headers,
         )
@@ -77,6 +88,15 @@ async def apply_session_booking(payment: Payment) -> None:
                     f"SessionBooking {booking_id} could not be confirmed after "
                     f"payment. Payment {payment.reference} needs manual review "
                     f"or refund. Sessions service said: {resp.text}"
+                ),
+            )
+
+        if resp.status_code >= 400:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    f"Failed to confirm booking {booking_id} "
+                    f"({resp.status_code}): {resp.text}"
                 ),
             )
 
@@ -117,14 +137,6 @@ async def apply_session_booking(payment: Payment) -> None:
                         f"({transport_resp.status_code}): {transport_resp.text}"
                     ),
                 )
-        if resp.status_code >= 400:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=(
-                    f"Failed to confirm booking {booking_id} "
-                    f"({resp.status_code}): {resp.text}"
-                ),
-            )
 
     logger.info(
         "SessionBooking %s confirmed via payment %s",

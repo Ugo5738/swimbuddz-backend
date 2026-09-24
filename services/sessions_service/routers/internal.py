@@ -17,9 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
+from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-from libs.common.config import get_settings
 from libs.common.service_client import (
     cancel_opportunities_for_context,
     dispatch_notification,
@@ -61,13 +61,18 @@ from services.sessions_service.services.booking_capacity import (
     PENDING_TTL_MINUTES,
     assert_booking_capacity,
 )
-from services.sessions_service.services.session_access import (
-    evaluate_session_access_for_member,
-    get_member_session_access_payload,
+from services.sessions_service.services.booking_confirmation import (
+    allocate_total,
+    deliver_confirmation,
+    queue_confirmation,
 )
 from services.sessions_service.services.pricing import (
     normalize_pricing_payload,
     pricing_payload_from_session,
+)
+from services.sessions_service.services.session_access import (
+    evaluate_session_access_for_member,
+    get_member_session_access_payload,
 )
 
 router = APIRouter(prefix="/internal/sessions", tags=["internal"])
@@ -822,10 +827,13 @@ async def sync_event_sessions(
                     select(GuestPass.session_id, func.count(GuestPass.id))
                     .where(
                         GuestPass.session_id.in_(editable_ids),
+                        GuestPass.booking_mode == "reservation",
                         or_(
                             GuestPass.status.in_(["confirmed", "attended"]),
                             and_(
-                                GuestPass.status == "pending_payment",
+                                GuestPass.status.in_(
+                                    ["pending_payment", "payment_failed"]
+                                ),
                                 GuestPass.reservation_expires_at.is_not(None),
                                 GuestPass.reservation_expires_at > now,
                             ),
@@ -1738,9 +1746,31 @@ async def confirm_bundle_bookings(
         ):
             booking.wallet_transaction_id = payload.wallet_transaction_id
 
+    email_keys = []
+    details = payload.confirmation_details
+    weights = [row.fee_amount_kobo for row in ordered_bookings]
+    cash_parts = (
+        allocate_total(round(details.amount_paid * 100), weights) if details else []
+    )
+    bubble_parts = (
+        allocate_total(details.bubbles_applied or 0, weights) if details else []
+    )
+    for index, booking in enumerate(ordered_bookings):
+        snapshot = details.model_dump(exclude_none=True) if details else None
+        if snapshot:
+            snapshot.update(
+                amount_paid=cash_parts[index] / 100,
+                bubbles_applied=bubble_parts[index],
+                bubbles_amount_ngn=bubble_parts[index] * 100,
+                bundle_info=f"Session {index + 1} of {len(ordered_bookings)} in your booking",
+            )
+        email_keys.append(
+            await queue_confirmation(db, booking.id, payment_details=snapshot)
+        )
     await db.commit()
-    for booking in ordered_bookings:
+    for booking, key in zip(ordered_bookings, email_keys):
         await db.refresh(booking)
+        await deliver_confirmation(db, key)
         await sync_booking_attendance(booking)
     return BundleBookingConfirmResponse(
         confirmed=len(ordered_bookings),
@@ -1944,9 +1974,19 @@ async def internal_confirm_booking(
         ):
             booking.wallet_transaction_id = confirm_in.wallet_transaction_id
             updated = True
+        key = await queue_confirmation(
+            db,
+            booking.id,
+            payment_details=confirm_in.confirmation_details.model_dump(
+                exclude_none=True
+            )
+            if confirm_in.confirmation_details
+            else None,
+        )
+        await db.commit()
         if updated:
-            await db.commit()
             await db.refresh(booking)
+        await deliver_confirmation(db, key)
         await sync_booking_attendance(booking)
         return booking
     now = utc_now()
@@ -1974,8 +2014,16 @@ async def internal_confirm_booking(
         booking.payment_intent_id = confirm_in.payment_intent_id
     if confirm_in.wallet_transaction_id is not None:
         booking.wallet_transaction_id = confirm_in.wallet_transaction_id
+    key = await queue_confirmation(
+        db,
+        booking.id,
+        payment_details=confirm_in.confirmation_details.model_dump(exclude_none=True)
+        if confirm_in.confirmation_details
+        else None,
+    )
     await db.commit()
     await db.refresh(booking)
+    await deliver_confirmation(db, key)
     await sync_booking_attendance(booking)
     return booking
 

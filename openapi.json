@@ -10134,7 +10134,7 @@
           "bookings"
         ],
         "summary": "Confirm Booking",
-        "description": "Flip a PENDING booking to CONFIRMED.\n\nMember can only confirm their own bookings. PENDING and not-yet-expired\nonly \u2014 EXPIRED/CANCELLED/already-CONFIRMED are rejected.",
+        "description": "Return authoritative confirmation after server-side payment fulfillment.",
         "operationId": "confirm_booking_sessions_bookings__booking_id__confirm_post",
         "security": [
           {
@@ -10680,6 +10680,519 @@
         }
       }
     },
+    "/api/v1/admin/sessions/{session_id}/roster": {
+      "get": {
+        "tags": [
+          "session-roster"
+        ],
+        "summary": "Session Roster",
+        "operationId": "session_roster_admin_sessions__session_id__roster_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRosterResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/guest-share-link": {
+      "get": {
+        "tags": [
+          "guest-booking-operations"
+        ],
+        "summary": "Guest Share Link",
+        "operationId": "guest_share_link_sessions__session_id__guest_share_link_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": "Response Guest Share Link Sessions  Session Id  Guest Share Link Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/sessions/{session_id}/guest-booking-links": {
+      "post": {
+        "tags": [
+          "guest-booking-operations"
+        ],
+        "summary": "Issue Guest Link",
+        "operationId": "issue_guest_link_admin_sessions__session_id__guest_booking_links_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuestBookingGrantCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestBookingGrantResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/sessions/{session_id}/guest-share-link": {
+      "get": {
+        "tags": [
+          "guest-booking-operations"
+        ],
+        "summary": "Admin Guest Share Link",
+        "operationId": "admin_guest_share_link_admin_sessions__session_id__guest_share_link_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "referrer_auth_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Referrer Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": "Response Admin Guest Share Link Admin Sessions  Session Id  Guest Share Link Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/guest-booking-links/{grant_id}": {
+      "delete": {
+        "tags": [
+          "guest-booking-operations"
+        ],
+        "summary": "Revoke Guest Link",
+        "operationId": "revoke_guest_link_admin_guest_booking_links__grant_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "grant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Grant Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/guest-passes/{guest_pass_id}/payment-link": {
+      "post": {
+        "tags": [
+          "guest-booking-operations"
+        ],
+        "summary": "Restore Guest Payment Link",
+        "description": "Restore the same pass/reference without creating duplicate guest identities.",
+        "operationId": "restore_guest_payment_link_admin_guest_passes__guest_pass_id__payment_link_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "guest_pass_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guest Pass Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Restore Guest Payment Link Admin Guest Passes  Guest Pass Id  Payment Link Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/guest-link-events": {
+      "post": {
+        "tags": [
+          "guest-booking-operations"
+        ],
+        "summary": "Record Guest Link Event",
+        "operationId": "record_guest_link_event_sessions__session_id__guest_link_events_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuestLinkEventCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/guest-passes/funnel": {
+      "get": {
+        "tags": [
+          "guest-booking-operations"
+        ],
+        "summary": "Guest Funnel",
+        "operationId": "guest_funnel_admin_guest_passes_funnel_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "booking_source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Booking Source"
+            }
+          },
+          {
+            "name": "campaign_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Campaign Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestFunnelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/sessions/guest-booking-options": {
+      "get": {
+        "tags": [
+          "guest-booking-operations"
+        ],
+        "summary": "Guest Booking Options",
+        "description": "All session types, including history for individual reconciliation.",
+        "operationId": "guest_booking_options_admin_sessions_guest_booking_options_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionResponse"
+                  },
+                  "title": "Response Guest Booking Options Admin Sessions Guest Booking Options Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sessions/{session_id}/guest-pass": {
       "get": {
         "tags": [
@@ -10696,6 +11209,38 @@
               "type": "string",
               "format": "uuid",
               "title": "Session Id"
+            }
+          },
+          {
+            "name": "x-guest-booking-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Guest-Booking-Token"
+            }
+          },
+          {
+            "name": "x-guest-invite-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Guest-Invite-Token"
             }
           }
         ],
@@ -10782,7 +11327,7 @@
           "guest-passes"
         ],
         "summary": "Get Guest Pass Status",
-        "description": "Redacted public receipt; identity and assessment data are never returned.",
+        "description": "Redacted receipt; a private capability additionally unlocks venue details.",
         "operationId": "get_guest_pass_status_guest_passes__guest_pass_id__get",
         "parameters": [
           {
@@ -10793,6 +11338,81 @@
               "type": "string",
               "format": "uuid",
               "title": "Guest Pass Id"
+            }
+          },
+          {
+            "name": "x-guest-pass-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Guest-Pass-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestPassPublicResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/guest-passes/{guest_pass_id}/checkout": {
+      "post": {
+        "tags": [
+          "guest-passes"
+        ],
+        "summary": "Retry Guest Checkout",
+        "operationId": "retry_guest_checkout_guest_passes__guest_pass_id__checkout_post",
+        "parameters": [
+          {
+            "name": "guest_pass_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Guest Pass Id"
+            }
+          },
+          {
+            "name": "x-guest-pass-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Guest-Pass-Token"
             }
           }
         ],
@@ -70565,6 +71185,16 @@
       },
       "BookingConfirmRequest": {
         "properties": {
+          "confirmation_details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BookingConfirmationDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "member_auth_id": {
             "anyOf": [
               {
@@ -70626,8 +71256,76 @@
           }
         },
         "type": "object",
-        "title": "BookingConfirmRequest",
-        "description": "Transition a PENDING booking to CONFIRMED after payment cleared."
+        "title": "BookingConfirmRequest"
+      },
+      "BookingConfirmationDetails": {
+        "properties": {
+          "amount_paid": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Amount Paid"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "title": "Currency",
+            "default": "NGN"
+          },
+          "bubbles_applied": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bubbles Applied"
+          },
+          "bubbles_amount_ngn": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bubbles Amount Ngn"
+          },
+          "payment_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Reference"
+          },
+          "bundle_info": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Info"
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount_paid"
+        ],
+        "title": "BookingConfirmationDetails",
+        "description": "Payment-owned totals supplied only by service-role fulfillment."
       },
       "BookingGuestCreate": {
         "properties": {
@@ -70881,6 +71579,16 @@
       },
       "BundleBookingConfirmRequest": {
         "properties": {
+          "confirmation_details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BookingConfirmationDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "member_auth_id": {
             "type": "string",
             "maxLength": 128,
@@ -70921,8 +71629,7 @@
           "payment_intent_id",
           "booking_ids"
         ],
-        "title": "BundleBookingConfirmRequest",
-        "description": "Atomically confirm every reservation owned by one bundle payment."
+        "title": "BundleBookingConfirmRequest"
       },
       "BundleBookingConfirmResponse": {
         "properties": {
@@ -71700,6 +72407,52 @@
         "type": "object",
         "title": "GenerateSessionsRequest"
       },
+      "GuestBookingGrantCreate": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "expires_in_hours": {
+            "type": "integer",
+            "maximum": 168.0,
+            "minimum": 1.0,
+            "title": "Expires In Hours",
+            "default": 72
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "GuestBookingGrantCreate"
+      },
+      "GuestBookingGrantResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "expires_at"
+        ],
+        "title": "GuestBookingGrantResponse"
+      },
       "GuestConvertRequest": {
         "properties": {
           "phone": {
@@ -71746,6 +72499,49 @@
         ],
         "title": "GuestConvertResponse"
       },
+      "GuestFunnelResponse": {
+        "properties": {
+          "link_views": {
+            "type": "integer",
+            "title": "Link Views"
+          },
+          "link_shares": {
+            "type": "integer",
+            "title": "Link Shares"
+          },
+          "checkout_started": {
+            "type": "integer",
+            "title": "Checkout Started"
+          },
+          "paid": {
+            "type": "integer",
+            "title": "Paid"
+          },
+          "attended": {
+            "type": "integer",
+            "title": "Attended"
+          },
+          "assessed": {
+            "type": "integer",
+            "title": "Assessed"
+          },
+          "converted": {
+            "type": "integer",
+            "title": "Converted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "link_views",
+          "link_shares",
+          "checkout_started",
+          "paid",
+          "attended",
+          "assessed",
+          "converted"
+        ],
+        "title": "GuestFunnelResponse"
+      },
       "GuestIntent": {
         "type": "string",
         "enum": [
@@ -71791,6 +72587,55 @@
         "title": "GuestLeadResponse",
         "description": "An unconverted guest prospect, deduped by phone (Phase 3 funnel)."
       },
+      "GuestLinkEventCreate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "view",
+              "share"
+            ],
+            "title": "Event Type"
+          },
+          "booking_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Source"
+          },
+          "campaign_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "event_type"
+        ],
+        "title": "GuestLinkEventCreate"
+      },
       "GuestPassAdminResponse": {
         "properties": {
           "id": {
@@ -71818,6 +72663,11 @@
           "total_kobo": {
             "type": "integer",
             "title": "Total Kobo"
+          },
+          "payment_method": {
+            "type": "string",
+            "title": "Payment Method",
+            "default": "paystack"
           },
           "payment_reference": {
             "type": "string",
@@ -71850,10 +72700,131 @@
             ],
             "title": "Checkout Url"
           },
+          "receipt_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Url"
+          },
+          "booking_mode": {
+            "type": "string",
+            "enum": [
+              "reservation",
+              "settlement"
+            ],
+            "title": "Booking Mode",
+            "default": "reservation"
+          },
+          "session_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Title"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "default": "Africa/Lagos"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
+          },
+          "location_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Address"
+          },
+          "attendance_recorded": {
+            "type": "boolean",
+            "title": "Attendance Recorded",
+            "default": false
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "booking_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Source"
+          },
+          "campaign_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Key"
+          },
+          "confirmation_email_sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Email Sent At"
           },
           "full_name": {
             "type": "string",
@@ -72098,6 +73069,56 @@
               }
             ],
             "title": "Referral Code"
+          },
+          "booking_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Source"
+          },
+          "campaign_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Key"
+          },
+          "access_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Token"
+          },
+          "invite_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invite Token"
           }
         },
         "type": "object",
@@ -72147,7 +73168,14 @@
             "default": "NGN"
           },
           "guest_fee_kobo": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Guest Fee Kobo"
           },
           "community_dropin_fee_kobo": {
@@ -72166,8 +73194,80 @@
             "title": "Allows Guests"
           },
           "spaces_remaining": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Spaces Remaining"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "default": "Africa/Lagos"
+          },
+          "booking_mode": {
+            "type": "string",
+            "enum": [
+              "reservation",
+              "settlement",
+              "closed"
+            ],
+            "title": "Booking Mode",
+            "default": "closed"
+          },
+          "guest_booking_mode": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "public",
+              "member_invite",
+              "approval_required"
+            ],
+            "title": "Guest Booking Mode",
+            "default": "disabled"
+          },
+          "booking_closes_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Closes At"
+          },
+          "reconciliation_closes_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliation Closes At"
+          },
+          "approval_granted": {
+            "type": "boolean",
+            "title": "Approval Granted",
+            "default": false
+          },
+          "member_invitation_valid": {
+            "type": "boolean",
+            "title": "Member Invitation Valid",
+            "default": false
+          },
+          "safety_acknowledgement_version": {
+            "type": "string",
+            "title": "Safety Acknowledgement Version",
+            "default": "pool-safety-2026-09"
           }
         },
         "type": "object",
@@ -72176,9 +73276,7 @@
           "title",
           "starts_at",
           "ends_at",
-          "guest_fee_kobo",
-          "allows_guests",
-          "spaces_remaining"
+          "allows_guests"
         ],
         "title": "GuestPassOffer"
       },
@@ -72210,6 +73308,11 @@
             "type": "integer",
             "title": "Total Kobo"
           },
+          "payment_method": {
+            "type": "string",
+            "title": "Payment Method",
+            "default": "paystack"
+          },
           "payment_reference": {
             "type": "string",
             "title": "Payment Reference"
@@ -72240,6 +73343,93 @@
               }
             ],
             "title": "Checkout Url"
+          },
+          "receipt_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Url"
+          },
+          "booking_mode": {
+            "type": "string",
+            "enum": [
+              "reservation",
+              "settlement"
+            ],
+            "title": "Booking Mode",
+            "default": "reservation"
+          },
+          "session_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Title"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "default": "Africa/Lagos"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
+          },
+          "location_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Address"
+          },
+          "attendance_recorded": {
+            "type": "boolean",
+            "title": "Attendance Recorded",
+            "default": false
           },
           "created_at": {
             "type": "string",
@@ -74068,7 +75258,8 @@
           "guest_fee": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -74147,8 +75338,45 @@
           },
           "max_guests_per_booking": {
             "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
             "title": "Max Guests Per Booking",
             "default": 4
+          },
+          "guest_booking_mode": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "public",
+              "member_invite",
+              "approval_required"
+            ],
+            "title": "Guest Booking Mode",
+            "default": "disabled"
+          },
+          "guest_booking_closes_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Booking Closes At"
+          },
+          "guest_reconciliation_days": {
+            "type": "integer",
+            "maximum": 30.0,
+            "minimum": 0.0,
+            "title": "Guest Reconciliation Days",
+            "default": 3
+          },
+          "guest_location_private": {
+            "type": "boolean",
+            "title": "Guest Location Private",
+            "default": false
           },
           "cohort_id": {
             "anyOf": [
@@ -74565,7 +75793,8 @@
           "guest_fee": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -74644,8 +75873,45 @@
           },
           "max_guests_per_booking": {
             "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
             "title": "Max Guests Per Booking",
             "default": 4
+          },
+          "guest_booking_mode": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "public",
+              "member_invite",
+              "approval_required"
+            ],
+            "title": "Guest Booking Mode",
+            "default": "disabled"
+          },
+          "guest_booking_closes_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Booking Closes At"
+          },
+          "guest_reconciliation_days": {
+            "type": "integer",
+            "maximum": 30.0,
+            "minimum": 0.0,
+            "title": "Guest Reconciliation Days",
+            "default": 3
+          },
+          "guest_location_private": {
+            "type": "boolean",
+            "title": "Guest Location Private",
+            "default": false
           },
           "cohort_id": {
             "anyOf": [
@@ -74786,6 +76052,116 @@
           "updated_at"
         ],
         "title": "SessionResponse"
+      },
+      "SessionRosterEntry": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "member",
+              "booking_guest",
+              "guest_pass"
+            ],
+            "title": "Kind"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "booking_status": {
+            "type": "string",
+            "title": "Booking Status"
+          },
+          "attendance_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendance Status"
+          },
+          "inviter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inviter"
+          },
+          "booking_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Mode"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "actual_swim_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Swim Minutes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "full_name",
+          "booking_status"
+        ],
+        "title": "SessionRosterEntry"
+      },
+      "SessionRosterResponse": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/SessionRosterEntry"
+            },
+            "type": "array",
+            "title": "Entries"
+          },
+          "attendance_available": {
+            "type": "boolean",
+            "title": "Attendance Available"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entries",
+          "attendance_available"
+        ],
+        "title": "SessionRosterResponse"
       },
       "SessionStatus": {
         "type": "string",
@@ -75725,6 +77101,83 @@
       },
       "SessionUpdate": {
         "properties": {
+          "allows_guests": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allows Guests"
+          },
+          "max_guests_per_booking": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 20.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Guests Per Booking"
+          },
+          "guest_booking_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "disabled",
+                  "public",
+                  "member_invite",
+                  "approval_required"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Booking Mode"
+          },
+          "guest_booking_closes_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Booking Closes At"
+          },
+          "guest_reconciliation_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 30.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Reconciliation Days"
+          },
+          "guest_location_private": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Location Private"
+          },
           "club_id": {
             "anyOf": [
               {
@@ -75925,7 +77378,8 @@
           "guest_fee": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -114658,6 +116112,27 @@
               }
             ],
             "title": "Location Name"
+          },
+          "visibility": {
+            "type": "string",
+            "title": "Visibility",
+            "default": "public"
+          },
+          "is_location_private": {
+            "type": "boolean",
+            "title": "Is Location Private",
+            "default": false
+          },
+          "location_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Area"
           },
           "capacity": {
             "anyOf": [

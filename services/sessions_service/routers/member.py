@@ -44,10 +44,10 @@ from services.sessions_service.schemas import (
     SessionResponse,
     SessionUpdate,
 )
+from services.sessions_service.services.club_scope import require_valid_club_scope
 from services.sessions_service.services.notifications import (
     trigger_session_published_notifications,
 )
-from services.sessions_service.services.club_scope import require_valid_club_scope
 from services.sessions_service.services.pricing import (
     PRICING_KEYS,
     normalize_pricing_payload,
@@ -1034,6 +1034,27 @@ async def update_session(
             detail=(
                 "community_dropin_fee is required when a Club session allows drop-ins"
             ),
+        )
+
+    resulting_guest_mode = update_data.get(
+        "guest_booking_mode", session.guest_booking_mode
+    )
+    resulting_guest_fee = update_data.get("guest_fee_kobo", session.guest_fee_kobo)
+    if resulting_guest_mode != "disabled" and resulting_guest_fee is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Set an explicit guest price (0 for free) before enabling guest self-booking",
+        )
+    cutoff = update_data.get("guest_booking_closes_at", session.guest_booking_closes_at)
+    guest_start = update_data.get("starts_at", session.starts_at)
+    if guest_start and not guest_start.tzinfo:
+        from datetime import timezone
+
+        guest_start = guest_start.replace(tzinfo=timezone.utc)
+    if cutoff and guest_start and cutoff > guest_start:
+        raise HTTPException(
+            status_code=422,
+            detail="Guest reservation cutoff cannot be after the session starts",
         )
 
     for field, value in update_data.items():

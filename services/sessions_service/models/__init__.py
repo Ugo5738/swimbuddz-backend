@@ -6,9 +6,7 @@ when needed. See docs/club/POD_OPERATIONS.md.
 """
 
 from services.sessions_service.models.booking import SessionBooking
-from services.sessions_service.models.schedule_operation import ClubScheduleOperation
 from services.sessions_service.models.booking_guest import BookingGuest
-from services.sessions_service.models.guest_pass import GuestPass, GuestReferralClaim
 from services.sessions_service.models.core import (
     Session,
     SessionBundleCart,
@@ -26,9 +24,14 @@ from services.sessions_service.models.enums import (
     MakeupStatus,
     SessionBookingStatus,
 )
+from services.sessions_service.models.guest_pass import GuestPass, GuestReferralClaim
 from services.sessions_service.models.makeup import MakeupBooking
+from services.sessions_service.models.schedule_operation import ClubScheduleOperation
 
 __all__ = [
+    "BookingEmailDelivery",
+    "GuestBookingGrant",
+    "GuestLinkEvent",
     "ClubScheduleOperation",
     "BookingChannel",
     "BookingGuest",
@@ -49,3 +52,5 @@ __all__ = [
     "SessionTemplate",
     "SessionType",
 ]
+
+from .guest_booking import BookingEmailDelivery, GuestBookingGrant, GuestLinkEvent

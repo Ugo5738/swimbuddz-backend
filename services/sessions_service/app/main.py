@@ -6,18 +6,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from libs.common.health import register_health_check
 from libs.common.middleware import add_observability_middleware
 from services.sessions_service.routers.bookings import router as bookings_router
-from services.sessions_service.routers.guest_passes import router as guest_passes_router
 from services.sessions_service.routers.bundles import router as bundles_router
-from services.sessions_service.routers.internal import router as internal_router
-from services.sessions_service.routers.club_schedule import (
-    router as club_schedule_router,
-)
-from services.sessions_service.routers.makeups import router as makeups_router
-from services.sessions_service.routers.member import router as sessions_router
-from services.sessions_service.routers.templates import router as templates_router
 from services.sessions_service.routers.club_operations import (
     router as club_operations_router,
 )
+from services.sessions_service.routers.club_schedule import (
+    router as club_schedule_router,
+)
+from services.sessions_service.routers.guest_booking_admin import (
+    router as guest_booking_admin_router,
+)
+from services.sessions_service.routers.guest_passes import router as guest_passes_router
+from services.sessions_service.routers.internal import router as internal_router
+from services.sessions_service.routers.makeups import router as makeups_router
+from services.sessions_service.routers.member import router as sessions_router
+from services.sessions_service.routers.session_roster import (
+    router as session_roster_router,
+)
+from services.sessions_service.routers.templates import router as templates_router
 
 # Pods moved to members_service in May 2026 — see docs/club/POD_OPERATIONS.md.
 
@@ -58,6 +64,8 @@ def create_app() -> FastAPI:
     # sessions_router for the same reason: /sessions/bookings/* and
     # /sessions/{id}/book would otherwise hit the {id} catch-all first.
     app.include_router(bookings_router)
+    app.include_router(session_roster_router)
+    app.include_router(guest_booking_admin_router)
     app.include_router(guest_passes_router)
     app.include_router(makeups_router)
     app.include_router(sessions_router)
