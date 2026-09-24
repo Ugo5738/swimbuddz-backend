@@ -86,14 +86,14 @@ def test_member_invite_and_approval_gate_are_separate_from_acquisition(monkeypat
     with pytest.raises(HTTPException, match="member invitation"):
         policy.require_admission(
             swim(guest_booking_mode="member_invite"),
-            referrer_auth_id=None,
+            member_invitation=None,
             grant=None,
             email="guest@example.com",
         )
     assert (
         policy.require_admission(
             swim(guest_booking_mode="member_invite"),
-            referrer_auth_id="member",
+            member_invitation=SimpleNamespace(id=uuid.uuid4()),
             grant=None,
             email="guest@example.com",
         )
@@ -102,7 +102,7 @@ def test_member_invite_and_approval_gate_are_separate_from_acquisition(monkeypat
     with pytest.raises(HTTPException, match="approval link"):
         policy.require_admission(
             swim(guest_booking_mode="approval_required"),
-            referrer_auth_id="member",
+            member_invitation=SimpleNamespace(id=uuid.uuid4()),
             grant=None,
             email="guest@example.com",
         )
@@ -110,7 +110,7 @@ def test_member_invite_and_approval_gate_are_separate_from_acquisition(monkeypat
     assert (
         policy.require_admission(
             swim(guest_booking_mode="approval_required"),
-            referrer_auth_id=None,
+            member_invitation=None,
             grant=grant,
             email="guest@example.com",
         )
@@ -118,7 +118,10 @@ def test_member_invite_and_approval_gate_are_separate_from_acquisition(monkeypat
     )
     with pytest.raises(HTTPException, match="email address"):
         policy.require_admission(
-            swim(), referrer_auth_id=None, grant=grant, email="someone-else@example.com"
+            swim(),
+            member_invitation=None,
+            grant=grant,
+            email="someone-else@example.com",
         )
 
 

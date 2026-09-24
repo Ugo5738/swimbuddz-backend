@@ -11226,6 +11226,22 @@
               ],
               "title": "X-Guest-Booking-Token"
             }
+          },
+          {
+            "name": "x-guest-invite-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Guest-Invite-Token"
+            }
           }
         ],
         "responses": {
@@ -73091,6 +73107,18 @@
               }
             ],
             "title": "Access Token"
+          },
+          "invite_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invite Token"
           }
         },
         "type": "object",
@@ -73229,6 +73257,11 @@
           "approval_granted": {
             "type": "boolean",
             "title": "Approval Granted",
+            "default": false
+          },
+          "member_invitation_valid": {
+            "type": "boolean",
+            "title": "Member Invitation Valid",
             "default": false
           },
           "safety_acknowledgement_version": {

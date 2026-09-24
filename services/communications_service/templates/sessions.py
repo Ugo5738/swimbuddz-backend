@@ -205,7 +205,11 @@ See you in the water! 🏊‍♂️
     if guest_booking_url:
         from services.communications_service.templates.base import cta_button
 
-        invitation = "Know someone who joined this swim? Share this link so they can complete their guest booking." if post_session else "Invite someone to this swim: they can book and pay for their own guest spot."
+        invitation = (
+            "Know someone who joined this swim? Share this link so they can complete their guest booking."
+            if post_session
+            else "Invite someone to this swim: they can book and pay for their own guest spot."
+        )
         body += f"\n{invitation}\n{guest_booking_url}\n"
         body_html += (
             f"<h3>{'Guest booking link' if post_session else 'Bring someone along'}</h3><p>{invitation}</p>"

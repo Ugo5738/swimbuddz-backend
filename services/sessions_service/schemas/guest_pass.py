@@ -24,6 +24,7 @@ class GuestPassOffer(BaseModel):
     booking_closes_at: Optional[datetime] = None
     reconciliation_closes_at: Optional[datetime] = None
     approval_granted: bool = False
+    member_invitation_valid: bool = False
     safety_acknowledgement_version: str = "pool-safety-2026-09"
 
 
@@ -46,6 +47,7 @@ class GuestPassCreate(BaseModel):
         default=None, max_length=120, pattern=r"^[a-zA-Z0-9_-]+$"
     )
     access_token: Optional[str] = Field(default=None, max_length=200)
+    invite_token: Optional[str] = Field(default=None, max_length=200)
 
     @model_validator(mode="after")
     def safeguarding(self):

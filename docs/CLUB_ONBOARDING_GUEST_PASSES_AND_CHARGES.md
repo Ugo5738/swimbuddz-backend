@@ -303,13 +303,25 @@ Community rate.
 ## Standalone self-paying guest pass
 
 A guest can open `/guest-pass/session/{session_id}` without a member account,
-enter required name/email/phone details, accept the safety waiver, and pay their
-own guest price. The referrer does not need to book or attend. Referral links use
-`?ref={member_referral_code}`.
+enter required name/email/phone details, accept the versioned safety acknowledgement,
+and pay an explicitly configured guest price (including 0). Referral attribution
+uses `?ref={member_referral_code}` independently from `source` and `campaign`.
+Public sessions can be shared by any member. For `member_invite` sessions, the
+inviter needs a confirmed booking and the URL also carries a session-specific
+`#invite=...` capability. The reusable referral code alone never authorizes booking.
+A cancelled inviter booking invalidates its capability for new guest bookings.
+Individual admin approval uses an email-bound, expiring, revocable `#token=...`
+link. Academy and Event guest self-booking require deliberate admin opt-in.
 
-An unpaid guest pass holds one session place for 30 minutes. Expired unpaid
-holds no longer reduce availability. A delayed successful payment is confirmed
-only if the session still has room.
+Before the reservation cutoff, an unpaid guest pass holds one place for 30 minutes.
+Expired holds no longer reduce availability, and a delayed payment before the
+start is confirmed only if capacity remains. Once the swim starts, the same URL
+becomes settlement with no capacity hold, for the configured window (default 3
+days after the end). Older bookings require an admin reconciliation link. Late
+payment confirmation becomes settlement and never marks a guest attended.
+Paystack and the existing bank-transfer receipt-upload flow work in both modes.
+Admin can restore an expired pass using its original private receipt and payment
+reference, without creating a duplicate guest record.
 
 Marketing consent is separate and defaults off. Transactional booking and
 assessment emails do not depend on marketing consent. For a minor, guardian name
@@ -317,7 +329,17 @@ and phone are required by schema validation.
 
 The public receipt endpoint is intentionally redacted: it exposes payment/status
 information but no name, email, phone, safeguarding details, assessment, or
-referrer information. The detailed record is admin-only.
+referrer information. The detailed identity record is admin-only. A private receipt capability additionally
+unlocks venue details after confirmation and authorizes payment retries.
+
+Member and guest booking confirmations use branded templates and a durable
+per-booking outbox. A worker retries failed sends. Optional Wallet/Events lookups
+for invitations cannot block the confirmation itself. The operational All swimmers
+roster combines members, attached guests and standalone guests, excluding failed
+and expired checkout attempts (which remain in Guest Passes).
+
+See [Guest booking implementation and review guide](GUEST_BOOKING_IMPLEMENTATION_REVIEW.md)
+for endpoints, migrations, validation and coordinated-release requirements.
 
 After a paid guest attends, an admin records actual swim minutes and may record
 and email an assessment. Guest minutes are retained as guest swimmer-hours and

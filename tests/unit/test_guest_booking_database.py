@@ -761,3 +761,200 @@ async def test_http_guest_endpoints_and_admin_authentication(guest_env):
             assert response.status_code in {401, 403}, path
         response = await client.post(f"/admin/guest-passes/{body['id']}/payment-link")
         assert response.status_code in {401, 403}
+
+
+@pytest.mark.asyncio
+async def test_reusable_referral_code_does_not_authorize_member_invite(guest_env):
+    session = await make_session(guest_env, guest_booking_mode="member_invite")
+    with pytest.raises(Exception) as error:
+        await create(guest_env, session, referral_code="UGO123")
+    assert error.value.status_code == 403
+    guest_env.provider.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_member_invite_requires_confirmed_session_booking_and_is_session_bound(
+    guest_env, monkeypatch
+):
+    from services.sessions_service.routers import member
+
+    session = await make_session(
+        guest_env, guest_booking_mode="member_invite", capacity=10
+    )
+    other_session = await make_session(guest_env, guest_booking_mode="member_invite")
+    wallet = AsyncMock(
+        return_value=httpx.Response(
+            200,
+            request=httpx.Request("GET", "https://wallet.test"),
+            json={"share_link": "https://swimbuddz.test/join?ref=UGO123"},
+        )
+    )
+    monkeypatch.setattr(guest_booking, "internal_get", wallet)
+    monkeypatch.setattr(
+        member, "_decorate_session_for_user", AsyncMock(return_value=session)
+    )
+    inviter = SimpleNamespace(user_id="inviter")
+    async with guest_env.factory() as db:
+        assert (
+            await guest_booking_admin.guest_share_link(session.id, user=inviter, db=db)
+        )["url"] is None
+        booking = SessionBooking(
+            session_id=session.id,
+            member_id=uuid.uuid4(),
+            member_auth_id="inviter",
+            status="pending",
+        )
+        db.add(booking)
+        await db.commit()
+        assert await guest_booking.member_guest_url(session, "inviter", db) is None
+        wallet.assert_not_awaited()
+        booking.status = "confirmed"
+        await db.commit()
+        shared = await guest_booking_admin.guest_share_link(
+            session.id, user=inviter, db=db
+        )
+        url = shared["url"]
+        token = parse_qs(urlparse(url).fragment)["invite"][0]
+        assert parse_qs(urlparse(url).query)["ref"] == ["UGO123"]
+        offer = await guest_passes.guest_pass_offer(
+            session.id, db=db, x_guest_booking_token=None, x_guest_invite_token=token
+        )
+        assert offer.member_invitation_valid is True
+        assert offer.approval_granted is False
+        booking_id = booking.id
+    with pytest.raises(Exception) as error:
+        await create(
+            guest_env, other_session, invite_token=token, referral_code="UGO123"
+        )
+    assert error.value.status_code == 403
+    valid = await create(guest_env, session, invite_token=token, referral_code="UGO123")
+    assert valid["status"] == "pending_payment"
+    async with guest_env.factory() as db:
+        booking = await db.get(SessionBooking, booking_id)
+        booking.status = "cancelled"
+        await db.commit()
+    with pytest.raises(Exception) as error:
+        await create(guest_env, session, invite_token=token, referral_code="UGO123")
+    assert error.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_public_swim_can_be_shared_without_a_confirmed_booking(
+    guest_env, monkeypatch
+):
+    session = await make_session(guest_env)
+    monkeypatch.setattr(
+        guest_booking,
+        "internal_get",
+        AsyncMock(
+            return_value=httpx.Response(
+                200,
+                request=httpx.Request("GET", "https://wallet.test"),
+                json={"share_link": "https://swimbuddz.test/join?ref=ADA"},
+            )
+        ),
+    )
+    async with guest_env.factory() as db:
+        url = await guest_booking.member_guest_url(session, "unbooked-member", db)
+        assert url and "ref=ADA" in url and "#invite=" not in url
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure",
+    [
+        httpx.ConnectError("Wallet offline"),
+        httpx.HTTPStatusError(
+            "Events unavailable",
+            request=httpx.Request("GET", "https://events.test"),
+            response=httpx.Response(503),
+        ),
+    ],
+)
+async def test_optional_invitation_outage_never_suppresses_confirmation(
+    guest_env, monkeypatch, failure
+):
+    monkeypatch.setattr(
+        booking_confirmation, "member_guest_url", AsyncMock(side_effect=failure)
+    )
+    session = await make_session(guest_env)
+    async with guest_env.factory() as db:
+        booking = SessionBooking(
+            session_id=session.id,
+            member_id=uuid.uuid4(),
+            member_auth_id="member",
+            status="pending",
+            fee_amount_kobo=350000,
+            expires_at=utc_now() + timedelta(minutes=10),
+        )
+        db.add(booking)
+        await db.commit()
+        request = BookingConfirmRequest(
+            payment_intent_id=uuid.uuid4(), member_auth_id="member"
+        )
+        await internal.internal_confirm_booking(
+            booking.id, request, _=SimpleNamespace(user_id="payments"), db=db
+        )
+        assert booking.confirmation_email_sent_at
+        await internal.internal_confirm_booking(
+            booking.id, request, _=SimpleNamespace(user_id="payments"), db=db
+        )
+    guest_env.sender.assert_awaited_once()
+    message = guest_env.sender.await_args.kwargs
+    assert message["template_type"] == "session_confirmation"
+    assert message["template_data"]["guest_booking_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_roster_excludes_failed_expired_and_unpaid_settlement_attempts(
+    guest_env, monkeypatch
+):
+    from services.sessions_service.routers import session_roster
+
+    session = await make_session(guest_env, capacity=10)
+    cases = [
+        ("confirmed", "reservation", None, True),
+        ("attended", "settlement", None, True),
+        ("pending_payment", "reservation", utc_now() + timedelta(minutes=15), True),
+        ("pending_payment", "reservation", utc_now() - timedelta(minutes=1), False),
+        ("payment_failed", "reservation", utc_now() + timedelta(minutes=15), False),
+        ("pending_payment", "settlement", None, False),
+    ]
+    included = set()
+    monkeypatch.setattr(session_roster, "get_members_bulk", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        session_roster,
+        "internal_get",
+        AsyncMock(
+            return_value=httpx.Response(
+                200, json=[], request=httpx.Request("GET", "https://attendance.test")
+            )
+        ),
+    )
+    async with guest_env.factory() as db:
+        for status, mode, expires, expected in cases:
+            guest = GuestPass(
+                session_id=session.id,
+                full_name="Test Guest",
+                email="guest@example.com",
+                phone=str(uuid.uuid4())[:20],
+                price_kobo=500000,
+                total_kobo=500000,
+                payment_reference=str(uuid.uuid4()),
+                status=status,
+                booking_mode=mode,
+                reservation_expires_at=expires,
+            )
+            db.add(guest)
+            await db.flush()
+            if expected:
+                included.add(guest.id)
+        await db.commit()
+        roster = await session_roster.session_roster(
+            session.id, _admin=SimpleNamespace(user_id="admin"), db=db
+        )
+        assert {r.id for r in roster.entries} == included
+        all_passes = await guest_passes.list_guest_passes(
+            session_id=session.id, _admin=SimpleNamespace(user_id="admin"), db=db
+        )
+        assert len(all_passes) == len(cases)

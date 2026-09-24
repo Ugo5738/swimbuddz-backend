@@ -4,12 +4,13 @@ import uuid
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
+from libs.common.datetime_utils import utc_now
 from libs.common.service_client import get_members_bulk, internal_get
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
@@ -40,7 +41,16 @@ async def session_roster(
                 select(SessionBooking)
                 .where(
                     SessionBooking.session_id == session_id,
-                    SessionBooking.status.in_(["pending", "confirmed"]),
+                    or_(
+                        SessionBooking.status == "confirmed",
+                        and_(
+                            SessionBooking.status == "pending",
+                            or_(
+                                SessionBooking.expires_at.is_(None),
+                                SessionBooking.expires_at > utc_now(),
+                            ),
+                        ),
+                    ),
                 )
                 .order_by(SessionBooking.booked_at)
             )
@@ -63,7 +73,17 @@ async def session_roster(
         (
             await db.execute(
                 select(GuestPass)
-                .where(GuestPass.session_id == session_id)
+                .where(
+                    GuestPass.session_id == session_id,
+                    or_(
+                        GuestPass.status.in_(["confirmed", "attended"]),
+                        and_(
+                            GuestPass.status == "pending_payment",
+                            GuestPass.booking_mode == "reservation",
+                            GuestPass.reservation_expires_at > utc_now(),
+                        ),
+                    ),
+                )
                 .order_by(GuestPass.created_at)
             )
         ).scalars()

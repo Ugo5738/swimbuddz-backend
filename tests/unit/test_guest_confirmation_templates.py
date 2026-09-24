@@ -69,3 +69,25 @@ async def test_member_confirmation_includes_only_eligible_guest_link(monkeypatch
     if url:
         assert url in text
         assert "ref=ADA&amp;source=member_share" in html
+
+
+@pytest.mark.asyncio
+async def test_late_member_confirmation_avoids_future_swim_instructions(monkeypatch):
+    send = AsyncMock(return_value=True)
+    monkeypatch.setattr(sessions, "send_email", send)
+    await sessions.send_session_confirmation_email(
+        to_email="member@example.com",
+        member_name="Ada",
+        member_id="member",
+        session_title="Yesterday's swim",
+        session_date="Yesterday",
+        session_time="10:00",
+        session_location="Pool",
+        post_session=True,
+        guest_booking_url="https://swimbuddz.com/guest-pass/session/id?ref=ADA",
+    )
+    text, html = send.await_args.args[2:]
+    assert "What to Bring" not in text + html
+    assert "Need to cancel" not in text + html
+    assert "See you" not in text + html
+    assert "Know someone who joined this swim" in text + html

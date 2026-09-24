@@ -58,7 +58,7 @@ async def guest_share_link(
     ):
         raise HTTPException(status_code=404, detail="Session not found")
     return {
-        "url": await member_guest_url(session, user.user_id),
+        "url": await member_guest_url(session, user.user_id, db),
         "booking_mode": lifecycle_mode(session),
     }
 
@@ -110,7 +110,7 @@ async def admin_guest_share_link(
     session = await db.get(Session, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    return {"url": await member_guest_url(session, referrer_auth_id)}
+    return {"url": await member_guest_url(session, referrer_auth_id, db)}
 
 
 @router.delete("/admin/guest-booking-links/{grant_id}", status_code=204)

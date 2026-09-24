@@ -130,6 +130,17 @@ async def deliver_confirmation(db: AsyncSession, key: str) -> bool:
                 raise ValueError("Booking member has no email")
             to_email = member["email"]
             template = "session_confirmation"
+            guest_url = None
+            try:
+                guest_url = await member_guest_url(session, booking.member_auth_id, db)
+            except Exception:
+                if not db.is_active:
+                    raise
+                # Sharing is optional enrichment, never a prerequisite for a
+                # paid/free booking's transactional confirmation.
+                logger.warning(
+                    "Guest invitation omitted from confirmation %s", key, exc_info=True
+                )
             data.update(
                 {
                     "member_name": " ".join(
@@ -142,9 +153,7 @@ async def deliver_confirmation(db: AsyncSession, key: str) -> bool:
                     "amount_paid": booking.fee_amount_kobo / 100,
                     "currency": "NGN",
                     "booking_reference": str(booking.id),
-                    "guest_booking_url": await member_guest_url(
-                        session, booking.member_auth_id
-                    ),
+                    "guest_booking_url": guest_url,
                     "post_session": session.starts_at <= utc_now(),
                 }
             )

@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import timedelta
+from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -52,6 +53,7 @@ from services.sessions_service.services.guest_booking import (
     public_receipt,
     require_admission,
     resolve_grant,
+    resolve_member_invitation,
 )
 from services.sessions_service.services.guest_checkout import start_checkout
 
@@ -133,11 +135,13 @@ async def guest_pass_offer(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
     x_guest_booking_token: str | None = Header(default=None),
+    x_guest_invite_token: Annotated[str | None, Header()] = None,
 ):
     session = await db.get(Session, session_id)
     if session is None or session.status in {"draft", "cancelled"}:
         raise HTTPException(status_code=404, detail="Session not found")
     grant = await resolve_grant(db, session_id, x_guest_booking_token)
+    invitation = await resolve_member_invitation(db, session_id, x_guest_invite_token)
     event = await event_guest_context(session, has_grant=grant is not None)
     mode = lifecycle_mode(session, has_grant=grant is not None)
     location, _address = public_location(session, event)
@@ -160,6 +164,7 @@ async def guest_pass_offer(
         reconciliation_closes_at=session.ends_at
         + timedelta(days=session.guest_reconciliation_days),
         approval_granted=grant is not None,
+        member_invitation_valid=invitation is not None,
     )
 
 
@@ -192,8 +197,11 @@ async def create_guest_pass(
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     grant = await resolve_grant(db, session_id, body.access_token, lock=True)
+    invitation = await resolve_member_invitation(
+        db, session_id, body.invite_token, lock=True
+    )
     mode = require_admission(
-        session, referrer_auth_id=referrer_auth_id, grant=grant, email=str(body.email)
+        session, member_invitation=invitation, grant=grant, email=str(body.email)
     )
     if mode == "reservation" and await _spaces_remaining(session, db) < 1:
         raise HTTPException(

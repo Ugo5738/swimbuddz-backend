@@ -55,6 +55,7 @@ def create_app() -> FastAPI:
             "Accept",
             "X-Guest-Pass-Token",
             "X-Guest-Booking-Token",
+            "X-Guest-Invite-Token",
         ],
         expose_headers=[
             "Server-Timing",

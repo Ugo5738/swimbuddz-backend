@@ -16,7 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.service_client import get_event_session_contract, internal_get
-from services.sessions_service.models import GuestBookingGrant, GuestPass, Session
+from services.sessions_service.models import (
+    GuestBookingGrant,
+    GuestPass,
+    Session,
+    SessionBooking,
+)
 
 SAFETY_ACKNOWLEDGEMENT_VERSION = "pool-safety-2026-09"
 SAFETY_ACKNOWLEDGEMENT_TEXT = (
@@ -96,6 +101,43 @@ async def resolve_grant(
     return grant
 
 
+def member_invitation_token(session_id: uuid.UUID, booking_id: uuid.UUID) -> str:
+    """A shareable capability for exactly one confirmed booking and swim."""
+    signature = hmac.new(
+        get_settings().SUPABASE_JWT_SECRET.encode(),
+        f"guest-member-invitation:v1:{session_id}:{booking_id}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{booking_id}.{signature}"
+
+
+async def resolve_member_invitation(
+    db: AsyncSession, session_id: uuid.UUID, token: str | None, *, lock: bool = False
+) -> SessionBooking | None:
+    if not token:
+        return None
+    message = "This member invitation is invalid or its booking is no longer confirmed. Ask your inviter for a new link."
+    try:
+        booking_id = uuid.UUID(token.split(".", 1)[0])
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(status_code=403, detail=message) from exc
+    if not token.isascii() or not hmac.compare_digest(
+        member_invitation_token(session_id, booking_id), token
+    ):
+        raise HTTPException(status_code=403, detail=message)
+    query = select(SessionBooking).where(
+        SessionBooking.id == booking_id,
+        SessionBooking.session_id == session_id,
+        SessionBooking.status == "confirmed",
+    )
+    if lock:
+        query = query.with_for_update()
+    booking = (await db.execute(query)).scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=403, detail=message)
+    return booking
+
+
 async def event_guest_context(session: Session, *, has_grant: bool = False) -> dict:
     """Events remain authoritative; fail closed if their policy is unavailable."""
     if not session.event_id:
@@ -129,7 +171,9 @@ def public_location(
     return event.get("location_name") or session.location_name, session.location_address
 
 
-async def member_guest_url(session: Session, member_auth_id: str) -> str | None:
+async def member_guest_url(
+    session: Session, member_auth_id: str, db: AsyncSession
+) -> str | None:
     if (
         lifecycle_mode(session) == "closed"
         or session.guest_booking_mode == "approval_required"
@@ -140,6 +184,20 @@ async def member_guest_url(session: Session, member_auth_id: str) -> str | None:
         await event_guest_context(session)
     except HTTPException:
         return None
+    invitation = ""
+    if session.guest_booking_mode == "member_invite":
+        booking_id = (
+            await db.execute(
+                select(SessionBooking.id).where(
+                    SessionBooking.session_id == session.id,
+                    SessionBooking.member_auth_id == member_auth_id,
+                    SessionBooking.status == "confirmed",
+                )
+            )
+        ).scalar_one_or_none()
+        if not booking_id:
+            return None
+        invitation = f"#invite={member_invitation_token(session.id, booking_id)}"
     response = await internal_get(
         service_url=get_settings().WALLET_SERVICE_URL,
         path=f"/internal/wallet/referral-link/{member_auth_id}",
@@ -151,13 +209,13 @@ async def member_guest_url(session: Session, member_auth_id: str) -> str | None:
     if not code:
         raise ValueError("Referral link did not contain a code")
     query = urlencode({"ref": code, "source": "member_share"})
-    return f"{get_settings().FRONTEND_URL.rstrip('/')}/guest-pass/session/{session.id}?{query}"
+    return f"{get_settings().FRONTEND_URL.rstrip('/')}/guest-pass/session/{session.id}?{query}{invitation}"
 
 
 def require_admission(
     session: Session,
     *,
-    referrer_auth_id: str | None,
+    member_invitation: SessionBooking | None,
     grant: GuestBookingGrant | None,
     email: str,
 ) -> str:
@@ -173,7 +231,7 @@ def require_admission(
         )
     if (
         session.guest_booking_mode == "member_invite"
-        and not referrer_auth_id
+        and not member_invitation
         and not grant
     ):
         raise HTTPException(
