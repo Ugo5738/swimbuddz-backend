@@ -18,6 +18,10 @@ def request_fingerprint(payload):
         mode="json",
         exclude={"idempotency_key", "expected_total_kobo", "payment_metadata"},
     )
+    if getattr(payload.purpose, "value", payload.purpose) == "session_booking":
+        data["booking_id"] = str(
+            (payload.payment_metadata or {}).get("booking_id") or ""
+        )
     return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
 
@@ -53,8 +57,9 @@ async def resume_product_payment(db, payment, payload):
     )
 
     meta = payment.payment_metadata or {}
-    quote = meta["checkout_quote"]
-    verify_expected_total(quote, payload.expected_total_kobo)
+    quote = meta.get("checkout_quote")
+    if quote is not None:
+        verify_expected_total(quote, payload.expected_total_kobo)
     if payment.status not in {
         PaymentStatus.PENDING,
         PaymentStatus.PENDING_REVIEW,
@@ -115,10 +120,12 @@ async def resume_product_payment(db, payment, payload):
         checkout_url=checkout_url if payment.status != PaymentStatus.PAID else None,
         created_at=payment.created_at,
         checkout_quote=quote,
-        original_amount=quote["subtotal_kobo"] / 100,
-        discount_code=quote["discount_code"],
-        discount_applied=quote["discount_kobo"] / 100,
-        additional_charges=quote["additional_charges"],
-        additional_charges_total=quote["additional_charges_total_kobo"] / 100,
+        original_amount=quote["subtotal_kobo"] / 100 if quote else None,
+        discount_code=quote["discount_code"] if quote else None,
+        discount_applied=quote["discount_kobo"] / 100 if quote else 0,
+        additional_charges=quote["additional_charges"] if quote else [],
+        additional_charges_total=quote["additional_charges_total_kobo"] / 100
+        if quote
+        else 0,
         entitlement_applied_at=payment.entitlement_applied_at,
     )

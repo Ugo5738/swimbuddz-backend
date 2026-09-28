@@ -216,7 +216,7 @@ async def test_admin_create_product_happy_path(store_client):
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_admin_create_product_rejects_duplicate_slug(store_client, db_session):
-    """Slug uniqueness is enforced at the route level with a 400 (not 500)."""
+    """Slug uniqueness is reported as a conflict."""
     existing = _make_product()
     db_session.add(existing)
     await db_session.commit()
@@ -228,7 +228,7 @@ async def test_admin_create_product_rejects_duplicate_slug(store_client, db_sess
         "product_type": "standard",
     }
     response = await store_client.post("/admin/store/products", json=payload)
-    assert response.status_code == 400
+    assert response.status_code == 409
     assert "slug" in response.json()["detail"].lower()
 
 
@@ -413,3 +413,79 @@ async def test_admin_create_category_happy_path(store_client):
     assert response.status_code in (200, 201), response.text
     body = response.json()
     assert body["slug"] == payload["slug"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_simple_preorder_creation_has_orderable_sku_without_fake_stock(
+    store_client, db_session
+):
+    slug = f"simple-preorder-{uuid.uuid4().hex}"
+    response = await store_client.post(
+        "/admin/store/products",
+        json={
+            "name": "Starter kit",
+            "slug": slug,
+            "base_price_ngn": 70000,
+            "status": "active",
+            "sourcing_type": "preorder",
+            "has_variants": False,
+        },
+    )
+    assert response.status_code == 201, response.text
+    public = await store_client.get(f"/store/products/{slug}")
+    assert public.status_code == 200, public.text
+    variants = public.json()["variants"]
+    assert len(variants) == 1 and variants[0]["is_active"]
+    assert variants[0]["options"] == {} and variants[0]["quantity_available"] == 0
+    # An ordinary product update cannot create a duplicate default SKU.
+    updated = await store_client.patch(
+        f"/admin/store/products/{response.json()['id']}",
+        json={"short_description": "A simple kit"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert [v["id"] for v in updated.json()["variants"]] == [variants[0]["id"]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_edit_repairs_legacy_simple_product_but_does_not_revive_inactive_sku(
+    store_client, db_session
+):
+    from services.store_service.models import ProductVariant
+
+    product = _make_product()
+    db_session.add(product)
+    await db_session.commit()
+    path = f"/admin/store/products/{product.id}"
+    response = await store_client.patch(path, json={"short_description": "Reviewed"})
+    assert response.status_code == 200, response.text
+    variants = response.json()["variants"]
+    assert len(variants) == 1
+    variant = await db_session.get(ProductVariant, uuid.UUID(variants[0]["id"]))
+    variant.is_active = False
+    await db_session.commit()
+    response = await store_client.patch(
+        path, json={"short_description": "Reviewed again"}
+    )
+    assert response.status_code == 200, response.text
+    assert len(response.json()["variants"]) == 1
+    assert response.json()["variants"][0]["is_active"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_size_choice_product_does_not_get_an_invented_default(store_client):
+    response = await store_client.post(
+        "/admin/store/products",
+        json={
+            "name": "Swimwear",
+            "slug": f"sized-{uuid.uuid4().hex}",
+            "base_price_ngn": 10000,
+            "has_variants": True,
+            "variant_options": {"Size": ["S", "M"]},
+        },
+    )
+    assert response.status_code == 201, response.text
+    detail = await store_client.get(f"/admin/store/products/{response.json()['id']}")
+    assert detail.json()["variants"] == []

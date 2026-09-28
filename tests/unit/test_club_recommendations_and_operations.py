@@ -251,6 +251,9 @@ async def test_extra_practice_access_is_separate_from_quarter_inclusion(
 def session():
     now = datetime.now(timezone.utc) + timedelta(days=10)
     return NS(
+        template_id=None,
+        location_name=None,
+        location_address=None,
         id=uuid4(),
         title="Promised swim",
         session_type=SessionType.CLUB,
@@ -418,3 +421,15 @@ async def test_reschedule_refusal_does_not_mutate_the_swim(monkeypatch):
         await ops.reschedule_practice(swim.id, body, user, db)
     assert (swim.starts_at, swim.ends_at, swim.pool_fee) == before
     db.commit.assert_not_awaited()
+
+
+@pytest.fixture(autouse=True)
+def operational_pool_registry(monkeypatch):
+    monkeypatch.setattr(
+        "services.sessions_service.services.template_operations.get_partner_pool",
+        AsyncMock(return_value={"name": "Pool", "address": "Verified venue address"}),
+    )
+    monkeypatch.setattr(
+        "services.sessions_service.routers.club_schedule.materialise_template_operations",
+        AsyncMock(),
+    )

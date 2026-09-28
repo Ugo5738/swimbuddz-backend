@@ -22,18 +22,20 @@ async def academy_payment_context(
     member_auth_id: str,
     use_installments: bool,
     amount_override_kobo: int | None = None,
+    preview_only: bool = False,
 ) -> dict:
     headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.get(
-            f"{settings.ACADEMY_SERVICE_URL}/internal/academy/enrollments/{enrollment_id}",
+            f"{settings.ACADEMY_SERVICE_URL}/internal/academy/enrollments/{enrollment_id}"
+            + ("/payment-preview" if preview_only else ""),
             params={"use_installments": str(use_installments).lower()},
             headers=headers,
         )
     if response.status_code >= 400:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to fetch enrollment: {response.text}",
+            status_code=502 if response.status_code >= 500 else response.status_code,
+            detail="Could not load Academy payment details. Please try again.",
         )
     enrollment = response.json()
     member = await get_member_by_auth_id(
@@ -74,7 +76,16 @@ async def academy_payment_context(
         None,
     )
     if next_installment:
-        academy_amount_kobo = int(next_installment.get("amount") or 0)
+        academy_amount_kobo = (
+            int(next_installment.get("amount") or 0)
+            if use_installments
+            else sum(
+                int(item.get("amount") or 0)
+                for item in installments
+                if str(item.get("status") or "").lower()
+                not in PAID_INSTALLMENT_STATUSES
+            )
+        )
     else:
         snapshot_amount_kobo = enrollment.get("price_snapshot_amount")
         if snapshot_amount_kobo is not None:
@@ -99,7 +110,12 @@ async def academy_payment_context(
             )
 
     if amount_override_kobo is not None and amount_override_kobo > 0:
-        if amount_override_kobo < academy_amount_kobo:
+        minimum_kobo = (
+            int(next_installment.get("amount") or 0)
+            if next_installment
+            else academy_amount_kobo
+        )
+        if amount_override_kobo < minimum_kobo:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Custom amount is less than the next stipulated installment",
@@ -174,7 +190,9 @@ async def academy_payment_context(
         "enrollment_id": str(enrollment_id),
         "cohort_id": str(enrollment.get("cohort_id") or "") or None,
         "installment_id": (
-            str(next_installment.get("id")) if next_installment else None
+            str(next_installment["id"])
+            if next_installment and next_installment.get("id")
+            else None
         ),
         "installment_number": (
             int(next_installment.get("installment_number"))

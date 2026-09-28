@@ -320,3 +320,15 @@ def test_template_context_migration_preserves_existing_sessions():
     assert "DROP COLUMN cohort_id" in ddl
     assert "UPDATE " not in ddl and "DELETE " not in ddl
     assert "ALTER TABLE sessions " not in ddl
+
+
+@pytest.fixture(autouse=True)
+def operational_pool_registry(monkeypatch):
+    monkeypatch.setattr(
+        "services.sessions_service.services.template_operations.get_partner_pool",
+        AsyncMock(return_value={"name": "Pool", "address": "Verified venue address"}),
+    )
+    monkeypatch.setattr(
+        "services.sessions_service.routers.club_schedule.materialise_template_operations",
+        AsyncMock(),
+    )

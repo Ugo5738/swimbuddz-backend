@@ -1466,6 +1466,17 @@ async def activate_club_application(
         reservation.status = "consumed"
     await db.commit()
     await db.refresh(application)
+    from services.members_service.services.club_reservations import (
+        reserve_enrollment_swims,
+    )
+
+    if chosen_mode == QUARTERLY_PREPAID:
+        member = await db.get(Member, application.member_id)
+        plans_by_id = {plan.id: plan for plan in selected_plans}
+        for enrollment in created_enrollments:
+            await reserve_enrollment_swims(
+                enrollment, plans_by_id[enrollment.plan_version_id], member
+            )
     if assignment_to_reconcile is not None:
         await reconcile_pod_membership(
             pod_id=assignment_to_reconcile.pod_id,

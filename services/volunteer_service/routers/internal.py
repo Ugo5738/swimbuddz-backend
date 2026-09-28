@@ -690,6 +690,8 @@ async def materialise_from_session_template(
     start_t = _parse_time(body.start_time)
     end_t = _parse_time(body.end_time)
 
+    await db.execute(select(func.pg_advisory_xact_lock(session_uuid.int % (2**63 - 1))))
+
     slots = (
         (
             await db.execute(

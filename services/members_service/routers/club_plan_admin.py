@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,12 +13,15 @@ from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
+from libs.common.logging import get_logger
 from libs.common.service_client import internal_post
 from libs.db.session import get_async_db
 from services.members_service.models import (
     Club,
+    ClubEnrollment,
     ClubPlanVersion,
     CommunityExperienceOffering,
+    Member,
 )
 from services.members_service.schemas import ClubPlanCreate, ClubPlanResponse
 from services.members_service.schemas.club_merchandising import (
@@ -30,6 +33,8 @@ from services.members_service.services.club_plan_schedule import (
     hydrate_schedules,
     selected_session_snapshots,
 )
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/clubs/admin/plans",
@@ -72,6 +77,50 @@ async def _plan(db, plan_id, *, draft=False):
             409, "Published commercial terms are immutable; create a new draft"
         )
     return plan
+
+
+@router.post("/{plan_id}/sync-prepaid-reservations")
+async def sync_prepaid_reservations(
+    plan_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Repair historical purchases and interrupted fulfillment, safely on replay."""
+    from services.members_service.services.club_reservations import (
+        reserve_enrollment_swims,
+    )
+
+    plan = await db.get(ClubPlanVersion, plan_id)
+    if not plan or not plan.published_at or not plan.session_links:
+        raise HTTPException(409, "Choose a published Club quarter")
+    enrollments = list(
+        (
+            await db.execute(
+                select(ClubEnrollment)
+                .where(
+                    ClubEnrollment.plan_version_id == plan_id,
+                    ClubEnrollment.payment_mode == "quarterly_prepaid",
+                    ClubEnrollment.status == "active",
+                    ClubEnrollment.ends_at > utc_now(),
+                )
+                .order_by(ClubEnrollment.id)
+            )
+        ).scalars()
+    )
+    completed, failures = [], []
+    for enrollment in enrollments:
+        member = await db.get(Member, enrollment.member_id)
+        try:
+            if member is None:
+                raise HTTPException(409, "Enrollment member is missing")
+            await reserve_enrollment_swims(enrollment, plan, member)
+            completed.append(str(enrollment.id))
+        except Exception:
+            logger.exception(
+                "Prepaid reservation sync failed for enrollment %s", enrollment.id
+            )
+            # Keep the batch retryable and expose affected IDs to an Admin.
+            failures.append(str(enrollment.id))
+    return {"synced_enrollment_ids": completed, "failed_enrollment_ids": failures}
 
 
 @router.put("/{plan_id}/community-experience", response_model=ClubPlanResponse)
@@ -278,11 +327,23 @@ async def publish_draft(plan_id: uuid.UUID, db: AsyncSession = Depends(get_async
     return plan_response(plan, club)
 
 
-class QuarterRecommendationRequest(BaseModel):
+class TemplateSelection(BaseModel):
+    template_id: uuid.UUID | None = None
+    template_ids: list[uuid.UUID] = Field(default_factory=list, max_length=7)
+
+    @model_validator(mode="after")
+    def valid_templates(self):
+        if self.template_id and self.template_ids:
+            raise ValueError("Choose template_id or template_ids, not both")
+        if len(set(self.template_ids)) != len(self.template_ids):
+            raise ValueError("Template IDs must be unique")
+        return self
+
+
+class QuarterRecommendationRequest(TemplateSelection):
     club_id: uuid.UUID
     year: int = Field(ge=2026, le=2100)
     quarter: int = Field(ge=1, le=4)
-    template_id: uuid.UUID | None = None
     pricing_settings: dict | None = None
     excluded_dates: list[date] = Field(default_factory=list, max_length=52)
     capacity: int = Field(default=20, ge=1, le=500)
@@ -348,6 +409,7 @@ async def recommend_quarter(body, db, *, source=None):
             "club_id": str(club.id),
             "pool_id": str(club.default_pool_id),
             "template_id": str(body.template_id) if body.template_id else None,
+            "template_ids": [str(value) for value in body.template_ids],
             "title": f"{club.name} Club practice",
             "period_start": start.isoformat(),
             "period_end": end.isoformat(),
@@ -399,8 +461,10 @@ async def recommend_quarter(body, db, *, source=None):
         existing.session_links = links
         existing.sessions_included = len(links)
         existing.recommended_fee_kobo = recommended
-        existing.source_template_id = body.template_id or uuid.uuid5(
-            club.id, "primary-club-template"
+        existing.source_template_id = (
+            body.template_id
+            or (body.template_ids[0] if body.template_ids else None)
+            or uuid.uuid5(club.id, "primary-club-template")
         )
         existing.pool_id = club.default_pool_id
         existing.operating_area_id = club.operating_area_id
@@ -416,6 +480,7 @@ async def recommend_quarter(body, db, *, source=None):
         operating_area_id=club.operating_area_id,
         source_plan_id=source.id if source else None,
         source_template_id=body.template_id
+        or (body.template_ids[0] if body.template_ids else None)
         or uuid.uuid5(club.id, "primary-club-template"),
         sessions_included=len(links),
         recommended_fee_kobo=recommended,
@@ -437,8 +502,7 @@ async def create_recommendation(
     return await recommend_quarter(body, db)
 
 
-class NextQuarterRequest(BaseModel):
-    template_id: uuid.UUID | None = None
+class NextQuarterRequest(TemplateSelection):
     pricing_settings: dict | None = None
     excluded_dates: list[date] = Field(default_factory=list, max_length=52)
 
@@ -452,12 +516,23 @@ async def generate_next_quarter(
 ):
     source = await _plan(db, plan_id)
     start, _ = next_quarter(source.period_end)
+    template_ids = body.template_ids
+    if not body.template_id and not template_ids and source.session_links:
+        rows = await fetch_schedule(
+            session_ids=[str(link.session_id) for link in source.session_links]
+        )
+        template_ids = sorted(
+            {uuid.UUID(row["template_id"]) for row in rows if row.get("template_id")}
+        )
     return await recommend_quarter(
         QuarterRecommendationRequest(
             club_id=source.club_id,
             year=start.year,
             quarter=(start.month - 1) // 3 + 1,
-            template_id=body.template_id or getattr(source, "source_template_id", None),
+            template_id=None
+            if template_ids
+            else body.template_id or getattr(source, "source_template_id", None),
+            template_ids=template_ids,
             pricing_settings=body.pricing_settings,
             excluded_dates=body.excluded_dates,
             capacity=source.capacity or 20,

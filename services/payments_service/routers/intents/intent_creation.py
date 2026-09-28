@@ -734,7 +734,10 @@ async def create_payment_intent(
         payload = payload.model_copy(update={"payment_metadata": {}})
     payment_id = uuid.uuid4()
     payment_reference = Payment.generate_reference()
-    if payload.purpose in PRODUCT_PURPOSES and payload.idempotency_key:
+    if (
+        payload.purpose in {*PRODUCT_PURPOSES, PaymentPurpose.SESSION_BOOKING}
+        and payload.idempotency_key
+    ):
         from services.payments_service.services.product_intent_retry import (
             find_product_retry,
             resume_product_payment,
@@ -1515,7 +1518,10 @@ async def create_payment_intent(
             bubbles_to_apply_val > 0 and amount <= 0 and original_amount > 0
         ),
     )
-    if checkout_quote is not None and payload.idempotency_key:
+    if (
+        payload.purpose in {*PRODUCT_PURPOSES, PaymentPurpose.SESSION_BOOKING}
+        and payload.idempotency_key
+    ):
         from services.payments_service.services.product_intent_retry import (
             request_fingerprint,
         )
@@ -1614,7 +1620,10 @@ async def create_payment_intent(
                 payment, current_user.email, redirect_path
             )
         except Exception:
-            if checkout_quote is not None and payload.idempotency_key:
+            if (
+                payload.purpose in {*PRODUCT_PURPOSES, PaymentPurpose.SESSION_BOOKING}
+                and payload.idempotency_key
+            ):
                 # Provider may have accepted the request. Retain the reference,
                 # code use and hold; a retry resumes this exact frozen payment.
                 await _set_pending_tier_payment_for_payment(payment)

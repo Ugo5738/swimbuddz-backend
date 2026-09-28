@@ -565,6 +565,11 @@ async def test_academy_cohort_uses_next_unpaid_installment(
 
     _override_current_user_email(payments_app)
     _install_paystack_stubs(monkeypatch)
+    member_id = str(uuid.uuid4())
+    monkeypatch.setattr(
+        "services.payments_service.services.academy_pricing.get_member_by_auth_id",
+        AsyncMock(return_value={"id": member_id}),
+    )
 
     enrollment_id = str(uuid.uuid4())
     cohort_id = str(uuid.uuid4())
@@ -578,6 +583,8 @@ async def test_academy_cohort_uses_next_unpaid_installment(
                 200,
                 {
                     "id": enrollment_id,
+                    "member_id": member_id,
+                    "status": "enrolled",
                     "cohort_id": cohort_id,
                     "payment_status": "pending",
                     "total_installments": 3,
@@ -633,6 +640,11 @@ async def test_academy_cohort_amount_override_rejected_when_below_next_installme
 
     _override_current_user_email(payments_app)
     _install_paystack_stubs(monkeypatch)
+    member_id = str(uuid.uuid4())
+    monkeypatch.setattr(
+        "services.payments_service.services.academy_pricing.get_member_by_auth_id",
+        AsyncMock(return_value={"id": member_id}),
+    )
 
     enrollment_id = str(uuid.uuid4())
     fake_client = _fake_httpx_client(
@@ -642,6 +654,8 @@ async def test_academy_cohort_amount_override_rejected_when_below_next_installme
                 200,
                 {
                     "id": enrollment_id,
+                    "member_id": member_id,
+                    "status": "enrolled",
                     "cohort_id": str(uuid.uuid4()),
                     "payment_status": "pending",
                     "installments": [
@@ -1457,11 +1471,10 @@ async def _mark_paid_stub(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_bubbles_silently_ignored_on_community(payments_client, monkeypatch):
-    """Bubbles only apply to SESSION_FEE / SESSION_BUNDLE / RIDE_SHARE.
-    Passing bubbles_to_apply with a COMMUNITY purpose must NOT change the
-    amount (rather than crashing or partially applying).
-    """
+async def test_community_checkout_applies_selected_bubbles(
+    payments_client, monkeypatch
+):
+    """Membership product checkout deducts the explicitly selected Bubbles."""
     from services.payments_service.app.main import app as payments_app
     from services.payments_service.routers.intents import intent_creation
 
@@ -1474,8 +1487,8 @@ async def test_bubbles_silently_ignored_on_community(payments_client, monkeypatc
         json={"purpose": "community", "years": 1, "bubbles_to_apply": 50},
     )
     assert response.status_code == 201
-    # Bubbles ignored — amount is the full fee
-    assert response.json()["amount"] == 20000.0
+    # 50 Bubbles contribute ₦5,000; cash covers the remaining ₦15,000
+    assert response.json()["amount"] == 15000.0
 
 
 # ===========================================================================
@@ -1489,7 +1502,7 @@ async def test_payment_method_manual_transfer_does_not_initialize_paystack(
     payments_client, monkeypatch
 ):
     """When payment_method=manual_transfer, the route must NOT call
-    Paystack init. The response has no checkout_url.
+    Paystack init. The response opens the authenticated transfer instructions.
     """
     from services.payments_service.app.main import app as payments_app
     from services.payments_service.routers.intents import intent_creation
@@ -1521,5 +1534,44 @@ async def test_payment_method_manual_transfer_does_not_initialize_paystack(
     )
     assert response.status_code == 201
     body = response.json()
-    assert body["checkout_url"] is None
+    assert "/payments/transfer/" in body["checkout_url"]
     assert body["status"] == "pending"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_session_settlement_retry_reuses_payment_and_wallet_hold(
+    payments_client, db_session, monkeypatch
+):
+    from sqlalchemy import func, select
+    from services.payments_service.app.main import app as payments_app
+    from services.payments_service.models import Payment
+    from services.payments_service.routers.intents import intent_creation
+
+    _override_current_user_email(payments_app)
+    _install_paystack_stubs(monkeypatch)
+    session_id, booking_id = str(uuid.uuid4()), str(uuid.uuid4())
+    _stub_session_booking_quote(
+        monkeypatch, session_id=session_id, booking_id=booking_id, fee_kobo=520000
+    )
+    payload = {
+        "purpose": "session_booking",
+        "session_id": session_id,
+        "direct_amount": 5200,
+        "bubbles_to_apply": 7,
+        "payment_metadata": {"booking_id": booking_id},
+        "idempotency_key": str(uuid.uuid4()),
+    }
+    first = await payments_client.post("/payments/intents", json=payload)
+    retry = await payments_client.post("/payments/intents", json=payload)
+    assert first.status_code == retry.status_code == 201, (first.text, retry.text)
+    assert first.json()["reference"] == retry.json()["reference"]
+    assert retry.json()["amount"] == 4500
+    assert await db_session.scalar(select(func.count(Payment.id))) == 1
+    intent_creation.create_wallet_hold.assert_awaited_once()
+    intent_creation._initialize_paystack.assert_awaited_once()
+    changed = await payments_client.post(
+        "/payments/intents",
+        json={**payload, "payment_metadata": {"booking_id": str(uuid.uuid4())}},
+    )
+    assert changed.status_code == 409

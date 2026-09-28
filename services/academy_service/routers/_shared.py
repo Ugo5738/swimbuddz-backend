@@ -331,6 +331,28 @@ async def _list_enrollment_installments(
     return result.scalars().all()
 
 
+def _preview_installment_schedule(enrollment, program, cohort) -> list[dict]:
+    """Use the same schedule calculation for quotes and committed opt-ins."""
+    total_fee = (
+        int(enrollment.price_snapshot_amount)
+        if enrollment.price_snapshot_amount is not None
+        else _resolve_enrollment_total_fee(program, cohort)
+    )
+    if total_fee <= 0:
+        return []
+    try:
+        return build_schedule(
+            total_fee=total_fee,
+            duration_weeks=int(program.duration_weeks),
+            cohort_start=cohort.start_date,
+            enrolled_at=enrollment.enrolled_at or enrollment.created_at or utc_now(),
+            count_override=getattr(cohort, "installment_count", None),
+            deposit_override=getattr(cohort, "installment_deposit_amount", None),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 async def _ensure_installment_plan(
     db: AsyncSession,
     enrollment: Enrollment,
@@ -384,35 +406,12 @@ async def _ensure_installment_plan(
     if not program or not cohort:
         return []
 
-    if enrollment.price_snapshot_amount is not None:
-        total_fee = int(enrollment.price_snapshot_amount)
-    else:
-        total_fee = _resolve_enrollment_total_fee(program, cohort)
-        enrollment.price_snapshot_amount = total_fee
-        enrollment.currency_snapshot = program.currency or "NGN"
-    if total_fee <= 0:
-        return []
-
-    # Apply cohort-level overrides if set, otherwise let build_schedule auto-compute.
-    count_override: int | None = getattr(cohort, "installment_count", None)
-    deposit_override: int | None = getattr(cohort, "installment_deposit_amount", None)
-
-    # Anchor the schedule to the later of cohort start and actual enrollment
-    # date. For mid-cohort joiners this prevents back-dated installments that
-    # would be marked MISSED by the compliance cron within minutes of signup.
-    enrollment_anchor = enrollment.enrolled_at or enrollment.created_at or utc_now()
-
-    try:
-        schedule = build_schedule(
-            total_fee=total_fee,
-            duration_weeks=int(program.duration_weeks),
-            cohort_start=cohort.start_date,
-            enrolled_at=enrollment_anchor,
-            count_override=count_override,
-            deposit_override=deposit_override,
+    schedule = _preview_installment_schedule(enrollment, program, cohort)
+    if enrollment.price_snapshot_amount is None:
+        enrollment.price_snapshot_amount = _resolve_enrollment_total_fee(
+            program, cohort
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        enrollment.currency_snapshot = program.currency or "NGN"
 
     for item in schedule:
         db.add(

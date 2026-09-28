@@ -92,8 +92,8 @@ class ClubPlanCreate(BaseModel):
     community_experience_fee_kobo: int = Field(default=0, ge=0)
     community_experience_default_selected: bool = False
     community_experience_offering_id: Optional[uuid.UUID] = None
-    sessions_included: int = Field(default=0, ge=0, le=52)
-    session_ids: list[uuid.UUID] = Field(default_factory=list, max_length=52)
+    sessions_included: int = Field(default=0, ge=0, le=260)
+    session_ids: list[uuid.UUID] = Field(default_factory=list, max_length=260)
     period_start: date
     period_end: date
     minimum_entry_sessions: int = Field(default=5, ge=1, le=52)

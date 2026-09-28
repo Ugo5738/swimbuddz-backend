@@ -229,6 +229,7 @@ async def get_member_transport_summary(
 async def attach_ride_configs_internal(
     session_id: uuid.UUID,
     configs_in: List[InternalSessionRideConfigCreate],
+    preserve_existing: bool = False,
     _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -238,11 +239,29 @@ async def attach_ride_configs_internal(
     service-role so sessions_service can materialise template ride configs
     without an interactive admin token.
     """
-    await db.execute(
-        delete(SessionRideConfig).where(SessionRideConfig.session_id == session_id)
-    )
+    await db.execute(select(func.pg_advisory_xact_lock(session_id.int % (2**63 - 1))))
+    existing_areas = set()
+    if preserve_existing:
+        existing_areas = set(
+            (
+                await db.execute(
+                    select(SessionRideConfig.ride_area_id).where(
+                        SessionRideConfig.session_id == session_id
+                    )
+                )
+            ).scalars()
+        )
+    else:
+        await db.execute(
+            delete(SessionRideConfig).where(SessionRideConfig.session_id == session_id)
+        )
 
+    created = 0
     for cfg_data in configs_in:
+        if cfg_data.ride_area_id in existing_areas:
+            continue
+        existing_areas.add(cfg_data.ride_area_id)
+        created += 1
         db.add(
             SessionRideConfig(
                 session_id=session_id,
@@ -254,7 +273,7 @@ async def attach_ride_configs_internal(
         )
 
     await db.commit()
-    return InternalSessionRideConfigAttachResponse(created=len(configs_in))
+    return InternalSessionRideConfigAttachResponse(created=created)
 
 
 @router.patch(

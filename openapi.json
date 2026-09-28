@@ -4138,6 +4138,53 @@
         }
       }
     },
+    "/api/v1/clubs/admin/plans/{plan_id}/sync-prepaid-reservations": {
+      "post": {
+        "tags": [
+          "club-plan-drafts"
+        ],
+        "summary": "Sync Prepaid Reservations",
+        "description": "Repair historical purchases and interrupted fulfillment, safely on replay.",
+        "operationId": "sync_prepaid_reservations_clubs_admin_plans__plan_id__sync_prepaid_reservations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/clubs/admin/plans/{plan_id}/community-experience": {
       "put": {
         "tags": [
@@ -9497,6 +9544,62 @@
         }
       }
     },
+    "/api/v1/sessions/templates/{template_id}/sync-operations": {
+      "post": {
+        "tags": [
+          "session-templates"
+        ],
+        "summary": "Sync Template Operations",
+        "operationId": "sync_template_operations_sessions_templates__template_id__sync_operations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateSyncRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sessions/club-operations/pods/{pod_id}": {
       "get": {
         "tags": [
@@ -9825,6 +9928,70 @@
                 "schema": {
                   "$ref": "#/components/schemas/BundleCartResponse"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/bookings/me/club-quarter": {
+      "get": {
+        "summary": "My Quarter Bookings",
+        "operationId": "my_quarter_bookings_sessions_bookings_me_club_quarter_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sessions/bookings/{booking_id}/settlement": {
+      "get": {
+        "summary": "My Booking Settlement",
+        "operationId": "my_booking_settlement_sessions_bookings__booking_id__settlement_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -13065,6 +13232,47 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PublishSessions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/sessions/club-reservations": {
+      "post": {
+        "summary": "Reserve Prepaid Swims",
+        "operationId": "reserve_prepaid_swims_internal_sessions_club_reservations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepaidReservationsRequest"
               }
             }
           },
@@ -19091,6 +19299,63 @@
         }
       }
     },
+    "/api/v1/internal/academy/enrollments/{enrollment_id}/payment-preview": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Preview Enrollment Payment",
+        "description": "Read-only payment context: viewing a quote never opts a learner in.",
+        "operationId": "preview_enrollment_payment_internal_academy_enrollments__enrollment_id__payment_preview_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          },
+          {
+            "name": "use_installments",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Use Installments"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/academy/cohorts": {
       "get": {
         "tags": [
@@ -21324,7 +21589,7 @@
           "payments"
         ],
         "summary": "Admin Generate Booking Pay Link",
-        "description": "Generate a Paystack checkout link for an outstanding-fee booking.\n\nLooks up the booking + member via the sessions/members services,\ninserts a PENDING SESSION_BOOKING payment row tied to the booking,\ninitializes Paystack, and returns the authorization URL for the\nadmin to forward to the member (WhatsApp / email / SMS).\n\nValidation:\n  - booking exists, status=confirmed, fee_amount_kobo > 0\n  - no existing PAID payment already references the booking_id\n\nOnce the member pays, the standard webhook flow flips the payment to\nPAID and the session_booking entitlement handler backfills the\nbooking's payment_intent_id (already-confirmed case).",
+        "description": "Return a member-authenticated settlement URL without creating a payment.",
         "operationId": "admin_generate_booking_pay_link_payments_admin_bookings__booking_id__payment_link_post",
         "security": [
           {
@@ -34073,6 +34338,16 @@
               "type": "string",
               "format": "uuid",
               "title": "Session Id"
+            }
+          },
+          {
+            "name": "preserve_existing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Preserve Existing"
             }
           }
         ],
@@ -61282,7 +61557,7 @@
           },
           "sessions_included": {
             "type": "integer",
-            "maximum": 52.0,
+            "maximum": 260.0,
             "minimum": 0.0,
             "title": "Sessions Included",
             "default": 0
@@ -61293,7 +61568,7 @@
               "format": "uuid"
             },
             "type": "array",
-            "maxItems": 52,
+            "maxItems": 260,
             "title": "Session Ids"
           },
           "period_start": {
@@ -61423,7 +61698,7 @@
           },
           "sessions_included": {
             "type": "integer",
-            "maximum": 52.0,
+            "maximum": 260.0,
             "minimum": 0.0,
             "title": "Sessions Included",
             "default": 0
@@ -61434,7 +61709,7 @@
               "format": "uuid"
             },
             "type": "array",
-            "maxItems": 52,
+            "maxItems": 260,
             "title": "Session Ids"
           },
           "period_start": {
@@ -68518,6 +68793,15 @@
             ],
             "title": "Template Id"
           },
+          "template_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 7,
+            "title": "Template Ids"
+          },
           "pricing_settings": {
             "anyOf": [
               {
@@ -69969,6 +70253,27 @@
       },
       "QuarterRecommendationRequest": {
         "properties": {
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "template_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 7,
+            "title": "Template Ids"
+          },
           "club_id": {
             "type": "string",
             "format": "uuid",
@@ -69985,18 +70290,6 @@
             "maximum": 4.0,
             "minimum": 1.0,
             "title": "Quarter"
-          },
-          "template_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Template Id"
           },
           "pricing_settings": {
             "anyOf": [
@@ -72277,6 +72570,15 @@
             ],
             "title": "Template Id"
           },
+          "template_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 7,
+            "title": "Template Ids"
+          },
           "title": {
             "type": "string",
             "title": "Title",
@@ -74245,6 +74547,60 @@
         ],
         "title": "NextSessionResponse"
       },
+      "PrepaidReservationsRequest": {
+        "properties": {
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Enrollment Id"
+          },
+          "club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Club Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Member Auth Id"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "session_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 260,
+            "title": "Session Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enrollment_id",
+          "club_id",
+          "member_id",
+          "member_auth_id",
+          "starts_at",
+          "ends_at",
+          "session_ids"
+        ],
+        "title": "PrepaidReservationsRequest"
+      },
       "PublishSessionInput": {
         "properties": {
           "id": {
@@ -74294,7 +74650,7 @@
               "$ref": "#/components/schemas/PublishSessionInput"
             },
             "type": "array",
-            "maxItems": 52,
+            "maxItems": 260,
             "minItems": 1,
             "title": "Sessions"
           }
@@ -76191,6 +76547,9 @@
       },
       "SessionTemplateCreate": {
         "properties": {
+          "admission_settings": {
+            "$ref": "#/components/schemas/TemplateAdmissionSettings"
+          },
           "cohort_id": {
             "anyOf": [
               {
@@ -76450,6 +76809,9 @@
       },
       "SessionTemplateResponse": {
         "properties": {
+          "admission_settings": {
+            "$ref": "#/components/schemas/TemplateAdmissionSettings"
+          },
           "cohort_id": {
             "anyOf": [
               {
@@ -76739,6 +77101,16 @@
       },
       "SessionTemplateUpdate": {
         "properties": {
+          "admission_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TemplateAdmissionSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "cohort_id": {
             "anyOf": [
               {
@@ -77549,6 +77921,114 @@
         },
         "type": "object",
         "title": "SessionUpdate"
+      },
+      "TemplateAdmissionSettings": {
+        "properties": {
+          "guest_fee": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Fee"
+          },
+          "community_dropin_fee": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Dropin Fee"
+          },
+          "allows_community_dropins": {
+            "type": "boolean",
+            "title": "Allows Community Dropins",
+            "default": false
+          },
+          "allows_guests": {
+            "type": "boolean",
+            "title": "Allows Guests",
+            "default": true
+          },
+          "max_guests_per_booking": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Max Guests Per Booking",
+            "default": 4
+          },
+          "guest_booking_mode": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "public",
+              "member_invite",
+              "approval_required"
+            ],
+            "title": "Guest Booking Mode",
+            "default": "disabled"
+          },
+          "guest_booking_cutoff_hours": {
+            "type": "integer",
+            "maximum": 720.0,
+            "minimum": 0.0,
+            "title": "Guest Booking Cutoff Hours",
+            "default": 0
+          },
+          "guest_reconciliation_days": {
+            "type": "integer",
+            "maximum": 30.0,
+            "minimum": 0.0,
+            "title": "Guest Reconciliation Days",
+            "default": 3
+          },
+          "guest_location_private": {
+            "type": "boolean",
+            "title": "Guest Location Private",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TemplateAdmissionSettings"
+      },
+      "TemplateSyncRequest": {
+        "properties": {
+          "from_date": {
+            "type": "string",
+            "format": "date",
+            "title": "From Date"
+          },
+          "to_date": {
+            "type": "string",
+            "format": "date",
+            "title": "To Date"
+          },
+          "preview_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_date",
+          "to_date"
+        ],
+        "title": "TemplateSyncRequest"
       },
       "TrialGuestCreate": {
         "properties": {
@@ -84418,7 +84898,14 @@
       "AdminBookingPayLinkResponse": {
         "properties": {
           "reference": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Reference"
           },
           "authorization_url": {
@@ -84444,7 +84931,6 @@
         },
         "type": "object",
         "required": [
-          "reference",
           "authorization_url",
           "payer_email",
           "amount",

@@ -2101,3 +2101,18 @@ Companion worker: `swimbuddz_pools_worker` (ARQ on Redis queue `arq:pools`) — 
 > **Provider licensing:** Open-Meteo's free tier is non-commercial. Set `WEATHER_PROVIDER`/`WEATHER_API_KEY` to a commercial provider (or self-host Open-Meteo) for production.
 
 > **Forecast horizon:** genuine forecasts only extend ~14 days. Longer-range ("rest of season") planning should use climatological averages, not this endpoint — see the [design doc](../../docs/design/WEATHER_SERVICE_DESIGN.md)'s three-layer model.
+
+## Club quarter and checkout stabilization (September 2026)
+
+- `POST /internal/sessions/club-schedule/generate`: accepts `template_ids` (up to seven distinct primary inclusion templates), with legacy `template_id` retained. These are alternative inputs. Every selected series must belong to the requested Club and home pool. The returned schedule includes venue labels and template IDs. Generation replays repair missing volunteer/transport setup without duplicating sessions.
+- `POST /sessions/templates/{template_id}/sync-operations` (admin): `from_date`, `to_date`, optionally `preview_token`. First call returns the proposed before/after values, volunteer configuration, transport configuration, and a digest. Apply requires the current digest. Updates operational defaults on future sessions, preserving dates, prices, capacity, and published plan identities. Operational service failures are returned as retryable warnings.
+- SessionTemplate create/update/response now has `admission_settings`: separate guest/Community naira fees and flags, guest mode, relative cutoff hours, reconciliation days, guest limit, and private-location setting. Enabled admission requires an explicit independent price.
+- `POST /internal/sessions/club-reservations` (service role): idempotently confirms zero-fee future reservations for the exact purchased prepaid quarter inclusions. Locks sessions before capacity checks; canceled attendance stays canceled. After commit, attendance synchronization is retried through paid-entitlement fulfillment.
+- `POST /clubs/admin/plans/{plan_id}/sync-prepaid-reservations` (admin): backfills active prepaid purchasers of a published quarter. Returns successful and failed enrollment IDs; transition members are excluded.
+- `GET /sessions/bookings/me/club-quarter` (member): own upcoming prepaid bookings, including canceled attendance.
+- `GET /sessions/bookings/{booking_id}/settlement` (member): own outstanding booking context; another account receives 404.
+- `POST /payments/admin/bookings/{booking_id}/payment-link`: returns the member settlement route under `/account/billing/sessions/{booking_id}`. `reference` is nullable. No Payment or provider transaction is created when generating the link; arbitrary price overrides are rejected.
+- `POST /payments/intents` with `purpose=session_booking`: accepts a stable `idempotency_key`; the fingerprint includes `payment_metadata.booking_id`. Replays resume the same payment and wallet hold.
+- `GET /internal/academy/enrollments/{enrollment_id}/payment-preview?use_installments=true|false` (admin/service role): read-only context. Prospective schedule entries have no persisted installment ID. Charges preview uses this endpoint; actual checkout retains committed installment creation and freshly reloads the relationship. Full-payment quotes sum unpaid installments; custom payments still validate against the next amount and remaining balance.
+
+Store: simple products now acquire a default SKU and zero-stock inventory row during creation (or an admin update of a legacy product with no variants). Products requiring options and deliberately inactive variants are never assigned a substitute SKU.

@@ -202,3 +202,15 @@ async def test_template_volunteer_sync_backfills_existing_future_sessions(
     assert payload["created_count"] == 1
     assert payload["warnings"] == []
     materialise.assert_awaited_once()
+
+
+@pytest.fixture(autouse=True)
+def operational_pool_registry(monkeypatch):
+    monkeypatch.setattr(
+        "services.sessions_service.services.template_operations.get_partner_pool",
+        AsyncMock(return_value={"name": "Pool", "address": "Verified venue address"}),
+    )
+    monkeypatch.setattr(
+        "services.sessions_service.routers.club_schedule.materialise_template_operations",
+        AsyncMock(),
+    )
