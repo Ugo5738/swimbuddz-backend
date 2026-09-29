@@ -69,9 +69,20 @@ async def settle_offline(db, payment, payload, actor):
     )
 
     await lock_external_reference(db, payload.external_reference)
+    from services.payments_service.services.booking_payment_attempts import (
+        booking_identity,
+        lock_booking_payment,
+    )
+
+    booking_id = booking_identity(payment)
+    if booking_id:
+        await lock_booking_payment(db, booking_id)
     payment = (
         await db.execute(
-            select(Payment).where(Payment.id == payment.id).with_for_update()
+            select(Payment)
+            .where(Payment.id == payment.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
     ).scalar_one()
     if naira_to_kobo(payment.amount) != payload.amount_kobo or payload.amount_kobo <= 0:
@@ -157,6 +168,9 @@ async def settle_offline(db, payment, payload, actor):
     payment.admin_review_note = payload.note
     if payload.proof_media_id:
         payment.proof_of_payment_media_id = payload.proof_media_id
+    # The settlement dispatcher reloads under lock. Persist these reviewed
+    # fields first because production sessions have autoflush disabled.
+    await db.flush()
     return await _mark_paid_and_apply(
         db,
         payment,

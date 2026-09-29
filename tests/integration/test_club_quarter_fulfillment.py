@@ -103,6 +103,40 @@ async def test_two_selected_series_inherit_full_defaults_and_retry(
         assert row.pool_fee == 520000 and row.status == SessionStatus.DRAFT
     assert operations.await_count == 52  # Replays also repair interrupted fan-out.
 
+    # The same exact quarter generated from both templates is what checkout
+    # promises. Every future inclusion must hold a seat, across both series.
+    from services.sessions_service.routers import club_holds
+    from services.sessions_service.services.club_holds import held_club_seats
+
+    now = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(club_holds, "utc_now", lambda: now)
+    monkeypatch.setattr(
+        "services.sessions_service.services.club_holds.utc_now", lambda: now
+    )
+    for row in rows:
+        row.status = SessionStatus.SCHEDULED
+        row.published_at = now
+    await db_session.commit()
+    purchase = club_holds.ReserveClubHolds(
+        application_id=uuid4(),
+        club_id=club,
+        member_id=uuid4(),
+        payment_reference=f"multi-template-{uuid4()}",
+        expires_at=now + timedelta(minutes=30),
+        plans=[
+            club_holds.HoldPlan(
+                plan_version_id=uuid4(),
+                starts_at=now,
+                ends_at=datetime(2027, 1, 1, tzinfo=timezone.utc),
+                session_ids=[row.id for row in rows],
+            )
+        ],
+    )
+    held = await club_holds.reserve_holds(purchase, db_session)
+    assert len(held["session_ids"]) == 26
+    for row in rows:
+        assert await held_club_seats(db_session, row.id) == 1
+
 
 async def test_bulk_repair_requires_current_preview_and_keeps_sold_terms(
     db_session, monkeypatch

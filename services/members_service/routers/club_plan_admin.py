@@ -82,6 +82,7 @@ async def _plan(db, plan_id, *, draft=False):
 @router.post("/{plan_id}/sync-prepaid-reservations")
 async def sync_prepaid_reservations(
     plan_id: uuid.UUID,
+    dry_run: bool = False,
     db: AsyncSession = Depends(get_async_db),
 ):
     """Repair historical purchases and interrupted fulfillment, safely on replay."""
@@ -106,6 +107,16 @@ async def sync_prepaid_reservations(
             )
         ).scalars()
     )
+    if dry_run:
+        return {
+            "dry_run": True,
+            "candidate_enrollment_ids": [str(row.id) for row in enrollments],
+            "included_session_ids": [
+                str(link.session_id) for link in plan.session_links
+            ],
+            "synced_enrollment_ids": [],
+            "failed_enrollment_ids": [],
+        }
     completed, failures = [], []
     for enrollment in enrollments:
         member = await db.get(Member, enrollment.member_id)

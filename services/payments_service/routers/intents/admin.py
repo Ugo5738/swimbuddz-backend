@@ -100,16 +100,18 @@ async def replay_payment_entitlement(
 
 
 class AdminBookingPayLinkRequest(BaseModel):
-    """Optional overrides when generating an admin pay-link for a booking."""
+    """Legacy fields accepted while generating a settlement URL; no Payment is created."""
 
     amount_naira: Optional[float] = None  # Default = booking.fee / 100
-    note: Optional[str] = None  # Free-form admin note attached to the payment
+    note: Optional[str] = (
+        None  # Compatibility only; generating a URL records no payment
+    )
 
 
 class AdminBookingPayLinkResponse(BaseModel):
     reference: str | None = None
     authorization_url: str
-    payer_email: str
+    payer_email: str | None = None
     amount: float
     booking_id: str
     session_id: str
@@ -213,6 +215,20 @@ async def admin_record_booking_offline_payment(
 
     await lock_external_reference(db, payload.external_reference)
     await lock_external_reference(db, f"booking:{booking_id}")
+
+    from services.payments_service.services.booking_payment_attempts import (
+        booking_payments,
+        blocks_new_attempt,
+    )
+
+    attempts = await booking_payments(db, booking_id)
+    if any(
+        blocks_new_attempt(row) and row.status != PaymentStatus.PAID for row in attempts
+    ):
+        raise HTTPException(
+            409,
+            "An online or transfer payment is already open for this booking. Reconcile it before recording another receipt.",
+        )
 
     existing_paid = await _find_paid_booking_payment(db, booking_id)
     if existing_paid is not None:
@@ -367,16 +383,11 @@ async def admin_generate_booking_pay_link(
             detail="Booking is missing member identifiers — cannot generate link.",
         )
 
-    # 2. Resolve the member's email via members-service.
+    # Email is optional contact information, not a settlement-link prerequisite.
     member = await get_member_by_id(str(member_id), calling_service="payments")
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
     payer_email = member.get("email")
-    if not payer_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Member has no email on file — cannot initialize Paystack.",
-        )
 
     # 3. Block duplicate pay links if a PAID payment already exists for this
     # booking (would create double-charge risk if admin re-sends an old link

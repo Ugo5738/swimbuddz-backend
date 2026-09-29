@@ -71,7 +71,7 @@ from services.members_service.routers._club_pricing import (
     plan_price as _plan_price,
     plan_response as _plan_out,
 )
-from sqlalchemy import func, select
+from sqlalchemy import and_, or_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -273,8 +273,13 @@ async def _assert_plan_capacity(
                     select(func.count(ClubEnrollmentReservation.id)).where(
                         ClubEnrollmentReservation.plan_version_id == plan.id,
                         ClubEnrollmentReservation.application_id != application.id,
-                        ClubEnrollmentReservation.status == "active",
-                        ClubEnrollmentReservation.expires_at > at,
+                        or_(
+                            ClubEnrollmentReservation.status == "protected",
+                            and_(
+                                ClubEnrollmentReservation.status == "active",
+                                ClubEnrollmentReservation.expires_at > at,
+                            ),
+                        ),
                     )
                 )
             ).scalar_one()
@@ -334,8 +339,13 @@ async def _assert_pod_capacity(
                 .where(
                     ClubApplication.preferred_pod_id == pod.id,
                     ClubEnrollmentReservation.application_id != application.id,
-                    ClubEnrollmentReservation.status == "active",
-                    ClubEnrollmentReservation.expires_at > at,
+                    or_(
+                        ClubEnrollmentReservation.status == "protected",
+                        and_(
+                            ClubEnrollmentReservation.status == "active",
+                            ClubEnrollmentReservation.expires_at > at,
+                        ),
+                    ),
                 )
             )
         ).scalar_one()
@@ -1133,8 +1143,10 @@ async def reserve_club_application_capacity(
         (
             row
             for row in existing.values()
-            if row.status == "active"
-            and row.expires_at > now
+            if (
+                row.status == "protected"
+                or (row.status == "active" and row.expires_at > now)
+            )
             and row.payment_reference != body.payment_reference
         ),
         None,
@@ -1144,7 +1156,8 @@ async def reserve_club_application_capacity(
             status_code=409,
             detail=(
                 "A Club checkout is already active for this application. "
-                "Complete it or wait for the 30-minute reservation to expire."
+                "Resume it from Billing. If a payment link was issued, Admin must "
+                "reconcile it before its reserved seats can be released."
             ),
         )
 
@@ -1184,6 +1197,14 @@ async def reserve_club_application_capacity(
             amount_kobo=body.community_experience_fee_kobo,
             ticket_kind=price_context,
         )
+    if chosen_mode == QUARTERLY_PREPAID:
+        from services.members_service.services.club_reservations import (
+            hold_application_swims,
+        )
+
+        await hold_application_swims(
+            application, plans, body.payment_reference, expires_at
+        )
     for plan in plans:
         reservation = existing.get(plan.id)
         if reservation is None:
@@ -1196,14 +1217,83 @@ async def reserve_club_application_capacity(
             db.add(reservation)
         else:
             reservation.payment_reference = body.payment_reference
-            reservation.status = "active"
-            reservation.expires_at = expires_at
+            if reservation.status != "protected":
+                reservation.status = "active"
+                reservation.expires_at = expires_at
     await db.commit()
     return ClubApplicationReservationResponse(
         application_id=application.id,
         payment_reference=body.payment_reference,
         status="active",
+        session_holds=chosen_mode == QUARTERLY_PREPAID,
         expires_at=expires_at,
+        plan_version_ids=[plan.id for plan in plans],
+    )
+
+
+@router.post(
+    "/internal/applications/{application_id}/reservation/protect",
+    response_model=ClubApplicationReservationResponse,
+)
+async def protect_club_application_capacity(
+    application_id: uuid.UUID,
+    body: ClubApplicationReservationRequest,
+    _service: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Pin all capacity before a provider link or bank instructions can escape."""
+    application = await db.scalar(
+        select(ClubApplication)
+        .where(ClubApplication.id == application_id)
+        .with_for_update()
+    )
+    if application is None:
+        raise HTTPException(404, "Club application not found")
+    mode = _application_payment_mode(application, body.payment_mode)
+    plans = await _selected_application_plans(db, application, lock=True)
+    if mode == TRANSITION_PER_SESSION:
+        plans = plans[:1]
+    await _assert_plan_capacity(db, application=application, plans=plans, at=utc_now())
+    await _assert_pod_capacity(db, application=application, at=utc_now(), lock=True)
+    rows = list(
+        (
+            await db.execute(
+                select(ClubEnrollmentReservation)
+                .where(
+                    ClubEnrollmentReservation.application_id == application_id,
+                    ClubEnrollmentReservation.payment_reference
+                    == body.payment_reference,
+                )
+                .with_for_update()
+            )
+        ).scalars()
+    )
+    if {row.plan_version_id for row in rows} != {plan.id for plan in plans} or any(
+        row.status == "released" for row in rows
+    ):
+        raise HTTPException(409, "Club checkout reservation is missing or released")
+    if mode == QUARTERLY_PREPAID:
+        from services.members_service.services.club_reservations import (
+            session_hold_request,
+        )
+
+        await session_hold_request(
+            "/protect",
+            {
+                "application_id": str(application_id),
+                "payment_reference": body.payment_reference,
+            },
+        )
+    for row in rows:
+        if row.status != "consumed":
+            row.status = "protected"
+    await db.commit()
+    return ClubApplicationReservationResponse(
+        application_id=application_id,
+        payment_reference=body.payment_reference,
+        status="protected",
+        session_holds=mode == QUARTERLY_PREPAID,
+        expires_at=max(row.expires_at for row in rows),
         plan_version_ids=[plan.id for plan in plans],
     )
 
@@ -1222,9 +1312,23 @@ async def release_club_application_capacity(
     from services.members_service.models.experience import CommunityExperienceOrder
     from services.members_service.routers.experience_admin import lock_offering
 
-    application = await db.get(ClubApplication, application_id)
+    application = await db.scalar(
+        select(ClubApplication)
+        .where(ClubApplication.id == application_id)
+        .with_for_update()
+    )
     if application is None:
         raise HTTPException(status_code=404, detail="Club application not found")
+    from services.members_service.services.club_reservations import session_hold_request
+
+    await session_hold_request(
+        "/release",
+        {
+            "application_id": str(application_id),
+            "payment_reference": body.payment_reference,
+            "closure_evidence": body.closure_evidence,
+        },
+    )
     ticket = (
         await db.execute(
             select(CommunityExperienceOrder).where(
@@ -1251,8 +1355,13 @@ async def release_club_application_capacity(
         ).scalars()
     )
     now = utc_now()
+    if any(row.status == "protected" for row in rows) and not body.closure_evidence:
+        raise HTTPException(
+            409,
+            "This checkout may still receive payment; reconcile it before releasing capacity",
+        )
     for row in rows:
-        if row.status == "active":
+        if row.status in {"active", "protected"}:
             row.status = "released"
             row.expires_at = min(row.expires_at, now)
     await db.commit()
@@ -1316,8 +1425,10 @@ async def activate_club_application(
         ).scalars()
     )
     if application.status == "approved" and any(
-        reservation.status == "active"
-        and reservation.expires_at > now
+        (
+            reservation.status == "protected"
+            or (reservation.status == "active" and reservation.expires_at > now)
+        )
         and reservation.payment_reference != body.payment_reference
         for reservation in reservations
     ):
@@ -1475,7 +1586,10 @@ async def activate_club_application(
         plans_by_id = {plan.id: plan for plan in selected_plans}
         for enrollment in created_enrollments:
             await reserve_enrollment_swims(
-                enrollment, plans_by_id[enrollment.plan_version_id], member
+                enrollment,
+                plans_by_id[enrollment.plan_version_id],
+                member,
+                require_holds=body.require_session_holds,
             )
     if assignment_to_reconcile is not None:
         await reconcile_pod_membership(

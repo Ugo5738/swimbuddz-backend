@@ -18,6 +18,7 @@ from services.sessions_service.models import (
     SessionBookingStatus,
     SessionStatus,
     SessionType,
+    ClubSessionHold,
 )
 from services.sessions_service.services.booking_attendance import (
     sync_booking_attendance,
@@ -31,6 +32,8 @@ router = APIRouter(
 
 
 class PrepaidReservationsRequest(BaseModel):
+    payment_reference: str | None = None
+    require_holds: bool = False
     enrollment_id: uuid.UUID
     club_id: uuid.UUID
     member_id: uuid.UUID
@@ -62,7 +65,27 @@ async def reserve_prepaid_swims(
         )
     confirmed = []
     created = 0
+    holds = (
+        {
+            row.session_id: row
+            for row in (
+                await db.execute(
+                    select(ClubSessionHold)
+                    .where(
+                        ClubSessionHold.payment_reference == body.payment_reference,
+                        ClubSessionHold.session_id.in_(body.session_ids),
+                        ClubSessionHold.member_id == body.member_id,
+                        ClubSessionHold.club_id == body.club_id,
+                    )
+                    .with_for_update()
+                )
+            ).scalars()
+        }
+        if body.payment_reference
+        else {}
+    )
     for session in sessions:
+        hold = holds.get(session.id)
         if (
             session.session_type != SessionType.CLUB
             or session.club_id != body.club_id
@@ -77,6 +100,8 @@ async def reserve_prepaid_swims(
             or not body.starts_at <= session.starts_at < body.ends_at
             or session.status == SessionStatus.CANCELLED
         ):
+            if hold and hold.status != "released":
+                hold.status = "consumed"
             continue
         if session.status != SessionStatus.SCHEDULED:
             raise HTTPException(
@@ -93,10 +118,19 @@ async def reserve_prepaid_swims(
             )
         ).scalar_one_or_none()
         if booking and booking.status == SessionBookingStatus.CANCELLED:
+            if hold:
+                hold.status = "consumed"
             continue  # Never undo an explicit attendance cancellation on replay.
         if booking and booking.status == SessionBookingStatus.CONFIRMED:
+            if hold:
+                hold.status = "consumed"
             confirmed.append(booking)
             continue
+        if body.require_holds and (not hold or hold.status != "protected"):
+            raise HTTPException(
+                409,
+                "Paid Club checkout is missing its protected swim reservation; reconcile its capacity record",
+            )
         if booking and (
             booking.payment_intent_id
             or booking.wallet_transaction_id
@@ -110,9 +144,12 @@ async def reserve_prepaid_swims(
                 409,
                 "An existing booking has a payment or guest reservation; reconcile it before auto-reserving",
             )
-        await assert_booking_capacity(
-            db, session=session, member_id=body.member_id, new_party_size=1
-        )
+        if not hold or hold.status != "protected":
+            # Historical purchases have no hold. Their explicit backfill still
+            # checks capacity; new checkouts consume seats committed before pay.
+            await assert_booking_capacity(
+                db, session=session, member_id=body.member_id, new_party_size=1
+            )
         if booking is None:
             booking = SessionBooking(
                 id=uuid.uuid5(body.enrollment_id, str(session.id)),
@@ -131,6 +168,8 @@ async def reserve_prepaid_swims(
         booking.confirmed_at, booking.booked_at = now, now
         booking.expires_at = booking.cancelled_at = None
         db.add(booking)
+        if hold:
+            hold.status = "consumed"
         confirmed.append(booking)
         created += 1
     await db.commit()

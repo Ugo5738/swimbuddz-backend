@@ -1,6 +1,6 @@
 # Club, checkout, settlement, and preorder review
 
-Updated: 28 September 2026. Changes are prepared for review on `develop` in `swimbuddz-backend` and `swimbuddz-frontend`. Application code has **not** been deployed. The Yaba session and starter-kit data repairs described below **have** been applied and verified on production.
+Updated: 29 September 2026. Changes are prepared for review on `develop` in `swimbuddz-backend` and `swimbuddz-frontend`. Application code has **not** been deployed. The Yaba session and starter-kit data repairs described below **have** been applied and verified on production. The subsequent external-review fixes and current migration/reconciliation procedure are in [CHECKOUT_RECONCILIATION_RUNBOOK.md](CHECKOUT_RECONCILIATION_RUNBOOK.md); that follow-up made no production changes.
 
 ## Requirements and implementation
 
@@ -67,7 +67,7 @@ Payment providers and downstream service failures were mocked in automated tests
 6. Use Admin Club Pricing's **Sync prepaid reservations** for Yaba Q4 (or POST `/clubs/admin/plans/5cacdf96-df70-4f24-bf7e-17f988b8ea6f/sync-prepaid-reservations` with admin authorization). Check both returned enrollment-ID lists. Resolve any capacity or live-payment/guest-party conflicts before retrying failures. This task has not run that new endpoint against old production code.
 7. Smoke-check Club checkout, Academy full/installment switching and refresh, outstanding-fee Bubbles/online/manual choices, a prepaid member's swim list/cancellation, and the starter kit on mobile and desktop. Generate a VI draft using the administrator's selected recurring templates when ready; no VI data was invented during this task.
 
-Reservations are fulfilled after payment through the existing entitlement mechanism. This change does not add a new cross-service pre-purchase seat-hold system for every session. A capacity or incompatible existing-booking conflict remains a visible paid-fulfillment reconciliation case; the implementation does not overbook or overwrite someone else's payment to hide it.
+The review follow-up now reserves exact future included swim capacity before quarterly payment. Provider-exposed seats remain protected until settlement or verified closure. The runbook above supersedes this handoff's earlier rollout order and includes both additional migrations. Historical paid purchases without holds remain capacity-checked during reconciliation; conflicting existing payments are never overwritten.
 
 ## Reviewer focus
 

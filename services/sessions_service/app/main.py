@@ -11,6 +11,7 @@ from services.sessions_service.routers.member_booking_details import (
 from services.sessions_service.routers.club_reservations import (
     router as club_reservations_router,
 )
+from services.sessions_service.routers.club_holds import router as club_holds_router
 from services.sessions_service.routers.bookings import router as bookings_router
 from services.sessions_service.routers.bundles import router as bundles_router
 from services.sessions_service.routers.club_operations import (
@@ -80,6 +81,7 @@ def create_app() -> FastAPI:
     # Internal service-to-service endpoints (not exposed via gateway)
     app.include_router(club_schedule_router)
     app.include_router(club_reservations_router)
+    app.include_router(club_holds_router)
     app.include_router(internal_router)
 
     return app

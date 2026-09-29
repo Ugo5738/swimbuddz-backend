@@ -120,18 +120,15 @@ async def reconcile_pending_paystack_payments() -> None:
                 )
                 processed += 1
             elif status in {"failed", "abandoned", "reversed"}:
-                payment.status = PaymentStatus.FAILED
-                payment.entitlement_error = f"Provider status: {status}"
-                metadata = dict(payment.payment_metadata or {})
-                metadata["provider_payload"] = {
-                    "verify": data,
-                    "source": "payments_worker",
-                }
-                payment.payment_metadata = metadata
-                db.add(payment)
-                await db.commit()
-                await _clear_pending_tier_payment_for_payment(payment)
-                processed += 1
+                from services.payments_service.services.provider_failure import (
+                    record_provider_failure,
+                )
+
+                if await record_provider_failure(
+                    db, payment, {"verify": data, "source": "payments_worker"}
+                ):
+                    await _clear_pending_tier_payment_for_payment(payment)
+                    processed += 1
 
     if processed:
         logger.info("Reconciled %d pending Paystack payments", processed)

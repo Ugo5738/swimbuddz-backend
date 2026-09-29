@@ -52,6 +52,7 @@ def db_for(payment):
     return SimpleNamespace(
         execute=AsyncMock(return_value=result(payment)),
         commit=AsyncMock(),
+        flush=AsyncMock(),
         refresh=AsyncMock(),
         add=Mock(),
     )
@@ -88,7 +89,6 @@ def test_transfer_capability_is_payment_scoped_and_not_an_auth_token():
         "club",
         "club_bundle",
         "session_fee",
-        "session_booking",
         "session_bundle",
         "guest_pass",
         "community_experience",

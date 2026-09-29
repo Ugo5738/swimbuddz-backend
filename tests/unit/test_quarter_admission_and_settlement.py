@@ -54,7 +54,10 @@ async def test_transition_enrollment_never_auto_books(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_admin_link_creates_no_payment_or_provider_transaction(monkeypatch):
+@pytest.mark.parametrize("email", ["test@example.com", None])
+async def test_admin_link_creates_no_payment_or_provider_transaction(
+    monkeypatch, email
+):
     booking_id = uuid4()
     monkeypatch.setattr(
         admin,
@@ -70,7 +73,7 @@ async def test_admin_link_creates_no_payment_or_provider_transaction(monkeypatch
         ),
     )
     monkeypatch.setattr(
-        admin, "get_member_by_id", AsyncMock(return_value={"email": "test@example.com"})
+        admin, "get_member_by_id", AsyncMock(return_value={"email": email})
     )
     monkeypatch.setattr(
         admin, "_find_paid_booking_payment", AsyncMock(return_value=None)
@@ -81,6 +84,7 @@ async def test_admin_link_creates_no_payment_or_provider_transaction(monkeypatch
     )
     assert result.authorization_url.endswith(f"/account/billing/sessions/{booking_id}")
     assert result.reference is None and result.amount == 5200
+    assert result.payer_email == email
     db.add.assert_not_called()
     db.commit.assert_not_awaited()
 

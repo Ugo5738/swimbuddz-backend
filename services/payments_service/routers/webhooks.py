@@ -157,16 +157,11 @@ async def paystack_webhook(
         return {"received": True}
 
     if event in ("charge.failed", "transaction.failed"):
-        if payment.status != PaymentStatus.PAID:
-            payment.status = PaymentStatus.FAILED
-            payment.provider = "paystack"
-            payment.provider_reference = reference
-            payment.payment_metadata = {
-                **(payment.payment_metadata or {}),
-                "provider_payload": {"event": event, "data": data},
-            }
-            db.add(payment)
-            await db.commit()
+        from services.payments_service.services.provider_failure import (
+            record_provider_failure,
+        )
+
+        if await record_provider_failure(db, payment, {"event": event, "data": data}):
             await _release_bubbles_hold(payment)
             await _clear_pending_tier_payment_for_payment(payment)
 

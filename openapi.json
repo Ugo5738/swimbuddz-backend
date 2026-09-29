@@ -4161,6 +4161,16 @@
               "format": "uuid",
               "title": "Plan Id"
             }
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Dry Run"
+            }
           }
         ],
         "responses": {
@@ -5159,6 +5169,65 @@
         "summary": "Reserve Club Application Capacity",
         "description": "Atomically hold every selected quarter (and preferred pod) for checkout.",
         "operationId": "reserve_club_application_capacity_clubs_internal_applications__application_id__reservation_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubApplicationReservationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubApplicationReservationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/internal/applications/{application_id}/reservation/protect": {
+      "post": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "Protect Club Application Capacity",
+        "description": "Pin all capacity before a provider link or bank instructions can escape.",
+        "operationId": "protect_club_application_capacity_clubs_internal_applications__application_id__reservation_protect_post",
         "security": [
           {
             "HTTPBearer": []
@@ -13273,6 +13342,129 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PrepaidReservationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/sessions/club-holds": {
+      "post": {
+        "summary": "Reserve Holds",
+        "operationId": "reserve_holds_internal_sessions_club_holds_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReserveClubHolds"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/sessions/club-holds/protect": {
+      "post": {
+        "summary": "Protect Holds",
+        "operationId": "protect_holds_internal_sessions_club_holds_protect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HoldAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/sessions/club-holds/release": {
+      "post": {
+        "summary": "Release Holds",
+        "operationId": "release_holds_internal_sessions_club_holds_release_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HoldAction"
               }
             }
           },
@@ -21626,6 +21818,153 @@
                 "schema": {
                   "$ref": "#/components/schemas/AdminBookingPayLinkResponse"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/checkout-reconciliation/bookings/{booking_id}": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Preview Booking Attempts",
+        "operationId": "preview_booking_attempts_payments_admin_checkout_reconciliation_bookings__booking_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/checkout-reconciliation/{reference}": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Preview Checkout",
+        "operationId": "preview_checkout_payments_admin_checkout_reconciliation__reference__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Reference"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/checkout-reconciliation/{reference}/close-unpaid": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Close Unpaid Checkout",
+        "description": "Audited manual closure only after an operator verifies non-payability.\n\nThis endpoint does not cancel Paystack. It records evidence that an\noperator obtained from the provider (or verified for a manual transfer).\nIt never marks a payment paid, refunds money, or changes a paid receipt.",
+        "operationId": "close_unpaid_checkout_payments_admin_checkout_reconciliation__reference__close_unpaid_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Reference"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseUnpaidCheckout"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -57324,6 +57663,11 @@
       },
       "ActivateClubApplicationRequest": {
         "properties": {
+          "require_session_holds": {
+            "type": "boolean",
+            "title": "Require Session Holds",
+            "default": false
+          },
           "payment_reference": {
             "type": "string",
             "maxLength": 128,
@@ -59834,6 +60178,19 @@
       },
       "ClubApplicationReservationRequest": {
         "properties": {
+          "closure_evidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 10
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closure Evidence"
+          },
           "payment_reference": {
             "type": "string",
             "maxLength": 128,
@@ -59882,10 +60239,16 @@
             "type": "string",
             "enum": [
               "active",
+              "protected",
               "released",
               "consumed"
             ],
             "title": "Status"
+          },
+          "session_holds": {
+            "type": "boolean",
+            "title": "Session Holds",
+            "default": false
           },
           "expires_at": {
             "type": "string",
@@ -73752,6 +74115,77 @@
         ],
         "title": "GuestPassPublicResponse"
       },
+      "HoldAction": {
+        "properties": {
+          "application_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Application Id"
+          },
+          "payment_reference": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Payment Reference"
+          },
+          "closure_evidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 10
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closure Evidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "application_id",
+          "payment_reference"
+        ],
+        "title": "HoldAction"
+      },
+      "HoldPlan": {
+        "properties": {
+          "plan_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Plan Version Id"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "session_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 260,
+            "minItems": 1,
+            "title": "Session Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_version_id",
+          "starts_at",
+          "ends_at",
+          "session_ids"
+        ],
+        "title": "HoldPlan"
+      },
       "MakeupBlockKind": {
         "type": "string",
         "enum": [
@@ -74549,6 +74983,22 @@
       },
       "PrepaidReservationsRequest": {
         "properties": {
+          "payment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Reference"
+          },
+          "require_holds": {
+            "type": "boolean",
+            "title": "Require Holds",
+            "default": false
+          },
           "enrollment_id": {
             "type": "string",
             "format": "uuid",
@@ -74694,6 +75144,55 @@
           "pool_time_confirmed"
         ],
         "title": "ReschedulePractice"
+      },
+      "ReserveClubHolds": {
+        "properties": {
+          "application_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Application Id"
+          },
+          "club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Club Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "payment_reference": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Payment Reference"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/HoldPlan"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Plans"
+          }
+        },
+        "type": "object",
+        "required": [
+          "application_id",
+          "club_id",
+          "member_id",
+          "payment_reference",
+          "expires_at",
+          "plans"
+        ],
+        "title": "ReserveClubHolds"
       },
       "RunningLateRequest": {
         "properties": {
@@ -84893,7 +85392,7 @@
         },
         "type": "object",
         "title": "AdminBookingPayLinkRequest",
-        "description": "Optional overrides when generating an admin pay-link for a booking."
+        "description": "Legacy fields accepted while generating a settlement URL; no Payment is created."
       },
       "AdminBookingPayLinkResponse": {
         "properties": {
@@ -84913,7 +85412,14 @@
             "title": "Authorization Url"
           },
           "payer_email": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Payer Email"
           },
           "amount": {
@@ -84932,7 +85438,6 @@
         "type": "object",
         "required": [
           "authorization_url",
-          "payer_email",
           "amount",
           "booking_id",
           "session_id"
@@ -85524,6 +86029,38 @@
           "total_kobo"
         ],
         "title": "ChargePreviewResponse"
+      },
+      "CloseUnpaidCheckout": {
+        "properties": {
+          "preview_token": {
+            "type": "string",
+            "title": "Preview Token"
+          },
+          "provider_closure_evidence": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Provider Closure Evidence"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 10,
+            "title": "Note"
+          },
+          "apply": {
+            "type": "boolean",
+            "title": "Apply",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "preview_token",
+          "provider_closure_evidence",
+          "note"
+        ],
+        "title": "CloseUnpaidCheckout"
       },
       "ClubBillingCycle": {
         "type": "string",

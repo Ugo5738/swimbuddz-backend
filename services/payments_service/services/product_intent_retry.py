@@ -70,7 +70,15 @@ async def resume_product_payment(db, payment, payload):
             "This payment is closed. Check Billing before starting another payment.",
         )
     checkout_url = (meta.get("paystack") or {}).get("authorization_url")
+    from services.payments_service.services.club_checkout_capacity import (
+        protect_club_checkout,
+    )
+
+    if payment.status != PaymentStatus.PAID and checkout_url:
+        await protect_club_checkout(db, payment)
+        meta = payment.payment_metadata or {}
     if payment.status == PaymentStatus.PENDING and payment.amount == 0:
+        await protect_club_checkout(db, payment)
         payment = await _mark_paid_and_apply(
             db=db,
             payment=payment,
@@ -88,20 +96,37 @@ async def resume_product_payment(db, payment, payload):
                 503,
                 "Online payment is temporarily unavailable; resume this checkout later",
             )
+        if not payment.payer_email:
+            raise HTTPException(400, "An email address is required for online payment")
+        await protect_club_checkout(db, payment)
         redirect = (
             f"/account/academy/enrollment-success?enrollment_id={meta['enrollment_id']}"
             if meta.get("enrollment_id")
             else None
         )
-        checkout_url, code = await _initialize_paystack(
-            payment, payment.payer_email, redirect
-        )
-        payment.provider, payment.provider_reference = "paystack", payment.reference
-        payment.payment_metadata = {
-            **meta,
-            "paystack": {"authorization_url": checkout_url, "access_code": code},
-        }
-        await db.commit()
+        from services.payments_service.models import PaymentPurpose
+
+        if payment.purpose == PaymentPurpose.SESSION_BOOKING:
+            from services.payments_service.services.booking_payment_attempts import (
+                initialize_booking_checkout,
+            )
+
+            checkout_url, code = await initialize_booking_checkout(
+                db, payment, payment.payer_email, redirect, _initialize_paystack
+            )
+        else:
+            checkout_url, code = await _initialize_paystack(
+                payment, payment.payer_email, redirect
+            )
+            await db.refresh(payment, with_for_update=True)
+        meta = payment.payment_metadata or {}
+        if checkout_url and payment.purpose != PaymentPurpose.SESSION_BOOKING:
+            payment.provider, payment.provider_reference = "paystack", payment.reference
+            payment.payment_metadata = {
+                **meta,
+                "paystack": {"authorization_url": checkout_url, "access_code": code},
+            }
+            await db.commit()
     if (
         payment.payment_method == "manual_transfer"
         and payment.status != PaymentStatus.PAID
@@ -110,6 +135,7 @@ async def resume_product_payment(db, payment, payload):
             transfer_checkout_url,
         )
 
+        await protect_club_checkout(db, payment)
         checkout_url = transfer_checkout_url(payment.reference)
     return PaymentIntentResponse(
         reference=payment.reference,

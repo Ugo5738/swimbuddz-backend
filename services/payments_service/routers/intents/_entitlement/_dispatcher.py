@@ -80,6 +80,25 @@ _PURPOSE_HANDLERS = {
 
 
 async def _apply_entitlement_with_tracking(payment: Payment) -> None:
+    from services.payments_service.services.booking_payment_attempts import (
+        guard_booking_fulfillment,
+    )
+
+    await guard_booking_fulfillment(payment)
+    if payment.entitlement_applied_at:
+        return
+    if (payment.payment_metadata or {}).get("booking_reconciliation") or (
+        payment.payment_metadata or {}
+    ).get("checkout_reconciliation"):
+        # Cash receipt remains auditable, but duplicate/superseded receipts
+        # never debit Bubbles or apply access through a worker/Admin replay.
+        _set_fulfillment_meta(
+            payment,
+            status="dead_letter",
+            next_retry_at=None,
+            last_error=payment.entitlement_error,
+        )
+        return
     now = utc_now()
     existing = _fulfillment_meta(payment)
     attempts = int(existing.get("attempts") or 0) + 1
@@ -190,9 +209,17 @@ async def _mark_paid_and_apply(
     paid_at: datetime | None,
     provider_payload: dict | None = None,
 ) -> Payment:
+    from services.payments_service.services.booking_payment_attempts import (
+        duplicate_paid_booking,
+    )
+
+    duplicate = await duplicate_paid_booking(db, payment)
     # Reload and lock the payment row to avoid double application (e.g., webhook + verify racing)
     result = await db.execute(
-        select(Payment).where(Payment.id == payment.id).with_for_update()
+        select(Payment)
+        .where(Payment.id == payment.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     payment = result.scalar_one()
 
@@ -219,6 +246,20 @@ async def _mark_paid_and_apply(
     payment.provider = provider
     payment.provider_reference = provider_reference
     payment.paid_at = paid_at or utc_now()
+    if duplicate is not None:
+        from services.payments_service.services.booking_payment_attempts import (
+            flag_duplicate_receipt,
+        )
+
+        flag_duplicate_receipt(payment, duplicate)
+    if (payment.payment_metadata or {}).get("checkout_closed_unpaid"):
+        payment.entitlement_error = "Payment received after documented provider closure; Admin reconciliation/refund required"
+        payment.payment_metadata = {
+            **payment.payment_metadata,
+            "checkout_reconciliation": {
+                "reason": "receipt_after_documented_provider_closure",
+            },
+        }
     if provider_payload:
         payment.payment_metadata = {
             **(payment.payment_metadata or {}),

@@ -64,7 +64,11 @@ async def assert_booking_capacity(
             )
         )
     ).scalar_one()
-    used = int(used) + int(guest_holds)
+    from services.sessions_service.services.club_holds import held_club_seats
+
+    used = (
+        int(used) + int(guest_holds) + await held_club_seats(db, session.id, member_id)
+    )
     if int(used) + new_party_size > session.capacity:
         raise HTTPException(
             status_code=409,
