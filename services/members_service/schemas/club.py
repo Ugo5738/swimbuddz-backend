@@ -92,8 +92,8 @@ class ClubPlanCreate(BaseModel):
     community_experience_fee_kobo: int = Field(default=0, ge=0)
     community_experience_default_selected: bool = False
     community_experience_offering_id: Optional[uuid.UUID] = None
-    sessions_included: int = Field(default=0, ge=0, le=52)
-    session_ids: list[uuid.UUID] = Field(default_factory=list, max_length=52)
+    sessions_included: int = Field(default=0, ge=0, le=260)
+    session_ids: list[uuid.UUID] = Field(default_factory=list, max_length=260)
     period_start: date
     period_end: date
     minimum_entry_sessions: int = Field(default=5, ge=1, le=52)
@@ -269,6 +269,7 @@ class ClubPaymentContext(BaseModel):
 
 
 class ActivateClubApplicationRequest(BaseModel):
+    require_session_holds: bool = False
     payment_reference: str = Field(..., min_length=1, max_length=128)
     starts_at: Optional[datetime] = None
     months: int = Field(default=3, ge=1, le=24)
@@ -280,6 +281,7 @@ class ActivateClubApplicationRequest(BaseModel):
 
 
 class ClubApplicationReservationRequest(BaseModel):
+    closure_evidence: str | None = Field(default=None, min_length=10, max_length=500)
     payment_reference: str = Field(..., min_length=1, max_length=128)
     community_experience_selected: bool = False
     community_experience_fee_kobo: int = Field(default=0, ge=0)
@@ -291,7 +293,8 @@ class ClubApplicationReservationRequest(BaseModel):
 class ClubApplicationReservationResponse(BaseModel):
     application_id: uuid.UUID
     payment_reference: str
-    status: Literal["active", "released", "consumed"]
+    status: Literal["active", "protected", "released", "consumed"]
+    session_holds: bool = False
     expires_at: datetime
     plan_version_ids: list[uuid.UUID] = Field(default_factory=list)
 

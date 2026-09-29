@@ -56,8 +56,19 @@ async def apply_club(payment: Payment) -> None:
             # generic paid-until window that can activate future quarters now.
             enrollment_resp = await client.post(
                 f"{settings.MEMBERS_SERVICE_URL}/clubs/internal/applications/{application_id}/activate",
+                # Activation now includes a bounded batch of prepaid bookings
+                # and attendance syncs, not just one enrollment insert.
+                timeout=120.0,
                 json={
                     "payment_reference": payment.reference,
+                    "require_session_holds": bool(
+                        (
+                            (payment.payment_metadata or {}).get(
+                                "club_capacity_reservation"
+                            )
+                            or {}
+                        ).get("session_holds")
+                    ),
                     "starts_at": (
                         payment.paid_at.isoformat() if payment.paid_at else None
                     ),

@@ -183,3 +183,38 @@ def test_internal_and_member_payments_keep_tuition_separate_from_membership():
         "academy": 5_000_000,
         "annual_swimbuddz_membership": 2_000_000,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "installments,expected", [(False, 10_000_000), (True, 5_000_000)]
+)
+async def test_full_payment_clears_remaining_schedule_and_preview_is_read_only(
+    monkeypatch, installments, expected
+):
+    enrollment = _enrollment_payload(
+        installments=[
+            {
+                "id": str(uuid4()),
+                "installment_number": n,
+                "status": "paid" if n == 1 else "pending",
+                "amount": 5_000_000,
+            }
+            for n in range(1, 4)
+        ]
+    )
+    client = _AsyncClientContext(_Response(enrollment))
+    monkeypatch.setattr(academy_pricing.httpx, "AsyncClient", lambda **_: client)
+    monkeypatch.setattr(
+        academy_pricing,
+        "get_member_by_auth_id",
+        AsyncMock(return_value={"id": enrollment["member_id"]}),
+    )
+    quote = await academy_pricing.academy_payment_context(
+        enrollment_id=uuid4(),
+        member_auth_id="member",
+        use_installments=installments,
+        preview_only=True,
+    )
+    assert quote["academy_amount_kobo"] == expected
+    assert client.get.call_args.args[0].endswith("/payment-preview")

@@ -6,9 +6,9 @@
   entitlement fulfillment for a PAID payment whose previous apply
   failed (used during incident response).
 * POST /payments/admin/bookings/{booking_id}/payment-link — generate
-  a Paystack checkout URL for an outstanding session-fee booking
+  an authenticated settlement URL for an outstanding session-fee booking
   (walk-in flow). Admin sends the URL to the member via WhatsApp /
-  email; payment goes through the same SESSION_BOOKING entitlement
+  email; the member chooses Bubbles, online or bank payment through the same SESSION_BOOKING entitlement
   flow as a member-initiated pay.
 * POST /payments/admin/bookings/{booking_id}/offline-payment — record a
   full session fee collected by bank transfer, cash, POS, or another
@@ -40,7 +40,6 @@ from services.payments_service.schemas import (
     PaymentResponse,
 )
 
-from ._paystack import _initialize_paystack, _paystack_enabled
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -101,16 +100,18 @@ async def replay_payment_entitlement(
 
 
 class AdminBookingPayLinkRequest(BaseModel):
-    """Optional overrides when generating an admin pay-link for a booking."""
+    """Legacy fields accepted while generating a settlement URL; no Payment is created."""
 
     amount_naira: Optional[float] = None  # Default = booking.fee / 100
-    note: Optional[str] = None  # Free-form admin note attached to the payment
+    note: Optional[str] = (
+        None  # Compatibility only; generating a URL records no payment
+    )
 
 
 class AdminBookingPayLinkResponse(BaseModel):
-    reference: str
+    reference: str | None = None
     authorization_url: str
-    payer_email: str
+    payer_email: str | None = None
     amount: float
     booking_id: str
     session_id: str
@@ -214,6 +215,20 @@ async def admin_record_booking_offline_payment(
 
     await lock_external_reference(db, payload.external_reference)
     await lock_external_reference(db, f"booking:{booking_id}")
+
+    from services.payments_service.services.booking_payment_attempts import (
+        booking_payments,
+        blocks_new_attempt,
+    )
+
+    attempts = await booking_payments(db, booking_id)
+    if any(
+        blocks_new_attempt(row) and row.status != PaymentStatus.PAID for row in attempts
+    ):
+        raise HTTPException(
+            409,
+            "An online or transfer payment is already open for this booking. Reconcile it before recording another receipt.",
+        )
 
     existing_paid = await _find_paid_booking_payment(db, booking_id)
     if existing_paid is not None:
@@ -338,26 +353,7 @@ async def admin_generate_booking_pay_link(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Generate a Paystack checkout link for an outstanding-fee booking.
-
-    Looks up the booking + member via the sessions/members services,
-    inserts a PENDING SESSION_BOOKING payment row tied to the booking,
-    initializes Paystack, and returns the authorization URL for the
-    admin to forward to the member (WhatsApp / email / SMS).
-
-    Validation:
-      - booking exists, status=confirmed, fee_amount_kobo > 0
-      - no existing PAID payment already references the booking_id
-
-    Once the member pays, the standard webhook flow flips the payment to
-    PAID and the session_booking entitlement handler backfills the
-    booking's payment_intent_id (already-confirmed case).
-    """
-    if not _paystack_enabled():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Paystack is not configured on this environment.",
-        )
+    """Return a member-authenticated settlement URL without creating a payment."""
 
     # 1. Fetch the booking via sessions-service internal endpoint.
     booking = await get_booking_by_id(str(booking_id), calling_service="payments")
@@ -387,16 +383,11 @@ async def admin_generate_booking_pay_link(
             detail="Booking is missing member identifiers — cannot generate link.",
         )
 
-    # 2. Resolve the member's email via members-service.
+    # Email is optional contact information, not a settlement-link prerequisite.
     member = await get_member_by_id(str(member_id), calling_service="payments")
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
     payer_email = member.get("email")
-    if not payer_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Member has no email on file — cannot initialize Paystack.",
-        )
 
     # 3. Block duplicate pay links if a PAID payment already exists for this
     # booking (would create double-charge risk if admin re-sends an old link
@@ -408,96 +399,18 @@ async def admin_generate_booking_pay_link(
             detail="This booking has already been paid in full.",
         )
 
-    # 4. Determine amount (default = booking fee, admin can override only
-    # downward — overriding higher would be a tip / penalty surcharge that
-    # should go through a dedicated endpoint).
+    if booking.get("payment_intent_id") or booking.get("wallet_transaction_id"):
+        raise HTTPException(409, "This booking has already been settled")
     fee_naira = fee_kobo / 100
-    if payload.amount_naira is not None:
-        if payload.amount_naira <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="amount_naira must be greater than zero",
-            )
-        if payload.amount_naira > fee_naira:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"amount_naira {payload.amount_naira} exceeds the booking's "
-                    f"outstanding fee {fee_naira}"
-                ),
-            )
-        amount = float(payload.amount_naira)
-    else:
-        amount = fee_naira
-
-    # 5. Create the PENDING payment row. Mirrors what intent_creation does
-    # for SESSION_BOOKING purpose, with member_auth_id from the booking
-    # (not from current_user — admin is acting on behalf of the member).
-    payment_metadata = {
-        "booking_id": str(booking_id),
-        "session_id": str(session_id) if session_id else None,
-        "admin_generated": True,
-        "admin_auth_id": current_user.user_id,
-    }
-    if payload.note:
-        payment_metadata["admin_note"] = payload.note
-
-    payment = Payment(
-        reference=Payment.generate_reference(),
-        member_auth_id=member_auth_id,
-        payer_email=payer_email,
-        purpose=PaymentPurpose.SESSION_BOOKING,
-        amount=amount,
-        currency="NGN",
-        status=PaymentStatus.PENDING,
-        payment_method="paystack",
-        session_booking_id=booking_id,
-        payment_metadata=payment_metadata,
-    )
-    db.add(payment)
-    await db.commit()
-    await db.refresh(payment)
-
-    # 6. Initialize the Paystack transaction & persist the URL on the row.
-    authorization_url, access_code = await _initialize_paystack(
-        payment, payer_email, redirect_path=None
-    )
-    if not authorization_url:
-        # Roll back the pending row — no point leaving a dead reference.
-        await db.delete(payment)
-        await db.commit()
+    if payload.amount_naira is not None and payload.amount_naira != fee_naira:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Paystack did not return a checkout URL.",
+            422,
+            "Settlement uses the recorded booking fee. Correct the booking before generating a link.",
         )
-
-    payment.provider = "paystack"
-    payment.provider_reference = payment.reference
-    payment.payment_metadata = {
-        **(payment.payment_metadata or {}),
-        "paystack": {
-            "authorization_url": authorization_url,
-            "access_code": access_code,
-        },
-    }
-    db.add(payment)
-    await db.commit()
-    await db.refresh(payment)
-
-    logger.info(
-        "Admin %s generated pay-link %s for booking %s (member %s, amount %s)",
-        current_user.user_id,
-        payment.reference,
-        booking_id,
-        member_id,
-        amount,
-    )
-
     return AdminBookingPayLinkResponse(
-        reference=payment.reference,
-        authorization_url=authorization_url,
+        authorization_url=f"{settings.FRONTEND_URL.rstrip('/')}/account/billing/sessions/{booking_id}",
         payer_email=payer_email,
-        amount=amount,
+        amount=fee_naira,
         booking_id=str(booking_id),
         session_id=str(session_id) if session_id else "",
     )

@@ -10,6 +10,10 @@ from services.sessions_service.services.template_context import (
     validate_template_context,
 )
 
+from services.sessions_service.schemas.template_admission import (
+    TemplateAdmissionSettings,
+)
+
 SessionTemplateFrequency = Literal["weekly", "monthly", "quarterly", "annual"]
 
 
@@ -23,6 +27,9 @@ class ClubTemplatePricing(BaseModel):
 
 
 class SessionTemplateBase(BaseModel):
+    admission_settings: TemplateAdmissionSettings = Field(
+        default_factory=TemplateAdmissionSettings
+    )
     cohort_id: Optional[uuid.UUID] = None
     cohort_fee_mode: Literal["included", "paid_extra"] = "included"
     club_id: Optional[uuid.UUID] = None
@@ -92,6 +99,7 @@ class SessionTemplateCreate(SessionTemplateBase):
 
 
 class SessionTemplateUpdate(BaseModel):
+    admission_settings: Optional[TemplateAdmissionSettings] = None
     cohort_id: Optional[uuid.UUID] = None
     cohort_fee_mode: Optional[Literal["included", "paid_extra"]] = None
     club_id: Optional[uuid.UUID] = None
@@ -155,6 +163,7 @@ class SessionTemplateResponse(SessionTemplateBase):
             )
         # ORM instance — convert fee kobo → naira
         data = {
+            "admission_settings": getattr(obj, "admission_settings", None) or {},
             "id": obj.id,
             "title": obj.title,
             "description": obj.description,

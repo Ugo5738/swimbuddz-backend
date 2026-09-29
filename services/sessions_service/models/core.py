@@ -407,6 +407,11 @@ class SessionTemplate(Base):
         index=True,
     )
 
+    # API-shaped operational defaults, validated by TemplateAdmissionSettings.
+    admission_settings: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+
     # Capacity & Fees
     # Academy owns cohorts; validate over HTTP, not a cross-service foreign key.
     # Legacy templates have no cohort until an Admin explicitly assigns one.

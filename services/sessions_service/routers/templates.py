@@ -30,6 +30,10 @@ from services.sessions_service.schemas.templates import (
     SessionTemplateResponse,
     SessionTemplateUpdate,
 )
+from services.sessions_service.services.template_operations import (
+    template_admission,
+    template_location,
+)
 from services.sessions_service.services.notifications import (
     trigger_session_published_notifications,
 )
@@ -136,6 +140,12 @@ async def update_template(
         )
 
     update_data = template_in.model_dump(exclude_unset=True)
+    if "admission_settings" in update_data:
+        if template_in.admission_settings is None:
+            raise HTTPException(422, "Admission settings cannot be null")
+        update_data["admission_settings"] = template_in.admission_settings.model_dump(
+            mode="json"
+        )
     effective_starts_on = update_data.get(
         "starts_on", getattr(template, "starts_on", datetime.now().date())
     )
@@ -456,18 +466,15 @@ async def generate_sessions(
         # New templates carry pool_id + location_name; legacy templates only
         # have the `location` enum string, which we fall back to via the
         # display-name map.
-        if template.pool_id:
-            session_location_name = template.location_name
-        else:
-            session_location_name = LOCATION_DISPLAY_NAMES.get(
-                template.location, template.location
-            )
+        location_defaults = await template_location(template)
+        session_location_name = location_defaults["location_name"]
         session = Session(
             title=template.title,
             description=template.description,
             status=SessionStatus.SCHEDULED,
             pool_id=template.pool_id,
-            location_name=session_location_name,
+            **location_defaults,
+            **template_admission(template, start_datetime),
             session_type=template.session_type,
             cohort_id=cohort_id,
             cohort_fee_mode=cohort_fee_mode,
@@ -576,3 +583,8 @@ async def generate_sessions(
         "volunteer_opportunities_created": volunteer_opportunities_created,
         "warnings": warnings,
     }
+
+
+from services.sessions_service.routers.template_sync import router as sync_router
+
+router.include_router(sync_router)

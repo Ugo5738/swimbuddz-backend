@@ -266,6 +266,7 @@ async def preview_additional_charges(
             enrollment_id=body.enrollment_id,
             member_auth_id=current_user.user_id,
             use_installments=body.use_installments,
+            preview_only=True,
             amount_override_kobo=body.amount_override_kobo,
         )
         subtotal_kobo = int(context["subtotal_kobo"])

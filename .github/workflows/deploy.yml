@@ -208,9 +208,10 @@ jobs:
           - context: .
             dockerfile: ./services/transport_service/Dockerfile
             image: swimbuddz-transport-service
-          - context: .
-            dockerfile: ./services/ai_service/Dockerfile
-            image: swimbuddz-ai-service
+          # Temporarily disabled — AI service does not need rebuilding on every deploy
+          # - context: .
+          #   dockerfile: ./services/ai_service/Dockerfile
+          #   image: swimbuddz-ai-service
           - context: .
             dockerfile: ./services/wallet_service/Dockerfile
             image: swimbuddz-wallet-service

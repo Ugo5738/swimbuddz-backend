@@ -5,6 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from libs.common.health import register_health_check
 from libs.common.middleware import add_observability_middleware
+from services.sessions_service.routers.member_booking_details import (
+    router as member_booking_details_router,
+)
+from services.sessions_service.routers.club_reservations import (
+    router as club_reservations_router,
+)
+from services.sessions_service.routers.club_holds import router as club_holds_router
 from services.sessions_service.routers.bookings import router as bookings_router
 from services.sessions_service.routers.bundles import router as bundles_router
 from services.sessions_service.routers.club_operations import (
@@ -63,6 +70,7 @@ def create_app() -> FastAPI:
     # Bookings (book / cancel / confirm / admin list) — register before
     # sessions_router for the same reason: /sessions/bookings/* and
     # /sessions/{id}/book would otherwise hit the {id} catch-all first.
+    app.include_router(member_booking_details_router)
     app.include_router(bookings_router)
     app.include_router(session_roster_router)
     app.include_router(guest_booking_admin_router)
@@ -72,6 +80,8 @@ def create_app() -> FastAPI:
 
     # Internal service-to-service endpoints (not exposed via gateway)
     app.include_router(club_schedule_router)
+    app.include_router(club_reservations_router)
+    app.include_router(club_holds_router)
     app.include_router(internal_router)
 
     return app

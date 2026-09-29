@@ -12,6 +12,7 @@ from services.store_service.models import (
     Product,
     ProductStatus,
     ProductVariant,
+    InventoryItem,
 )
 from services.store_service.routers._helpers import log_audit
 from services.store_service.schemas import (
@@ -26,6 +27,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 router = APIRouter()
+
+
+async def ensure_simple_product_variant(db: AsyncSession, product: Product) -> None:
+    """A product with no choices still needs a SKU for carts and inventory.
+
+    Never revive deliberately deactivated SKUs or invent size/color choices.
+    Call while holding the product lock (or before a new product commits).
+    """
+    if product.has_variants or any(
+        not key.startswith("_") and values
+        for key, values in (product.variant_options or {}).items()
+    ):
+        return
+    existing = await db.scalar(
+        select(ProductVariant.id)
+        .where(ProductVariant.product_id == product.id)
+        .limit(1)
+    )
+    if existing is not None:
+        return
+    variant = ProductVariant(
+        id=uuid.uuid5(product.id, "default-variant"),
+        product_id=product.id,
+        sku=f"SB-{product.id.hex.upper()}-DEF",
+        name="Default",
+        options={},
+        is_active=True,
+    )
+    db.add(variant)
+    await db.flush()
+    db.add(InventoryItem(variant_id=variant.id))
 
 
 @router.get("/products", response_model=ProductListResponse)
@@ -91,6 +123,8 @@ async def create_product(
 
     product = Product(**product_in.model_dump())
     db.add(product)
+    await db.flush()
+    await ensure_simple_product_variant(db, product)
     await db.commit()
 
     await log_audit(
@@ -152,7 +186,7 @@ async def update_product(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Update a product. Returns full nested detail."""
-    query = select(Product).where(Product.id == product_id)
+    query = select(Product).where(Product.id == product_id).with_for_update()
     result = await db.execute(query)
     product = result.scalar_one_or_none()
 
@@ -177,6 +211,8 @@ async def update_product(
 
     for field, value in update_data.items():
         setattr(product, field, value)
+
+    await ensure_simple_product_variant(db, product)
 
     # Log price change specifically
     if "base_price_ngn" in update_data:

@@ -473,7 +473,7 @@ class ClubEnrollmentReservation(Base):
             name="uq_club_enrollment_reservation_application_plan",
         ),
         CheckConstraint(
-            "status IN ('active', 'consumed', 'released')",
+            "status IN ('active', 'protected', 'consumed', 'released')",
             name="ck_club_enrollment_reservation_status",
         ),
         Index(

@@ -18,6 +18,10 @@ def request_fingerprint(payload):
         mode="json",
         exclude={"idempotency_key", "expected_total_kobo", "payment_metadata"},
     )
+    if getattr(payload.purpose, "value", payload.purpose) == "session_booking":
+        data["booking_id"] = str(
+            (payload.payment_metadata or {}).get("booking_id") or ""
+        )
     return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
 
@@ -53,8 +57,9 @@ async def resume_product_payment(db, payment, payload):
     )
 
     meta = payment.payment_metadata or {}
-    quote = meta["checkout_quote"]
-    verify_expected_total(quote, payload.expected_total_kobo)
+    quote = meta.get("checkout_quote")
+    if quote is not None:
+        verify_expected_total(quote, payload.expected_total_kobo)
     if payment.status not in {
         PaymentStatus.PENDING,
         PaymentStatus.PENDING_REVIEW,
@@ -65,7 +70,15 @@ async def resume_product_payment(db, payment, payload):
             "This payment is closed. Check Billing before starting another payment.",
         )
     checkout_url = (meta.get("paystack") or {}).get("authorization_url")
+    from services.payments_service.services.club_checkout_capacity import (
+        protect_club_checkout,
+    )
+
+    if payment.status != PaymentStatus.PAID and checkout_url:
+        await protect_club_checkout(db, payment)
+        meta = payment.payment_metadata or {}
     if payment.status == PaymentStatus.PENDING and payment.amount == 0:
+        await protect_club_checkout(db, payment)
         payment = await _mark_paid_and_apply(
             db=db,
             payment=payment,
@@ -83,20 +96,37 @@ async def resume_product_payment(db, payment, payload):
                 503,
                 "Online payment is temporarily unavailable; resume this checkout later",
             )
+        if not payment.payer_email:
+            raise HTTPException(400, "An email address is required for online payment")
+        await protect_club_checkout(db, payment)
         redirect = (
             f"/account/academy/enrollment-success?enrollment_id={meta['enrollment_id']}"
             if meta.get("enrollment_id")
             else None
         )
-        checkout_url, code = await _initialize_paystack(
-            payment, payment.payer_email, redirect
-        )
-        payment.provider, payment.provider_reference = "paystack", payment.reference
-        payment.payment_metadata = {
-            **meta,
-            "paystack": {"authorization_url": checkout_url, "access_code": code},
-        }
-        await db.commit()
+        from services.payments_service.models import PaymentPurpose
+
+        if payment.purpose == PaymentPurpose.SESSION_BOOKING:
+            from services.payments_service.services.booking_payment_attempts import (
+                initialize_booking_checkout,
+            )
+
+            checkout_url, code = await initialize_booking_checkout(
+                db, payment, payment.payer_email, redirect, _initialize_paystack
+            )
+        else:
+            checkout_url, code = await _initialize_paystack(
+                payment, payment.payer_email, redirect
+            )
+            await db.refresh(payment, with_for_update=True)
+        meta = payment.payment_metadata or {}
+        if checkout_url and payment.purpose != PaymentPurpose.SESSION_BOOKING:
+            payment.provider, payment.provider_reference = "paystack", payment.reference
+            payment.payment_metadata = {
+                **meta,
+                "paystack": {"authorization_url": checkout_url, "access_code": code},
+            }
+            await db.commit()
     if (
         payment.payment_method == "manual_transfer"
         and payment.status != PaymentStatus.PAID
@@ -105,6 +135,7 @@ async def resume_product_payment(db, payment, payload):
             transfer_checkout_url,
         )
 
+        await protect_club_checkout(db, payment)
         checkout_url = transfer_checkout_url(payment.reference)
     return PaymentIntentResponse(
         reference=payment.reference,
@@ -115,10 +146,12 @@ async def resume_product_payment(db, payment, payload):
         checkout_url=checkout_url if payment.status != PaymentStatus.PAID else None,
         created_at=payment.created_at,
         checkout_quote=quote,
-        original_amount=quote["subtotal_kobo"] / 100,
-        discount_code=quote["discount_code"],
-        discount_applied=quote["discount_kobo"] / 100,
-        additional_charges=quote["additional_charges"],
-        additional_charges_total=quote["additional_charges_total_kobo"] / 100,
+        original_amount=quote["subtotal_kobo"] / 100 if quote else None,
+        discount_code=quote["discount_code"] if quote else None,
+        discount_applied=quote["discount_kobo"] / 100 if quote else 0,
+        additional_charges=quote["additional_charges"] if quote else [],
+        additional_charges_total=quote["additional_charges_total_kobo"] / 100
+        if quote
+        else 0,
         entitlement_applied_at=payment.entitlement_applied_at,
     )

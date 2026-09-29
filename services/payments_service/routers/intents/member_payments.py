@@ -94,17 +94,13 @@ async def verify_my_paystack_payment(
     tx_status = str(data.get("status") or "").lower()
     if tx_status != "success":
         terminal_failure = tx_status in {"abandoned", "failed", "reversed"}
-        if terminal_failure and payment.status != PaymentStatus.PAID:
-            payment.status = PaymentStatus.FAILED
-            payment.provider = "paystack"
-            payment.provider_reference = reference
-            payment.payment_metadata = {
-                **(payment.payment_metadata or {}),
-                "provider_payload": {"verify": data},
-            }
-            db.add(payment)
-            await db.commit()
-            await db.refresh(payment)
+        from services.payments_service.services.provider_failure import (
+            record_provider_failure,
+        )
+
+        if terminal_failure and await record_provider_failure(
+            db, payment, {"verify": data}
+        ):
             await _release_bubbles_hold(payment)
             await _clear_pending_tier_payment_for_payment(payment)
 

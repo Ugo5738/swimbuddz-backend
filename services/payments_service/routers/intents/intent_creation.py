@@ -156,7 +156,7 @@ async def _reserve_club_application_capacity(
                     else {}
                 ),
             },
-            timeout=30,
+            timeout=120,
         )
     except httpx.HTTPError as exc:
         raise HTTPException(
@@ -732,9 +732,37 @@ async def create_payment_intent(
         # Commercial components, wallet capture markers and fulfillment state
         # belong to the server, never to an arbitrary public metadata object.
         payload = payload.model_copy(update={"payment_metadata": {}})
+    elif payload.purpose == PaymentPurpose.SESSION_BOOKING:
+        payload = payload.model_copy(
+            update={
+                "payment_metadata": {
+                    "booking_id": (payload.payment_metadata or {}).get("booking_id")
+                }
+            }
+        )
     payment_id = uuid.uuid4()
     payment_reference = Payment.generate_reference()
-    if payload.purpose in PRODUCT_PURPOSES and payload.idempotency_key:
+    session_booking_id: uuid.UUID | None = None
+    if payload.purpose == PaymentPurpose.SESSION_BOOKING:
+        from services.payments_service.services.booking_payment_attempts import (
+            existing_booking_attempt,
+            lock_booking_payment,
+        )
+
+        try:
+            session_booking_id = uuid.UUID(
+                str((payload.payment_metadata or {}).get("booking_id") or "")
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                400, "payment_metadata.booking_id must be a valid UUID"
+            ) from exc
+        await lock_booking_payment(db, session_booking_id)
+    previous = None
+    if (
+        payload.purpose in {*PRODUCT_PURPOSES, PaymentPurpose.SESSION_BOOKING}
+        and payload.idempotency_key
+    ):
         from services.payments_service.services.product_intent_retry import (
             find_product_retry,
             resume_product_payment,
@@ -743,9 +771,24 @@ async def create_payment_intent(
         payment_reference, previous = await find_product_retry(
             db, payload, current_user.user_id
         )
+        if previous and payload.purpose != PaymentPurpose.SESSION_BOOKING:
+            return await resume_product_payment(db, previous, payload)
+    if session_booking_id:
+        from services.payments_service.services.product_intent_retry import (
+            resume_product_payment,
+        )
+
+        existing = await existing_booking_attempt(
+            db, session_booking_id, current_user.user_id, payload, retry=previous
+        )
+        if existing:
+            if existing.status != PaymentStatus.PAID:
+                await _get_session_booking_quote(
+                    booking_id=session_booking_id, member_auth_id=current_user.user_id
+                )
+            return await resume_product_payment(db, existing, payload)
         if previous:
             return await resume_product_payment(db, previous, payload)
-    session_booking_id: uuid.UUID | None = None
     bundle_reservation_active = False
     club_reservation_active = False
 
@@ -1494,6 +1537,7 @@ async def create_payment_intent(
         payment_metadata = {
             **payment_metadata,
             "club_capacity_reservation": {
+                "session_holds": reservation.get("session_holds", False),
                 "expires_at": reservation.get("expires_at"),
                 "plan_version_ids": reservation.get("plan_version_ids") or [],
             },
@@ -1515,7 +1559,10 @@ async def create_payment_intent(
             bubbles_to_apply_val > 0 and amount <= 0 and original_amount > 0
         ),
     )
-    if checkout_quote is not None and payload.idempotency_key:
+    if (
+        payload.purpose in {*PRODUCT_PURPOSES, PaymentPurpose.SESSION_BOOKING}
+        and payload.idempotency_key
+    ):
         from services.payments_service.services.product_intent_retry import (
             request_fingerprint,
         )
@@ -1537,6 +1584,10 @@ async def create_payment_intent(
     await db.refresh(payment)
 
     checkout_url = None
+
+    from services.payments_service.services.club_checkout_capacity import (
+        protect_club_checkout,
+    )
 
     # Paystack (and most payment providers) cannot initialize a transaction for 0 NGN.
     # A full discount, full Bubbles settlement, or genuinely free server-priced
@@ -1570,6 +1621,7 @@ async def create_payment_intent(
             settlement_provider = "internal"
             settlement_reference = f"free:{payment.reference}"
         # Once settlement starts, entitlement retry owns the reservations.
+        await protect_club_checkout(db, payment)
         bundle_reservation_active = False
         club_reservation_active = False
         payment = await _mark_paid_and_apply(
@@ -1610,11 +1662,34 @@ async def create_payment_intent(
             redirect_path = f"/account/academy/enrollment-success?enrollment_id={payload.enrollment_id}"
 
         try:
-            authorization_url, access_code = await _initialize_paystack(
-                payment, current_user.email, redirect_path
-            )
+            await protect_club_checkout(db, payment)
+            # Persist uncertainty before contacting the provider. A timeout does
+            # not prove that a hosted checkout was never created.
+            if payment.purpose == PaymentPurpose.SESSION_BOOKING:
+                from services.payments_service.services.booking_payment_attempts import (
+                    initialize_booking_checkout,
+                )
+
+                authorization_url, access_code = await initialize_booking_checkout(
+                    db, payment, current_user.email, redirect_path, _initialize_paystack
+                )
+            else:
+                payment.payment_metadata = {
+                    **(payment.payment_metadata or {}),
+                    "provider_initialization_started_at": utc_now().isoformat(),
+                }
+                payment.provider, payment.provider_reference = (
+                    "paystack",
+                    payment.reference,
+                )
+                await db.commit()
+                authorization_url, access_code = await _initialize_paystack(
+                    payment, current_user.email, redirect_path
+                )
         except Exception:
-            if checkout_quote is not None and payload.idempotency_key:
+            if payload.purpose == PaymentPurpose.SESSION_BOOKING or (
+                payload.purpose in PRODUCT_PURPOSES and payload.idempotency_key
+            ):
                 # Provider may have accepted the request. Retain the reference,
                 # code use and hold; a retry resumes this exact frozen payment.
                 await _set_pending_tier_payment_for_payment(payment)
@@ -1630,19 +1705,27 @@ async def create_payment_intent(
             await release_active_bundle_reservation()
             await release_active_club_reservation()
             raise
-        checkout_url = authorization_url
-        payment.provider = "paystack"
-        payment.provider_reference = payment.reference
-        payment.payment_metadata = {
-            **(payment.payment_metadata or {}),
-            "paystack": {
-                "authorization_url": authorization_url,
-                "access_code": access_code,
-            },
-        }
-        db.add(payment)
-        await db.commit()
-        await db.refresh(payment)
+        # Booking initialization already persists under its commercial lock.
+        # For other products, preserve any callback/reconciliation metadata
+        # committed while the provider request was in flight.
+        if payment.purpose != PaymentPurpose.SESSION_BOOKING:
+            await db.refresh(payment, with_for_update=True)
+        checkout_url = (
+            authorization_url if payment.status == PaymentStatus.PENDING else None
+        )
+        if authorization_url and payment.purpose != PaymentPurpose.SESSION_BOOKING:
+            payment.provider = "paystack"
+            payment.provider_reference = payment.reference
+            payment.payment_metadata = {
+                **(payment.payment_metadata or {}),
+                "paystack": {
+                    "authorization_url": authorization_url,
+                    "access_code": access_code,
+                },
+            }
+            db.add(payment)
+            await db.commit()
+            await db.refresh(payment)
 
     if (
         payment.status == PaymentStatus.PENDING
@@ -1686,6 +1769,7 @@ async def create_payment_intent(
             transfer_checkout_url,
         )
 
+        await protect_club_checkout(db, payment)
         checkout_url = transfer_checkout_url(payment.reference)
 
     return PaymentIntentResponse(

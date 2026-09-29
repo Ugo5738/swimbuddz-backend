@@ -23,6 +23,9 @@ from services.sessions_service.models import (
     ClubScheduleOperation,
 )
 from services.sessions_service.schemas.templates import ClubTemplatePricing
+from services.sessions_service.services.template_operations import (
+    materialise_template_operations,
+)
 from services.sessions_service.services.club_generation import (
     club_session_from_template,
     club_instance_id,
@@ -48,6 +51,9 @@ def session_snapshot(session: Session) -> dict:
     return {
         "id": str(session.id),
         "title": session.title,
+        "template_id": str(session.template_id) if session.template_id else None,
+        "location_name": session.location_name,
+        "location_address": session.location_address,
         "pool_id": str(session.pool_id) if session.pool_id else None,
         "pod_id": str(session.pod_id) if session.pod_id else None,
         "club_id": str(session.club_id) if session.club_id else None,
@@ -102,6 +108,7 @@ class GenerateQuarter(BaseModel):
     club_id: uuid.UUID
     pool_id: uuid.UUID
     template_id: uuid.UUID | None = None
+    template_ids: list[uuid.UUID] = Field(default_factory=list, max_length=7)
     title: str = "Club practice"
     period_start: date
     period_end: date
@@ -114,6 +121,10 @@ class GenerateQuarter(BaseModel):
 
     @model_validator(mode="after")
     def valid_range(self):
+        if self.template_id and self.template_ids:
+            raise ValueError("Choose template_id or template_ids, not both")
+        if len(set(self.template_ids)) != len(self.template_ids):
+            raise ValueError("Template IDs must be unique")
         if not 0 <= (self.period_end - self.period_start).days <= 100:
             raise ValueError("Generate at most one quarter at a time")
         return self
@@ -123,64 +134,73 @@ class GenerateQuarter(BaseModel):
 async def generate_quarter(
     body: GenerateQuarter, db: AsyncSession = Depends(get_async_db)
 ):
-    template_id = body.template_id or uuid.uuid5(body.club_id, "primary-club-template")
-    # Serialize generation for this Club/template. Repeated requests return the
-    # same Sessions and never overwrite a published Session or its price.
-    await db.execute(select(func.pg_advisory_xact_lock(template_id.int % (2**63 - 1))))
-    template = await db.get(SessionTemplate, template_id)
-    if template is None:
-        if body.template_id or body.pricing_settings is None:
-            raise HTTPException(
-                422,
-                "Choose a Club template or supply expected attendance and margin for the first recommendation",
+    template_ids = body.template_ids or [
+        body.template_id or uuid.uuid5(body.club_id, "primary-club-template")
+    ]
+    ids, operational_rows = [], []
+    # Stable lock order also serializes overlapping multi-template requests.
+    for template_id in sorted(template_ids):
+        # Serialize generation for this Club/template. Repeated requests return the
+        # same Sessions and never overwrite a published Session or its price.
+        await db.execute(
+            select(func.pg_advisory_xact_lock(template_id.int % (2**63 - 1)))
+        )
+        template = await db.get(SessionTemplate, template_id)
+        if template is None:
+            if body.template_id or body.template_ids or body.pricing_settings is None:
+                raise HTTPException(
+                    422,
+                    "Choose a Club template or supply expected attendance and margin for the first recommendation",
+                )
+            template = SessionTemplate(
+                id=template_id,
+                title=body.title,
+                session_type=SessionType.CLUB,
+                club_id=body.club_id,
+                pool_id=body.pool_id,
+                club_access_mode="plan_included",
+                day_of_week=body.weekday,
+                start_time=body.starts_at_local,
+                duration_minutes=body.duration_minutes,
+                capacity=body.capacity,
+                pricing_settings=body.pricing_settings.model_dump(mode="json"),
+                auto_generate=False,
+                is_active=True,
             )
-        template = SessionTemplate(
-            id=template_id,
-            title=body.title,
-            session_type=SessionType.CLUB,
-            club_id=body.club_id,
-            pool_id=body.pool_id,
-            club_access_mode="plan_included",
-            day_of_week=body.weekday,
-            start_time=body.starts_at_local,
-            duration_minutes=body.duration_minutes,
-            capacity=body.capacity,
-            pricing_settings=body.pricing_settings.model_dump(mode="json"),
-            auto_generate=False,
-            is_active=True,
-        )
-        db.add(template)
-        await db.flush()
-    if (
-        not template.is_active
-        or template.session_type != SessionType.CLUB
-        or template.club_id != body.club_id
-        or template.pool_id != body.pool_id
-        or template.club_access_mode != "plan_included"
-        or template.pod_id is not None
-    ):
-        raise HTTPException(
-            422, "Choose this Club's active primary, home-pool inclusion template"
-        )
-    if body.pricing_settings:
-        template.pricing_settings = {
-            **template.pricing_settings,
-            **body.pricing_settings.model_dump(mode="json", exclude_unset=True),
-        }
-    ids = []
-    for day in recurrence_dates(
-        template, body.period_start, body.period_end, set(body.excluded_dates)
-    ):
-        starts = datetime.combine(
-            day, template.start_time, tzinfo=ZoneInfo(get_settings().TIMEZONE)
-        )
-        session_id = club_instance_id(template.id, starts, template.pod_id)
-        row = await db.get(Session, session_id)
-        if row is None:
-            row = await club_session_from_template(template, day)
-            db.add(row)
-        ids.append(row.id)
+            db.add(template)
+            await db.flush()
+        if (
+            not template.is_active
+            or template.session_type != SessionType.CLUB
+            or template.club_id != body.club_id
+            or template.pool_id != body.pool_id
+            or template.club_access_mode != "plan_included"
+            or template.pod_id is not None
+        ):
+            raise HTTPException(
+                422, "Choose this Club's active primary, home-pool inclusion template"
+            )
+        if body.pricing_settings:
+            template.pricing_settings = {
+                **template.pricing_settings,
+                **body.pricing_settings.model_dump(mode="json", exclude_unset=True),
+            }
+        for day in recurrence_dates(
+            template, body.period_start, body.period_end, set(body.excluded_dates)
+        ):
+            starts = datetime.combine(
+                day, template.start_time, tzinfo=ZoneInfo(get_settings().TIMEZONE)
+            )
+            session_id = club_instance_id(template.id, starts, template.pod_id)
+            row = await db.get(Session, session_id)
+            if row is None:
+                row = await club_session_from_template(template, day)
+                db.add(row)
+            ids.append(row.id)
+            operational_rows.append((template, row))
     await db.commit()
+    for template, row in operational_rows:
+        await materialise_template_operations(template, row)
     return await query_schedule(ScheduleQuery(session_ids=ids), db) if ids else []
 
 
@@ -339,7 +359,7 @@ class PublishSessionInput(BaseModel):
 
 class PublishSessions(BaseModel):
     club_id: uuid.UUID
-    sessions: list[PublishSessionInput] = Field(min_length=1, max_length=52)
+    sessions: list[PublishSessionInput] = Field(min_length=1, max_length=260)
 
 
 @router.post("/publish")

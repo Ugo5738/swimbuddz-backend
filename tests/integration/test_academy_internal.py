@@ -560,3 +560,65 @@ async def test_cohort_enrollment_counts_empty_cohort(academy_client, db_session)
         "dropped": 0,
         "graduated": 0,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_payment_previews_do_not_opt_in_or_create_installments(
+    academy_client, db_session
+):
+    from sqlalchemy import func, select
+    from services.academy_service.models import EnrollmentInstallment, PaymentStatus
+
+    member = MemberFactory.create()
+    program = ProgramFactory.create(duration_weeks=12)
+    db_session.add_all([member, program])
+    await db_session.flush()
+    cohort = CohortFactory.create(
+        program_id=program.id,
+        installment_plan_enabled=True,
+        installment_count=3,
+        installment_deposit_amount=5_000_000,
+    )
+    db_session.add(cohort)
+    await db_session.flush()
+    enrollment = EnrollmentFactory.create(
+        cohort_id=cohort.id,
+        member_id=member.id,
+        program_id=program.id,
+        payment_status=PaymentStatus.PENDING,
+        uses_installments=False,
+        price_snapshot_amount=15_000_000,
+    )
+    db_session.add(enrollment)
+    await db_session.commit()
+    path = f"/internal/academy/enrollments/{enrollment.id}/payment-preview"
+    # Either order must yield the same quotes without persisting the preference.
+    for mode in [True, False, True, False]:
+        response = await academy_client.get(
+            path, params={"use_installments": str(mode).lower()}
+        )
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["uses_installments"] is False
+        if mode:
+            assert len(data["installments"]) == 3
+            assert data["installments"][0]["amount"] == 5_000_000
+            assert sum(x["amount"] for x in data["installments"]) == 15_000_000
+        else:
+            assert data["installments"] == []
+    await db_session.refresh(enrollment)
+    assert enrollment.uses_installments is False
+    assert (
+        await db_session.scalar(
+            select(func.count(EnrollmentInstallment.id)).where(
+                EnrollmentInstallment.enrollment_id == enrollment.id
+            )
+        )
+        == 0
+    )
+    # Actual checkout opt-in persists exactly the previewed schedule.
+    actual = await academy_client.get(
+        path.removesuffix("/payment-preview"), params={"use_installments": "true"}
+    )
+    assert [x["amount"] for x in actual.json()["installments"]] == [5_000_000] * 3

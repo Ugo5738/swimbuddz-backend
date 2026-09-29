@@ -19,6 +19,7 @@ from services.academy_service.routers._shared import (
     HTTPException,
     List,
     _sync_installment_state_for_enrollment,
+    _preview_installment_schedule,
     get_async_db,
     get_logger,
     require_admin,
@@ -89,7 +90,7 @@ async def get_enrollment_internal(
             selectinload(Enrollment.progress_records),
         )
     )
-    result = await db.execute(query)
+    result = await db.execute(query.with_for_update())
     enrollment = result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
@@ -108,8 +109,57 @@ async def get_enrollment_internal(
     # above is stale at that point, so re-run the eager-load query to
     # serialize the fresh rows — otherwise payments_service sees an empty
     # installments list and falls back to the full cohort price.
-    refreshed = await db.execute(query)
+    refreshed = await db.execute(query.execution_options(populate_existing=True))
     return refreshed.scalar_one()
+
+
+@router.get("/enrollments/{enrollment_id}/payment-preview")
+async def preview_enrollment_payment(
+    enrollment_id: uuid.UUID,
+    use_installments: bool = False,
+    _: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Read-only payment context: viewing a quote never opts a learner in."""
+    enrollment = (
+        await db.execute(
+            select(Enrollment)
+            .where(Enrollment.id == enrollment_id)
+            .options(
+                selectinload(Enrollment.cohort).selectinload(Cohort.program),
+                selectinload(Enrollment.program),
+                selectinload(Enrollment.installments),
+                selectinload(Enrollment.progress_records),
+            )
+        )
+    ).scalar_one_or_none()
+    if enrollment is None:
+        raise HTTPException(404, "Enrollment not found")
+    payload = EnrollmentResponse.model_validate(enrollment).model_dump(mode="json")
+    if (
+        use_installments
+        and not enrollment.installments
+        and enrollment.status
+        in {EnrollmentStatus.PENDING_APPROVAL, EnrollmentStatus.ENROLLED}
+        and str(enrollment.payment_status.value) != "paid"
+    ):
+        cohort = enrollment.cohort
+        program = enrollment.program or (cohort.program if cohort else None)
+        if not cohort or not program or not cohort.installment_plan_enabled:
+            raise HTTPException(
+                400, "Installments are not available for this enrollment"
+            )
+        payload["installments"] = [
+            {
+                **item,
+                "id": None,
+                "status": "pending",
+                "due_at": item["due_at"].isoformat(),
+            }
+            for item in _preview_installment_schedule(enrollment, program, cohort)
+        ]
+        payload["total_installments"] = len(payload["installments"])
+    return payload
 
 
 @router.get("/cohorts")

@@ -6,6 +6,7 @@ when needed. See docs/club/POD_OPERATIONS.md.
 """
 
 from services.sessions_service.models.booking import SessionBooking
+from services.sessions_service.models.club_hold import ClubSessionHold
 from services.sessions_service.models.booking_guest import BookingGuest
 from services.sessions_service.models.core import (
     Session,
@@ -29,6 +30,7 @@ from services.sessions_service.models.makeup import MakeupBooking
 from services.sessions_service.models.schedule_operation import ClubScheduleOperation
 
 __all__ = [
+    "ClubSessionHold",
     "BookingEmailDelivery",
     "GuestBookingGrant",
     "GuestLinkEvent",

@@ -127,7 +127,10 @@ async def _spaces_remaining(
         ).scalar_one()
         or 0
     )
-    return max(0, session.capacity - booked - guest_count)
+    from services.sessions_service.services.club_holds import held_club_seats
+
+    club_holds = await held_club_seats(db, session.id)
+    return max(0, session.capacity - booked - guest_count - club_holds)
 
 
 @router.get("/sessions/{session_id}/guest-pass", response_model=GuestPassOffer)

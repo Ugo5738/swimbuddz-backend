@@ -233,12 +233,6 @@ async def internal_initialize_payment(
             422,
             "Discounts and Bubbles require member product checkout or a named Experience order",
         )
-    if req.payment_method == "paystack" and not _paystack_enabled():
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Paystack is not configured.",
-        )
-
     payer_email = None
     if isinstance(req.metadata, dict):
         candidate = req.metadata.get("payer_email")
@@ -252,6 +246,46 @@ async def internal_initialize_payment(
         purpose_enum = PaymentPurpose(str(req.purpose).lower())
     except ValueError:
         purpose_enum = None
+
+    if purpose_enum == PaymentPurpose.SESSION_BOOKING:
+        # Every writer must use the same booking-level lock and retry rules.
+        # The returned reference is authoritative, including a resumed legacy
+        # checkout whose reference differs from this caller's proposed key.
+        from libs.auth.models import AuthUser
+        from services.payments_service.routers.intents.intent_creation import (
+            create_payment_intent,
+        )
+        from services.payments_service.schemas import CreatePaymentIntentRequest
+
+        result = await create_payment_intent(
+            CreatePaymentIntentRequest(
+                purpose=PaymentPurpose.SESSION_BOOKING,
+                currency=req.currency,
+                payment_method=req.payment_method,
+                direct_amount=req.amount,
+                session_id=(req.metadata or {}).get("session_id"),
+                payment_metadata={"booking_id": (req.metadata or {}).get("booking_id")},
+                idempotency_key=str(
+                    uuid.uuid5(uuid.NAMESPACE_URL, f"internal-booking:{req.reference}")
+                ),
+            ),
+            AuthUser(user_id=req.member_auth_id, email=payer_email),
+            db,
+        )
+        return InternalInitializeResponse(
+            reference=result.reference,
+            authorization_url=result.checkout_url,
+            amount_kobo=_to_kobo(result.amount),
+            additional_charges=result.additional_charges or [],
+            confirmed=result.status == PaymentStatus.PAID
+            and result.entitlement_applied_at is not None,
+        )
+
+    if req.payment_method == "paystack" and not _paystack_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Paystack is not configured.",
+        )
 
     if purpose_enum == PaymentPurpose.ACADEMY_COHORT:
         try:

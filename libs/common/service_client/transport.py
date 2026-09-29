@@ -14,12 +14,14 @@ async def attach_session_ride_configs(
     session_id: str,
     configs: list[dict[str, Any]],
     calling_service: str,
+    preserve_existing: bool = False,
 ) -> dict[str, Any]:
     """Attach/replace ride-share configs for a session via service-role auth."""
     settings = get_settings()
     resp = await internal_post(
         service_url=settings.TRANSPORT_SERVICE_URL,
-        path=f"/internal/transport/sessions/{session_id}/ride-configs",
+        path=f"/internal/transport/sessions/{session_id}/ride-configs"
+        + ("?preserve_existing=true" if preserve_existing else ""),
         calling_service=calling_service,
         json=configs,
     )

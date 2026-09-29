@@ -13,6 +13,10 @@ from libs.common.service_client import internal_post
 from services.sessions_service.models import Session, SessionStatus
 from services.sessions_service.schemas.templates import ClubTemplatePricing
 from services.sessions_service.services.pricing import normalize_pricing_payload
+from services.sessions_service.services.template_operations import (
+    template_admission,
+    template_location,
+)
 
 
 def _month_index(value: date) -> int:
@@ -168,7 +172,8 @@ async def club_session_from_template(
         club_access_mode=mode or template.club_access_mode,
         pool_id=template.pool_id,
         pod_id=pod_id or template.pod_id,
-        location_name=template.location_name,
+        **await template_location(template),
+        **template_admission(template, starts),
         capacity=capacity or template.capacity,
         ride_share_fee=getattr(template, "ride_share_fee", 0),
         starts_at=starts,

@@ -339,3 +339,15 @@ async def test_failed_generation_does_not_partially_populate_empty_draft(
     assert existing.capacity == 8 and existing.published_at is None
     db.add.assert_not_called()
     db.commit.assert_not_awaited()
+
+
+@pytest.fixture(autouse=True)
+def operational_pool_registry(monkeypatch):
+    monkeypatch.setattr(
+        "services.sessions_service.services.template_operations.get_partner_pool",
+        AsyncMock(return_value={"name": "Pool", "address": "Verified venue address"}),
+    )
+    monkeypatch.setattr(
+        "services.sessions_service.routers.club_schedule.materialise_template_operations",
+        AsyncMock(),
+    )

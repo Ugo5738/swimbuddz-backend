@@ -120,15 +120,16 @@ class _RecordingDb:
 
 @pytest.mark.asyncio
 async def test_guest_capacity_ignores_expired_pending_holds_in_query():
-    db = _RecordingDb([2, 1])
+    db = _RecordingDb([2, 1, 1])
     session = SimpleNamespace(id=uuid.uuid4(), capacity=5)
 
     remaining = await guest_passes._spaces_remaining(session, db)
 
-    assert remaining == 2
+    assert remaining == 1
     sql = " ".join(str(statement) for statement in db.statements)
     assert "session_bookings.expires_at" in sql
     assert "guest_passes.reservation_expires_at" in sql
+    assert "club_session_holds.expires_at" in sql
     assert guest_passes.GUEST_PASS_RESERVATION_MINUTES == 30
 
 

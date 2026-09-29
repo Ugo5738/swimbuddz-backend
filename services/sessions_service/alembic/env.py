@@ -19,6 +19,7 @@ from libs.db.base import Base
 from services.sessions_service.models import (  # noqa: F401
     BookingEmailDelivery,
     BookingGuest,
+    ClubSessionHold,
     GuestBookingGrant,
     GuestLinkEvent,
     GuestPass,
