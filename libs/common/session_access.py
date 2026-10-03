@@ -379,15 +379,12 @@ def evaluate_session_access(
             guest_fee = _value(session, "guest_fee_kobo")
 
             if CLUB in event_paid_tiers or ACADEMY in event_paid_tiers:
-                access_source = "programme_member"
                 fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
                 price_label = "Club / Academy rate"
             elif COMMUNITY in event_paid_tiers and community_fee is not None:
-                access_source = "community_membership"
                 fee_amount_kobo = int(community_fee)
                 price_label = "Community member rate"
             elif not event_paid_tiers and guest_fee is not None:
-                access_source = "guest_rate"
                 fee_amount_kobo = int(guest_fee)
                 price_label = "Guest / non-member rate"
         else:
