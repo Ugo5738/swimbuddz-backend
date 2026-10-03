@@ -107,6 +107,64 @@ def test_event_session_uses_event_policy_instead_of_community_membership():
     assert public_event.fee_amount_kobo == 520_000
 
 
+@pytest.mark.parametrize(
+    "membership,rate,expected",
+    [
+        ({"community_paid_until": FUTURE}, 1_250_000, 1_250_000),
+        ({"community_paid_until": FUTURE}, 0, 0),
+        ({"community_paid_until": FUTURE}, None, 1_000_000),
+        (
+            {"community_paid_until": FUTURE, "club_paid_until": FUTURE},
+            1_250_000,
+            1_000_000,
+        ),
+        (
+            {"community_paid_until": FUTURE, "post_academy_club_until": FUTURE},
+            1_250_000,
+            1_000_000,
+        ),
+        (
+            {
+                "community_paid_until": FUTURE,
+                "effective_paid_tiers": ["club", "community"],
+            },
+            1_250_000,
+            1_000_000,
+        ),
+        (
+            {"community_paid_until": FUTURE, "club_paid_until": PAST},
+            1_250_000,
+            1_250_000,
+        ),
+        ({"community_paid_until": PAST}, 1_250_000, 1_000_000),
+    ],
+)
+def test_event_prices_community_separately_without_overriding_club(
+    membership, rate, expected
+):
+    decision = evaluate_session_access(
+        _member(**membership),
+        _session(
+            session_type="event", pool_fee=1_000_000, community_dropin_fee_kobo=rate
+        ),
+        now=NOW,
+        event_access_result={"allowed": True, "source": "event_public"},
+    )
+    assert decision.bookable
+    assert decision.fee_amount_kobo == expected
+
+
+def test_event_community_price_does_not_override_event_access_restrictions():
+    decision = evaluate_session_access(
+        _member(community_paid_until=FUTURE),
+        _session(session_type="event", community_dropin_fee_kobo=1_250_000),
+        now=NOW,
+        event_access_result={"allowed": False, "reason": "event_access_required"},
+    )
+    assert not decision.bookable
+    assert decision.fee_amount_kobo is None
+
+
 @pytest.mark.parametrize("tier", ["community", "club", "academy", "invite_only"])
 def test_event_session_accepts_authoritative_event_eligibility(tier):
     decision = evaluate_session_access(

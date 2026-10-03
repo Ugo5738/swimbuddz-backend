@@ -121,6 +121,8 @@ async def test_community_swim_can_create_only_one_active_session_from_event_cont
         "ends_at": (starts_at + timedelta(days=1, hours=1)).isoformat(),
         "capacity": 5,
         "pool_fee": 5200,
+        "community_dropin_fee": 12500,
+        "guest_fee": 15000,
         "allows_guests": True,
     }
 
@@ -140,6 +142,17 @@ async def test_community_swim_can_create_only_one_active_session_from_event_cont
     assert created.json()["capacity"] == 30
     assert created.json()["allows_guests"] is True
     assert duplicate.status_code == 409
+    assert created.json()["community_dropin_fee"] == 12500
+    session_id = created.json()["id"]
+    updated = await sessions_client.patch(
+        f"/sessions/{session_id}", json={"community_dropin_fee": 12750.50}
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["community_dropin_fee"] == 12750.50
+    assert updated.json()["pool_fee"] == 5200
+    assert updated.json()["guest_fee"] == 15000
+    persisted = await db_session.get(Session, uuid.UUID(session_id))
+    assert persisted.community_dropin_fee_kobo == 1_275_050
 
 
 @pytest.mark.asyncio

@@ -100,6 +100,66 @@ async def _legacy_club_access_mock(checks, **kwargs):
     }
 
 
+@pytest.mark.integration
+@pytest.mark.parametrize("club,expected", [(False, 1_250_000), (True, 1_000_000)])
+async def test_event_rebooking_uses_current_member_rate_and_independent_guest_rate(
+    sessions_client, db_session, club, expected
+):
+    member_id = uuid.uuid4()
+    session = await _session(
+        db_session,
+        event_id=uuid.uuid4(),
+        pool_fee=1_000_000,
+        community_dropin_fee_kobo=1_250_000,
+        guest_fee_kobo=1_500_000,
+        allows_guests=True,
+        max_guests_per_booking=2,
+    )
+    expired = await _booking(
+        db_session,
+        session_id=session.id,
+        member_id=member_id,
+        status=SessionBookingStatus.EXPIRED,
+        member_fee_amount_kobo=1_000_000,
+    )
+    with (
+        patch(_RESOLVE_MEMBER, _member_mock(member_id)),
+        patch(
+            _MEMBERSHIP,
+            AsyncMock(
+                return_value={
+                    "community_paid_until": "2035-01-01T00:00:00+00:00",
+                    "club_paid_until": "2035-01-01T00:00:00+00:00" if club else None,
+                }
+            ),
+        ),
+        patch(
+            f"{_SESSION_ACCESS}.check_event_attendance_batch",
+            AsyncMock(
+                return_value={
+                    str(session.id): {"allowed": True, "source": "event_public"},
+                }
+            ),
+        ),
+    ):
+        response = await sessions_client.post(
+            f"/sessions/{session.id}/book",
+            json={
+                "session_id": str(session.id),
+                "fee_amount_kobo": 1,
+                "pay_with_bubbles": False,
+                "block_guests": 1,
+            },
+        )
+    assert response.status_code == 201, response.text
+    assert response.json()["id"] == str(expired.id)
+    assert response.json()["member_fee_amount_kobo"] == expected
+    assert response.json()["fee_amount_kobo"] == expected + 1_500_000
+    await db_session.refresh(expired)
+    assert expired.member_fee_amount_kobo == expected
+    assert expired.status == SessionBookingStatus.PENDING
+
+
 @pytest.fixture(autouse=True)
 def _stub_session_dependencies():
     with (
