@@ -359,22 +359,37 @@ def evaluate_session_access(
             access_source = str(event_access_result.get("source") or "event_policy")
             fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
             price_label = "Event session rate"
-            # Event eligibility still belongs to Events. Once admitted, paid
-            # Community members can have a separate rate from Club members.
-            # The normalized product summary also covers ClubEnrollment rows,
-            # which do not populate the legacy club_paid_until field.
-            event_club_access = CLUB in paid_tiers or CLUB in (
-                _value(member, "effective_paid_tiers") or []
-            )
+
+            # Event admission and Event pricing are separate concerns. Once an
+            # attendee is admitted by Events, resolve the commercial rate from
+            # their active products:
+            #   Club / Academy -> programme-member rate (pool_fee)
+            #   Community      -> Community member rate
+            #   no paid tier   -> guest / non-member rate
+            #
+            # effective_paid_tiers covers product records such as
+            # ClubEnrollment that may not populate legacy *_paid_until fields.
+            effective_paid_tiers = {
+                _normalized(t)
+                for t in (_value(member, "effective_paid_tiers") or [])
+                if _normalized(t)
+            }
+            event_paid_tiers = paid_tiers | effective_paid_tiers
             community_fee = _value(session, "community_dropin_fee_kobo")
-            if (
-                COMMUNITY in paid_tiers
-                and not event_club_access
-                and community_fee is not None
-            ):
-                access_source = "community_dropin"
+            guest_fee = _value(session, "guest_fee_kobo")
+
+            if CLUB in event_paid_tiers or ACADEMY in event_paid_tiers:
+                access_source = "programme_member"
+                fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
+                price_label = "Club / Academy rate"
+            elif COMMUNITY in event_paid_tiers and community_fee is not None:
+                access_source = "community_membership"
                 fee_amount_kobo = int(community_fee)
-                price_label = "Community drop-in rate"
+                price_label = "Community member rate"
+            elif not event_paid_tiers and guest_fee is not None:
+                access_source = "guest_rate"
+                fee_amount_kobo = int(guest_fee)
+                price_label = "Guest / non-member rate"
         else:
             reason = str(event_access_result.get("reason") or "event_access_required")
     elif session_type == COMMUNITY:

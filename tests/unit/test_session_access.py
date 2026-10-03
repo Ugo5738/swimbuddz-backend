@@ -154,6 +154,36 @@ def test_event_prices_community_separately_without_overriding_club(
     assert decision.fee_amount_kobo == expected
 
 
+def test_event_uses_programme_rate_for_academy_and_guest_rate_without_paid_products():
+    academy = evaluate_session_access(
+        _member(academy_paid_until=FUTURE),
+        _session(
+            session_type="event",
+            pool_fee=1_000_000,
+            community_dropin_fee_kobo=1_250_000,
+            guest_fee_kobo=1_500_000,
+        ),
+        now=NOW,
+        event_access_result={"allowed": True, "source": "event_public"},
+    )
+    guest = evaluate_session_access(
+        _member(),
+        _session(
+            session_type="event",
+            pool_fee=1_000_000,
+            community_dropin_fee_kobo=1_250_000,
+            guest_fee_kobo=1_500_000,
+        ),
+        now=NOW,
+        event_access_result={"allowed": True, "source": "event_public"},
+    )
+
+    assert academy.fee_amount_kobo == 1_000_000
+    assert academy.price_label == "Club / Academy rate"
+    assert guest.fee_amount_kobo == 1_500_000
+    assert guest.price_label == "Guest / non-member rate"
+
+
 def test_event_community_price_does_not_override_event_access_restrictions():
     decision = evaluate_session_access(
         _member(community_paid_until=FUTURE),
