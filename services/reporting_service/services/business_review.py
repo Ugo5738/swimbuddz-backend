@@ -158,8 +158,10 @@ async def build_business_review(
         gross_margin_ngn=_naira((margin or {}).get("total_margin_minor")),
         gross_margin_pct=(
             round(
-                ((margin or {}).get("total_margin_minor", 0)
-                / (margin or {}).get("total_revenue_minor", 1))
+                (
+                    (margin or {}).get("total_margin_minor", 0)
+                    / (margin or {}).get("total_revenue_minor", 1)
+                )
                 * 100,
                 1,
             )
@@ -206,7 +208,9 @@ async def build_business_review(
         )
         row["session_capacity"] += int(detail.get("capacity") or 0)
         session_type = detail.get("type") or "unknown"
-        row["session_types"][session_type] = row["session_types"].get(session_type, 0) + 1
+        row["session_types"][session_type] = (
+            row["session_types"].get(session_type, 0) + 1
+        )
 
     for name, a in (academy.get("by_location") or {}).items():
         row = location_map[name]
@@ -303,7 +307,9 @@ async def build_business_review(
         snapshot_status=(
             snapshot.status.value
             if snapshot and hasattr(snapshot.status, "value")
-            else str(snapshot.status) if snapshot else None
+            else str(snapshot.status)
+            if snapshot
+            else None
         ),
         snapshot_generated_at=snapshot.completed_at if snapshot else None,
         executive_scorecard=scorecard,

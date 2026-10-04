@@ -70,7 +70,9 @@ async def get_club_quarter_summary(
                     ClubEnrollment.status == "active",
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     current_member_ids = {row[0].member_id for row in current_rows}
     retained = current_member_ids & prior_member_ids

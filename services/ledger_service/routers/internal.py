@@ -165,9 +165,7 @@ async def internal_margin(
     _user: AuthUser = Depends(require_service_role),
     session: AsyncSession = Depends(get_ledger_db),
 ) -> MarginReport:
-    return await margin_by_domain(
-        session, request.state.org_id, from_date, to_date
-    )
+    return await margin_by_domain(session, request.state.org_id, from_date, to_date)
 
 
 @router.get("/reports/deferred-revenue", response_model=DeferredRevenueReport)

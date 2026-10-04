@@ -40,8 +40,6 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/admin/reports", tags=["admin-reports"])
 
 
-
-
 @router.get("/quarterly/available", response_model=list[QuarterlyReportSummary])
 async def admin_available_quarters(
     admin: AuthUser = Depends(require_admin),
@@ -65,7 +63,9 @@ async def admin_available_quarters(
             year=row.year,
             quarter=row.quarter,
             label=f"Q{row.quarter} {row.year}",
-            status=row.status.value if hasattr(row.status, "value") else str(row.status),
+            status=row.status.value
+            if hasattr(row.status, "value")
+            else str(row.status),
             computed_at=row.completed_at,
         )
         for row in rows

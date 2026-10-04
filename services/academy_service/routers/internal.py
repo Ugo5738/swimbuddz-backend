@@ -696,9 +696,7 @@ async def get_academy_quarter_summary_internal(
     )
 
     filled = (
-        status_counts["active"]
-        + status_counts["graduated"]
-        + status_counts["dropped"]
+        status_counts["active"] + status_counts["graduated"] + status_counts["dropped"]
     )
     completion_denominator = certificates_issued + dropouts_in_period
 
