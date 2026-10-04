@@ -90,7 +90,10 @@ async def get_session_attendee_member_ids(
     who should receive session-related notifications."""
     query = (
         select(AttendanceRecord.member_id)
-        .where(AttendanceRecord.session_id == session_id)
+        .where(
+            AttendanceRecord.session_id == session_id,
+            AttendanceRecord.member_id.is_not(None),
+        )
         .distinct()
     )
     result = await db.execute(query)
