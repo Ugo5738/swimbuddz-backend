@@ -23,6 +23,7 @@ from services.sessions_service.schemas.guest_pass import (
     SessionRosterEntry,
     SessionRosterResponse,
 )
+from services.sessions_service.services.participants import ensure_session_participants
 
 router = APIRouter(tags=["session-roster"])
 
