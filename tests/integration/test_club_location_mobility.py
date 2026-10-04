@@ -12,6 +12,7 @@ from services.members_service.models import (
     ClubApplication,
     ClubEnrollment,
     ClubEnrollmentTransfer,
+    MemberMembership,
     ClubPlanVersion,
     ClubReadinessAssessment,
 )
@@ -114,6 +115,47 @@ async def test_cross_location_visit_requires_explicit_host_opt_in(
     assert open_visit[0]["payment_mode"] == "transition_per_session"
 
 
+@pytest.mark.asyncio
+async def test_generic_or_post_academy_club_access_does_not_become_a_cross_location_visit(
+    db_session, seed_member_row
+):
+    member = await seed_member_row(auth_id=f"legacy-visitor-{uuid.uuid4()}")
+    db_session.add(
+        MemberMembership(
+            member_id=member.id,
+            primary_tier="club",
+            active_tiers=["community", "club"],
+            declared_tiers=["community", "club"],
+            club_paid_until=utc_now() + timedelta(days=30),
+            post_academy_club_until=utc_now() + timedelta(days=30),
+        )
+    )
+    host = Club(name="Host Club", slug=f"host-{uuid.uuid4().hex[:8]}")
+    db_session.add(host)
+    await db_session.commit()
+
+    result = await resolve_club_access_checks(
+        db_session,
+        [
+            ClubAccessCheck(
+                context_key="host",
+                session_id=uuid.uuid4(),
+                member_id=member.id,
+                club_id=host.id,
+                club_access_mode="plan_included",
+                at=utc_now() + timedelta(days=2),
+                allows_visiting_club_members=True,
+            )
+        ],
+    )
+
+    # Visiting is reserved for a real location-specific ClubEnrollment. The
+    # compatibility tier and post-Academy bridge stay non-global.
+    assert result[0]["allowed"] is True
+    assert result[0]["source"] == "post_academy_bridge"
+    assert result[0]["source"] != "club_visit"
+
+
 @pytest.mark.parametrize(
     "access_mode,visitor_fee,expected_fee,expected_code",
     [
@@ -142,7 +184,6 @@ def test_cross_location_visit_uses_host_pricing(
         now=now,
         club_access_result={"allowed": True, "source": "club_visit"},
     )
-    assert decision.allowed if hasattr(decision, "allowed") else decision.bookable
     assert decision.bookable is True
     assert decision.access_source == "club_visit"
     assert decision.fee_amount_kobo == expected_fee
