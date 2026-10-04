@@ -72,8 +72,6 @@ async def test_emit_dead_letters_on_ledger_failure(db_session, monkeypatch):
     assert "ledger down" in (row.last_error or "")
     assert row.payload["source_id"] == payment.reference
 
-
-
 def test_guest_session_ledger_domain_follows_session_type_snapshot():
     payment = _payment(PaymentPurpose.GUEST_PASS, amount=15000.0)
     payment.payment_metadata = {
@@ -86,7 +84,6 @@ def test_guest_session_ledger_domain_follows_session_type_snapshot():
 
     assert credit_line["account_ref"] == "revenue_community"
     assert credit_line["dimension_1"] == "community"
-
 
 def test_guest_session_ledger_keeps_legacy_club_fallback_without_snapshot():
     payment = _payment(PaymentPurpose.GUEST_PASS, amount=15000.0)
