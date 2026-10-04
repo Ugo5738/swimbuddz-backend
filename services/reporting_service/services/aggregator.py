@@ -826,7 +826,7 @@ async def compute_community_stats(
         # the newer service contract is unavailable.
         total_attendance_records=int(
             detailed_stats.get("total_attendance_records")
-            if detailed_stats.get("total_attendance_records") is not None
+            if detailed_stats.get("attendance_available")
             else (row.total_attendance or 0)
         ),
         # This remains a member attendance-rate KPI, not "all visitors /
