@@ -690,7 +690,7 @@ async def test_admin_transfer_rejects_invalid_target_pod(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_admin_transfer_can_move_member_to_another_club(
+async def test_admin_pod_transfer_rejects_cross_club_move(
     members_client,
     db_session,
 ):
@@ -718,7 +718,18 @@ async def test_admin_transfer_can_move_member_to_another_club(
             json={"target_pod_id": str(pod_tgt.id)},
         )
 
-    assert response.status_code == 204, response.text
+    assert response.status_code == 409, response.text
+    assert "change the member's club location" in response.json()["detail"].lower()
+
+    active_assignment = (
+        await db_session.execute(
+            select(PodAssignment).where(
+                PodAssignment.member_id == member.id,
+                PodAssignment.left_at.is_(None),
+            )
+        )
+    ).scalar_one()
+    assert active_assignment.pod_id == pod_src.id
 
 
 # ---------------------------------------------------------------------------
