@@ -12,6 +12,7 @@ class AdminGuestWalkInCreate(BaseModel):
     email: Optional[str] = Field(default=None, max_length=320)
     phone: Optional[str] = Field(default=None, max_length=32)
     fee_amount_kobo: Optional[int] = Field(default=None, ge=0)
+    fee_override_reason: Optional[str] = Field(default=None, max_length=500)
     payment_status: Optional[
         Literal["included", "unpaid", "paid", "waived", "unknown"]
     ] = None
