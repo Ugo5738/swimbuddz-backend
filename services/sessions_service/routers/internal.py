@@ -24,6 +24,7 @@ from libs.common.service_client import (
     cancel_opportunities_for_context,
     dispatch_notification,
     get_member_by_auth_id,
+    internal_get,
     internal_post,
     reconcile_session_ride_schedule,
     reconcile_volunteer_session_schedule,
@@ -37,6 +38,7 @@ from services.sessions_service.models import (
     SessionBooking,
     SessionBookingStatus,
     SessionCoach,
+    SessionParticipant,
     SessionStatus,
     SessionType,
 )
@@ -212,6 +214,162 @@ class EventSessionLinksBatchRequest(BaseModel):
     event_ids: list[uuid.UUID] = Field(default_factory=list, max_length=200)
 
 
+class SessionParticipantSettlementContext(BaseModel):
+    participant_id: uuid.UUID
+    session_id: uuid.UUID
+    session_type: str
+    source: str
+    participant_kind: str
+    full_name: str
+    email: str | None = None
+    phone: str | None = None
+    fee_amount_kobo: int
+    payment_status: str
+    payment_method: str | None = None
+    payment_reference: str | None = None
+
+
+class SessionParticipantPaymentConfirm(BaseModel):
+    payment_reference: str = Field(min_length=1, max_length=128)
+    payment_method: str = Field(min_length=1, max_length=32)
+    amount_kobo: int = Field(gt=0)
+    paid_at: datetime
+
+
+@router.get(
+    "/participants/{participant_id}/settlement-context",
+    response_model=SessionParticipantSettlementContext,
+)
+async def get_participant_settlement_context(
+    participant_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    participant = (
+        await db.execute(
+            select(SessionParticipant).where(SessionParticipant.id == participant_id)
+        )
+    ).scalar_one_or_none()
+    if participant is None:
+        raise HTTPException(status_code=404, detail="Session participant not found")
+    session = await db.get(Session, participant.session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return SessionParticipantSettlementContext(
+        participant_id=participant.id,
+        session_id=session.id,
+        session_type=(
+            session.session_type.value
+            if hasattr(session.session_type, "value")
+            else str(session.session_type)
+        ),
+        source=participant.source,
+        participant_kind=participant.participant_kind,
+        full_name=participant.full_name_snapshot,
+        email=participant.email_snapshot,
+        phone=participant.phone_snapshot,
+        fee_amount_kobo=int(participant.fee_amount_kobo or 0),
+        payment_status=participant.payment_status,
+        payment_method=participant.payment_method,
+        payment_reference=participant.payment_reference,
+    )
+
+
+@router.post(
+    "/participants/{participant_id}/confirm-payment",
+    response_model=SessionParticipantSettlementContext,
+)
+async def confirm_participant_payment(
+    participant_id: uuid.UUID,
+    payload: SessionParticipantPaymentConfirm,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    participant = (
+        await db.execute(
+            select(SessionParticipant)
+            .where(SessionParticipant.id == participant_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if participant is None:
+        raise HTTPException(status_code=404, detail="Session participant not found")
+    if participant.source != "walk_in" or participant.participant_kind != "guest":
+        raise HTTPException(
+            status_code=409,
+            detail="Only unregistered guest walk-ins use participant settlement",
+        )
+    expected_kobo = int(participant.fee_amount_kobo or 0)
+    if payload.amount_kobo != expected_kobo:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Payment amount does not match the frozen walk-in fee "
+                f"({expected_kobo} kobo)"
+            ),
+        )
+    if participant.payment_status == "paid":
+        if participant.payment_reference == payload.payment_reference:
+            session = await db.get(Session, participant.session_id)
+            return SessionParticipantSettlementContext(
+                participant_id=participant.id,
+                session_id=participant.session_id,
+                session_type=(
+                    session.session_type.value
+                    if session and hasattr(session.session_type, "value")
+                    else str(session.session_type)
+                    if session
+                    else "unknown"
+                ),
+                source=participant.source,
+                participant_kind=participant.participant_kind,
+                full_name=participant.full_name_snapshot,
+                email=participant.email_snapshot,
+                phone=participant.phone_snapshot,
+                fee_amount_kobo=expected_kobo,
+                payment_status=participant.payment_status,
+                payment_method=participant.payment_method,
+                payment_reference=participant.payment_reference,
+            )
+        raise HTTPException(
+            status_code=409,
+            detail="This walk-in already has a different settled payment",
+        )
+    if participant.payment_status in {"waived", "included"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This walk-in is already closed as {participant.payment_status}",
+        )
+
+    participant.payment_status = "paid"
+    participant.payment_method = payload.payment_method
+    participant.payment_reference = payload.payment_reference
+    participant.paid_at = payload.paid_at
+    await db.commit()
+    await db.refresh(participant)
+    session = await db.get(Session, participant.session_id)
+    return SessionParticipantSettlementContext(
+        participant_id=participant.id,
+        session_id=participant.session_id,
+        session_type=(
+            session.session_type.value
+            if session and hasattr(session.session_type, "value")
+            else str(session.session_type)
+            if session
+            else "unknown"
+        ),
+        source=participant.source,
+        participant_kind=participant.participant_kind,
+        full_name=participant.full_name_snapshot,
+        email=participant.email_snapshot,
+        phone=participant.phone_snapshot,
+        fee_amount_kobo=expected_kobo,
+        payment_status=participant.payment_status,
+        payment_method=participant.payment_method,
+        payment_reference=participant.payment_reference,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -334,6 +492,15 @@ class SessionDetailedStats(BaseModel):
     total_sessions: int = 0
     total_pool_hours: float = 0.0
     guest_swimmer_hours: float = 0.0
+    exact_guest_swimmer_hours: float = 0.0
+    estimated_guest_swimmer_hours: float = 0.0
+    total_attendance_records: int = 0
+    member_attendance_records: int = 0
+    guest_attendance_records: int = 0
+    guest_pass_attendance_records: int = 0
+    booking_guest_attendance_records: int = 0
+    walk_in_guest_attendance_records: int = 0
+    attendance_available: bool = False
     by_type: dict | None = None
     most_active_location: str | None = None
     busiest_session_title: str | None = None
@@ -448,27 +615,83 @@ async def get_session_detailed_stats(
     )
     sessions = result.scalars().all()
 
-    guest_minutes = int(
-        (
-            await db.execute(
-                select(func.coalesce(func.sum(GuestPass.actual_swim_minutes), 0))
-                .join(Session, Session.id == GuestPass.session_id)
-                .where(
-                    Session.starts_at >= parsed_from,
-                    Session.starts_at <= parsed_to,
-                    GuestPass.status == "attended",
-                    # Once linked to a member, these minutes are included in
-                    # that member's attendance history. Keep them out of the
-                    # aggregate guest bucket so swimmer-hours count once.
-                    GuestPass.converted_member_id.is_(None),
-                )
+    # GuestPass attendance carries exact swim minutes. Keep converted guests
+    # out of the guest bucket because their historical hours move into the
+    # linked member's report.
+    guest_pass_rows = (
+        await db.execute(
+            select(
+                GuestPass.session_id,
+                GuestPass.actual_swim_minutes,
+                GuestPass.converted_member_id,
             )
-        ).scalar_one()
-        or 0
+            .join(Session, Session.id == GuestPass.session_id)
+            .where(
+                Session.starts_at >= parsed_from,
+                Session.starts_at <= parsed_to,
+                GuestPass.status == "attended",
+            )
+        )
+    ).all()
+    # A later member conversion does not change the historical fact that this
+    # person attended as a guest. It *does* move their swimmer-hours into the
+    # member report, so exclude converted rows only from the guest-hours bucket.
+    exact_guest_minutes = sum(
+        int(minutes or 0)
+        for _, minutes, converted_member_id in guest_pass_rows
+        if converted_member_id is None
     )
+    guest_pass_counts = Counter(str(session_id) for session_id, _, _ in guest_pass_rows)
 
     if not sessions:
-        return SessionDetailedStats(guest_swimmer_hours=round(guest_minutes / 60, 1))
+        return SessionDetailedStats(
+            guest_swimmer_hours=round(exact_guest_minutes / 60, 1),
+            exact_guest_swimmer_hours=round(exact_guest_minutes / 60, 1),
+            guest_pass_attendance_records=len(guest_pass_rows),
+            guest_attendance_records=len(guest_pass_rows),
+            total_attendance_records=len(guest_pass_rows),
+        )
+
+    # Attendance service owns member, attached-booking-guest and canonical
+    # participant attendance. Ask it for all actual PRESENT/LATE humans in
+    # these sessions rather than inferring attendance from bookings.
+    attendance_counts: dict[str, dict] = {}
+    attendance_available = False
+    try:
+        attendance_response = await internal_get(
+            service_url=get_settings().ATTENDANCE_SERVICE_URL,
+            path="/internal/attendance/session-counts",
+            calling_service="sessions",
+            params={"ids": ",".join(str(session.id) for session in sessions)},
+            timeout=20.0,
+        )
+        if attendance_response.status_code == 200:
+            attendance_available = True
+            attendance_counts = {
+                str(row["session_id"]): row for row in attendance_response.json()
+            }
+    except httpx.HTTPError:
+        attendance_counts = {}
+
+    participant_ids = {
+        uuid.UUID(str(participant_id))
+        for row in attendance_counts.values()
+        for participant_id in (row.get("participant_ids") or [])
+    }
+    guest_participant_ids: set[uuid.UUID] = set()
+    if participant_ids:
+        guest_participant_ids = set(
+            (
+                await db.execute(
+                    select(SessionParticipant.id).where(
+                        SessionParticipant.id.in_(participant_ids),
+                        SessionParticipant.participant_kind == "guest",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     # Total pool hours (sum of session durations)
     total_hours = sum(
@@ -512,27 +735,104 @@ async def get_session_detailed_stats(
     slot_counts = Counter(time_slot(s.starts_at.hour) for s in sessions)
     most_popular_slot = slot_counts.most_common(1)[0][0] if slot_counts else None
 
-    # Session details for per-session info
-    details = [
-        {
-            "id": str(s.id),
-            "title": s.title,
-            "hours": round((s.ends_at - s.starts_at).total_seconds() / 3600, 2),
-            "location": s.location_name,
-            "type": s.session_type.value
-            if hasattr(s.session_type, "value")
-            else str(s.session_type),
-            "capacity": s.capacity,
-        }
-        for s in sessions
-    ]
+    # Fold actual attendance into delivery metrics. Booking guests and door
+    # walk-ins currently do not store exact swim minutes, so their swimmer-hours
+    # are estimated using the same effective-session convention as member
+    # reporting: scheduled duration minus one hour for warm-up/rest, min 0.
+    details: list[dict] = []
+    member_attendance_records = 0
+    booking_guest_attendance_records = 0
+    walk_in_guest_attendance_records = 0
+    estimated_guest_hours = 0.0
+    busiest_session_title = None
+    busiest_session_attendance = 0
+    attended_location_counts: Counter = Counter()
+    attended_day_counts: Counter = Counter()
+    attended_slot_counts: Counter = Counter()
+
+    for session in sessions:
+        session_id = str(session.id)
+        duration_hours = (session.ends_at - session.starts_at).total_seconds() / 3600
+        effective_guest_hours = max(0.0, duration_hours - 1.0)
+        attendance = attendance_counts.get(session_id) or {}
+        member_count = int(attendance.get("member_attended") or 0)
+        booking_guest_count = int(attendance.get("booking_guest_attended") or 0)
+        participant_guest_count = sum(
+            1
+            for participant_id in (attendance.get("participant_ids") or [])
+            if uuid.UUID(str(participant_id)) in guest_participant_ids
+        )
+        pass_count = int(guest_pass_counts.get(session_id, 0))
+        actual_attendance = int(attendance.get("attended") or 0) + pass_count
+
+        member_attendance_records += member_count
+        booking_guest_attendance_records += booking_guest_count
+        walk_in_guest_attendance_records += participant_guest_count
+        estimated_guest_hours += (
+            booking_guest_count + participant_guest_count
+        ) * effective_guest_hours
+
+        if actual_attendance > busiest_session_attendance:
+            busiest_session_attendance = actual_attendance
+            busiest_session_title = session.title
+        if actual_attendance:
+            if session.location_name:
+                attended_location_counts[session.location_name] += actual_attendance
+            attended_day_counts[DAYS[session.starts_at.weekday()]] += actual_attendance
+            attended_slot_counts[time_slot(session.starts_at.hour)] += actual_attendance
+
+        details.append(
+            {
+                "id": session_id,
+                "title": session.title,
+                "hours": round(duration_hours, 2),
+                "location": session.location_name,
+                "type": session.session_type.value
+                if hasattr(session.session_type, "value")
+                else str(session.session_type),
+                "capacity": session.capacity,
+                "attendance": actual_attendance,
+                "member_attendance": member_count,
+                "guest_attendance": (
+                    booking_guest_count + participant_guest_count + pass_count
+                ),
+            }
+        )
+
+    exact_guest_hours = exact_guest_minutes / 60
+    guest_attendance_records = (
+        booking_guest_attendance_records
+        + walk_in_guest_attendance_records
+        + len(guest_pass_rows)
+    )
+    total_attendance_records = member_attendance_records + guest_attendance_records
+
+    # Prefer attendance-weighted popularity when attendance data is available;
+    # retain scheduled-session frequency as a graceful legacy fallback.
+    if attended_location_counts:
+        most_active = attended_location_counts.most_common(1)[0][0]
+    if attended_day_counts:
+        most_popular_day = attended_day_counts.most_common(1)[0][0]
+    if attended_slot_counts:
+        most_popular_slot = attended_slot_counts.most_common(1)[0][0]
 
     return SessionDetailedStats(
         total_sessions=len(sessions),
         total_pool_hours=round(total_hours, 1),
-        guest_swimmer_hours=round(guest_minutes / 60, 1),
+        guest_swimmer_hours=round(exact_guest_hours + estimated_guest_hours, 1),
+        exact_guest_swimmer_hours=round(exact_guest_hours, 1),
+        estimated_guest_swimmer_hours=round(estimated_guest_hours, 1),
+        total_attendance_records=total_attendance_records,
+        member_attendance_records=member_attendance_records,
+        guest_attendance_records=guest_attendance_records,
+        guest_pass_attendance_records=len(guest_pass_rows),
+        booking_guest_attendance_records=booking_guest_attendance_records,
+        walk_in_guest_attendance_records=walk_in_guest_attendance_records,
+        attendance_available=attendance_available,
         by_type=dict(type_counts) if type_counts else None,
         most_active_location=most_active,
+        busiest_session_title=busiest_session_title,
+        busiest_session_attendance=busiest_session_attendance,
         most_popular_day=most_popular_day,
         most_popular_time_slot=most_popular_slot,
         session_details=details,

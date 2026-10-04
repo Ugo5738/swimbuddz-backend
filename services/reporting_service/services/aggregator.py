@@ -778,6 +778,9 @@ async def compute_community_stats(
             func.sum(MemberQuarterlyReport.milestones_achieved).label(
                 "total_milestones"
             ),
+            func.count(MemberQuarterlyReport.id)
+            .filter(MemberQuarterlyReport.is_first_quarter.is_(True))
+            .label("total_new_members"),
             func.sum(MemberQuarterlyReport.certificates_earned).label("total_certs"),
             func.sum(MemberQuarterlyReport.volunteer_hours).label("total_volunteer"),
             func.sum(MemberQuarterlyReport.rides_taken).label("total_rides"),
@@ -817,9 +820,23 @@ async def compute_community_stats(
         quarter=quarter,
         total_active_members=row.total_members or 0,
         total_sessions_held=session_stats.get("total_sessions", 0),
-        total_attendance_records=row.total_attendance or 0,
+        # Community-wide attendance is an all-human operational count.
+        # Prefer Sessions' canonical member + attached guest + guest-pass +
+        # walk-in total; fall back to the historical member-report sum when
+        # the newer service contract is unavailable.
+        total_attendance_records=int(
+            detailed_stats.get("total_attendance_records")
+            if detailed_stats.get("attendance_available")
+            else (
+                int(row.total_attendance or 0)
+                + int(detailed_stats.get("guest_pass_attendance_records") or 0)
+            )
+        ),
+        # This remains a member attendance-rate KPI, not "all visitors /
+        # capacity". Keep the metric stable and label it honestly in the
+        # management UI.
         average_attendance_rate=float(row.avg_rate or 0.0),
-        total_new_members=session_stats.get("new_members", 0),
+        total_new_members=int(row.total_new_members or 0),
         total_milestones_achieved=row.total_milestones or 0,
         total_certificates_issued=row.total_certs or 0,
         total_volunteer_hours=float(row.total_volunteer or 0.0),

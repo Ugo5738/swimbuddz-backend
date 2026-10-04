@@ -9020,6 +9020,65 @@
         }
       }
     },
+    "/api/v1/internal/members/club-quarter-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Club Quarter Summary",
+        "description": "Aggregate Club membership/retention for a reporting window.\n\nRetention compares members with an overlapping Club entitlement in the\nimmediately preceding equal-length period against members overlapping the\nrequested period.",
+        "operationId": "get_club_quarter_summary_internal_members_club_quarter_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubQuarterSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/members/club-access/checks": {
       "post": {
         "tags": [
@@ -13666,6 +13725,112 @@
         ]
       }
     },
+    "/api/v1/internal/sessions/participants/{participant_id}/settlement-context": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Participant Settlement Context",
+        "operationId": "get_participant_settlement_context_internal_sessions_participants__participant_id__settlement_context_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "participant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Participant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionParticipantSettlementContext"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/sessions/participants/{participant_id}/confirm-payment": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Confirm Participant Payment",
+        "operationId": "confirm_participant_payment_internal_sessions_participants__participant_id__confirm_payment_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "participant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Participant Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionParticipantPaymentConfirm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionParticipantSettlementContext"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/sessions/scheduled": {
       "get": {
         "tags": [
@@ -16035,6 +16200,60 @@
                     "type": "string"
                   },
                   "title": "Response Get Session Attendee Member Ids Internal Attendance Session  Session Id  Member Ids Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/attendance/session-counts": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Session Attendance Counts",
+        "description": "Return actual PRESENT/LATE attendance by session and subject kind.\n\nSessions/reporting own the scheduled dates, so callers first select the\nsessions in their reporting window and then ask Attendance for counts. This\navoids attributing a retrospectively-entered walk-in to the day the admin\nhappened to enter it.",
+        "operationId": "get_session_attendance_counts_internal_attendance_session_counts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated session IDs",
+              "title": "Ids"
+            },
+            "description": "Comma-separated session IDs"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionAttendanceCount"
+                  },
+                  "title": "Response Get Session Attendance Counts Internal Attendance Session Counts Get"
                 }
               }
             }
@@ -20169,6 +20388,60 @@
         }
       }
     },
+    "/api/v1/internal/academy/quarter-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Academy Quarter Summary Internal",
+        "description": "Aggregate Academy operating outcomes for a reporting window.\n\nCohorts are included when their scheduled dates overlap the window.\nCompletion uses issued certificates as the time-bounded graduation signal\nand dropped_at for time-bounded exits; Enrollment has no graduated_at field.",
+        "operationId": "get_academy_quarter_summary_internal_internal_academy_quarter_summary_get",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcademyQuarterSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/extension-requests/cohorts/{cohort_id}": {
       "post": {
         "tags": [
@@ -21922,6 +22195,114 @@
         ],
         "responses": {
           "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/session-participants/{participant_id}/payment-link": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Admin Generate Participant Payment Link",
+        "description": "Create/resume a Paystack checkout for an unregistered guest walk-in.\n\nThe attendee remains a SessionParticipant. PaymentPurpose.GUEST_PASS is\nreused as the existing guest-session commercial/payment primitive; no fake\nGuestPass booking or waiver is created.",
+        "operationId": "admin_generate_participant_payment_link_payments_admin_session_participants__participant_id__payment_link_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "participant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Participant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminParticipantPayLinkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/session-participants/{participant_id}/offline-payment": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Admin Record Participant Offline Payment",
+        "description": "Record bank transfer, cash, POS or another verified guest walk-in payment.",
+        "operationId": "admin_record_participant_offline_payment_payments_admin_session_participants__participant_id__offline_payment_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "participant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Participant Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminBookingOfflinePaymentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -28739,6 +29120,98 @@
         }
       }
     },
+    "/api/v1/admin/reports/quarterly/available": {
+      "get": {
+        "tags": [
+          "admin-reports"
+        ],
+        "summary": "Admin Available Quarters",
+        "description": "Completed/known quarterly snapshots, newest first, for the admin selector.",
+        "operationId": "admin_available_quarters_admin_reports_quarterly_available_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QuarterlyReportSummary"
+                  },
+                  "type": "array",
+                  "title": "Response Admin Available Quarters Admin Reports Quarterly Available Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/reports/quarterly/business-review": {
+      "get": {
+        "tags": [
+          "admin-reports"
+        ],
+        "summary": "Admin Business Review",
+        "description": "Decision-oriented quarter-end management review.\n\nThis composes the frozen quarterly engagement snapshot with source-of-truth\nAcademy, Club, session, and ledger summaries.",
+        "operationId": "admin_business_review_admin_reports_quarterly_business_review_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2030,
+              "minimum": 2025,
+              "title": "Year"
+            }
+          },
+          {
+            "name": "quarter",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 4,
+              "minimum": 1,
+              "title": "Quarter"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/reports/quarterly/overview": {
       "get": {
         "tags": [
@@ -28964,7 +29437,7 @@
           "admin-reports"
         ],
         "summary": "Admin Generate Report",
-        "description": "Trigger quarterly report generation for a specific quarter.",
+        "description": "Trigger quarterly report generation for a completed quarter.",
         "operationId": "admin_generate_report_admin_reports_quarterly_generate_post",
         "requestBody": {
           "content": {
@@ -57773,6 +58246,228 @@
         ]
       }
     },
+    "/api/v1/internal/ledger/reports/profit-loss": {
+      "get": {
+        "tags": [
+          "ledger-internal"
+        ],
+        "summary": "Internal Profit Loss",
+        "operationId": "internal_profit_loss_internal_ledger_reports_profit_loss_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "To Date"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "dimension_1",
+              "title": "Group By"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfitLossReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/ledger/reports/margin": {
+      "get": {
+        "tags": [
+          "ledger-internal"
+        ],
+        "summary": "Internal Margin",
+        "operationId": "internal_margin_internal_ledger_reports_margin_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "To Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarginReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/ledger/reports/deferred-revenue": {
+      "get": {
+        "tags": [
+          "ledger-internal"
+        ],
+        "summary": "Internal Deferred Revenue",
+        "operationId": "internal_deferred_revenue_internal_ledger_reports_deferred_revenue_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeferredRevenueReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/ledger/reports/cash-position": {
+      "get": {
+        "tags": [
+          "ledger-internal"
+        ],
+        "summary": "Internal Cash Position",
+        "operationId": "internal_cash_position_internal_ledger_reports_cash_position_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashPositionReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/calendar": {
       "get": {
         "tags": [
@@ -62622,6 +63317,55 @@
           "can_stop_and_recover"
         ],
         "title": "ClubPreAssessmentUpsert"
+      },
+      "ClubQuarterSummary": {
+        "properties": {
+          "active_members": {
+            "type": "integer",
+            "title": "Active Members",
+            "default": 0
+          },
+          "new_enrollments": {
+            "type": "integer",
+            "title": "New Enrollments",
+            "default": 0
+          },
+          "prior_period_members": {
+            "type": "integer",
+            "title": "Prior Period Members",
+            "default": 0
+          },
+          "retained_members": {
+            "type": "integer",
+            "title": "Retained Members",
+            "default": 0
+          },
+          "retention_rate": {
+            "type": "number",
+            "title": "Retention Rate",
+            "default": 0.0
+          },
+          "prepaid_enrollments": {
+            "type": "integer",
+            "title": "Prepaid Enrollments",
+            "default": 0
+          },
+          "transition_enrollments": {
+            "type": "integer",
+            "title": "Transition Enrollments",
+            "default": 0
+          },
+          "by_club": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "By Club"
+          }
+        },
+        "type": "object",
+        "title": "ClubQuarterSummary"
       },
       "ClubResponse": {
         "properties": {
@@ -77103,6 +77847,51 @@
             "title": "Guest Swimmer Hours",
             "default": 0.0
           },
+          "exact_guest_swimmer_hours": {
+            "type": "number",
+            "title": "Exact Guest Swimmer Hours",
+            "default": 0.0
+          },
+          "estimated_guest_swimmer_hours": {
+            "type": "number",
+            "title": "Estimated Guest Swimmer Hours",
+            "default": 0.0
+          },
+          "total_attendance_records": {
+            "type": "integer",
+            "title": "Total Attendance Records",
+            "default": 0
+          },
+          "member_attendance_records": {
+            "type": "integer",
+            "title": "Member Attendance Records",
+            "default": 0
+          },
+          "guest_attendance_records": {
+            "type": "integer",
+            "title": "Guest Attendance Records",
+            "default": 0
+          },
+          "guest_pass_attendance_records": {
+            "type": "integer",
+            "title": "Guest Pass Attendance Records",
+            "default": 0
+          },
+          "booking_guest_attendance_records": {
+            "type": "integer",
+            "title": "Booking Guest Attendance Records",
+            "default": 0
+          },
+          "walk_in_guest_attendance_records": {
+            "type": "integer",
+            "title": "Walk In Guest Attendance Records",
+            "default": 0
+          },
+          "attendance_available": {
+            "type": "boolean",
+            "title": "Attendance Available",
+            "default": false
+          },
           "by_type": {
             "anyOf": [
               {
@@ -77266,6 +78055,40 @@
           "other"
         ],
         "title": "SessionLocation"
+      },
+      "SessionParticipantPaymentConfirm": {
+        "properties": {
+          "payment_reference": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Payment Reference"
+          },
+          "payment_method": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Payment Method"
+          },
+          "amount_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Kobo"
+          },
+          "paid_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Paid At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_reference",
+          "payment_method",
+          "amount_kobo",
+          "paid_at"
+        ],
+        "title": "SessionParticipantPaymentConfirm"
       },
       "SessionParticipantResponse": {
         "properties": {
@@ -77511,6 +78334,100 @@
           "updated_at"
         ],
         "title": "SessionParticipantResponse"
+      },
+      "SessionParticipantSettlementContext": {
+        "properties": {
+          "participant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Participant Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "session_type": {
+            "type": "string",
+            "title": "Session Type"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "participant_kind": {
+            "type": "string",
+            "title": "Participant Kind"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "fee_amount_kobo": {
+            "type": "integer",
+            "title": "Fee Amount Kobo"
+          },
+          "payment_status": {
+            "type": "string",
+            "title": "Payment Status"
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Method"
+          },
+          "payment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "participant_id",
+          "session_id",
+          "session_type",
+          "source",
+          "participant_kind",
+          "full_name",
+          "fee_amount_kobo",
+          "payment_status"
+        ],
+        "title": "SessionParticipantSettlementContext"
       },
       "SessionRangeStats": {
         "properties": {
@@ -80403,6 +81320,43 @@
         "title": "RideShareOption",
         "description": "Local copy \u2014 avoids cross-service import from transport_service."
       },
+      "SessionAttendanceCount": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "attended": {
+            "type": "integer",
+            "title": "Attended",
+            "default": 0
+          },
+          "member_attended": {
+            "type": "integer",
+            "title": "Member Attended",
+            "default": 0
+          },
+          "booking_guest_attended": {
+            "type": "integer",
+            "title": "Booking Guest Attended",
+            "default": 0
+          },
+          "participant_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Participant Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "SessionAttendanceCount"
+      },
       "SessionSummary": {
         "properties": {
           "id": {
@@ -80822,6 +81776,90 @@
         ],
         "title": "AcademyPublicStats",
         "description": "Public aggregate stats for the academy landing page."
+      },
+      "AcademyQuarterSummary": {
+        "properties": {
+          "cohorts_in_window": {
+            "type": "integer",
+            "title": "Cohorts In Window",
+            "default": 0
+          },
+          "cohorts_started": {
+            "type": "integer",
+            "title": "Cohorts Started",
+            "default": 0
+          },
+          "cohorts_ended": {
+            "type": "integer",
+            "title": "Cohorts Ended",
+            "default": 0
+          },
+          "total_capacity": {
+            "type": "integer",
+            "title": "Total Capacity",
+            "default": 0
+          },
+          "active_enrollments": {
+            "type": "integer",
+            "title": "Active Enrollments",
+            "default": 0
+          },
+          "pending_approvals": {
+            "type": "integer",
+            "title": "Pending Approvals",
+            "default": 0
+          },
+          "waitlisted": {
+            "type": "integer",
+            "title": "Waitlisted",
+            "default": 0
+          },
+          "dropped": {
+            "type": "integer",
+            "title": "Dropped",
+            "default": 0
+          },
+          "dropouts_in_period": {
+            "type": "integer",
+            "title": "Dropouts In Period",
+            "default": 0
+          },
+          "graduated": {
+            "type": "integer",
+            "title": "Graduated",
+            "default": 0
+          },
+          "new_enrollments": {
+            "type": "integer",
+            "title": "New Enrollments",
+            "default": 0
+          },
+          "certificates_issued": {
+            "type": "integer",
+            "title": "Certificates Issued",
+            "default": 0
+          },
+          "fill_rate": {
+            "type": "number",
+            "title": "Fill Rate",
+            "default": 0.0
+          },
+          "completion_rate": {
+            "type": "number",
+            "title": "Completion Rate",
+            "default": 0.0
+          },
+          "by_location": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "By Location"
+          }
+        },
+        "type": "object",
+        "title": "AcademyQuarterSummary"
       },
       "AdminDropoutActionRequest": {
         "properties": {
@@ -86616,6 +87654,50 @@
           "session_id"
         ],
         "title": "AdminBookingPayLinkResponse"
+      },
+      "AdminParticipantPayLinkResponse": {
+        "properties": {
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "authorization_url": {
+            "type": "string",
+            "title": "Authorization Url"
+          },
+          "payer_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Email"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "participant_id": {
+            "type": "string",
+            "title": "Participant Id"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reference",
+          "authorization_url",
+          "amount",
+          "participant_id",
+          "session_id"
+        ],
+        "title": "AdminParticipantPayLinkResponse"
       },
       "AdminReviewRequest": {
         "properties": {
@@ -93916,6 +94998,196 @@
         "type": "object",
         "title": "WeeklyDigestStatsResponse"
       },
+      "BusinessReviewFinance": {
+        "properties": {
+          "revenue_ngn": {
+            "type": "integer",
+            "title": "Revenue Ngn",
+            "default": 0
+          },
+          "expenses_ngn": {
+            "type": "integer",
+            "title": "Expenses Ngn",
+            "default": 0
+          },
+          "net_income_ngn": {
+            "type": "integer",
+            "title": "Net Income Ngn",
+            "default": 0
+          },
+          "cogs_ngn": {
+            "type": "integer",
+            "title": "Cogs Ngn",
+            "default": 0
+          },
+          "gross_margin_ngn": {
+            "type": "integer",
+            "title": "Gross Margin Ngn",
+            "default": 0
+          },
+          "gross_margin_pct": {
+            "type": "number",
+            "title": "Gross Margin Pct",
+            "default": 0.0
+          },
+          "deferred_revenue_ngn": {
+            "type": "integer",
+            "title": "Deferred Revenue Ngn",
+            "default": 0
+          },
+          "cash_ngn": {
+            "type": "integer",
+            "title": "Cash Ngn",
+            "default": 0
+          },
+          "by_domain": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "By Domain"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": false
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "BusinessReviewFinance"
+      },
+      "BusinessReviewResponse": {
+        "properties": {
+          "year": {
+            "type": "integer",
+            "title": "Year"
+          },
+          "quarter": {
+            "type": "integer",
+            "title": "Quarter"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "snapshot_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Status"
+          },
+          "snapshot_generated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Generated At"
+          },
+          "executive_scorecard": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/QuarterComparison"
+            },
+            "type": "object",
+            "title": "Executive Scorecard"
+          },
+          "community": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Community"
+          },
+          "academy": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Academy"
+          },
+          "club": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Club"
+          },
+          "finance": {
+            "$ref": "#/components/schemas/BusinessReviewFinance"
+          },
+          "locations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Locations"
+          },
+          "session_mix": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Session Mix"
+          },
+          "data_quality": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Data Quality"
+          },
+          "decisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Decisions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "year",
+          "quarter",
+          "label",
+          "starts_at",
+          "ends_at",
+          "executive_scorecard",
+          "community",
+          "academy",
+          "club",
+          "finance",
+          "locations",
+          "session_mix"
+        ],
+        "title": "BusinessReviewResponse"
+      },
       "CohortFillSnapshotResponse": {
         "properties": {
           "id": {
@@ -95236,6 +96508,65 @@
         ],
         "title": "PrivacyToggleRequest",
         "description": "Toggle leaderboard opt-out for a quarter."
+      },
+      "QuarterComparison": {
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "delta_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Pct"
+          }
+        },
+        "type": "object",
+        "title": "QuarterComparison"
       },
       "QuarterlyReportSummary": {
         "properties": {
