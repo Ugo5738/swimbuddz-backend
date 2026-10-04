@@ -221,6 +221,72 @@ def _club_membership_mock(member_id):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+async def test_admin_walk_in_preserves_cross_location_visit_price_and_source(
+    sessions_client, db_session
+):
+    member_id = uuid.uuid4()
+    member_auth_id = str(uuid.uuid4())
+    session = await _session(
+        db_session,
+        club_id=uuid.uuid4(),
+        pool_fee=1_200_000,
+        visiting_club_fee_kobo=850_000,
+        allows_visiting_club_members=True,
+        club_access_mode="plan_included",
+    )
+
+    async def visitor_access(checks, **kwargs):
+        return {
+            check["context_key"]: {
+                "context_key": check["context_key"],
+                "allowed": True,
+                "source": "club_visit",
+                "enrollment_id": str(uuid.uuid4()),
+                "club_id": str(uuid.uuid4()),
+                "payment_mode": "quarterly_prepaid",
+                "fee_amount_kobo": None,
+            }
+            for check in checks
+        }
+
+    with (
+        patch(
+            "libs.common.service_client.get_member_by_id",
+            AsyncMock(
+                return_value={
+                    "id": str(member_id),
+                    "auth_id": member_auth_id,
+                }
+            ),
+        ),
+        patch(_MEMBERSHIP, _club_membership_mock(member_id)),
+        patch(_CLUB_ACCESS, AsyncMock(side_effect=visitor_access)),
+        patch(f"{_BOOKINGS}._record_walk_in_attendance", AsyncMock()),
+    ):
+        response = await sessions_client.post(
+            f"/sessions/{session.id}/admin/walk-in",
+            json={"member_id": str(member_id)},
+        )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["status"] == "confirmed"
+    assert body["fee_amount_kobo"] == 850_000
+    assert body["member_fee_amount_kobo"] == 850_000
+    assert body["access_source"] == "club_visit"
+    assert body["booking_source"] == "admin_walk_in"
+
+    persisted = (
+        await db_session.execute(
+            select(SessionBooking).where(SessionBooking.id == uuid.UUID(body["id"]))
+        )
+    ).scalar_one()
+    assert persisted.access_source == "club_visit"
+    assert persisted.booking_source == "admin_walk_in"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 async def test_rebook_existing_pending_with_bubbles_confirms_and_debits(
     sessions_client, db_session
 ):
