@@ -120,20 +120,22 @@ async def _load_context(
         )
 
     effective_date = effective.date()
+    entitlement_end_date = (source.ends_at - timedelta(seconds=1)).date()
     if (
         not target_club.is_active
         or not target_plan.is_active
         or target_plan.published_at is None
         or target_plan.period_start > effective_date
-        or target_plan.period_end < effective_date
+        or target_plan.period_end < entitlement_end_date
         or target_plan.effective_from > effective_date
         or (
             target_plan.effective_to is not None
-            and target_plan.effective_to < effective_date
+            and target_plan.effective_to < entitlement_end_date
         )
     ):
         raise HTTPException(
-            409, "Choose a published target Club plan that covers the transfer date"
+            409,
+            "Choose a published target Club plan that covers the member's full remaining access period",
         )
 
     target_pod = None
