@@ -299,6 +299,54 @@ class ClubApplicationReservationResponse(BaseModel):
     plan_version_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
+class ClubLocationTransferRequest(BaseModel):
+    target_plan_version_id: uuid.UUID
+    target_pod_id: Optional[uuid.UUID] = None
+    effective_at: Optional[datetime] = None
+    note: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ClubLocationTransferPreview(BaseModel):
+    source_enrollment_id: uuid.UUID
+    member_id: uuid.UUID
+    source_club_id: uuid.UUID
+    source_club_name: str
+    target_club_id: uuid.UUID
+    target_club_name: str
+    target_plan_version_id: uuid.UUID
+    target_plan_name: str
+    target_pod_id: Optional[uuid.UUID] = None
+    payment_mode: str
+    effective_at: datetime
+    source_remaining_sessions: int = 0
+    source_remaining_value_kobo: int = 0
+    target_remaining_sessions: int = 0
+    target_remaining_value_kobo: int = 0
+    estimated_difference_kobo: int = 0
+    can_execute_now: bool
+    requires_financial_reconciliation: bool
+    guidance: str
+
+
+class ClubLocationTransferResponse(ClubLocationTransferPreview):
+    transfer_id: uuid.UUID
+    target_enrollment_id: uuid.UUID
+
+
+class AdminClubEnrollmentSummary(BaseModel):
+    id: uuid.UUID
+    member_id: uuid.UUID
+    club_id: uuid.UUID
+    club_name: str
+    plan_version_id: uuid.UUID
+    plan_name: str
+    payment_mode: str
+    starts_at: datetime
+    ends_at: datetime
+    status: str
+    assigned_pod_id: Optional[uuid.UUID] = None
+
+
 class CommunityExperienceOfferingCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=160)
     currency: str = Field(default="NGN", min_length=3, max_length=8)
