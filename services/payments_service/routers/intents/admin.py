@@ -333,9 +333,7 @@ async def admin_generate_participant_payment_link(
         db.add(payment)
         await db.flush()
 
-    payer_email = (
-        payment.payer_email or settings.ADMIN_EMAIL or "noreply@swimbuddz.com"
-    )
+    payer_email = payment.payer_email or settings.ADMIN_EMAIL or "noreply@swimbuddz.com"
     authorization_url, access_code = await _initialize_paystack(
         payment,
         payer_email,
