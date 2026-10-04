@@ -3,14 +3,14 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
-from services.members_service.models import Club, ClubEnrollment, Member
+from services.members_service.models import Club, ClubEnrollment
 
 router = APIRouter()
 
@@ -23,7 +23,7 @@ class ClubQuarterSummary(BaseModel):
     retention_rate: float = 0.0
     prepaid_enrollments: int = 0
     transition_enrollments: int = 0
-    by_club: dict[str, dict] = {}
+    by_club: dict[str, dict] = Field(default_factory=dict)
 
 
 def _aware(dt: datetime) -> datetime:
