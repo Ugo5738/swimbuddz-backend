@@ -8,7 +8,6 @@ from tests.factories import AttendanceRecordFactory, MemberFactory, SessionFacto
 # GET /internal/attendance/member/{member_id}
 # ---------------------------------------------------------------------------
 
-
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_get_member_attendance(attendance_client, db_session):
@@ -35,7 +34,6 @@ async def test_get_member_attendance(attendance_client, db_session):
     assert data[0]["session_id"] == str(session.id)
     assert data[0]["status"] == AttendanceStatus.PRESENT.value
 
-
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_get_member_attendance_empty(attendance_client, db_session):
@@ -48,7 +46,6 @@ async def test_get_member_attendance_empty(attendance_client, db_session):
 
     assert response.status_code == 200
     assert response.json() == []
-
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -88,7 +85,6 @@ async def test_get_member_attendance_filtered_by_session_ids(
 # GET /internal/attendance/session/{session_id}/member-ids
 # ---------------------------------------------------------------------------
 
-
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_get_session_attendee_member_ids(attendance_client, db_session):
@@ -113,7 +109,6 @@ async def test_get_session_attendee_member_ids(attendance_client, db_session):
     assert str(m1.id) in data
     assert str(m2.id) in data
 
-
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_get_session_attendee_member_ids_empty(attendance_client, db_session):
@@ -128,8 +123,6 @@ async def test_get_session_attendee_member_ids_empty(attendance_client, db_sessi
 
     assert response.status_code == 200
     assert response.json() == []
-
-
 
 @pytest.mark.asyncio
 @pytest.mark.integration
