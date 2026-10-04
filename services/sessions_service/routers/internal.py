@@ -616,18 +616,27 @@ async def get_session_detailed_stats(
             select(
                 GuestPass.session_id,
                 GuestPass.actual_swim_minutes,
+                GuestPass.converted_member_id,
             )
             .join(Session, Session.id == GuestPass.session_id)
             .where(
                 Session.starts_at >= parsed_from,
                 Session.starts_at <= parsed_to,
                 GuestPass.status == "attended",
-                GuestPass.converted_member_id.is_(None),
             )
         )
     ).all()
-    exact_guest_minutes = sum(int(minutes or 0) for _, minutes in guest_pass_rows)
-    guest_pass_counts = Counter(str(session_id) for session_id, _ in guest_pass_rows)
+    # A later member conversion does not change the historical fact that this
+    # person attended as a guest. It *does* move their swimmer-hours into the
+    # member report, so exclude converted rows only from the guest-hours bucket.
+    exact_guest_minutes = sum(
+        int(minutes or 0)
+        for _, minutes, converted_member_id in guest_pass_rows
+        if converted_member_id is None
+    )
+    guest_pass_counts = Counter(
+        str(session_id) for session_id, _, _ in guest_pass_rows
+    )
 
     if not sessions:
         return SessionDetailedStats(
