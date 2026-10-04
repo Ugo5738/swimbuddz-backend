@@ -164,7 +164,7 @@ def upgrade() -> None:
           (id, session_id, audience, access_source, rate_code, rate_mode,
            amount_kobo, label, priority, is_active, source, created_at, updated_at)
         SELECT
-          (substr(md5(s.id::text || ':community'),1,8)||'-'||substr(md5(s.id::text || ':community'),9,4)||'-4'||substr(md5(s.id::text || ':community'),14,3)||'-a'||substr(md5(s.id::text || ':community'),18,3)||'-'||substr(md5(s.id::text || ':community'),21,12))::uuid,
+          (substr(md5(s.id::text || '-community'),1,8)||'-'||substr(md5(s.id::text || '-community'),9,4)||'-4'||substr(md5(s.id::text || '-community'),14,3)||'-a'||substr(md5(s.id::text || '-community'),18,3)||'-'||substr(md5(s.id::text || '-community'),21,12))::uuid,
           s.id,
           'community',
           CASE WHEN s.session_type = 'club' THEN 'community_dropin' ELSE NULL END,
@@ -196,7 +196,7 @@ def upgrade() -> None:
           (id, session_id, audience, access_source, rate_code, rate_mode,
            amount_kobo, label, priority, is_active, source, created_at, updated_at)
         SELECT
-          (substr(md5(s.id::text || ':guest'),1,8)||'-'||substr(md5(s.id::text || ':guest'),9,4)||'-4'||substr(md5(s.id::text || ':guest'),14,3)||'-a'||substr(md5(s.id::text || ':guest'),18,3)||'-'||substr(md5(s.id::text || ':guest'),21,12))::uuid,
+          (substr(md5(s.id::text || '-guest'),1,8)||'-'||substr(md5(s.id::text || '-guest'),9,4)||'-4'||substr(md5(s.id::text || '-guest'),14,3)||'-a'||substr(md5(s.id::text || '-guest'),18,3)||'-'||substr(md5(s.id::text || '-guest'),21,12))::uuid,
           s.id, 'guest', NULL, 'guest', 'fixed', s.guest_fee_kobo,
           'Guest / non-member rate', 100, true, 'legacy_bridge', now(), now()
         FROM sessions s
@@ -209,7 +209,7 @@ def upgrade() -> None:
           (id, session_id, audience, access_source, rate_code, rate_mode,
            amount_kobo, label, priority, is_active, source, created_at, updated_at)
         SELECT
-          (substr(md5(s.id::text || ':academy'),1,8)||'-'||substr(md5(s.id::text || ':academy'),9,4)||'-4'||substr(md5(s.id::text || ':academy'),14,3)||'-a'||substr(md5(s.id::text || ':academy'),18,3)||'-'||substr(md5(s.id::text || ':academy'),21,12))::uuid,
+          (substr(md5(s.id::text || '-academy'),1,8)||'-'||substr(md5(s.id::text || '-academy'),9,4)||'-4'||substr(md5(s.id::text || '-academy'),14,3)||'-a'||substr(md5(s.id::text || '-academy'),18,3)||'-'||substr(md5(s.id::text || '-academy'),21,12))::uuid,
           s.id, 'academy', NULL,
           CASE WHEN s.session_type='event' THEN 'event_academy'
                WHEN s.cohort_fee_mode='paid_extra' THEN 'academy_extra'
@@ -232,7 +232,7 @@ def upgrade() -> None:
           (id, session_id, audience, access_source, rate_code, rate_mode,
            amount_kobo, label, priority, is_active, source, created_at, updated_at)
         SELECT
-          (substr(md5(s.id::text || ':club-generic'),1,8)||'-'||substr(md5(s.id::text || ':club-generic'),9,4)||'-4'||substr(md5(s.id::text || ':club-generic'),14,3)||'-a'||substr(md5(s.id::text || ':club-generic'),18,3)||'-'||substr(md5(s.id::text || ':club-generic'),21,12))::uuid,
+          (substr(md5(s.id::text || '-club-generic'),1,8)||'-'||substr(md5(s.id::text || '-club-generic'),9,4)||'-4'||substr(md5(s.id::text || '-club-generic'),14,3)||'-a'||substr(md5(s.id::text || '-club-generic'),18,3)||'-'||substr(md5(s.id::text || '-club-generic'),21,12))::uuid,
           s.id, 'club', NULL,
           CASE WHEN s.session_type='event' THEN 'event_club' ELSE 'club_member' END,
           'fixed', s.pool_fee,
@@ -248,7 +248,7 @@ def upgrade() -> None:
           (id, session_id, audience, access_source, rate_code, rate_mode,
            amount_kobo, label, priority, is_active, source, created_at, updated_at)
         SELECT
-          (substr(md5(s.id::text || ':club-included'),1,8)||'-'||substr(md5(s.id::text || ':club-included'),9,4)||'-4'||substr(md5(s.id::text || ':club-included'),14,3)||'-a'||substr(md5(s.id::text || ':club-included'),18,3)||'-'||substr(md5(s.id::text || ':club-included'),21,12))::uuid,
+          (substr(md5(s.id::text || '-club-included'),1,8)||'-'||substr(md5(s.id::text || '-club-included'),9,4)||'-4'||substr(md5(s.id::text || '-club-included'),14,3)||'-a'||substr(md5(s.id::text || '-club-included'),18,3)||'-'||substr(md5(s.id::text || '-club-included'),21,12))::uuid,
           s.id, 'club', 'club_enrollment', 'club_included', 'included', 0,
           'Included in Club quarter', 10, true, 'legacy_bridge', now(), now()
         FROM sessions s WHERE s.session_type='club'
@@ -260,7 +260,7 @@ def upgrade() -> None:
           (id, session_id, audience, access_source, rate_code, rate_mode,
            amount_kobo, label, priority, is_active, source, created_at, updated_at)
         SELECT
-          (substr(md5(s.id::text || ':club-transition'),1,8)||'-'||substr(md5(s.id::text || ':club-transition'),9,4)||'-4'||substr(md5(s.id::text || ':club-transition'),14,3)||'-a'||substr(md5(s.id::text || ':club-transition'),18,3)||'-'||substr(md5(s.id::text || ':club-transition'),21,12))::uuid,
+          (substr(md5(s.id::text || '-club-transition'),1,8)||'-'||substr(md5(s.id::text || '-club-transition'),9,4)||'-4'||substr(md5(s.id::text || '-club-transition'),14,3)||'-a'||substr(md5(s.id::text || '-club-transition'),18,3)||'-'||substr(md5(s.id::text || '-club-transition'),21,12))::uuid,
           s.id, 'club', 'club_transition', 'club_transition', 'fixed', s.pool_fee,
           'Transition session rate', 20, true, 'legacy_bridge', now(), now()
         FROM sessions s WHERE s.session_type='club'
