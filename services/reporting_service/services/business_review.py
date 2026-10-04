@@ -16,7 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.config import get_settings
 from libs.common.service_client import internal_get
-from services.reporting_service.models import CommunityQuarterlyStats, QuarterlySnapshot
+from services.reporting_service.models import (
+    CommunityQuarterlyStats,
+    QuarterlySnapshot,
+)
 from services.reporting_service.schemas.business_review import (
     BusinessReviewFinance,
     BusinessReviewResponse,
@@ -123,7 +126,7 @@ async def build_business_review(
         _safe_json(
             settings.LEDGER_SERVICE_URL,
             "/internal/ledger/reports/profit-loss",
-            {**ledger_date_params, "group_by": "domain"},
+            {**ledger_date_params, "group_by": "dimension_1"},
         ),
         _safe_json(
             settings.LEDGER_SERVICE_URL,
@@ -219,7 +222,9 @@ async def build_business_review(
 
     data_quality: list[str] = []
     if not finance_available:
-        data_quality.append("Finance section incomplete because ledger reporting was unavailable.")
+        data_quality.append(
+            "Finance section incomplete because ledger reporting was unavailable."
+        )
     if not academy:
         data_quality.append("Academy quarter summary unavailable.")
     if not club:
