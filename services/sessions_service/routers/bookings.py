@@ -79,6 +79,7 @@ from services.sessions_service.services.booking_confirmation import (
     deliver_confirmation,
     queue_confirmation,
 )
+from services.sessions_service.services.commercial import apply_session_rate
 from services.sessions_service.services.guest_identity import normalize_guest_phone
 from services.sessions_service.services.session_access import (
     evaluate_member_session_access,
@@ -333,6 +334,7 @@ async def book_session(
         member_id=member_id,
         now=now,
     )
+    access = await apply_session_rate(db, session, access)
     if not access.bookable:
         raise HTTPException(
             status_code=403,
@@ -389,6 +391,10 @@ async def book_session(
         existing.fee_amount_kobo = fee_kobo
         existing.member_fee_amount_kobo = member_fee_kobo
         existing.access_source = access.access_source
+        existing.pricing_audience = access.pricing_audience
+        existing.pricing_source = access.pricing_source
+        existing.rate_id = uuid.UUID(access.rate_id) if access.rate_id else None
+        existing.rate_code = access.rate_code
         existing.booking_source = booking_in.booking_source
         existing.campaign_key = booking_in.campaign_key
         if booking_in.notes is not None:
@@ -457,6 +463,10 @@ async def book_session(
             fee_amount_kobo=fee_kobo,
             member_fee_amount_kobo=member_fee_kobo,
             access_source=access.access_source,
+            pricing_audience=access.pricing_audience,
+            pricing_source=access.pricing_source,
+            rate_id=uuid.UUID(access.rate_id) if access.rate_id else None,
+            rate_code=access.rate_code,
             notes=booking_in.notes,
             wallet_transaction_id=wallet_txn_id,
             booking_source=booking_in.booking_source,
