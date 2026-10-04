@@ -32,7 +32,6 @@ from libs.common.logging import get_logger
 from libs.common.service_client import (
     get_booking_by_id,
     get_member_by_id,
-    get_session_by_id,
     internal_get,
 )
 from libs.db.session import get_async_db
@@ -588,10 +587,6 @@ async def admin_record_booking_offline_payment(
     member = await get_member_by_id(str(member_id), calling_service="payments")
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
-    session_detail = await get_session_by_id(
-        str(session_id), calling_service="payments"
-    )
-
     received_at = payload.received_at or utc_now()
     if received_at.tzinfo is None:
         raise HTTPException(
@@ -618,11 +613,6 @@ async def admin_record_booking_offline_payment(
         payment_metadata={
             "booking_id": str(booking_id),
             "session_id": str(session_id),
-            "session_type": (
-                str(session_detail.get("session_type"))
-                if session_detail and session_detail.get("session_type")
-                else None
-            ),
             "member_id": str(member_id),
             "recorded_offline": True,
             "recorded_by_auth_id": current_user.user_id,
