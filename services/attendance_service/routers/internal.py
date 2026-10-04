@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,7 +104,7 @@ class SessionAttendanceCount(BaseModel):
     attended: int = 0
     member_attended: int = 0
     booking_guest_attended: int = 0
-    participant_ids: list[uuid.UUID] = []
+    participant_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 @router.get(
