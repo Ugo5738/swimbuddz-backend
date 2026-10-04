@@ -30,14 +30,14 @@ async def get_pool_list_csv(
     records = result.scalars().all()
 
     # Bulk-lookup member details
-    pool_member_ids = list({str(r.member_id) for r in records})
+    pool_member_ids = list({str(r.member_id) for r in records if r.member_id is not None})
     pool_members = await get_members_bulk(pool_member_ids, calling_service="attendance")
     pool_members_map = {m["id"]: m for m in pool_members}
 
     # Simple CSV generation
     csv_content = "First Name,Last Name,Email,Notes\n"
     for attendance in records:
-        member = pool_members_map.get(str(attendance.member_id), {})
+        member = pool_members_map.get(str(attendance.member_id), {}) if attendance.member_id else {}
         csv_content += f"{member.get('first_name', '')},{member.get('last_name', '')},{member.get('email', '')},{attendance.notes or ''}\n"
 
     return Response(content=csv_content, media_type="text/csv")
