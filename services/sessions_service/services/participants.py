@@ -6,9 +6,6 @@ human-per-session representation without deleting any of the legacy records.
 
 from __future__ import annotations
 
-import uuid
-from typing import Iterable
-
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
