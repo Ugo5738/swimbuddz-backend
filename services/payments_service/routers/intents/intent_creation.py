@@ -28,6 +28,7 @@ from libs.common.logging import get_logger
 from libs.common.service_client import (
     create_wallet_hold,
     get_member_by_auth_id,
+    get_session_by_id,
     internal_get,
     internal_post,
     release_wallet_hold,
@@ -1065,9 +1066,17 @@ async def create_payment_intent(
             source="attendance_status",
         )
         ride_line = ride_quote["lines"][0] if ride_quote["lines"] else None
+        session_detail = await get_session_by_id(
+            str(payload.session_id), calling_service="payments"
+        )
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "session_id": str(payload.session_id),
+            "session_type": (
+                str(session_detail.get("session_type"))
+                if session_detail and session_detail.get("session_type")
+                else None
+            ),
             "ride_config_id": (str(ride_line["ride_config_id"]) if ride_line else None),
             "pickup_location_id": (
                 str(ride_line["pickup_location_id"]) if ride_line else None
@@ -1139,11 +1148,19 @@ async def create_payment_intent(
             )
         amount = kobo_to_naira(authoritative_total_kobo)
         ride_line = ride_quote["lines"][0] if ride_quote["lines"] else None
+        booking_session = await get_session_by_id(
+            str(booking_session_id), calling_service="payments"
+        )
         payment_metadata = {
             **(payload.payment_metadata or {}),
             "booking_id": str(booking_id),
             "reservation_expires_at": booking_quote.get("expires_at"),
             "session_id": str(booking_session_id),
+            "session_type": (
+                str(booking_session.get("session_type"))
+                if booking_session and booking_session.get("session_type")
+                else None
+            ),
             "member_id": str(booking_quote["member_id"]),
             "ride_config_id": (str(ride_line["ride_config_id"]) if ride_line else None),
             "pickup_location_id": (
