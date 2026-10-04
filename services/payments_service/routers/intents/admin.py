@@ -348,7 +348,10 @@ async def admin_generate_participant_payment_link(
     }
     await db.commit()
     if not authorization_url:
-        raise HTTPException(status_code=502, detail="Payment provider did not return a checkout URL")
+        raise HTTPException(
+            status_code=502,
+            detail="Payment provider did not return a checkout URL",
+        )
     return AdminParticipantPayLinkResponse(
         reference=payment.reference,
         authorization_url=authorization_url,
@@ -380,9 +383,15 @@ async def admin_record_participant_offline_payment(
         )
     received_at = payload.received_at or utc_now()
     if received_at.tzinfo is None:
-        raise HTTPException(status_code=422, detail="received_at must include a timezone")
+        raise HTTPException(
+            status_code=422,
+            detail="received_at must include a timezone",
+        )
     if received_at > utc_now() + timedelta(minutes=5):
-        raise HTTPException(status_code=422, detail="received_at cannot be in the future")
+        raise HTTPException(
+            status_code=422,
+            detail="received_at cannot be in the future",
+        )
 
     await lock_external_reference(db, payload.external_reference)
     await lock_external_reference(db, f"session-participant:{participant_id}")
