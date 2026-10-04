@@ -75,9 +75,38 @@ def to_kobo(amount: float) -> int:
     return int(round(amount * 100))
 
 
+def _payment_revenue_mapping(payment: Payment) -> tuple[str | None, str | None]:
+    """Resolve ledger account/domain, refining session cash by session type.
+
+    Older rows without a session_type snapshot retain the historical Club
+    fallback. New session/guest settlements carry the type explicitly so a
+    Community Swim does not appear as Club revenue merely because it used the
+    generic session checkout machinery.
+    """
+    credit_ref = PURPOSE_TO_CREDIT_REF.get(payment.purpose)
+    domain = PURPOSE_TO_DOMAIN.get(payment.purpose)
+    if payment.purpose in {
+        PaymentPurpose.SESSION_FEE,
+        PaymentPurpose.SESSION_BOOKING,
+        PaymentPurpose.GUEST_PASS,
+    }:
+        session_type = str(
+            (payment.payment_metadata or {}).get("session_type") or ""
+        ).lower()
+        by_type = {
+            "club": ("revenue_club_session", "club"),
+            "community": ("revenue_community", "community"),
+            "event": ("revenue_events", "events"),
+            "cohort_class": ("revenue_academy", "academy"),
+        }
+        if session_type in by_type:
+            credit_ref, domain = by_type[session_type]
+    return credit_ref, domain
+
+
 def build_post_kwargs(payment: Payment) -> dict | None:
     """Build post_journal_entry kwargs for a paid payment, or None if unmapped."""
-    credit_ref = PURPOSE_TO_CREDIT_REF.get(payment.purpose)
+    credit_ref, domain = _payment_revenue_mapping(payment)
     if credit_ref is None:
         return None
     debit_ref = PROVIDER_TO_DEBIT_REF.get(
@@ -127,7 +156,7 @@ def build_post_kwargs(payment: Payment) -> dict | None:
                 "currency": currency,
                 "external_ref": payment.reference,
                 "member_ref": payment.member_auth_id,
-                "dimension_1": PURPOSE_TO_DOMAIN.get(payment.purpose),
+                "dimension_1": domain,
                 "description": f"{payment.purpose.value} payment",
             },
         ],

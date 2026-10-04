@@ -128,3 +128,57 @@ async def test_get_session_attendee_member_ids_empty(attendance_client, db_sessi
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_session_counts_include_members_attached_guests_and_participants(
+    attendance_client, db_session
+):
+    """All actual human attendance subjects are represented for reporting."""
+    import uuid
+
+    member = MemberFactory.create()
+    session = SessionFactory.create()
+    db_session.add_all([member, session])
+    await db_session.flush()
+
+    records = [
+        AttendanceRecordFactory.create(
+            session_id=session.id,
+            member_id=member.id,
+            status=AttendanceStatus.PRESENT.value,
+        ),
+        AttendanceRecordFactory.create(
+            session_id=session.id,
+            member_id=None,
+            booking_guest_id=uuid.uuid4(),
+            status=AttendanceStatus.PRESENT.value,
+        ),
+        AttendanceRecordFactory.create(
+            session_id=session.id,
+            member_id=None,
+            participant_id=uuid.uuid4(),
+            status=AttendanceStatus.LATE.value,
+        ),
+        AttendanceRecordFactory.create(
+            session_id=session.id,
+            member_id=None,
+            booking_guest_id=uuid.uuid4(),
+            status=AttendanceStatus.ABSENT.value,
+        ),
+    ]
+    db_session.add_all(records)
+    await db_session.commit()
+
+    response = await attendance_client.get(
+        "/internal/attendance/session-counts",
+        params={"ids": str(session.id)},
+    )
+
+    assert response.status_code == 200
+    [row] = response.json()
+    assert row["attended"] == 3
+    assert row["member_attended"] == 1
+    assert row["booking_guest_attended"] == 1
+    assert row["participant_ids"] == [str(records[2].participant_id)]

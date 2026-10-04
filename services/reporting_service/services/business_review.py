@@ -192,6 +192,8 @@ async def build_business_review(
             "sessions": 0,
             "scheduled_pool_hours": 0.0,
             "session_capacity": 0,
+            "attendance": 0,
+            "guest_attendance": 0,
             "session_types": {},
             "academy_cohorts": 0,
             "academy_active_enrollments": 0,
@@ -207,6 +209,8 @@ async def build_business_review(
             row["scheduled_pool_hours"] + float(detail.get("hours") or 0), 2
         )
         row["session_capacity"] += int(detail.get("capacity") or 0)
+        row["attendance"] += int(detail.get("attendance") or 0)
+        row["guest_attendance"] += int(detail.get("guest_attendance") or 0)
         session_type = detail.get("type") or "unknown"
         row["session_types"][session_type] = (
             row["session_types"].get(session_type, 0) + 1
@@ -235,6 +239,15 @@ async def build_business_review(
         data_quality.append("Club quarter summary unavailable.")
     if not sessions:
         data_quality.append("Session detail summary unavailable.")
+    elif not sessions.get("attendance_available"):
+        data_quality.append(
+            "All-human attendance detail was unavailable; community attendance falls back to the frozen member snapshot plus known GuestPass attendance."
+        )
+    estimated_guest_hours = float(sessions.get("estimated_guest_swimmer_hours") or 0)
+    if estimated_guest_hours > 0:
+        data_quality.append(
+            "Some guest swimmer-hours are estimated from effective session duration because attached guests and door walk-ins do not yet store exact swim minutes. GuestPass minutes remain exact."
+        )
     data_quality.append(
         "Academy completion is time-bounded by certificate issuance because Enrollment does not yet store graduated_at."
     )
@@ -243,6 +256,9 @@ async def build_business_review(
     )
     data_quality.append(
         "Lead-to-sale conversion and marketing CAC are not included yet because prospect/CRM lifecycle events are not a single authoritative reporting source."
+    )
+    data_quality.append(
+        "Ledger totals are authoritative. Historical session/guest payments created before session-type revenue snapshots may still sit in the legacy Club domain; new settlements are classified by the actual session type."
     )
 
     previous = previous_stats
@@ -317,9 +333,36 @@ async def build_business_review(
             "active_members": current_stats.total_active_members,
             "new_members": current_stats.total_new_members,
             "sessions_held": current_stats.total_sessions_held,
-            "attendance_records": current_stats.total_attendance_records,
+            "attendance_records": int(
+                sessions.get("total_attendance_records")
+                if sessions.get("attendance_available")
+                else (
+                    current_stats.total_attendance_records
+                    + int(sessions.get("guest_pass_attendance_records") or 0)
+                )
+            ),
+            "member_attendance_records": int(
+                sessions.get("member_attendance_records") or 0
+            ),
+            "guest_attendance_records": int(
+                sessions.get("guest_attendance_records") or 0
+            ),
+            "walk_in_guest_attendance_records": int(
+                sessions.get("walk_in_guest_attendance_records") or 0
+            ),
+            "booking_guest_attendance_records": int(
+                sessions.get("booking_guest_attendance_records") or 0
+            ),
+            "guest_pass_attendance_records": int(
+                sessions.get("guest_pass_attendance_records") or 0
+            ),
             "average_attendance_rate": current_stats.average_attendance_rate,
             "pool_hours": current_stats.total_pool_hours,
+            "guest_swimmer_hours": float(sessions.get("guest_swimmer_hours") or 0),
+            "exact_guest_swimmer_hours": float(
+                sessions.get("exact_guest_swimmer_hours") or 0
+            ),
+            "estimated_guest_swimmer_hours": estimated_guest_hours,
             "milestones_achieved": current_stats.total_milestones_achieved,
             "certificates_issued": current_stats.total_certificates_issued,
             "volunteer_hours": current_stats.total_volunteer_hours,
