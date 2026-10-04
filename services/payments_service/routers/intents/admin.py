@@ -29,7 +29,7 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
-from libs.common.service_client import get_booking_by_id, get_member_by_id
+from libs.common.service_client import get_booking_by_id, get_member_by_id, internal_get
 from libs.db.session import get_async_db
 from services.payments_service.models import (
     Payment,
@@ -38,6 +38,12 @@ from services.payments_service.models import (
 )
 from services.payments_service.schemas import (
     PaymentResponse,
+)
+from services.payments_service.schemas.manual_recording import OfflinePaymentRecord
+from services.payments_service.services.additional_charges import calculate_additional_charges
+from services.payments_service.services.manual_transfer import (
+    lock_external_reference,
+    settle_offline,
 )
 
 
@@ -49,6 +55,7 @@ MAX_FULFILLMENT_RETRIES = 8
 BASE_FULFILLMENT_RETRY_MINUTES = 2
 
 from ._entitlement import _apply_entitlement_with_tracking, _mark_paid_and_apply
+from ._paystack import _initialize_paystack, _paystack_enabled
 
 router = APIRouter()
 
@@ -148,6 +155,299 @@ class AdminBookingOfflinePaymentRequest(BaseModel):
         if self.payment_method == "other" and not (self.note or "").strip():
             raise ValueError("note is required when payment_method is other")
         return self
+
+
+class AdminParticipantPayLinkResponse(BaseModel):
+    reference: str
+    authorization_url: str
+    payer_email: str | None = None
+    amount: float
+    participant_id: str
+    session_id: str
+
+
+async def _participant_settlement_context(participant_id: uuid.UUID) -> dict:
+    response = await internal_get(
+        service_url=settings.SESSIONS_SERVICE_URL,
+        path=f"/internal/sessions/participants/{participant_id}/settlement-context",
+        calling_service="payments",
+        timeout=20.0,
+    )
+    if response.status_code == 404:
+        raise HTTPException(status_code=404, detail="Walk-in participant not found")
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not verify the walk-in participant",
+        )
+    context = response.json()
+    if context.get("source") != "walk_in" or context.get("participant_kind") != "guest":
+        raise HTTPException(
+            status_code=409,
+            detail="Only unregistered guest walk-ins use participant settlement",
+        )
+    fee_kobo = int(context.get("fee_amount_kobo") or 0)
+    if fee_kobo <= 0:
+        raise HTTPException(status_code=400, detail="This walk-in has no fee to settle")
+    if context.get("payment_status") in {"paid", "waived", "included"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This walk-in is already closed as {context.get('payment_status')}",
+        )
+    return context
+
+
+def _participant_payment_reference(participant_id: uuid.UUID) -> str:
+    # Stable per participant so retries resume one checkout instead of creating
+    # duplicate receivables/provider transactions.
+    return f"WALKIN-{participant_id.hex[:24].upper()}"
+
+
+async def _existing_participant_payment(
+    db: AsyncSession, participant_id: uuid.UUID
+) -> Payment | None:
+    return (
+        await db.execute(
+            select(Payment)
+            .where(
+                Payment.purpose == PaymentPurpose.GUEST_PASS,
+                Payment.payment_metadata["session_participant_id"].astext
+                == str(participant_id),
+            )
+            .order_by(Payment.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+def _participant_payment_metadata(
+    context: dict,
+    *,
+    subtotal_kobo: int,
+    additional_charges: list[dict] | None = None,
+    additional_charges_total_kobo: int = 0,
+) -> dict:
+    return {
+        "session_participant_id": str(context["participant_id"]),
+        "session_id": str(context["session_id"]),
+        "session_type": str(context.get("session_type") or ""),
+        "participant_source": "walk_in",
+        "payer_email": context.get("email"),
+        "payer_phone": context.get("phone"),
+        "subtotal_kobo": subtotal_kobo,
+        "additional_charges": additional_charges or [],
+        "additional_charges_total_kobo": additional_charges_total_kobo,
+    }
+
+
+@router.post(
+    "/admin/session-participants/{participant_id}/payment-link",
+    response_model=AdminParticipantPayLinkResponse,
+)
+async def admin_generate_participant_payment_link(
+    participant_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Create/resume a Paystack checkout for an unregistered guest walk-in.
+
+    The attendee remains a SessionParticipant. PaymentPurpose.GUEST_PASS is
+    reused as the existing guest-session commercial/payment primitive; no fake
+    GuestPass booking or waiver is created.
+    """
+    if not _paystack_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Online payment is temporarily unavailable",
+        )
+    context = await _participant_settlement_context(participant_id)
+    await lock_external_reference(db, f"session-participant:{participant_id}")
+    payment = await _existing_participant_payment(db, participant_id)
+
+    if payment is not None:
+        if payment.status == PaymentStatus.PAID:
+            raise HTTPException(status_code=409, detail="This walk-in is already paid")
+        if payment.status not in {
+            PaymentStatus.PENDING,
+            PaymentStatus.PENDING_REVIEW,
+            PaymentStatus.FAILED,
+        }:
+            raise HTTPException(
+                status_code=409,
+                detail="This walk-in payment is not open for settlement",
+            )
+        if payment.payment_method not in {None, "paystack"}:
+            raise HTTPException(
+                status_code=409,
+                detail="An offline settlement already exists for this walk-in",
+            )
+        stored_checkout = (payment.payment_metadata or {}).get("paystack") or {}
+        if (
+            payment.status == PaymentStatus.PENDING
+            and stored_checkout.get("authorization_url")
+        ):
+            return AdminParticipantPayLinkResponse(
+                reference=payment.reference,
+                authorization_url=stored_checkout["authorization_url"],
+                payer_email=payment.payer_email,
+                amount=float(payment.amount),
+                participant_id=str(participant_id),
+                session_id=str(context["session_id"]),
+            )
+    else:
+        subtotal_kobo = int(context["fee_amount_kobo"])
+        charge_lines, charge_total_kobo = await calculate_additional_charges(
+            db,
+            purpose=PaymentPurpose.GUEST_PASS,
+            payment_method="paystack",
+            subtotal_kobo=subtotal_kobo,
+        )
+        total_kobo = subtotal_kobo + charge_total_kobo
+        payment = Payment(
+            reference=_participant_payment_reference(participant_id),
+            member_auth_id=f"participant:{participant_id}",
+            payer_email=context.get("email"),
+            purpose=PaymentPurpose.GUEST_PASS,
+            amount=total_kobo / 100,
+            currency="NGN",
+            status=PaymentStatus.PENDING,
+            provider="paystack",
+            payment_method="paystack",
+            payment_metadata=_participant_payment_metadata(
+                context,
+                subtotal_kobo=subtotal_kobo,
+                additional_charges=charge_lines,
+                additional_charges_total_kobo=charge_total_kobo,
+            ),
+        )
+        db.add(payment)
+        await db.flush()
+
+    payer_email = payment.payer_email or settings.ADMIN_EMAIL or "noreply@swimbuddz.com"
+    authorization_url, access_code = await _initialize_paystack(
+        payment,
+        payer_email,
+        "/payments/walk-in-complete",
+    )
+    payment.provider = "paystack"
+    payment.provider_reference = payment.reference
+    payment.status = PaymentStatus.PENDING
+    payment.payment_metadata = {
+        **(payment.payment_metadata or {}),
+        "paystack": {
+            "authorization_url": authorization_url,
+            "access_code": access_code,
+        },
+        "payment_link_generated_by": current_user.user_id,
+        "payment_link_generated_at": utc_now().isoformat(),
+    }
+    await db.commit()
+    if not authorization_url:
+        raise HTTPException(status_code=502, detail="Payment provider did not return a checkout URL")
+    return AdminParticipantPayLinkResponse(
+        reference=payment.reference,
+        authorization_url=authorization_url,
+        payer_email=payment.payer_email,
+        amount=float(payment.amount),
+        participant_id=str(participant_id),
+        session_id=str(context["session_id"]),
+    )
+
+
+@router.post(
+    "/admin/session-participants/{participant_id}/offline-payment",
+    response_model=PaymentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def admin_record_participant_offline_payment(
+    participant_id: uuid.UUID,
+    payload: AdminBookingOfflinePaymentRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Record bank transfer, cash, POS or another verified guest walk-in payment."""
+    context = await _participant_settlement_context(participant_id)
+    note = (payload.note or "").strip()
+    if len(note) < 10:
+        raise HTTPException(
+            status_code=422,
+            detail="A reconciliation note of at least 10 characters is required",
+        )
+    received_at = payload.received_at or utc_now()
+    if received_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="received_at must include a timezone")
+    if received_at > utc_now() + timedelta(minutes=5):
+        raise HTTPException(status_code=422, detail="received_at cannot be in the future")
+
+    await lock_external_reference(db, payload.external_reference)
+    await lock_external_reference(db, f"session-participant:{participant_id}")
+    existing = await _existing_participant_payment(db, participant_id)
+    if existing is not None:
+        if existing.status == PaymentStatus.PAID:
+            raise HTTPException(
+                status_code=409,
+                detail=f"This walk-in is already settled by payment {existing.reference}",
+            )
+        if existing.payment_method == "paystack" and existing.status in {
+            PaymentStatus.PENDING,
+            PaymentStatus.PENDING_REVIEW,
+        }:
+            raise HTTPException(
+                status_code=409,
+                detail="An online payment is already open for this walk-in. Reconcile it before recording another receipt.",
+            )
+        if existing.status not in {PaymentStatus.FAILED}:
+            raise HTTPException(
+                status_code=409,
+                detail="Another payment attempt is already open for this walk-in",
+            )
+
+    subtotal_kobo = int(context["fee_amount_kobo"])
+    charge_lines, charge_total_kobo = await calculate_additional_charges(
+        db,
+        purpose=PaymentPurpose.GUEST_PASS,
+        payment_method=payload.payment_method,
+        subtotal_kobo=subtotal_kobo,
+    )
+    total_kobo = subtotal_kobo + charge_total_kobo
+    payment = Payment(
+        reference=Payment.generate_reference(),
+        member_auth_id=f"participant:{participant_id}",
+        payer_email=context.get("email"),
+        purpose=PaymentPurpose.GUEST_PASS,
+        amount=total_kobo / 100,
+        currency="NGN",
+        status=PaymentStatus.PENDING,
+        payment_method=payload.payment_method,
+        admin_review_note=note,
+        payment_metadata={
+            **_participant_payment_metadata(
+                context,
+                subtotal_kobo=subtotal_kobo,
+                additional_charges=charge_lines,
+                additional_charges_total_kobo=charge_total_kobo,
+            ),
+            "recorded_offline": True,
+            "recorded_by_auth_id": current_user.user_id,
+            "recorded_by_email": current_user.email,
+        },
+    )
+    db.add(payment)
+    await db.flush()
+    payment = await settle_offline(
+        db,
+        payment,
+        OfflinePaymentRecord(
+            amount_kobo=total_kobo,
+            payment_method=payload.payment_method,
+            received_at=received_at,
+            external_reference=payload.external_reference,
+            proof_media_id=payload.proof_media_id,
+            note=note,
+        ),
+        current_user,
+    )
+    return payment
 
 
 async def _find_paid_booking_payment(
