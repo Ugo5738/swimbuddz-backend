@@ -257,6 +257,9 @@ async def build_business_review(
     data_quality.append(
         "Lead-to-sale conversion and marketing CAC are not included yet because prospect/CRM lifecycle events are not a single authoritative reporting source."
     )
+    data_quality.append(
+        "Ledger totals are authoritative. Historical session/guest payments created before session-type revenue snapshots may still sit in the legacy Club domain; new settlements are classified by the actual session type."
+    )
 
     previous = previous_stats
     scorecard = {
