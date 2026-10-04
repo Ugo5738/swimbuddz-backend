@@ -580,12 +580,13 @@ class AcademyQuarterSummary(_BaseModel):
     pending_approvals: int = 0
     waitlisted: int = 0
     dropped: int = 0
+    dropouts_in_period: int = 0
     graduated: int = 0
     new_enrollments: int = 0
     certificates_issued: int = 0
     fill_rate: float = 0.0
     completion_rate: float = 0.0
-    by_location: dict[str, dict] = {}
+    by_location: dict[str, dict] = _Field(default_factory=dict)
 
 
 @router.get("/quarter-summary", response_model=AcademyQuarterSummary)
@@ -597,8 +598,8 @@ async def get_academy_quarter_summary_internal(
     """Aggregate Academy operating outcomes for a reporting window.
 
     Cohorts are included when their scheduled dates overlap the window.
-    Completion uses issued certificates as the time-bounded graduation signal;
-    Enrollment currently has no separate graduated_at timestamp.
+    Completion uses issued certificates as the time-bounded graduation signal
+    and dropped_at for time-bounded exits; Enrollment has no graduated_at field.
     """
     cohorts = (
         (
@@ -624,7 +625,6 @@ async def get_academy_quarter_summary_internal(
         "graduated": 0,
     }
     by_location: dict[str, dict] = {}
-    enrollment_ids: set[uuid.UUID] = set()
     total_capacity = 0
 
     for cohort in cohorts:
@@ -644,7 +644,6 @@ async def get_academy_quarter_summary_internal(
         loc["capacity"] += int(cohort.capacity or 0)
 
         for enrollment in cohort.enrollments:
-            enrollment_ids.add(enrollment.id)
             if enrollment.status == EnrollmentStatus.ENROLLED:
                 status_counts["active"] += 1
                 loc["active_enrollments"] += 1
@@ -684,9 +683,24 @@ async def get_academy_quarter_summary_internal(
         ).scalar_one()
         or 0
     )
+    dropouts_in_period = int(
+        (
+            await db.execute(
+                select(func.count(Enrollment.id)).where(
+                    Enrollment.dropped_at >= date_from,
+                    Enrollment.dropped_at <= date_to,
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
 
-    filled = status_counts["active"] + status_counts["graduated"] + status_counts["dropped"]
-    completion_denominator = status_counts["graduated"] + status_counts["dropped"]
+    filled = (
+        status_counts["active"]
+        + status_counts["graduated"]
+        + status_counts["dropped"]
+    )
+    completion_denominator = certificates_issued + dropouts_in_period
 
     return AcademyQuarterSummary(
         cohorts_in_window=len(cohorts),
@@ -697,12 +711,13 @@ async def get_academy_quarter_summary_internal(
         pending_approvals=status_counts["pending_approval"],
         waitlisted=status_counts["waitlist"],
         dropped=status_counts["dropped"],
+        dropouts_in_period=dropouts_in_period,
         graduated=status_counts["graduated"],
         new_enrollments=new_enrollments,
         certificates_issued=certificates_issued,
         fill_rate=round(filled / total_capacity, 4) if total_capacity else 0.0,
         completion_rate=(
-            round(status_counts["graduated"] / completion_denominator, 4)
+            round(certificates_issued / completion_denominator, 4)
             if completion_denominator
             else 0.0
         ),
