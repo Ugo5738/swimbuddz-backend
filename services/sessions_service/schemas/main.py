@@ -102,10 +102,13 @@ class SessionCreate(SessionBase):
         bypass this.
         """
         if self.session_type != SessionType.CLUB and (
-            self.club_id or self.club_access_mode != "plan_included"
+            self.club_id
+            or self.club_access_mode != "plan_included"
+            or self.allows_visiting_club_members
+            or self.visiting_club_fee is not None
         ):
             raise ValueError(
-                "Only Club sessions may specify a Club or Club access mode"
+                "Only Club sessions may specify Club ownership, access mode, or visiting-member admission"
             )
         if (
             self.cohort_fee_mode != "included"
