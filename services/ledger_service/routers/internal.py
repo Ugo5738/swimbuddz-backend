@@ -143,7 +143,7 @@ async def internal_profit_loss(
     request: Request,
     from_date: date,
     to_date: date,
-    group_by: str = "domain",
+    group_by: str = "dimension_1",
     _user: AuthUser = Depends(require_service_role),
     session: AsyncSession = Depends(get_ledger_db),
 ) -> ProfitLossReport:
