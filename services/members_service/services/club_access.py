@@ -40,9 +40,11 @@ async def resolve_club_access_checks(
 
     Each check supplies ``context_key``, ``member_id``, ``at`` and optional
     ``club_id``/``pool_id``/``pod_id`` attributes. ``club_id`` is authoritative
-    for new sessions; Pod and pool remain fallbacks for legacy rows. ``at`` is
-    the session start, which is essential: buying Q4 in Q3 must not grant Q3
-    access.
+    for the member's home entitlement. A host session may explicitly allow a
+    member with an active enrollment at another Club to visit; that produces
+    ``source=club_visit`` without changing the home enrollment. Pod and pool
+    rules remain local to the host session. ``at`` is the session start, which
+    is essential: buying Q4 in Q3 must not grant Q3 access.
     """
 
     requested = list(checks)
@@ -168,6 +170,34 @@ async def resolve_club_access_checks(
             matched_enrollments[0] if matched_enrollments else None,
         )
 
+        # Cross-location access is deliberate rather than a weakening of the
+        # home-Club boundary. Only a real, dated ClubEnrollment can qualify as
+        # a visitor; legacy generic entitlements and post-Academy bridges do not
+        # silently become global Club passes.
+        visiting_enrollment = None
+        if (
+            matched_enrollment is None
+            and check_club_id is not None
+            and bool(getattr(check, "allows_visiting_club_members", False))
+        ):
+            visit_candidates = [
+                enrollment
+                for enrollment, _club, _plan in enrollments_by_member.get(
+                    check.member_id, []
+                )
+                if _aware(enrollment.starts_at) <= at < _aware(enrollment.ends_at)
+                and enrollment.club_id != check_club_id
+            ]
+            visiting_enrollment = next(
+                (
+                    item
+                    for item in visit_candidates
+                    if getattr(item, "payment_mode", "quarterly_prepaid")
+                    == "quarterly_prepaid"
+                ),
+                visit_candidates[0] if visit_candidates else None,
+            )
+
         membership = memberships.get(check.member_id)
         if matched_enrollment is not None:
             payment_mode = getattr(
@@ -193,6 +223,24 @@ async def resolve_club_access_checks(
                     if payment_mode == "quarterly_prepaid"
                     and access_mode != "paid_addon"
                     else None,
+                }
+            )
+        elif visiting_enrollment is not None:
+            resolved.append(
+                {
+                    "context_key": check.context_key,
+                    "allowed": True,
+                    "source": "club_visit",
+                    "enrollment_id": visiting_enrollment.id,
+                    # This remains the member's home Club. The host Club is the
+                    # check/session club_id and is deliberately not written onto
+                    # the entitlement.
+                    "club_id": visiting_enrollment.club_id,
+                    "payment_mode": getattr(
+                        visiting_enrollment, "payment_mode", "quarterly_prepaid"
+                    ),
+                    # Sessions owns the host location's visitor/add-on price.
+                    "fee_amount_kobo": None,
                 }
             )
         elif membership and _paid_until_covers(membership.post_academy_club_until, at):
