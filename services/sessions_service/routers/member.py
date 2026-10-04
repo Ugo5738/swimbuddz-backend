@@ -968,6 +968,10 @@ async def update_session(
 
     resulting_type = update_data.get("session_type", session.session_type)
     resulting_type_value = getattr(resulting_type, "value", resulting_type)
+    if "session_type" in update_data and resulting_type_value != SessionType.CLUB.value:
+        # Type changes clear Club-only admission along with Club/Pod ownership.
+        update_data["allows_visiting_club_members"] = False
+        update_data["visiting_club_fee"] = None
     resulting_allows_visitors = update_data.get(
         "allows_visiting_club_members",
         getattr(session, "allows_visiting_club_members", False),
