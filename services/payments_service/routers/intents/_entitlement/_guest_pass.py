@@ -36,7 +36,9 @@ async def apply_guest_pass(payment: Payment) -> None:
                     or payment.provider
                     or "unknown",
                     "amount_kobo": amount_kobo,
-                    "paid_at": (payment.paid_at.isoformat() if payment.paid_at else None),
+                    "paid_at": (
+                        payment.paid_at.isoformat() if payment.paid_at else None
+                    ),
                 },
                 headers=headers,
             )
