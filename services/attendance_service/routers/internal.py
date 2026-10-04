@@ -123,7 +123,9 @@ async def get_session_attendance_counts(
     avoids attributing a retrospectively-entered walk-in to the day the admin
     happened to enter it.
     """
-    session_ids = [uuid.UUID(value.strip()) for value in ids.split(",") if value.strip()]
+    session_ids = [
+        uuid.UUID(value.strip()) for value in ids.split(",") if value.strip()
+    ]
     if not session_ids:
         return []
     if len(session_ids) > 500:
