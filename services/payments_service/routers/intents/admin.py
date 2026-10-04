@@ -188,10 +188,7 @@ async def _participant_settlement_context(participant_id: uuid.UUID) -> dict:
             detail="Could not verify the walk-in participant",
         )
     context = response.json()
-    if (
-        context.get("source") != "walk_in"
-        or context.get("participant_kind") != "guest"
-    ):
+    if context.get("source") != "walk_in" or context.get("participant_kind") != "guest":
         raise HTTPException(
             status_code=409,
             detail="Only unregistered guest walk-ins use participant settlement",
@@ -292,9 +289,8 @@ async def admin_generate_participant_payment_link(
                 detail="An offline settlement already exists for this walk-in",
             )
         stored_checkout = (payment.payment_metadata or {}).get("paystack") or {}
-        if (
-            payment.status == PaymentStatus.PENDING
-            and stored_checkout.get("authorization_url")
+        if payment.status == PaymentStatus.PENDING and stored_checkout.get(
+            "authorization_url"
         ):
             return AdminParticipantPayLinkResponse(
                 reference=payment.reference,
