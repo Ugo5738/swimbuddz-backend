@@ -86,6 +86,10 @@ def _session_payload(session: Session, access=None) -> dict:
             "access_source": access.access_source,
             "fee_amount_kobo": access.fee_amount_kobo,
             "price_label": access.price_label,
+            "pricing_audience": access.pricing_audience,
+            "pricing_source": access.pricing_source,
+            "rate_code": access.rate_code,
+            "rate_id": access.rate_id,
         }
     return payload
 
