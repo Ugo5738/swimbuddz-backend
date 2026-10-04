@@ -58,6 +58,12 @@ def upgrade() -> None:
         ["session_id", "audience", "access_source", "is_active", "priority"],
     )
 
+    op.add_column("session_bookings", sa.Column("pricing_audience", sa.String(24), nullable=True))
+    op.add_column("session_bookings", sa.Column("pricing_source", sa.String(32), nullable=True))
+    op.add_column("session_bookings", sa.Column("rate_id", postgresql.UUID(as_uuid=True), nullable=True))
+    op.add_column("session_bookings", sa.Column("rate_code", sa.String(64), nullable=True))
+    op.create_index("ix_session_bookings_rate_id", "session_bookings", ["rate_id"])
+
     op.create_table(
         "session_participants",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -261,4 +267,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("session_participants")
+    op.drop_index("ix_session_bookings_rate_id", table_name="session_bookings")
+    op.drop_column("session_bookings", "rate_code")
+    op.drop_column("session_bookings", "rate_id")
+    op.drop_column("session_bookings", "pricing_source")
+    op.drop_column("session_bookings", "pricing_audience")
     op.drop_table("session_rates")
