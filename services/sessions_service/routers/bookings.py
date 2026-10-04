@@ -1030,11 +1030,15 @@ async def admin_walk_in_booking(
         fee_amount_kobo=fee_kobo,
         member_fee_amount_kobo=fee_kobo,
         access_source="admin_walk_in",
-        pricing_audience=(resolved_access.pricing_audience if resolved_access else None),
+        pricing_audience=(
+            resolved_access.pricing_audience if resolved_access else None
+        ),
         pricing_source=(
             "admin_override"
             if payload.fee_amount_kobo is not None
-            else (resolved_access.pricing_source if resolved_access else "legacy_session")
+            else (
+                resolved_access.pricing_source if resolved_access else "legacy_session"
+            )
         ),
         rate_id=(
             uuid.UUID(resolved_access.rate_id)

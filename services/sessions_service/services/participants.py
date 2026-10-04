@@ -102,9 +102,7 @@ async def ensure_session_participants(
         if row.booking_guest_id is not None
     }
     by_guest_pass = {
-        str(row.guest_pass_id): row
-        for row in existing
-        if row.guest_pass_id is not None
+        str(row.guest_pass_id): row for row in existing if row.guest_pass_id is not None
     }
 
     rate_rows = list(
@@ -260,17 +258,21 @@ async def create_guest_walk_in(
         return existing
 
     guest_rate = (
-        await db.execute(
-            select(SessionRate)
-            .where(
-                SessionRate.session_id == session.id,
-                SessionRate.audience == "guest",
-                SessionRate.is_active.is_(True),
-                SessionRate.access_source.is_(None),
+        (
+            await db.execute(
+                select(SessionRate)
+                .where(
+                    SessionRate.session_id == session.id,
+                    SessionRate.audience == "guest",
+                    SessionRate.is_active.is_(True),
+                    SessionRate.access_source.is_(None),
+                )
+                .order_by(SessionRate.priority, SessionRate.id)
             )
-            .order_by(SessionRate.priority, SessionRate.id)
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
 
     participant = SessionParticipant(
         session_id=session.id,

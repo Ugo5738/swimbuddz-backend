@@ -68,7 +68,11 @@ async def list_session_attendance(
     responses = []
     for attendance in records:
         resp = AttendanceResponse.model_validate(attendance)
-        member = members_map.get(str(attendance.member_id), {}) if attendance.member_id else {}
+        member = (
+            members_map.get(str(attendance.member_id), {})
+            if attendance.member_id
+            else {}
+        )
         resp.member_name = (
             f"{member.get('first_name', '')} {member.get('last_name', '')}".strip()
             or None

@@ -72,20 +72,26 @@ async def add_guest_walk_in(
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     if getattr(session.status, "value", session.status) in {"draft", "cancelled"}:
-        raise HTTPException(status_code=409, detail="Walk-ins cannot be added to this session")
+        raise HTTPException(
+            status_code=409, detail="Walk-ins cannot be added to this session"
+        )
 
     guest_rate = (
-        await db.execute(
-            select(SessionRate)
-            .where(
-                SessionRate.session_id == session.id,
-                SessionRate.audience == "guest",
-                SessionRate.is_active.is_(True),
-                SessionRate.access_source.is_(None),
+        (
+            await db.execute(
+                select(SessionRate)
+                .where(
+                    SessionRate.session_id == session.id,
+                    SessionRate.audience == "guest",
+                    SessionRate.is_active.is_(True),
+                    SessionRate.access_source.is_(None),
+                )
+                .order_by(SessionRate.priority, SessionRate.id)
             )
-            .order_by(SessionRate.priority, SessionRate.id)
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     default_fee = (
         int(guest_rate.amount_kobo)
         if guest_rate is not None

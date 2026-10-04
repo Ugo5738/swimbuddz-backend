@@ -92,7 +92,10 @@ class SessionRate(Base):
     # legacy_bridge rows are maintained from the old Session columns during
     # the compatibility window. Later admin-authored rows can use "admin".
     source: Mapped[str] = mapped_column(
-        String(24), nullable=False, default="legacy_bridge", server_default="legacy_bridge"
+        String(24),
+        nullable=False,
+        default="legacy_bridge",
+        server_default="legacy_bridge",
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
@@ -198,7 +201,9 @@ class SessionParticipant(Base):
     )
     payment_method: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     payment_reference: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    paid_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     waiver_status: Mapped[str] = mapped_column(
         String(24), nullable=False, default="unknown", server_default="unknown"
     )

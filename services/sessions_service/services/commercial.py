@@ -78,7 +78,10 @@ def legacy_rate_specs(session: Session) -> list[dict]:
             amount_kobo=pool_fee,
             priority=100,
         )
-        if getattr(session, "allows_community_dropins", False) and community_fee is not None:
+        if (
+            getattr(session, "allows_community_dropins", False)
+            and community_fee is not None
+        ):
             add(
                 audience="community",
                 access_source="community_dropin",
