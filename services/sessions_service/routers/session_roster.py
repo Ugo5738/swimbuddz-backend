@@ -133,14 +133,14 @@ async def create_guest_walk_in(
             )
         )
     ).scalar_one_or_none()
+    # During the additive migration, admin edits still write the legacy
+    # Session fee columns. Prefer that live value so a backfilled SessionRate
+    # cannot become a stale authority. Once the editor writes rates directly,
+    # this precedence can be inverted safely.
     configured_fee = int(
-        rate.amount_kobo
-        if rate is not None
-        else (
-            session.guest_fee_kobo
-            if session.guest_fee_kobo is not None
-            else session.pool_fee or 0
-        )
+        session.guest_fee_kobo
+        if session.guest_fee_kobo is not None
+        else (rate.amount_kobo if rate is not None else session.pool_fee or 0)
     )
     fee = configured_fee if body.fee_amount_kobo is None else body.fee_amount_kobo
     if fee != configured_fee and not body.fee_override_reason:
@@ -159,7 +159,7 @@ async def create_guest_walk_in(
         full_name_snapshot=body.full_name,
         email_snapshot=email,
         phone_snapshot=phone,
-        rate_id=rate.id if rate else None,
+        rate_id=rate.id if rate and rate.amount_kobo == fee else None,
         rate_code="guest",
         fee_amount_kobo=fee,
         payment_status=body.payment_status,
