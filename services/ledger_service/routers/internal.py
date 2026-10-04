@@ -6,6 +6,8 @@ resolved by get_ledger_db (Phase 1: LEDGER_DEFAULT_ORG_ID). The route owns the
 transaction boundary — it commits on success, rolls back on error.
 """
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
@@ -19,6 +21,12 @@ from services.ledger_service.schemas.reconciliation import (
     ExternalTransactionBatch,
     ReconciliationIntakeResult,
 )
+from services.ledger_service.schemas.reports import (
+    CashPositionReport,
+    DeferredRevenueReport,
+    MarginReport,
+    ProfitLossReport,
+)
 from services.ledger_service.services.invoices import create_invoice
 from services.ledger_service.services.posting import (
     PeriodClosedError,
@@ -28,6 +36,12 @@ from services.ledger_service.services.posting import (
 )
 from services.ledger_service.services.reconciliation import (
     intake_external_transactions,
+)
+from services.ledger_service.services.reports import (
+    cash_position,
+    deferred_revenue,
+    margin_by_domain,
+    profit_loss,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -116,3 +130,59 @@ async def post_invoice(
     result = await create_invoice(session, org_id, payload)
     await session.commit()
     return result
+
+
+# ---- Internal reporting reads -------------------------------------------------
+# Reporting-service needs finance truth without impersonating an admin finance
+# user. These routes expose the same ledger report functions behind service-role
+# auth; no accounting logic is duplicated here.
+
+
+@router.get("/reports/profit-loss", response_model=ProfitLossReport)
+async def internal_profit_loss(
+    request: Request,
+    from_date: date,
+    to_date: date,
+    group_by: str = "dimension_1",
+    _user: AuthUser = Depends(require_service_role),
+    session: AsyncSession = Depends(get_ledger_db),
+) -> ProfitLossReport:
+    try:
+        return await profit_loss(
+            session, request.state.org_id, from_date, to_date, group_by
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+@router.get("/reports/margin", response_model=MarginReport)
+async def internal_margin(
+    request: Request,
+    from_date: date,
+    to_date: date,
+    _user: AuthUser = Depends(require_service_role),
+    session: AsyncSession = Depends(get_ledger_db),
+) -> MarginReport:
+    return await margin_by_domain(session, request.state.org_id, from_date, to_date)
+
+
+@router.get("/reports/deferred-revenue", response_model=DeferredRevenueReport)
+async def internal_deferred_revenue(
+    request: Request,
+    as_of: date,
+    _user: AuthUser = Depends(require_service_role),
+    session: AsyncSession = Depends(get_ledger_db),
+) -> DeferredRevenueReport:
+    return await deferred_revenue(session, request.state.org_id, as_of)
+
+
+@router.get("/reports/cash-position", response_model=CashPositionReport)
+async def internal_cash_position(
+    request: Request,
+    as_of: date,
+    _user: AuthUser = Depends(require_service_role),
+    session: AsyncSession = Depends(get_ledger_db),
+) -> CashPositionReport:
+    return await cash_position(session, request.state.org_id, as_of)

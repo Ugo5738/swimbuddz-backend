@@ -31,6 +31,7 @@ from . import coach as _coach
 from . import flywheel as _flywheel
 from . import lookups as _lookups
 from . import membership as _membership
+from . import quarter_reports as _quarter_reports
 
 router = APIRouter(prefix="/internal/members", tags=["internal"])
 
@@ -40,6 +41,7 @@ router.include_router(_lookups.router)
 router.include_router(_birthdays.router)
 router.include_router(_flywheel.router)
 router.include_router(_coach.router)
+router.include_router(_quarter_reports.router)
 router.include_router(_membership.router)
 
 __all__ = ["router"]

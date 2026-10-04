@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.reporting_service.models import (
@@ -19,12 +20,16 @@ from services.reporting_service.models import (
     QuarterlySnapshot,
     ReportStatus,
 )
+from services.reporting_service.schemas.business_review import BusinessReviewResponse
 from services.reporting_service.schemas.reports import (
     CommunityQuarterlyStatsResponse,
     GenerateReportRequest,
     MemberQuarterlyReportResponse,
     SnapshotStatusResponse,
+    QuarterlyReportSummary,
 )
+from services.reporting_service.services.business_review import build_business_review
+from services.reporting_service.services.quarter_utils import quarter_date_range
 from services.reporting_service.services.aggregator import (
     compute_all_member_reports,
     compute_community_stats,
@@ -33,6 +38,56 @@ from services.reporting_service.services.aggregator import (
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/admin/reports", tags=["admin-reports"])
+
+
+@router.get("/quarterly/available", response_model=list[QuarterlyReportSummary])
+async def admin_available_quarters(
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Completed/known quarterly snapshots, newest first, for the admin selector."""
+    rows = (
+        (
+            await db.execute(
+                select(QuarterlySnapshot).order_by(
+                    QuarterlySnapshot.year.desc(),
+                    QuarterlySnapshot.quarter.desc(),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        QuarterlyReportSummary(
+            year=row.year,
+            quarter=row.quarter,
+            label=f"Q{row.quarter} {row.year}",
+            status=row.status.value
+            if hasattr(row.status, "value")
+            else str(row.status),
+            computed_at=row.completed_at,
+        )
+        for row in rows
+    ]
+
+
+@router.get("/quarterly/business-review", response_model=BusinessReviewResponse)
+async def admin_business_review(
+    year: int = Query(..., ge=2025, le=2030),
+    quarter: int = Query(..., ge=1, le=4),
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Decision-oriented quarter-end management review.
+
+    This composes the frozen quarterly engagement snapshot with source-of-truth
+    Academy, Club, session, and ledger summaries.
+    """
+    try:
+        return await build_business_review(year, quarter, db)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/quarterly/overview", response_model=CommunityQuarterlyStatsResponse)
@@ -176,7 +231,17 @@ async def admin_generate_report(
     admin: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Trigger quarterly report generation for a specific quarter."""
+    """Trigger quarterly report generation for a completed quarter."""
+    _, quarter_end = quarter_date_range(body.year, body.quarter)
+    if quarter_end >= utc_now():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Q{body.quarter} {body.year} has not ended yet. "
+                "Quarter-end reports can only be generated after the quarter closes."
+            ),
+        )
+
     # Check if snapshot already exists
     result = await db.execute(
         select(QuarterlySnapshot).where(
@@ -213,8 +278,6 @@ async def admin_generate_report(
         await compute_community_stats(body.year, body.quarter, db)
         snapshot.status = ReportStatus.COMPLETED
         snapshot.member_count = count
-        from libs.common.datetime_utils import utc_now
-
         snapshot.completed_at = utc_now()
         await db.commit()
         await db.refresh(snapshot)
