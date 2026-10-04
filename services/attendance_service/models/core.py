@@ -94,6 +94,13 @@ class AttendanceRecord(Base):
     booking_guest_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True, index=True
     )
+    # Canonical cross-service subject owned by sessions_service. During the
+    # compatibility window member_id / booking_guest_id may coexist with this
+    # pointer; true unregistered walk-ins can be represented by participant_id
+    # alone.
+    participant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
@@ -118,10 +125,17 @@ class AttendanceRecord(Base):
             "booking_guest_id",
             name="uq_session_booking_guest_attendance",
         ),
-        # Exactly one subject per row — a member XOR a guest, never both/neither.
+        UniqueConstraint(
+            "session_id",
+            "participant_id",
+            name="uq_session_participant_attendance",
+        ),
+        # At least one subject pointer is required. participant_id is the new
+        # canonical identity and may coexist with a legacy member/booking-guest
+        # pointer while those callers migrate.
         CheckConstraint(
-            "(member_id IS NOT NULL) <> (booking_guest_id IS NOT NULL)",
-            name="ck_attendance_member_xor_guest",
+            "member_id IS NOT NULL OR booking_guest_id IS NOT NULL OR participant_id IS NOT NULL",
+            name="ck_attendance_has_subject",
         ),
     )
 
