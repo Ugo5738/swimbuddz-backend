@@ -15,6 +15,8 @@ class AdminGuestWalkInCreate(BaseModel):
     payment_status: Optional[
         Literal["included", "unpaid", "paid", "waived", "unknown"]
     ] = None
+    payment_method: Optional[str] = Field(default=None, max_length=32)
+    payment_reference: Optional[str] = Field(default=None, max_length=128)
     waiver_status: Literal["accepted", "missing", "not_required", "unknown"] = "missing"
     notes: Optional[str] = Field(default=None, max_length=500)
 
@@ -38,6 +40,9 @@ class SessionParticipantResponse(BaseModel):
     rate_code: Optional[str] = None
     fee_amount_kobo: int
     payment_status: str
+    payment_method: Optional[str] = None
+    payment_reference: Optional[str] = None
+    paid_at: Optional[datetime] = None
     waiver_status: str
     notes: Optional[str] = None
     created_by: Optional[str] = None
@@ -49,3 +54,10 @@ class SessionParticipantResponse(BaseModel):
 
 class AdminGuestWalkInResponse(SessionParticipantResponse):
     attendance_recorded: bool = False
+
+
+class WalkInPaymentReconcile(BaseModel):
+    payment_status: Literal["unpaid", "paid", "waived"]
+    payment_method: Optional[str] = Field(default=None, max_length=32)
+    payment_reference: Optional[str] = Field(default=None, max_length=128)
+    note: Optional[str] = Field(default=None, max_length=500)
