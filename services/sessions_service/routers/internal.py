@@ -111,7 +111,9 @@ class SessionBasic(BaseModel):
     cohort_fee_mode: str = "included"
     guest_fee_kobo: Optional[int] = None
     community_dropin_fee_kobo: Optional[int] = None
+    visiting_club_fee_kobo: Optional[int] = None
     allows_community_dropins: bool = False
+    allows_visiting_club_members: bool = False
     ride_share_fee: Optional[int] = None
     occupied_slots: int = 0
     confirmed_booking_member_ids: List[str] = Field(default_factory=list)
@@ -1161,7 +1163,11 @@ async def get_session_by_id(
         cohort_fee_mode=getattr(session, "cohort_fee_mode", None) or "included",
         guest_fee_kobo=getattr(session, "guest_fee_kobo", None),
         community_dropin_fee_kobo=getattr(session, "community_dropin_fee_kobo", None),
+        visiting_club_fee_kobo=getattr(session, "visiting_club_fee_kobo", None),
         allows_community_dropins=getattr(session, "allows_community_dropins", False),
+        allows_visiting_club_members=getattr(
+            session, "allows_visiting_club_members", False
+        ),
         ride_share_fee=session.ride_share_fee,
         occupied_slots=occupied_slots,
         confirmed_booking_member_ids=confirmed_member_ids,
