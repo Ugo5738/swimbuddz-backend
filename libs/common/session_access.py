@@ -40,6 +40,10 @@ class SessionAccessDecision:
     access_source: str | None = None
     fee_amount_kobo: int | None = None
     price_label: str | None = None
+    pricing_audience: str | None = None
+    pricing_source: str | None = "legacy_session"
+    rate_code: str | None = None
+    rate_id: str | None = None
 
 
 DENIAL_MESSAGES: dict[str, str] = {
@@ -264,6 +268,8 @@ def evaluate_session_access(
     access_source: str | None = None
     fee_amount_kobo: int | None = None
     price_label: str | None = None
+    pricing_audience: str | None = None
+    rate_code: str | None = None
     entitlement_at = starts_at or now
     paid_tiers = active_paid_tiers(member, entitlement_at)
 
@@ -288,6 +294,8 @@ def evaluate_session_access(
             price_label = (
                 "Extra cohort class" if paid_extra else "Included in Academy tuition"
             )
+            pricing_audience = ACADEMY
+            rate_code = "academy_extra" if paid_extra else "academy_included"
     elif session_type == CLUB:
         # Live service callers supply the authoritative, session-dated result
         # from members_service.  ``None`` preserves explicit legacy Club and
@@ -318,6 +326,8 @@ def evaluate_session_access(
                 raw_dropin_fee = _value(session, "community_dropin_fee_kobo")
                 fee_amount_kobo = int(raw_dropin_fee or 0)
                 price_label = "Community drop-in rate"
+                pricing_audience = COMMUNITY
+                rate_code = "community_dropin"
         else:
             member_id = _value(member, "member_id") or _value(member, "id")
             pod_id = _value(session, "pod_id")
@@ -339,18 +349,24 @@ def evaluate_session_access(
                 if source == "club_enrollment":
                     fee_amount_kobo = 0
                     price_label = "Included in Club quarter"
+                    pricing_audience = CLUB
+                    rate_code = "club_included"
                 elif source == "club_transition":
                     # Transition is an eligibility/payment mode, not a price.
                     # Resolve the session's current Admin-set price now; the
                     # booking/payment layer snapshots the resulting amount.
                     fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
                     price_label = "2026 transition session price"
+                    pricing_audience = CLUB
+                    rate_code = "club_transition"
                 else:
                     # Legacy and post-Academy bridges are eligibility grants,
                     # not prepaid quarters; the session's operational member
                     # rate is selected explicitly by this resolver.
                     fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
                     price_label = "Club session rate"
+                    pricing_audience = CLUB
+                    rate_code = "club_member"
     elif session_type == EVENT:
         if event_access_result is None:
             reason = "event_policy_unavailable"
@@ -381,12 +397,18 @@ def evaluate_session_access(
             if CLUB in event_paid_tiers or ACADEMY in event_paid_tiers:
                 fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
                 price_label = "Club / Academy rate"
+                pricing_audience = CLUB if CLUB in event_paid_tiers else ACADEMY
+                rate_code = "programme_member"
             elif COMMUNITY in event_paid_tiers and community_fee is not None:
                 fee_amount_kobo = int(community_fee)
                 price_label = "Community member rate"
+                pricing_audience = COMMUNITY
+                rate_code = "community_member"
             elif not event_paid_tiers and guest_fee is not None:
                 fee_amount_kobo = int(guest_fee)
                 price_label = "Guest / non-member rate"
+                pricing_audience = "guest"
+                rate_code = "guest"
         else:
             reason = str(event_access_result.get("reason") or "event_access_required")
     elif session_type == COMMUNITY:
@@ -395,6 +417,8 @@ def evaluate_session_access(
             access_source = "community_membership"
             fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
             price_label = "Session rate"
+            pricing_audience = COMMUNITY
+            rate_code = "community_member"
         else:
             reason = "membership_required"
     else:
@@ -403,6 +427,8 @@ def evaluate_session_access(
             access_source = "community_membership"
             fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
             price_label = "Session rate"
+            pricing_audience = COMMUNITY
+            rate_code = "community_member"
         else:
             reason = "membership_required"
 
@@ -424,6 +450,8 @@ def evaluate_session_access(
         access_source=access_source,
         fee_amount_kobo=fee_amount_kobo,
         price_label=price_label,
+        pricing_audience=pricing_audience,
+        rate_code=rate_code,
     )
 
 
