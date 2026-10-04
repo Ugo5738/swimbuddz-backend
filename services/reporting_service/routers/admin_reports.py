@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.reporting_service.models import (
@@ -28,6 +29,7 @@ from services.reporting_service.schemas.reports import (
     QuarterlyReportSummary,
 )
 from services.reporting_service.services.business_review import build_business_review
+from services.reporting_service.services.quarter_utils import quarter_date_range
 from services.reporting_service.services.aggregator import (
     compute_all_member_reports,
     compute_community_stats,
@@ -229,7 +231,17 @@ async def admin_generate_report(
     admin: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Trigger quarterly report generation for a specific quarter."""
+    """Trigger quarterly report generation for a completed quarter."""
+    _, quarter_end = quarter_date_range(body.year, body.quarter)
+    if quarter_end >= utc_now():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Q{body.quarter} {body.year} has not ended yet. "
+                "Quarter-end reports can only be generated after the quarter closes."
+            ),
+        )
+
     # Check if snapshot already exists
     result = await db.execute(
         select(QuarterlySnapshot).where(
