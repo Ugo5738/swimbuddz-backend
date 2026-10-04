@@ -359,8 +359,11 @@ async def transfer_club_location(
     admin: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
+    # Preview may hydrate schedules over the Sessions service; never hold DB
+    # row locks across that network call. The source/target rows are locked and
+    # revalidated immediately below before any mutation.
     preview = await _preview(
-        db, source_enrollment_id, body, lock=True
+        db, source_enrollment_id, body, lock=False
     )
     if preview.requires_financial_reconciliation:
         raise HTTPException(
