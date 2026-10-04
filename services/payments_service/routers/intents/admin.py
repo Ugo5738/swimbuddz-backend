@@ -45,7 +45,9 @@ from services.payments_service.schemas import (
     PaymentResponse,
 )
 from services.payments_service.schemas.manual_recording import OfflinePaymentRecord
-from services.payments_service.services.additional_charges import calculate_additional_charges
+from services.payments_service.services.additional_charges import (
+    calculate_additional_charges,
+)
 from services.payments_service.services.manual_transfer import (
     lock_external_reference,
     settle_offline,
@@ -186,7 +188,10 @@ async def _participant_settlement_context(participant_id: uuid.UUID) -> dict:
             detail="Could not verify the walk-in participant",
         )
     context = response.json()
-    if context.get("source") != "walk_in" or context.get("participant_kind") != "guest":
+    if (
+        context.get("source") != "walk_in"
+        or context.get("participant_kind") != "guest"
+    ):
         raise HTTPException(
             status_code=409,
             detail="Only unregistered guest walk-ins use participant settlement",
@@ -328,7 +333,9 @@ async def admin_generate_participant_payment_link(
         db.add(payment)
         await db.flush()
 
-    payer_email = payment.payer_email or settings.ADMIN_EMAIL or "noreply@swimbuddz.com"
+    payer_email = (
+        payment.payer_email or settings.ADMIN_EMAIL or "noreply@swimbuddz.com"
+    )
     authorization_url, access_code = await _initialize_paystack(
         payment,
         payer_email,
