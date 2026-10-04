@@ -493,6 +493,7 @@ class SessionDetailedStats(BaseModel):
     guest_pass_attendance_records: int = 0
     booking_guest_attendance_records: int = 0
     walk_in_guest_attendance_records: int = 0
+    attendance_available: bool = False
     by_type: dict | None = None
     most_active_location: str | None = None
     busiest_session_title: str | None = None
@@ -641,6 +642,7 @@ async def get_session_detailed_stats(
     # participant attendance. Ask it for all actual PRESENT/LATE humans in
     # these sessions rather than inferring attendance from bookings.
     attendance_counts: dict[str, dict] = {}
+    attendance_available = False
     try:
         attendance_response = await internal_get(
             service_url=get_settings().ATTENDANCE_SERVICE_URL,
@@ -650,6 +652,7 @@ async def get_session_detailed_stats(
             timeout=20.0,
         )
         if attendance_response.status_code == 200:
+            attendance_available = True
             attendance_counts = {
                 str(row["session_id"]): row for row in attendance_response.json()
             }
@@ -813,6 +816,7 @@ async def get_session_detailed_stats(
         guest_pass_attendance_records=len(guest_pass_rows),
         booking_guest_attendance_records=booking_guest_attendance_records,
         walk_in_guest_attendance_records=walk_in_guest_attendance_records,
+        attendance_available=attendance_available,
         by_type=dict(type_counts) if type_counts else None,
         most_active_location=most_active,
         busiest_session_title=busiest_session_title,
