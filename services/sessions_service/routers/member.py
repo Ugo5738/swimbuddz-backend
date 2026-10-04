@@ -52,6 +52,7 @@ from services.sessions_service.services.commercial import (
     apply_explicit_rate,
     apply_session_rate,
     rates_by_session,
+    sync_legacy_session_rates,
 )
 from services.sessions_service.services.pricing import (
     PRICING_KEYS,
@@ -697,6 +698,8 @@ async def create_session(
 
     session = Session(**session_data)
     db.add(session)
+    await db.flush()
+    await sync_legacy_session_rates(db, session)
     await db.commit()
     await db.refresh(session)
 
@@ -1084,6 +1087,8 @@ async def update_session(
         session.published_at = None
 
     db.add(session)
+    await db.flush()
+    await sync_legacy_session_rates(db, session)
     await db.commit()
     await db.refresh(session)
 
