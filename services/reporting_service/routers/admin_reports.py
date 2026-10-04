@@ -278,8 +278,6 @@ async def admin_generate_report(
         await compute_community_stats(body.year, body.quarter, db)
         snapshot.status = ReportStatus.COMPLETED
         snapshot.member_count = count
-        from libs.common.datetime_utils import utc_now
-
         snapshot.completed_at = utc_now()
         await db.commit()
         await db.refresh(snapshot)
