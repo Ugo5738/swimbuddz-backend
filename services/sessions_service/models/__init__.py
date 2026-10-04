@@ -26,6 +26,7 @@ from services.sessions_service.models.enums import (
     SessionBookingStatus,
 )
 from services.sessions_service.models.guest_pass import GuestPass, GuestReferralClaim
+from services.sessions_service.models.commerce import SessionParticipant, SessionRate
 from services.sessions_service.models.makeup import MakeupBooking
 from services.sessions_service.models.schedule_operation import ClubScheduleOperation
 
@@ -45,6 +46,8 @@ __all__ = [
     "MakeupOrigin",
     "MakeupStatus",
     "Session",
+    "SessionParticipant",
+    "SessionRate",
     "SessionBooking",
     "SessionBookingStatus",
     "SessionBundleCart",
