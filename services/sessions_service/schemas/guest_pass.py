@@ -116,6 +116,10 @@ class GuestPassAdminResponse(GuestPassPublicResponse):
     marketing_consent: bool
     attended_at: Optional[datetime] = None
     actual_swim_minutes: Optional[int] = None
+    participant_id: Optional[uuid.UUID] = None
+    fee_amount_kobo: Optional[int] = None
+    payment_status: Optional[str] = None
+    waiver_status: Optional[str] = None
     assessment_result: Optional[dict[str, Any]] = None
     converted_member_id: Optional[uuid.UUID] = None
 
@@ -168,7 +172,7 @@ class GuestFunnelResponse(BaseModel):
 
 class SessionRosterEntry(BaseModel):
     id: uuid.UUID
-    kind: Literal["member", "booking_guest", "guest_pass"]
+    kind: Literal["member", "booking_guest", "guest_pass", "walk_in_guest"]
     full_name: str
     booking_status: str
     attendance_status: Optional[str] = None
