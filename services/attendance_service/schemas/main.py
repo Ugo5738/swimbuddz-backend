@@ -26,6 +26,14 @@ class PublicAttendanceCreate(AttendanceBase):
     member_id: uuid.UUID
 
 
+class ParticipantAttendanceCreate(BaseModel):
+    """Service-owned attendance for a canonical SessionParticipant."""
+
+    participant_id: uuid.UUID
+    status: AttendanceStatus = AttendanceStatus.PRESENT
+    notes: Optional[str] = None
+
+
 class GuestAttendanceCreate(BaseModel):
     """Coach/admin records a non-member guest's attendance at the door.
 
@@ -53,6 +61,7 @@ class AttendanceResponse(AttendanceBase):
     session_id: uuid.UUID
     member_id: Optional[uuid.UUID] = None
     booking_guest_id: Optional[uuid.UUID] = None
+    participant_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
     wallet_transaction_id: Optional[uuid.UUID] = None  # Set when paid with Bubbles
