@@ -90,7 +90,9 @@ def _payment_revenue_mapping(payment: Payment) -> tuple[str | None, str | None]:
         PaymentPurpose.SESSION_BOOKING,
         PaymentPurpose.GUEST_PASS,
     }:
-        session_type = str((payment.payment_metadata or {}).get("session_type") or "").lower()
+        session_type = str(
+            (payment.payment_metadata or {}).get("session_type") or ""
+        ).lower()
         by_type = {
             "club": ("revenue_club_session", "club"),
             "community": ("revenue_community", "community"),
