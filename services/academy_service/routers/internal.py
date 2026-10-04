@@ -564,3 +564,147 @@ async def get_member_academy_summary(
         programs_enrolled=programs_enrolled,
         certificates_earned=certificates_earned,
     )
+
+
+# ---------------------------------------------------------------------------
+# Reporting: quarter-level Academy outcomes
+# ---------------------------------------------------------------------------
+
+
+class AcademyQuarterSummary(_BaseModel):
+    cohorts_in_window: int = 0
+    cohorts_started: int = 0
+    cohorts_ended: int = 0
+    total_capacity: int = 0
+    active_enrollments: int = 0
+    pending_approvals: int = 0
+    waitlisted: int = 0
+    dropped: int = 0
+    graduated: int = 0
+    new_enrollments: int = 0
+    certificates_issued: int = 0
+    fill_rate: float = 0.0
+    completion_rate: float = 0.0
+    by_location: dict[str, dict] = {}
+
+
+@router.get("/quarter-summary", response_model=AcademyQuarterSummary)
+async def get_academy_quarter_summary_internal(
+    date_from: _datetime = Query(..., alias="from"),
+    date_to: _datetime = Query(..., alias="to"),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Aggregate Academy operating outcomes for a reporting window.
+
+    Cohorts are included when their scheduled dates overlap the window.
+    Completion uses issued certificates as the time-bounded graduation signal;
+    Enrollment currently has no separate graduated_at timestamp.
+    """
+    cohorts = (
+        (
+            await db.execute(
+                select(Cohort)
+                .where(
+                    Cohort.start_date <= date_to,
+                    Cohort.end_date >= date_from,
+                )
+                .options(selectinload(Cohort.enrollments))
+            )
+        )
+        .scalars()
+        .unique()
+        .all()
+    )
+
+    status_counts = {
+        "active": 0,
+        "pending_approval": 0,
+        "waitlist": 0,
+        "dropped": 0,
+        "graduated": 0,
+    }
+    by_location: dict[str, dict] = {}
+    enrollment_ids: set[uuid.UUID] = set()
+    total_capacity = 0
+
+    for cohort in cohorts:
+        total_capacity += int(cohort.capacity or 0)
+        location = cohort.location_name or "Unspecified"
+        loc = by_location.setdefault(
+            location,
+            {
+                "cohorts": 0,
+                "capacity": 0,
+                "active_enrollments": 0,
+                "graduated": 0,
+                "dropped": 0,
+            },
+        )
+        loc["cohorts"] += 1
+        loc["capacity"] += int(cohort.capacity or 0)
+
+        for enrollment in cohort.enrollments:
+            enrollment_ids.add(enrollment.id)
+            if enrollment.status == EnrollmentStatus.ENROLLED:
+                status_counts["active"] += 1
+                loc["active_enrollments"] += 1
+            elif enrollment.status == EnrollmentStatus.PENDING_APPROVAL:
+                status_counts["pending_approval"] += 1
+            elif enrollment.status == EnrollmentStatus.WAITLIST:
+                status_counts["waitlist"] += 1
+            elif enrollment.status in (
+                EnrollmentStatus.DROPPED,
+                EnrollmentStatus.DROPOUT_PENDING,
+            ):
+                status_counts["dropped"] += 1
+                loc["dropped"] += 1
+            elif enrollment.status == EnrollmentStatus.GRADUATED:
+                status_counts["graduated"] += 1
+                loc["graduated"] += 1
+
+    new_enrollments = int(
+        (
+            await db.execute(
+                select(func.count(Enrollment.id)).where(
+                    Enrollment.enrolled_at >= date_from,
+                    Enrollment.enrolled_at <= date_to,
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    certificates_issued = int(
+        (
+            await db.execute(
+                select(func.count(Enrollment.id)).where(
+                    Enrollment.certificate_issued_at >= date_from,
+                    Enrollment.certificate_issued_at <= date_to,
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+
+    filled = status_counts["active"] + status_counts["graduated"] + status_counts["dropped"]
+    completion_denominator = status_counts["graduated"] + status_counts["dropped"]
+
+    return AcademyQuarterSummary(
+        cohorts_in_window=len(cohorts),
+        cohorts_started=sum(1 for c in cohorts if date_from <= c.start_date <= date_to),
+        cohorts_ended=sum(1 for c in cohorts if date_from <= c.end_date <= date_to),
+        total_capacity=total_capacity,
+        active_enrollments=status_counts["active"],
+        pending_approvals=status_counts["pending_approval"],
+        waitlisted=status_counts["waitlist"],
+        dropped=status_counts["dropped"],
+        graduated=status_counts["graduated"],
+        new_enrollments=new_enrollments,
+        certificates_issued=certificates_issued,
+        fill_rate=round(filled / total_capacity, 4) if total_capacity else 0.0,
+        completion_rate=(
+            round(status_counts["graduated"] / completion_denominator, 4)
+            if completion_denominator
+            else 0.0
+        ),
+        by_location=by_location,
+    )
