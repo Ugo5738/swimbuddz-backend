@@ -99,6 +99,80 @@ async def get_session_attendee_member_ids(
     return [str(mid) for mid in result.scalars().all()]
 
 
+class SessionAttendanceCount(BaseModel):
+    session_id: uuid.UUID
+    attended: int = 0
+    member_attended: int = 0
+    booking_guest_attended: int = 0
+    participant_ids: list[uuid.UUID] = []
+
+
+@router.get(
+    "/session-counts",
+    response_model=list[SessionAttendanceCount],
+)
+async def get_session_attendance_counts(
+    ids: str = Query(..., description="Comma-separated session IDs"),
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return actual PRESENT/LATE attendance by session and subject kind.
+
+    Sessions/reporting own the scheduled dates, so callers first select the
+    sessions in their reporting window and then ask Attendance for counts. This
+    avoids attributing a retrospectively-entered walk-in to the day the admin
+    happened to enter it.
+    """
+    session_ids = [
+        uuid.UUID(value.strip())
+        for value in ids.split(",")
+        if value.strip()
+    ]
+    if not session_ids:
+        return []
+    if len(session_ids) > 500:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail="At most 500 session IDs are supported")
+
+    rows = (
+        (
+            await db.execute(
+                select(AttendanceRecord).where(
+                    AttendanceRecord.session_id.in_(session_ids),
+                    AttendanceRecord.status.in_(
+                        [AttendanceStatus.PRESENT, AttendanceStatus.LATE]
+                    ),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    counts: dict[uuid.UUID, dict] = {
+        session_id: {
+            "attended": 0,
+            "member_attended": 0,
+            "booking_guest_attended": 0,
+            "participant_ids": [],
+        }
+        for session_id in session_ids
+    }
+    for row in rows:
+        bucket = counts[row.session_id]
+        bucket["attended"] += 1
+        if row.member_id is not None:
+            bucket["member_attended"] += 1
+        elif row.booking_guest_id is not None:
+            bucket["booking_guest_attended"] += 1
+        elif row.participant_id is not None:
+            bucket["participant_ids"].append(row.participant_id)
+
+    return [
+        SessionAttendanceCount(session_id=session_id, **counts[session_id])
+        for session_id in session_ids
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Reporting aggregation
 # ---------------------------------------------------------------------------
