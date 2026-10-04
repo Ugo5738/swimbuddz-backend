@@ -303,7 +303,10 @@ async def confirm_participant_payment(
     if payload.amount_kobo != expected_kobo:
         raise HTTPException(
             status_code=409,
-            detail=f"Payment amount does not match the frozen walk-in fee ({expected_kobo} kobo)",
+            detail=(
+                "Payment amount does not match the frozen walk-in fee "
+                f"({expected_kobo} kobo)"
+            ),
         )
     if participant.payment_status == "paid":
         if participant.payment_reference == payload.payment_reference:
@@ -314,7 +317,9 @@ async def confirm_participant_payment(
                 session_type=(
                     session.session_type.value
                     if session and hasattr(session.session_type, "value")
-                    else str(session.session_type) if session else "unknown"
+                    else (
+                        str(session.session_type) if session else "unknown"
+                    )
                 ),
                 source=participant.source,
                 participant_kind=participant.participant_kind,
@@ -747,7 +752,9 @@ async def get_session_detailed_stats(
 
     for session in sessions:
         session_id = str(session.id)
-        duration_hours = (session.ends_at - session.starts_at).total_seconds() / 3600
+        duration_hours = (
+            session.ends_at - session.starts_at
+        ).total_seconds() / 3600
         effective_guest_hours = max(0.0, duration_hours - 1.0)
         attendance = attendance_counts.get(session_id) or {}
         member_count = int(attendance.get("member_attended") or 0)
@@ -758,9 +765,7 @@ async def get_session_detailed_stats(
             if uuid.UUID(str(participant_id)) in guest_participant_ids
         )
         pass_count = int(guest_pass_counts.get(session_id, 0))
-        actual_attendance = (
-            int(attendance.get("attended") or 0) + pass_count
-        )
+        actual_attendance = int(attendance.get("attended") or 0) + pass_count
 
         member_attendance_records += member_count
         booking_guest_attendance_records += booking_guest_count
@@ -775,8 +780,12 @@ async def get_session_detailed_stats(
         if actual_attendance:
             if session.location_name:
                 attended_location_counts[session.location_name] += actual_attendance
-            attended_day_counts[DAYS[session.starts_at.weekday()]] += actual_attendance
-            attended_slot_counts[time_slot(session.starts_at.hour)] += actual_attendance
+            attended_day_counts[
+                DAYS[session.starts_at.weekday()]
+            ] += actual_attendance
+            attended_slot_counts[
+                time_slot(session.starts_at.hour)
+            ] += actual_attendance
 
         details.append(
             {
@@ -790,9 +799,9 @@ async def get_session_detailed_stats(
                 "capacity": session.capacity,
                 "attendance": actual_attendance,
                 "member_attendance": member_count,
-                "guest_attendance": booking_guest_count
-                + participant_guest_count
-                + pass_count,
+                "guest_attendance": (
+                    booking_guest_count + participant_guest_count + pass_count
+                ),
             }
         )
 
