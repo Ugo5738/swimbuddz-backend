@@ -239,6 +239,10 @@ async def build_business_review(
         data_quality.append("Club quarter summary unavailable.")
     if not sessions:
         data_quality.append("Session detail summary unavailable.")
+    elif not sessions.get("attendance_available"):
+        data_quality.append(
+            "All-human attendance detail was unavailable; community attendance falls back to the frozen member snapshot."
+        )
     estimated_guest_hours = float(sessions.get("estimated_guest_swimmer_hours") or 0)
     if estimated_guest_hours > 0:
         data_quality.append(
@@ -328,7 +332,7 @@ async def build_business_review(
             "sessions_held": current_stats.total_sessions_held,
             "attendance_records": int(
                 sessions.get("total_attendance_records")
-                if sessions.get("total_attendance_records") is not None
+                if sessions.get("attendance_available")
                 else current_stats.total_attendance_records
             ),
             "member_attendance_records": int(
