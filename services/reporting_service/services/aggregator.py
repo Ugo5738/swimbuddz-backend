@@ -778,6 +778,9 @@ async def compute_community_stats(
             func.sum(MemberQuarterlyReport.milestones_achieved).label(
                 "total_milestones"
             ),
+            func.count(MemberQuarterlyReport.id)
+            .filter(MemberQuarterlyReport.is_first_quarter.is_(True))
+            .label("total_new_members"),
             func.sum(MemberQuarterlyReport.certificates_earned).label("total_certs"),
             func.sum(MemberQuarterlyReport.volunteer_hours).label("total_volunteer"),
             func.sum(MemberQuarterlyReport.rides_taken).label("total_rides"),
@@ -819,7 +822,7 @@ async def compute_community_stats(
         total_sessions_held=session_stats.get("total_sessions", 0),
         total_attendance_records=row.total_attendance or 0,
         average_attendance_rate=float(row.avg_rate or 0.0),
-        total_new_members=session_stats.get("new_members", 0),
+        total_new_members=int(row.total_new_members or 0),
         total_milestones_achieved=row.total_milestones or 0,
         total_certificates_issued=row.total_certs or 0,
         total_volunteer_hours=float(row.total_volunteer or 0.0),
