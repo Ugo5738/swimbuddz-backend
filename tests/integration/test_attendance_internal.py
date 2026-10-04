@@ -47,6 +47,7 @@ async def test_get_member_attendance_empty(attendance_client, db_session):
     assert response.status_code == 200
     assert response.json() == []
 
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_get_member_attendance_filtered_by_session_ids(
@@ -123,6 +124,7 @@ async def test_get_session_attendee_member_ids_empty(attendance_client, db_sessi
 
     assert response.status_code == 200
     assert response.json() == []
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
