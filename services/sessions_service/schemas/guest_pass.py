@@ -180,6 +180,10 @@ class SessionRosterEntry(BaseModel):
     booking_mode: Optional[str] = None
     phone: Optional[str] = None
     actual_swim_minutes: Optional[int] = None
+    participant_id: Optional[uuid.UUID] = None
+    fee_amount_kobo: Optional[int] = None
+    payment_status: Optional[str] = None
+    waiver_status: Optional[str] = None
 
 
 class SessionRosterResponse(BaseModel):
