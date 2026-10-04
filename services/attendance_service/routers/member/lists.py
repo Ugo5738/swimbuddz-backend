@@ -61,14 +61,14 @@ async def list_session_attendance(
     records = result.scalars().all()
 
     # Bulk-lookup member details
-    member_ids = list({str(r.member_id) for r in records})
+    member_ids = list({str(r.member_id) for r in records if r.member_id is not None})
     members_data = await get_members_bulk(member_ids, calling_service="attendance")
     members_map = {m["id"]: m for m in members_data}
 
     responses = []
     for attendance in records:
         resp = AttendanceResponse.model_validate(attendance)
-        member = members_map.get(str(attendance.member_id), {})
+        member = members_map.get(str(attendance.member_id), {}) if attendance.member_id else {}
         resp.member_name = (
             f"{member.get('first_name', '')} {member.get('last_name', '')}".strip()
             or None
