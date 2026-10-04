@@ -359,6 +359,29 @@ def evaluate_session_access(
                     price_label = "2026 transition session price"
                     pricing_audience = CLUB
                     rate_code = "club_transition"
+                elif source == "club_visit":
+                    # A member remains enrolled at their home Club and buys
+                    # access to the host location for this swim only. Paid
+                    # add-ons deliberately ignore any visitor discount.
+                    access_mode = _value(session, "club_access_mode", "plan_included")
+                    pool_fee = int(_value(session, "pool_fee", 0) or 0)
+                    visitor_fee = _value(session, "visiting_club_fee_kobo")
+                    if access_mode == "paid_addon":
+                        fee_amount_kobo = pool_fee
+                        price_label = "Club paid add-on"
+                        rate_code = "club_visit_paid_addon"
+                    else:
+                        fee_amount_kobo = (
+                            int(visitor_fee) if visitor_fee is not None else pool_fee
+                        )
+                        price_label = "Visiting Club member rate"
+                        rate_code = "club_visit"
+                    pricing_audience = CLUB
+                elif source == "club_paid_addon":
+                    fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
+                    price_label = "Club paid add-on"
+                    pricing_audience = CLUB
+                    rate_code = "club_paid_addon"
                 else:
                     # Legacy and post-Academy bridges are eligibility grants,
                     # not prepaid quarters; the session's operational member
