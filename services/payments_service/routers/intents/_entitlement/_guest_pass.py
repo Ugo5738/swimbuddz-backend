@@ -22,7 +22,10 @@ async def apply_guest_pass(payment: Payment) -> None:
     headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
 
     if participant_id:
-        amount_kobo = int(round(float(payment.amount or 0) * 100))
+        amount_kobo = int(
+            metadata.get("subtotal_kobo")
+            or round(float(payment.amount or 0) * 100)
+        )
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
                 f"{settings.SESSIONS_SERVICE_URL}"
