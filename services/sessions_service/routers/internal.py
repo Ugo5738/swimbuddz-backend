@@ -906,6 +906,9 @@ async def sync_event_sessions(
             session.status = SessionStatus.CANCELLED
             cancelled.append(session)
 
+    for changed_session, _before in changed_snapshots:
+        await sync_legacy_session_rates(db, changed_session)
+
     await db.commit()
 
     settings = get_settings()
