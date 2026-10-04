@@ -51,6 +51,7 @@ from services.sessions_service.models import (
     Session,
     SessionBooking,
     SessionBookingStatus,
+    SessionType,
 )
 from services.sessions_service.schemas import (
     AdminPoolFeeRefundRequest,
