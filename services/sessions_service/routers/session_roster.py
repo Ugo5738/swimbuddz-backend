@@ -11,20 +11,171 @@ from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
-from libs.common.service_client import get_members_bulk, internal_get
+from libs.common.service_client import get_members_bulk, internal_get, internal_post
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     BookingGuest,
     GuestPass,
     Session,
     SessionBooking,
+    SessionParticipant,
+    SessionRate,
 )
 from services.sessions_service.schemas.guest_pass import (
     SessionRosterEntry,
     SessionRosterResponse,
 )
+from services.sessions_service.schemas.participant import (
+    AdminGuestWalkInCreate,
+    SessionParticipantResponse,
+)
+from services.sessions_service.services.guest_identity import normalize_guest_phone
 
 router = APIRouter(tags=["session-roster"])
+
+
+async def _sync_participant_attendance(
+    session_id: uuid.UUID,
+    participant_id: uuid.UUID,
+    notes: str | None,
+) -> bool:
+    try:
+        response = await internal_post(
+            service_url=get_settings().ATTENDANCE_SERVICE_URL,
+            path=f"/internal/attendance/session/{session_id}/participant",
+            calling_service="sessions",
+            json={
+                "participant_id": str(participant_id),
+                "status": "present",
+                "notes": notes or "Admin guest walk-in",
+            },
+        )
+        response.raise_for_status()
+        return True
+    except httpx.HTTPError:
+        return False
+
+
+def _participant_response(
+    participant: SessionParticipant, *, attendance_recorded: bool
+) -> SessionParticipantResponse:
+    return SessionParticipantResponse(
+        id=participant.id,
+        session_id=participant.session_id,
+        participant_kind=participant.participant_kind,
+        source=participant.source,
+        full_name=participant.full_name_snapshot,
+        email=participant.email_snapshot,
+        phone=participant.phone_snapshot,
+        fee_amount_kobo=participant.fee_amount_kobo,
+        rate_code=participant.rate_code,
+        payment_status=participant.payment_status,
+        waiver_status=participant.waiver_status,
+        attendance_recorded=attendance_recorded,
+    )
+
+
+@router.post(
+    "/admin/sessions/{session_id}/walk-in-guests",
+    response_model=SessionParticipantResponse,
+    status_code=201,
+)
+async def create_guest_walk_in(
+    session_id: uuid.UUID,
+    body: AdminGuestWalkInCreate,
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Record an unregistered person who actually attended a session.
+
+    This is deliberately not a GuestPass: no booking, waiver acceptance or
+    payment is fabricated after the fact. It creates an auditable participant,
+    snapshots the commercial amount owed, and best-effort records attendance.
+    """
+    session = await db.get(Session, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    phone = normalize_guest_phone(body.phone) if body.phone else None
+    email = str(body.email).lower() if body.email else None
+
+    # Retrying the same retrospective entry should sync attendance rather than
+    # creating another human record.
+    existing_query = select(SessionParticipant).where(
+        SessionParticipant.session_id == session_id,
+        SessionParticipant.source == "walk_in",
+        SessionParticipant.participant_kind == "guest",
+    )
+    if phone:
+        existing_query = existing_query.where(
+            SessionParticipant.phone_snapshot == phone
+        )
+    elif email:
+        existing_query = existing_query.where(
+            SessionParticipant.email_snapshot == email
+        )
+    else:
+        existing_query = existing_query.where(
+            SessionParticipant.full_name_snapshot == body.full_name
+        )
+    existing = (await db.execute(existing_query)).scalars().first()
+    if existing is not None:
+        recorded = await _sync_participant_attendance(
+            session_id, existing.id, existing.notes
+        )
+        return _participant_response(existing, attendance_recorded=recorded)
+
+    rate = (
+        await db.execute(
+            select(SessionRate).where(
+                SessionRate.session_id == session_id,
+                SessionRate.audience == "guest",
+            )
+        )
+    ).scalar_one_or_none()
+    configured_fee = int(
+        rate.amount_kobo
+        if rate is not None
+        else (
+            session.guest_fee_kobo
+            if session.guest_fee_kobo is not None
+            else session.pool_fee or 0
+        )
+    )
+    fee = configured_fee if body.fee_amount_kobo is None else body.fee_amount_kobo
+    if fee != configured_fee and not body.fee_override_reason:
+        raise HTTPException(
+            status_code=422,
+            detail="Explain why this walk-in uses a fee different from the configured guest rate.",
+        )
+
+    note_parts = [body.notes]
+    if body.fee_override_reason:
+        note_parts.append(f"Fee override: {body.fee_override_reason}")
+    participant = SessionParticipant(
+        session_id=session_id,
+        participant_kind="guest",
+        source="walk_in",
+        full_name_snapshot=body.full_name,
+        email_snapshot=email,
+        phone_snapshot=phone,
+        rate_id=rate.id if rate else None,
+        rate_code="guest",
+        fee_amount_kobo=fee,
+        payment_status=body.payment_status,
+        # Retrospective admin entry must never manufacture waiver acceptance.
+        waiver_status="missing",
+        notes=" | ".join(part for part in note_parts if part) or None,
+        created_by=admin.user_id,
+    )
+    db.add(participant)
+    await db.commit()
+    await db.refresh(participant)
+
+    recorded = await _sync_participant_attendance(
+        session_id, participant.id, participant.notes
+    )
+    return _participant_response(participant, attendance_recorded=recorded)
 
 
 @router.get("/admin/sessions/{session_id}/roster", response_model=SessionRosterResponse)
@@ -68,6 +219,18 @@ async def session_roster(
         )
         if bookings
         else []
+    )
+    participants = list(
+        (
+            await db.execute(
+                select(SessionParticipant)
+                .where(
+                    SessionParticipant.session_id == session_id,
+                    SessionParticipant.source == "walk_in",
+                )
+                .order_by(SessionParticipant.created_at)
+            )
+        ).scalars()
     )
     passes = list(
         (
@@ -124,6 +287,11 @@ async def session_roster(
     by_guest = {
         str(a["booking_guest_id"]): a for a in attendance if a.get("booking_guest_id")
     }
+    by_participant = {
+        str(a["participant_id"]): a
+        for a in attendance
+        if a.get("participant_id")
+    }
     by_booking = {b.id: b for b in bookings}
     entries = [
         SessionRosterEntry(
@@ -160,6 +328,20 @@ async def session_roster(
             phone=g.phone,
         )
         for g in attached
+    )
+    entries.extend(
+        SessionRosterEntry(
+            id=p.id,
+            kind="walk_in_guest",
+            full_name=p.full_name_snapshot,
+            booking_status="walk_in",
+            attendance_status=by_participant.get(str(p.id), {}).get("status"),
+            phone=p.phone_snapshot,
+            fee_amount_kobo=p.fee_amount_kobo,
+            payment_status=p.payment_status,
+            waiver_status=p.waiver_status,
+        )
+        for p in participants
     )
     entries.extend(
         SessionRosterEntry(
