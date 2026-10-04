@@ -102,7 +102,18 @@ async def add_guest_walk_in(
         if payload.fee_amount_kobo is not None
         else default_fee
     )
+    if fee != default_fee and not (payload.fee_override_reason or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Explain why this walk-in uses a fee different from the configured guest rate.",
+        )
     payment_status = payload.payment_status or ("included" if fee == 0 else "unpaid")
+    participant_notes = payload.notes
+    if payload.fee_override_reason:
+        override_note = f"Fee override: {payload.fee_override_reason.strip()}"
+        participant_notes = "\n".join(
+            part for part in [participant_notes, override_note] if part
+        )
 
     participant = await create_guest_walk_in(
         db,
@@ -115,7 +126,7 @@ async def add_guest_walk_in(
         payment_method=payload.payment_method,
         payment_reference=payload.payment_reference,
         waiver_status=payload.waiver_status,
-        notes=payload.notes,
+        notes=participant_notes,
         created_by=admin.user_id,
     )
     await db.commit()
@@ -124,7 +135,7 @@ async def add_guest_walk_in(
     attendance_recorded = await _record_participant_attendance(
         session.id,
         participant.id,
-        payload.notes,
+        participant_notes,
     )
     data = SessionParticipantResponse.model_validate(participant).model_dump()
     return AdminGuestWalkInResponse(
