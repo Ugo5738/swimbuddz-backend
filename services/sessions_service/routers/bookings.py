@@ -79,7 +79,6 @@ from services.sessions_service.services.booking_confirmation import (
     deliver_confirmation,
     queue_confirmation,
 )
-from services.sessions_service.services.commercial import apply_session_rate
 from services.sessions_service.services.guest_identity import normalize_guest_phone
 from services.sessions_service.services.session_access import (
     evaluate_member_session_access,
@@ -333,8 +332,8 @@ async def book_session(
         session=session,
         member_id=member_id,
         now=now,
+        db=db,
     )
-    access = await apply_session_rate(db, session, access)
     if not access.bookable:
         raise HTTPException(
             status_code=403,
@@ -962,13 +961,17 @@ async def admin_walk_in_booking(
             "This class is included in tuition. Designate a genuine paid extra class before recording an additional fee.",
         )
     resolved_access = None
-    if payload.fee_amount_kobo is None and not included_class:
+    if (
+        payload.fee_amount_kobo is None
+        and not included_class
+        and session.session_type != SessionType.COHORT_CLASS
+    ):
         resolved_access = await evaluate_member_session_access(
             session=session,
             member_id=payload.member_id,
             now=utc_now(),
+            db=db,
         )
-        resolved_access = await apply_session_rate(db, session, resolved_access)
 
     fee_kobo = (
         payload.fee_amount_kobo
