@@ -196,6 +196,9 @@ class SessionParticipant(Base):
     payment_status: Mapped[str] = mapped_column(
         String(24), nullable=False, default="unknown", server_default="unknown"
     )
+    payment_method: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    payment_reference: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     waiver_status: Mapped[str] = mapped_column(
         String(24), nullable=False, default="unknown", server_default="unknown"
     )
