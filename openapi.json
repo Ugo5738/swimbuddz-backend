@@ -10964,6 +10964,175 @@
         }
       }
     },
+    "/api/v1/admin/sessions/{session_id}/walk-ins": {
+      "post": {
+        "tags": [
+          "session-participants"
+        ],
+        "summary": "Add Guest Walk In",
+        "description": "Record an unregistered person who physically attended a Session.\n\nThis does not manufacture a Member account, pretend a waiver was accepted,\nor create a paid GuestPass. Attendance and payment remain separate facts.",
+        "operationId": "add_guest_walk_in_admin_sessions__session_id__walk_ins_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminGuestWalkInCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminGuestWalkInResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/sessions/{session_id}/participants": {
+      "get": {
+        "tags": [
+          "session-participants"
+        ],
+        "summary": "List Session Participants",
+        "operationId": "list_session_participants_admin_sessions__session_id__participants_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionParticipantResponse"
+                  },
+                  "title": "Response List Session Participants Admin Sessions  Session Id  Participants Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/session-participants/{participant_id}/payment": {
+      "patch": {
+        "tags": [
+          "session-participants"
+        ],
+        "summary": "Reconcile Walk In Payment",
+        "operationId": "reconcile_walk_in_payment_admin_session_participants__participant_id__payment_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "participant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Participant Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WalkInPaymentReconcile"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionParticipantResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sessions/{session_id}/guest-share-link": {
       "get": {
         "tags": [
@@ -15227,6 +15396,65 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PublicAttendanceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/attendance/sessions/{session_id}/attendance/participant": {
+      "post": {
+        "tags": [
+          "attendance"
+        ],
+        "summary": "Record Participant Attendance",
+        "description": "Record attendance for a canonical SessionParticipant.\n\nThis is the door-walk-in path for people who do not yet have a SwimBuddz\nmember account or an advance guest booking. The participant identity lives\nin sessions_service; attendance stores only the cross-service UUID.",
+        "operationId": "record_participant_attendance_attendance_sessions__session_id__attendance_participant_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParticipantAttendanceCreate"
               }
             }
           }
@@ -71636,6 +71864,372 @@
         "title": "MemberMembershipResponse",
         "description": "Membership tiers, billing, and gamification."
       },
+      "AdminGuestWalkInCreate": {
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Full Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "fee_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Amount Kobo"
+          },
+          "payment_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "included",
+                  "unpaid",
+                  "paid",
+                  "waived",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Status"
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Method"
+          },
+          "payment_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Reference"
+          },
+          "waiver_status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "missing",
+              "not_required",
+              "unknown"
+            ],
+            "title": "Waiver Status",
+            "default": "missing"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "full_name"
+        ],
+        "title": "AdminGuestWalkInCreate"
+      },
+      "AdminGuestWalkInResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "participant_kind": {
+            "type": "string",
+            "title": "Participant Kind"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "booking_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Id"
+          },
+          "booking_guest_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Guest Id"
+          },
+          "guest_pass_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Pass Id"
+          },
+          "converted_member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converted Member Id"
+          },
+          "full_name_snapshot": {
+            "type": "string",
+            "title": "Full Name Snapshot"
+          },
+          "email_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Snapshot"
+          },
+          "phone_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Snapshot"
+          },
+          "audience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience"
+          },
+          "access_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Source"
+          },
+          "rate_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Id"
+          },
+          "rate_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Code"
+          },
+          "fee_amount_kobo": {
+            "type": "integer",
+            "title": "Fee Amount Kobo"
+          },
+          "payment_status": {
+            "type": "string",
+            "title": "Payment Status"
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Method"
+          },
+          "payment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Reference"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "waiver_status": {
+            "type": "string",
+            "title": "Waiver Status"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "attendance_recorded": {
+            "type": "boolean",
+            "title": "Attendance Recorded",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "session_id",
+          "participant_kind",
+          "source",
+          "full_name_snapshot",
+          "fee_amount_kobo",
+          "payment_status",
+          "waiver_status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AdminGuestWalkInResponse"
+      },
       "AdminPoolFeeRefundRequest": {
         "properties": {
           "reason": {
@@ -73561,6 +74155,51 @@
             ],
             "title": "Actual Swim Minutes"
           },
+          "participant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Id"
+          },
+          "fee_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Amount Kobo"
+          },
+          "payment_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Status"
+          },
+          "waiver_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waiver Status"
+          },
           "assessment_result": {
             "anyOf": [
               {
@@ -74795,6 +75434,51 @@
             ],
             "title": "Price Label"
           },
+          "pricing_audience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Audience"
+          },
+          "pricing_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Source"
+          },
+          "rate_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Code"
+          },
+          "rate_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Id"
+          },
           "member_id": {
             "type": "string",
             "format": "uuid",
@@ -75391,6 +76075,51 @@
               }
             ],
             "title": "Price Label"
+          },
+          "pricing_audience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Audience"
+          },
+          "pricing_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Source"
+          },
+          "rate_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Code"
+          },
+          "rate_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Id"
           }
         },
         "type": "object",
@@ -75776,6 +76505,51 @@
               }
             ],
             "title": "Access Source"
+          },
+          "pricing_audience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Audience"
+          },
+          "pricing_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Source"
+          },
+          "rate_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Id"
+          },
+          "rate_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Code"
           },
           "payment_intent_id": {
             "anyOf": [
@@ -76481,6 +77255,251 @@
         ],
         "title": "SessionLocation"
       },
+      "SessionParticipantResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "participant_kind": {
+            "type": "string",
+            "title": "Participant Kind"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "booking_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Id"
+          },
+          "booking_guest_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Guest Id"
+          },
+          "guest_pass_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Pass Id"
+          },
+          "converted_member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converted Member Id"
+          },
+          "full_name_snapshot": {
+            "type": "string",
+            "title": "Full Name Snapshot"
+          },
+          "email_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Snapshot"
+          },
+          "phone_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Snapshot"
+          },
+          "audience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience"
+          },
+          "access_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Source"
+          },
+          "rate_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Id"
+          },
+          "rate_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Code"
+          },
+          "fee_amount_kobo": {
+            "type": "integer",
+            "title": "Fee Amount Kobo"
+          },
+          "payment_status": {
+            "type": "string",
+            "title": "Payment Status"
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Method"
+          },
+          "payment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Reference"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "waiver_status": {
+            "type": "string",
+            "title": "Waiver Status"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "session_id",
+          "participant_kind",
+          "source",
+          "full_name_snapshot",
+          "fee_amount_kobo",
+          "payment_status",
+          "waiver_status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SessionParticipantResponse"
+      },
       "SessionRangeStats": {
         "properties": {
           "total_sessions": {
@@ -76920,7 +77939,8 @@
             "enum": [
               "member",
               "booking_guest",
-              "guest_pass"
+              "guest_pass",
+              "walk_in_guest"
             ],
             "title": "Kind"
           },
@@ -78662,6 +79682,60 @@
         "title": "UnpaidBookingResponse",
         "description": "A confirmed booking with an outstanding pool fee.\n\nReturned by GET /sessions/bookings/me/unpaid so the billing UI can\nsurface \"you owe \u20a6X,XXX for Session Y\" with a one-click Pay button.\n\nA booking lands here when fee_amount_kobo > 0 and neither a payment\nintent nor a wallet transaction is linked \u2014 typically admin-recorded\nwalk-ins where the member hadn't paid online at session time."
       },
+      "WalkInPaymentReconcile": {
+        "properties": {
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "unpaid",
+              "paid",
+              "waived"
+            ],
+            "title": "Payment Status"
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Method"
+          },
+          "payment_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Reference"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_status"
+        ],
+        "title": "WalkInPaymentReconcile"
+      },
       "AttendanceCreate": {
         "properties": {
           "status": {
@@ -78824,6 +79898,18 @@
               }
             ],
             "title": "Booking Guest Id"
+          },
+          "participant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Id"
           },
           "created_at": {
             "type": "string",
@@ -79161,6 +80247,36 @@
         "type": "object",
         "title": "MemberAttendanceStats",
         "description": "Aggregated attendance stats for a member over a date range."
+      },
+      "ParticipantAttendanceCreate": {
+        "properties": {
+          "participant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Participant Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AttendanceStatus",
+            "default": "present"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "participant_id"
+        ],
+        "title": "ParticipantAttendanceCreate",
+        "description": "Admin/service attendance for a canonical SessionParticipant."
       },
       "PublicAttendanceCreate": {
         "properties": {

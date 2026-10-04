@@ -8,6 +8,7 @@ from datetime import datetime
 
 import httpx
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
@@ -22,6 +23,7 @@ from libs.common.service_client import (
 )
 from libs.common.session_access import active_paid_tiers, evaluate_session_access
 from services.sessions_service.models import Session
+from services.sessions_service.services.commercial import apply_session_rate
 
 logger = get_logger(__name__)
 
@@ -349,15 +351,19 @@ async def evaluate_member_session_access(
     member_id: uuid.UUID,
     now: datetime,
     calling_service: str = "sessions",
+    db: AsyncSession | None = None,
 ):
     """Fetch member context and evaluate access for one session."""
     member_payload = await get_member_session_access_payload(
         member_id=member_id,
         calling_service=calling_service,
     )
-    return await evaluate_session_access_for_member(
+    decision = await evaluate_session_access_for_member(
         session=session,
         member_payload=member_payload,
         now=now,
         calling_service=calling_service,
     )
+    if db is not None:
+        decision = await apply_session_rate(db, session, decision)
+    return decision

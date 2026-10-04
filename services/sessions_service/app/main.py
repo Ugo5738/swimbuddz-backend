@@ -26,6 +26,7 @@ from services.sessions_service.routers.guest_booking_admin import (
 from services.sessions_service.routers.guest_passes import router as guest_passes_router
 from services.sessions_service.routers.internal import router as internal_router
 from services.sessions_service.routers.makeups import router as makeups_router
+from services.sessions_service.routers.participants import router as participants_router
 from services.sessions_service.routers.member import router as sessions_router
 from services.sessions_service.routers.session_roster import (
     router as session_roster_router,
@@ -73,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(member_booking_details_router)
     app.include_router(bookings_router)
     app.include_router(session_roster_router)
+    app.include_router(participants_router)
     app.include_router(guest_booking_admin_router)
     app.include_router(guest_passes_router)
     app.include_router(makeups_router)

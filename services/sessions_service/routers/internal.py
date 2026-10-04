@@ -66,6 +66,10 @@ from services.sessions_service.services.booking_confirmation import (
     deliver_confirmation,
     queue_confirmation,
 )
+from services.sessions_service.services.commercial import (
+    apply_session_rate,
+    sync_legacy_session_rates,
+)
 from services.sessions_service.services.pricing import (
     normalize_pricing_payload,
     pricing_payload_from_session,
@@ -902,6 +906,9 @@ async def sync_event_sessions(
             session.status = SessionStatus.CANCELLED
             cancelled.append(session)
 
+    for changed_session, _before in changed_snapshots:
+        await sync_legacy_session_rates(db, changed_session)
+
     await db.commit()
 
     settings = get_settings()
@@ -1224,6 +1231,7 @@ async def get_member_session_access(
         calling_service="sessions",
         confirmed_booking=booking is not None,
     )
+    access = await apply_session_rate(db, session, access)
     return MemberSessionAccessResponse(
         member_id=member_id,
         confirmed_booking=booking is not None,
@@ -1240,6 +1248,10 @@ async def get_member_session_access(
         access_source=access.access_source,
         fee_amount_kobo=access.fee_amount_kobo,
         price_label=access.price_label,
+        pricing_audience=access.pricing_audience,
+        pricing_source=access.pricing_source,
+        rate_code=access.rate_code,
+        rate_id=uuid.UUID(access.rate_id) if access.rate_id else None,
     )
 
 
@@ -1544,6 +1556,7 @@ async def reserve_bundle_bookings(
             now=now,
             calling_service="sessions",
         )
+        access = await apply_session_rate(db, session, access)
         if not access.bookable:
             raise HTTPException(
                 status_code=403,
@@ -1574,6 +1587,10 @@ async def reserve_bundle_bookings(
                 fee_amount_kobo=fee_kobo,
                 member_fee_amount_kobo=fee_kobo,
                 access_source=access.access_source,
+                pricing_audience=access.pricing_audience,
+                pricing_source=access.pricing_source,
+                rate_id=uuid.UUID(access.rate_id) if access.rate_id else None,
+                rate_code=access.rate_code,
                 payment_intent_id=payload.payment_intent_id,
                 booked_at=now,
                 expires_at=now + timedelta(minutes=PENDING_TTL_MINUTES),
@@ -1587,6 +1604,10 @@ async def reserve_bundle_bookings(
             booking.fee_amount_kobo = fee_kobo
             booking.member_fee_amount_kobo = fee_kobo
             booking.access_source = access.access_source
+            booking.pricing_audience = access.pricing_audience
+            booking.pricing_source = access.pricing_source
+            booking.rate_id = uuid.UUID(access.rate_id) if access.rate_id else None
+            booking.rate_code = access.rate_code
             booking.payment_intent_id = payload.payment_intent_id
             booking.wallet_transaction_id = None
             booking.confirmed_at = None

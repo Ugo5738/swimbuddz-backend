@@ -51,6 +51,7 @@ from services.sessions_service.models import (
     Session,
     SessionBooking,
     SessionBookingStatus,
+    SessionType,
 )
 from services.sessions_service.schemas import (
     AdminPoolFeeRefundRequest,
@@ -332,6 +333,7 @@ async def book_session(
         session=session,
         member_id=member_id,
         now=now,
+        db=db,
     )
     if not access.bookable:
         raise HTTPException(
@@ -389,6 +391,10 @@ async def book_session(
         existing.fee_amount_kobo = fee_kobo
         existing.member_fee_amount_kobo = member_fee_kobo
         existing.access_source = access.access_source
+        existing.pricing_audience = access.pricing_audience
+        existing.pricing_source = access.pricing_source
+        existing.rate_id = uuid.UUID(access.rate_id) if access.rate_id else None
+        existing.rate_code = access.rate_code
         existing.booking_source = booking_in.booking_source
         existing.campaign_key = booking_in.campaign_key
         if booking_in.notes is not None:
@@ -457,6 +463,10 @@ async def book_session(
             fee_amount_kobo=fee_kobo,
             member_fee_amount_kobo=member_fee_kobo,
             access_source=access.access_source,
+            pricing_audience=access.pricing_audience,
+            pricing_source=access.pricing_source,
+            rate_id=uuid.UUID(access.rate_id) if access.rate_id else None,
+            rate_code=access.rate_code,
             notes=booking_in.notes,
             wallet_transaction_id=wallet_txn_id,
             booking_source=booking_in.booking_source,
@@ -487,6 +497,10 @@ async def book_session(
         fee_amount_kobo=fee_kobo,
         member_fee_amount_kobo=member_fee_kobo,
         access_source=access.access_source,
+        pricing_audience=access.pricing_audience,
+        pricing_source=access.pricing_source,
+        rate_id=uuid.UUID(access.rate_id) if access.rate_id else None,
+        rate_code=access.rate_code,
         notes=booking_in.notes,
         booking_source=booking_in.booking_source,
         campaign_key=booking_in.campaign_key,
@@ -947,10 +961,31 @@ async def admin_walk_in_booking(
             422,
             "This class is included in tuition. Designate a genuine paid extra class before recording an additional fee.",
         )
+    resolved_access = None
+    if (
+        payload.fee_amount_kobo is None
+        and not included_class
+        and session.session_type != SessionType.COHORT_CLASS
+    ):
+        resolved_access = await evaluate_member_session_access(
+            session=session,
+            member_id=payload.member_id,
+            now=utc_now(),
+            db=db,
+        )
+
     fee_kobo = (
         payload.fee_amount_kobo
         if payload.fee_amount_kobo is not None
-        else (0 if included_class else int(session.pool_fee or 0))
+        else (
+            0
+            if included_class
+            else int(
+                resolved_access.fee_amount_kobo
+                if resolved_access and resolved_access.fee_amount_kobo is not None
+                else session.pool_fee or 0
+            )
+        )
     )
 
     # Idempotency: return existing PENDING/CONFIRMED if any.
@@ -999,6 +1034,26 @@ async def admin_walk_in_booking(
         fee_amount_kobo=fee_kobo,
         member_fee_amount_kobo=fee_kobo,
         access_source="admin_walk_in",
+        pricing_audience=(
+            resolved_access.pricing_audience if resolved_access else None
+        ),
+        pricing_source=(
+            "admin_override"
+            if payload.fee_amount_kobo is not None
+            else (
+                resolved_access.pricing_source if resolved_access else "legacy_session"
+            )
+        ),
+        rate_id=(
+            uuid.UUID(resolved_access.rate_id)
+            if resolved_access and resolved_access.rate_id
+            else None
+        ),
+        rate_code=(
+            "admin_override"
+            if payload.fee_amount_kobo is not None
+            else (resolved_access.rate_code if resolved_access else None)
+        ),
         notes=payload.notes,
         booked_at=now,
         confirmed_at=now,

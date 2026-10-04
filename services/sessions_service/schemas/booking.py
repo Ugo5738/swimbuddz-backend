@@ -283,6 +283,10 @@ class SessionBookingResponse(BaseModel):
     fee_amount_kobo: int
     member_fee_amount_kobo: int = 0
     access_source: Optional[str] = None
+    pricing_audience: Optional[str] = None
+    pricing_source: Optional[str] = None
+    rate_id: Optional[uuid.UUID] = None
+    rate_code: Optional[str] = None
     payment_intent_id: Optional[uuid.UUID] = None
     wallet_transaction_id: Optional[uuid.UUID] = None
     corporate_program_id: Optional[uuid.UUID] = None

@@ -23,6 +23,7 @@ from services.attendance_service.schemas import (
     AttendanceCreate,
     AttendanceResponse,
     GuestAttendanceCreate,
+    ParticipantAttendanceCreate,
     PublicAttendanceCreate,
 )
 
@@ -232,6 +233,54 @@ async def public_sign_in_to_session(
             role=attendance_in.role,
             notes=attendance_in.notes,
             booking_id=linked_booking_id,
+        )
+        db.add(attendance)
+
+    await db.commit()
+    await db.refresh(attendance)
+    return attendance
+
+
+@router.post(
+    "/sessions/{session_id}/attendance/participant",
+    response_model=AttendanceResponse,
+)
+async def record_participant_attendance(
+    session_id: uuid.UUID,
+    attendance_in: ParticipantAttendanceCreate,
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Record attendance for a canonical SessionParticipant.
+
+    This is the door-walk-in path for people who do not yet have a SwimBuddz
+    member account or an advance guest booking. The participant identity lives
+    in sessions_service; attendance stores only the cross-service UUID.
+    """
+    await require_admin_or_coach_for_session(session_id, current_user, db)
+    session_data = await get_session_by_id(
+        str(session_id), calling_service="attendance"
+    )
+    if not session_data:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    query = select(AttendanceRecord).where(
+        AttendanceRecord.session_id == session_id,
+        AttendanceRecord.participant_id == attendance_in.participant_id,
+    )
+    attendance = (await db.execute(query)).scalar_one_or_none()
+    if attendance:
+        attendance.status = attendance_in.status
+        attendance.notes = attendance_in.notes
+    else:
+        attendance = AttendanceRecord(
+            session_id=session_id,
+            member_id=None,
+            booking_guest_id=None,
+            participant_id=attendance_in.participant_id,
+            status=attendance_in.status,
+            role=AttendanceRole.GUEST,
+            notes=attendance_in.notes,
         )
         db.add(attendance)
 

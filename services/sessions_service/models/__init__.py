@@ -8,6 +8,7 @@ when needed. See docs/club/POD_OPERATIONS.md.
 from services.sessions_service.models.booking import SessionBooking
 from services.sessions_service.models.club_hold import ClubSessionHold
 from services.sessions_service.models.booking_guest import BookingGuest
+from services.sessions_service.models.commercial import SessionParticipant, SessionRate
 from services.sessions_service.models.core import (
     Session,
     SessionBundleCart,
@@ -45,6 +46,8 @@ __all__ = [
     "MakeupOrigin",
     "MakeupStatus",
     "Session",
+    "SessionParticipant",
+    "SessionRate",
     "SessionBooking",
     "SessionBookingStatus",
     "SessionBundleCart",

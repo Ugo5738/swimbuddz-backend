@@ -48,6 +48,12 @@ from services.sessions_service.services.club_scope import require_valid_club_sco
 from services.sessions_service.services.notifications import (
     trigger_session_published_notifications,
 )
+from services.sessions_service.services.commercial import (
+    apply_explicit_rate,
+    apply_session_rate,
+    rates_by_session,
+    sync_legacy_session_rates,
+)
 from services.sessions_service.services.pricing import (
     PRICING_KEYS,
     normalize_pricing_payload,
@@ -81,6 +87,10 @@ def _session_payload(session: Session, access=None) -> dict:
             "access_source": access.access_source,
             "fee_amount_kobo": access.fee_amount_kobo,
             "price_label": access.price_label,
+            "pricing_audience": access.pricing_audience,
+            "pricing_source": access.pricing_source,
+            "rate_code": access.rate_code,
+            "rate_id": access.rate_id,
         }
     return payload
 
@@ -179,6 +189,7 @@ async def _decorate_sessions_for_user(
         now=now,
         calling_service="sessions",
     )
+    rate_map = await rates_by_session(db, [session.id for session in sessions])
     decorated: list[dict] = []
     for session in sessions:
         access = evaluate_session_access_from_context(
@@ -191,6 +202,7 @@ async def _decorate_sessions_for_user(
             club_access=club_access,
             event_access=event_access,
         )
+        access = apply_explicit_rate(access, rate_map.get(str(session.id), []))
         if session.session_type == SessionType.EVENT and not access.visible:
             continue
         decorated.append(_session_payload(session, access))
@@ -227,6 +239,7 @@ async def _decorate_session_for_user(
         calling_service="sessions",
         confirmed_booking=confirmed_booking is not None,
     )
+    access = await apply_session_rate(db, session, access)
     if session.session_type == SessionType.EVENT and not access.visible:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -685,6 +698,8 @@ async def create_session(
 
     session = Session(**session_data)
     db.add(session)
+    await db.flush()
+    await sync_legacy_session_rates(db, session)
     await db.commit()
     await db.refresh(session)
 
@@ -1072,6 +1087,8 @@ async def update_session(
         session.published_at = None
 
     db.add(session)
+    await db.flush()
+    await sync_legacy_session_rates(db, session)
     await db.commit()
     await db.refresh(session)
 

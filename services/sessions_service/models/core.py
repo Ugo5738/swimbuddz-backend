@@ -289,6 +289,18 @@ class Session(Base):
 
     # === Relationships ===
     coaches = relationship("SessionCoach", back_populates="session")
+    rates = relationship(
+        "SessionRate",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    participants = relationship(
+        "SessionParticipant",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     def __repr__(self):
         return f"<Session {self.title} ({self.session_type.value}) at {self.starts_at}>"

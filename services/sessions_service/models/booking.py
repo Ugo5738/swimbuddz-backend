@@ -113,6 +113,12 @@ class SessionBooking(Base):
     # Audit snapshot of why the member was admitted and the member's own part
     # of the total. Any attached guests are priced separately at guest_fee.
     access_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    pricing_audience: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    pricing_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    rate_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    rate_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     member_fee_amount_kobo: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )

@@ -23,6 +23,7 @@ from services.sessions_service.schemas.guest_pass import (
     SessionRosterEntry,
     SessionRosterResponse,
 )
+from services.sessions_service.services.participants import ensure_session_participants
 
 router = APIRouter(tags=["session-roster"])
 
@@ -33,8 +34,11 @@ async def session_roster(
     _admin: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    if await db.get(Session, session_id) is None:
+    session = await db.get(Session, session_id)
+    if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
+    participants = await ensure_session_participants(db, session)
+    await db.commit()
     bookings = list(
         (
             await db.execute(
@@ -124,6 +128,9 @@ async def session_roster(
     by_guest = {
         str(a["booking_guest_id"]): a for a in attendance if a.get("booking_guest_id")
     }
+    by_participant = {
+        str(a["participant_id"]): a for a in attendance if a.get("participant_id")
+    }
     by_booking = {b.id: b for b in bookings}
     entries = [
         SessionRosterEntry(
@@ -160,6 +167,22 @@ async def session_roster(
             phone=g.phone,
         )
         for g in attached
+    )
+    entries.extend(
+        SessionRosterEntry(
+            id=p.id,
+            participant_id=p.id,
+            kind="walk_in_guest",
+            full_name=p.full_name_snapshot,
+            booking_status="walk_in",
+            attendance_status=by_participant.get(str(p.id), {}).get("status"),
+            phone=p.phone_snapshot,
+            fee_amount_kobo=p.fee_amount_kobo,
+            payment_status=p.payment_status,
+            waiver_status=p.waiver_status,
+        )
+        for p in participants
+        if p.source == "walk_in" and p.participant_kind == "guest"
     )
     entries.extend(
         SessionRosterEntry(
