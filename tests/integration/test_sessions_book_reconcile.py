@@ -16,6 +16,7 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import select
 
 from libs.common.currency import kobo_to_bubbles
 from services.sessions_service.models import (
