@@ -214,6 +214,155 @@ class EventSessionLinksBatchRequest(BaseModel):
     event_ids: list[uuid.UUID] = Field(default_factory=list, max_length=200)
 
 
+class SessionParticipantSettlementContext(BaseModel):
+    participant_id: uuid.UUID
+    session_id: uuid.UUID
+    session_type: str
+    source: str
+    participant_kind: str
+    full_name: str
+    email: str | None = None
+    phone: str | None = None
+    fee_amount_kobo: int
+    payment_status: str
+    payment_method: str | None = None
+    payment_reference: str | None = None
+
+
+class SessionParticipantPaymentConfirm(BaseModel):
+    payment_reference: str = Field(min_length=1, max_length=128)
+    payment_method: str = Field(min_length=1, max_length=32)
+    amount_kobo: int = Field(gt=0)
+    paid_at: datetime
+
+
+@router.get(
+    "/participants/{participant_id}/settlement-context",
+    response_model=SessionParticipantSettlementContext,
+)
+async def get_participant_settlement_context(
+    participant_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    participant = (
+        await db.execute(
+            select(SessionParticipant).where(SessionParticipant.id == participant_id)
+        )
+    ).scalar_one_or_none()
+    if participant is None:
+        raise HTTPException(status_code=404, detail="Session participant not found")
+    session = await db.get(Session, participant.session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return SessionParticipantSettlementContext(
+        participant_id=participant.id,
+        session_id=session.id,
+        session_type=(
+            session.session_type.value
+            if hasattr(session.session_type, "value")
+            else str(session.session_type)
+        ),
+        source=participant.source,
+        participant_kind=participant.participant_kind,
+        full_name=participant.full_name_snapshot,
+        email=participant.email_snapshot,
+        phone=participant.phone_snapshot,
+        fee_amount_kobo=int(participant.fee_amount_kobo or 0),
+        payment_status=participant.payment_status,
+        payment_method=participant.payment_method,
+        payment_reference=participant.payment_reference,
+    )
+
+
+@router.post(
+    "/participants/{participant_id}/confirm-payment",
+    response_model=SessionParticipantSettlementContext,
+)
+async def confirm_participant_payment(
+    participant_id: uuid.UUID,
+    payload: SessionParticipantPaymentConfirm,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    participant = (
+        await db.execute(
+            select(SessionParticipant)
+            .where(SessionParticipant.id == participant_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if participant is None:
+        raise HTTPException(status_code=404, detail="Session participant not found")
+    if participant.source != "walk_in" or participant.participant_kind != "guest":
+        raise HTTPException(
+            status_code=409,
+            detail="Only unregistered guest walk-ins use participant settlement",
+        )
+    expected_kobo = int(participant.fee_amount_kobo or 0)
+    if payload.amount_kobo != expected_kobo:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Payment amount does not match the frozen walk-in fee ({expected_kobo} kobo)",
+        )
+    if participant.payment_status == "paid":
+        if participant.payment_reference == payload.payment_reference:
+            session = await db.get(Session, participant.session_id)
+            return SessionParticipantSettlementContext(
+                participant_id=participant.id,
+                session_id=participant.session_id,
+                session_type=(
+                    session.session_type.value
+                    if session and hasattr(session.session_type, "value")
+                    else str(session.session_type) if session else "unknown"
+                ),
+                source=participant.source,
+                participant_kind=participant.participant_kind,
+                full_name=participant.full_name_snapshot,
+                email=participant.email_snapshot,
+                phone=participant.phone_snapshot,
+                fee_amount_kobo=expected_kobo,
+                payment_status=participant.payment_status,
+                payment_method=participant.payment_method,
+                payment_reference=participant.payment_reference,
+            )
+        raise HTTPException(
+            status_code=409,
+            detail="This walk-in already has a different settled payment",
+        )
+    if participant.payment_status in {"waived", "included"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This walk-in is already closed as {participant.payment_status}",
+        )
+
+    participant.payment_status = "paid"
+    participant.payment_method = payload.payment_method
+    participant.payment_reference = payload.payment_reference
+    participant.paid_at = payload.paid_at
+    await db.commit()
+    await db.refresh(participant)
+    session = await db.get(Session, participant.session_id)
+    return SessionParticipantSettlementContext(
+        participant_id=participant.id,
+        session_id=participant.session_id,
+        session_type=(
+            session.session_type.value
+            if session and hasattr(session.session_type, "value")
+            else str(session.session_type) if session else "unknown"
+        ),
+        source=participant.source,
+        participant_kind=participant.participant_kind,
+        full_name=participant.full_name_snapshot,
+        email=participant.email_snapshot,
+        phone=participant.phone_snapshot,
+        fee_amount_kobo=expected_kobo,
+        payment_status=participant.payment_status,
+        payment_method=participant.payment_method,
+        payment_reference=participant.payment_reference,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
