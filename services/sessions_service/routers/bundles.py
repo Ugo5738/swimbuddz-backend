@@ -112,6 +112,7 @@ async def create_bundle_cart(
             session=session,
             member_id=member_id,
             now=now,
+            db=db,
         )
         if not access.bookable:
             raise HTTPException(
