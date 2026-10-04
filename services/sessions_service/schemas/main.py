@@ -227,6 +227,10 @@ class SessionAccessResponse(BaseModel):
     access_source: Optional[str] = None
     fee_amount_kobo: Optional[int] = Field(default=None, ge=0)
     price_label: Optional[str] = None
+    pricing_audience: Optional[str] = None
+    pricing_source: Optional[str] = None
+    rate_code: Optional[str] = None
+    rate_id: Optional[uuid.UUID] = None
 
 
 class MemberSessionAccessResponse(SessionAccessResponse):
