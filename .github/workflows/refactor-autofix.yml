@@ -9,6 +9,9 @@ permissions:
 
 jobs:
   format-and-schema:
+    env:
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+      DATABASE_SESSION_URL: postgresql+psycopg://test:test@localhost:5432/test_db
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
