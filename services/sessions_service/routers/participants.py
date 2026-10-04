@@ -10,12 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import _service_role_jwt, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
-from services.sessions_service.models import Session, SessionRate
+from services.sessions_service.models import Session, SessionParticipant, SessionRate
 from services.sessions_service.schemas.participant import (
     AdminGuestWalkInCreate,
     AdminGuestWalkInResponse,
     SessionParticipantResponse,
+    WalkInPaymentReconcile,
 )
 from services.sessions_service.services.participants import (
     create_guest_walk_in,
@@ -104,6 +106,8 @@ async def add_guest_walk_in(
         phone=payload.phone,
         fee_amount_kobo=fee,
         payment_status=payment_status,
+        payment_method=payload.payment_method,
+        payment_reference=payload.payment_reference,
         waiver_status=payload.waiver_status,
         notes=payload.notes,
         created_by=admin.user_id,
@@ -138,3 +142,35 @@ async def list_session_participants(
     rows = await ensure_session_participants(db, session)
     await db.commit()
     return rows
+
+
+@router.patch(
+    "/admin/session-participants/{participant_id}/payment",
+    response_model=SessionParticipantResponse,
+)
+async def reconcile_walk_in_payment(
+    participant_id: uuid.UUID,
+    payload: WalkInPaymentReconcile,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    participant = await db.get(SessionParticipant, participant_id)
+    if participant is None:
+        raise HTTPException(status_code=404, detail="Session participant not found")
+    if participant.source != "walk_in":
+        raise HTTPException(
+            status_code=409,
+            detail="Only admin-recorded walk-ins are reconciled through this endpoint",
+        )
+
+    participant.payment_status = payload.payment_status
+    participant.payment_method = payload.payment_method
+    participant.payment_reference = payload.payment_reference
+    participant.paid_at = utc_now() if payload.payment_status == "paid" else None
+    if payload.note:
+        participant.notes = "\n".join(
+            part for part in [participant.notes, payload.note.strip()] if part
+        )
+    await db.commit()
+    await db.refresh(participant)
+    return participant
