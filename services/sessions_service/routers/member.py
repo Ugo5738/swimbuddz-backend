@@ -968,6 +968,25 @@ async def update_session(
 
     resulting_type = update_data.get("session_type", session.session_type)
     resulting_type_value = getattr(resulting_type, "value", resulting_type)
+    resulting_allows_visitors = update_data.get(
+        "allows_visiting_club_members",
+        getattr(session, "allows_visiting_club_members", False),
+    )
+    resulting_visitor_fee = update_data.get(
+        "visiting_club_fee",
+        (
+            getattr(session, "visiting_club_fee_kobo", None) / 100
+            if getattr(session, "visiting_club_fee_kobo", None) is not None
+            else None
+        ),
+    )
+    if resulting_type_value != SessionType.CLUB.value and (
+        resulting_allows_visitors or resulting_visitor_fee is not None
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Only Club sessions can enable visiting Club member admission",
+        )
     resulting_cohort_mode = update_data.get(
         "cohort_fee_mode", getattr(session, "cohort_fee_mode", "included")
     )
