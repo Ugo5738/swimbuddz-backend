@@ -13725,6 +13725,112 @@
         ]
       }
     },
+    "/api/v1/internal/sessions/participants/{participant_id}/settlement-context": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Participant Settlement Context",
+        "operationId": "get_participant_settlement_context_internal_sessions_participants__participant_id__settlement_context_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "participant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Participant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionParticipantSettlementContext"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/sessions/participants/{participant_id}/confirm-payment": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Confirm Participant Payment",
+        "operationId": "confirm_participant_payment_internal_sessions_participants__participant_id__confirm_payment_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "participant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Participant Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionParticipantPaymentConfirm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionParticipantSettlementContext"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/sessions/scheduled": {
       "get": {
         "tags": [
@@ -16094,6 +16200,60 @@
                     "type": "string"
                   },
                   "title": "Response Get Session Attendee Member Ids Internal Attendance Session  Session Id  Member Ids Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/attendance/session-counts": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Session Attendance Counts",
+        "description": "Return actual PRESENT/LATE attendance by session and subject kind.\n\nSessions/reporting own the scheduled dates, so callers first select the\nsessions in their reporting window and then ask Attendance for counts. This\navoids attributing a retrospectively-entered walk-in to the day the admin\nhappened to enter it.",
+        "operationId": "get_session_attendance_counts_internal_attendance_session_counts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated session IDs",
+              "title": "Ids"
+            },
+            "description": "Comma-separated session IDs"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionAttendanceCount"
+                  },
+                  "title": "Response Get Session Attendance Counts Internal Attendance Session Counts Get"
                 }
               }
             }
@@ -22035,6 +22195,114 @@
         ],
         "responses": {
           "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/session-participants/{participant_id}/payment-link": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Admin Generate Participant Payment Link",
+        "description": "Create/resume a Paystack checkout for an unregistered guest walk-in.\n\nThe attendee remains a SessionParticipant. PaymentPurpose.GUEST_PASS is\nreused as the existing guest-session commercial/payment primitive; no fake\nGuestPass booking or waiver is created.",
+        "operationId": "admin_generate_participant_payment_link_payments_admin_session_participants__participant_id__payment_link_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "participant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Participant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminParticipantPayLinkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/session-participants/{participant_id}/offline-payment": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Admin Record Participant Offline Payment",
+        "description": "Record bank transfer, cash, POS or another verified guest walk-in payment.",
+        "operationId": "admin_record_participant_offline_payment_payments_admin_session_participants__participant_id__offline_payment_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "participant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Participant Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminBookingOfflinePaymentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -77579,6 +77847,51 @@
             "title": "Guest Swimmer Hours",
             "default": 0.0
           },
+          "exact_guest_swimmer_hours": {
+            "type": "number",
+            "title": "Exact Guest Swimmer Hours",
+            "default": 0.0
+          },
+          "estimated_guest_swimmer_hours": {
+            "type": "number",
+            "title": "Estimated Guest Swimmer Hours",
+            "default": 0.0
+          },
+          "total_attendance_records": {
+            "type": "integer",
+            "title": "Total Attendance Records",
+            "default": 0
+          },
+          "member_attendance_records": {
+            "type": "integer",
+            "title": "Member Attendance Records",
+            "default": 0
+          },
+          "guest_attendance_records": {
+            "type": "integer",
+            "title": "Guest Attendance Records",
+            "default": 0
+          },
+          "guest_pass_attendance_records": {
+            "type": "integer",
+            "title": "Guest Pass Attendance Records",
+            "default": 0
+          },
+          "booking_guest_attendance_records": {
+            "type": "integer",
+            "title": "Booking Guest Attendance Records",
+            "default": 0
+          },
+          "walk_in_guest_attendance_records": {
+            "type": "integer",
+            "title": "Walk In Guest Attendance Records",
+            "default": 0
+          },
+          "attendance_available": {
+            "type": "boolean",
+            "title": "Attendance Available",
+            "default": false
+          },
           "by_type": {
             "anyOf": [
               {
@@ -77742,6 +78055,40 @@
           "other"
         ],
         "title": "SessionLocation"
+      },
+      "SessionParticipantPaymentConfirm": {
+        "properties": {
+          "payment_reference": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Payment Reference"
+          },
+          "payment_method": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Payment Method"
+          },
+          "amount_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Kobo"
+          },
+          "paid_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Paid At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_reference",
+          "payment_method",
+          "amount_kobo",
+          "paid_at"
+        ],
+        "title": "SessionParticipantPaymentConfirm"
       },
       "SessionParticipantResponse": {
         "properties": {
@@ -77987,6 +78334,100 @@
           "updated_at"
         ],
         "title": "SessionParticipantResponse"
+      },
+      "SessionParticipantSettlementContext": {
+        "properties": {
+          "participant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Participant Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "session_type": {
+            "type": "string",
+            "title": "Session Type"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "participant_kind": {
+            "type": "string",
+            "title": "Participant Kind"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "fee_amount_kobo": {
+            "type": "integer",
+            "title": "Fee Amount Kobo"
+          },
+          "payment_status": {
+            "type": "string",
+            "title": "Payment Status"
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Method"
+          },
+          "payment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "participant_id",
+          "session_id",
+          "session_type",
+          "source",
+          "participant_kind",
+          "full_name",
+          "fee_amount_kobo",
+          "payment_status"
+        ],
+        "title": "SessionParticipantSettlementContext"
       },
       "SessionRangeStats": {
         "properties": {
@@ -80878,6 +81319,43 @@
         ],
         "title": "RideShareOption",
         "description": "Local copy \u2014 avoids cross-service import from transport_service."
+      },
+      "SessionAttendanceCount": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "attended": {
+            "type": "integer",
+            "title": "Attended",
+            "default": 0
+          },
+          "member_attended": {
+            "type": "integer",
+            "title": "Member Attended",
+            "default": 0
+          },
+          "booking_guest_attended": {
+            "type": "integer",
+            "title": "Booking Guest Attended",
+            "default": 0
+          },
+          "participant_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Participant Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "SessionAttendanceCount"
       },
       "SessionSummary": {
         "properties": {
@@ -87176,6 +87654,50 @@
           "session_id"
         ],
         "title": "AdminBookingPayLinkResponse"
+      },
+      "AdminParticipantPayLinkResponse": {
+        "properties": {
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "authorization_url": {
+            "type": "string",
+            "title": "Authorization Url"
+          },
+          "payer_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Email"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "participant_id": {
+            "type": "string",
+            "title": "Participant Id"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reference",
+          "authorization_url",
+          "amount",
+          "participant_id",
+          "session_id"
+        ],
+        "title": "AdminParticipantPayLinkResponse"
       },
       "AdminReviewRequest": {
         "properties": {
