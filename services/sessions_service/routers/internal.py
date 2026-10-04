@@ -317,7 +317,9 @@ async def confirm_participant_payment(
                 session_type=(
                     session.session_type.value
                     if session and hasattr(session.session_type, "value")
-                    else str(session.session_type) if session else "unknown"
+                    else str(session.session_type)
+                    if session
+                    else "unknown"
                 ),
                 source=participant.source,
                 participant_kind=participant.participant_kind,
@@ -352,7 +354,9 @@ async def confirm_participant_payment(
         session_type=(
             session.session_type.value
             if session and hasattr(session.session_type, "value")
-            else str(session.session_type) if session else "unknown"
+            else str(session.session_type)
+            if session
+            else "unknown"
         ),
         source=participant.source,
         participant_kind=participant.participant_kind,
@@ -637,9 +641,7 @@ async def get_session_detailed_stats(
         for _, minutes, converted_member_id in guest_pass_rows
         if converted_member_id is None
     )
-    guest_pass_counts = Counter(
-        str(session_id) for session_id, _, _ in guest_pass_rows
-    )
+    guest_pass_counts = Counter(str(session_id) for session_id, _, _ in guest_pass_rows)
 
     if not sessions:
         return SessionDetailedStats(
