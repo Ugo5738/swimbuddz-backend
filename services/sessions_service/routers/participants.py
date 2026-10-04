@@ -171,6 +171,15 @@ async def reconcile_walk_in_payment(
     _admin: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
+    if payload.payment_status == "paid":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Paid walk-in settlements must be recorded through Payments so "
+                "receipt validation, duplicate guards, and ledger posting remain authoritative."
+            ),
+        )
+
     participant = await db.get(SessionParticipant, participant_id)
     if participant is None:
         raise HTTPException(status_code=404, detail="Session participant not found")
