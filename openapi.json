@@ -9020,6 +9020,65 @@
         }
       }
     },
+    "/api/v1/internal/members/club-quarter-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Club Quarter Summary",
+        "description": "Aggregate Club membership/retention for a reporting window.\n\nRetention compares members with an overlapping Club entitlement in the\nimmediately preceding equal-length period against members overlapping the\nrequested period.",
+        "operationId": "get_club_quarter_summary_internal_members_club_quarter_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubQuarterSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/members/club-access/checks": {
       "post": {
         "tags": [
@@ -19941,6 +20000,60 @@
         }
       }
     },
+    "/api/v1/internal/academy/quarter-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Academy Quarter Summary Internal",
+        "description": "Aggregate Academy operating outcomes for a reporting window.\n\nCohorts are included when their scheduled dates overlap the window.\nCompletion uses issued certificates as the time-bounded graduation signal\nand dropped_at for time-bounded exits; Enrollment has no graduated_at field.",
+        "operationId": "get_academy_quarter_summary_internal_internal_academy_quarter_summary_get",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcademyQuarterSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/extension-requests/cohorts/{cohort_id}": {
       "post": {
         "tags": [
@@ -28511,6 +28624,98 @@
         }
       }
     },
+    "/api/v1/admin/reports/quarterly/available": {
+      "get": {
+        "tags": [
+          "admin-reports"
+        ],
+        "summary": "Admin Available Quarters",
+        "description": "Completed/known quarterly snapshots, newest first, for the admin selector.",
+        "operationId": "admin_available_quarters_admin_reports_quarterly_available_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QuarterlyReportSummary"
+                  },
+                  "type": "array",
+                  "title": "Response Admin Available Quarters Admin Reports Quarterly Available Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/reports/quarterly/business-review": {
+      "get": {
+        "tags": [
+          "admin-reports"
+        ],
+        "summary": "Admin Business Review",
+        "description": "Decision-oriented quarter-end management review.\n\nThis composes the frozen quarterly engagement snapshot with source-of-truth\nAcademy, Club, session, and ledger summaries.",
+        "operationId": "admin_business_review_admin_reports_quarterly_business_review_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2030,
+              "minimum": 2025,
+              "title": "Year"
+            }
+          },
+          {
+            "name": "quarter",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 4,
+              "minimum": 1,
+              "title": "Quarter"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/reports/quarterly/overview": {
       "get": {
         "tags": [
@@ -28736,7 +28941,7 @@
           "admin-reports"
         ],
         "summary": "Admin Generate Report",
-        "description": "Trigger quarterly report generation for a specific quarter.",
+        "description": "Trigger quarterly report generation for a completed quarter.",
         "operationId": "admin_generate_report_admin_reports_quarterly_generate_post",
         "requestBody": {
           "content": {
@@ -57545,6 +57750,228 @@
         ]
       }
     },
+    "/api/v1/internal/ledger/reports/profit-loss": {
+      "get": {
+        "tags": [
+          "ledger-internal"
+        ],
+        "summary": "Internal Profit Loss",
+        "operationId": "internal_profit_loss_internal_ledger_reports_profit_loss_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "To Date"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "dimension_1",
+              "title": "Group By"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfitLossReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/ledger/reports/margin": {
+      "get": {
+        "tags": [
+          "ledger-internal"
+        ],
+        "summary": "Internal Margin",
+        "operationId": "internal_margin_internal_ledger_reports_margin_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "To Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarginReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/ledger/reports/deferred-revenue": {
+      "get": {
+        "tags": [
+          "ledger-internal"
+        ],
+        "summary": "Internal Deferred Revenue",
+        "operationId": "internal_deferred_revenue_internal_ledger_reports_deferred_revenue_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeferredRevenueReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/ledger/reports/cash-position": {
+      "get": {
+        "tags": [
+          "ledger-internal"
+        ],
+        "summary": "Internal Cash Position",
+        "operationId": "internal_cash_position_internal_ledger_reports_cash_position_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashPositionReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/calendar": {
       "get": {
         "tags": [
@@ -62394,6 +62821,55 @@
           "can_stop_and_recover"
         ],
         "title": "ClubPreAssessmentUpsert"
+      },
+      "ClubQuarterSummary": {
+        "properties": {
+          "active_members": {
+            "type": "integer",
+            "title": "Active Members",
+            "default": 0
+          },
+          "new_enrollments": {
+            "type": "integer",
+            "title": "New Enrollments",
+            "default": 0
+          },
+          "prior_period_members": {
+            "type": "integer",
+            "title": "Prior Period Members",
+            "default": 0
+          },
+          "retained_members": {
+            "type": "integer",
+            "title": "Retained Members",
+            "default": 0
+          },
+          "retention_rate": {
+            "type": "number",
+            "title": "Retention Rate",
+            "default": 0.0
+          },
+          "prepaid_enrollments": {
+            "type": "integer",
+            "title": "Prepaid Enrollments",
+            "default": 0
+          },
+          "transition_enrollments": {
+            "type": "integer",
+            "title": "Transition Enrollments",
+            "default": 0
+          },
+          "by_club": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "By Club"
+          }
+        },
+        "type": "object",
+        "title": "ClubQuarterSummary"
       },
       "ClubResponse": {
         "properties": {
@@ -79650,6 +80126,90 @@
         "title": "AcademyPublicStats",
         "description": "Public aggregate stats for the academy landing page."
       },
+      "AcademyQuarterSummary": {
+        "properties": {
+          "cohorts_in_window": {
+            "type": "integer",
+            "title": "Cohorts In Window",
+            "default": 0
+          },
+          "cohorts_started": {
+            "type": "integer",
+            "title": "Cohorts Started",
+            "default": 0
+          },
+          "cohorts_ended": {
+            "type": "integer",
+            "title": "Cohorts Ended",
+            "default": 0
+          },
+          "total_capacity": {
+            "type": "integer",
+            "title": "Total Capacity",
+            "default": 0
+          },
+          "active_enrollments": {
+            "type": "integer",
+            "title": "Active Enrollments",
+            "default": 0
+          },
+          "pending_approvals": {
+            "type": "integer",
+            "title": "Pending Approvals",
+            "default": 0
+          },
+          "waitlisted": {
+            "type": "integer",
+            "title": "Waitlisted",
+            "default": 0
+          },
+          "dropped": {
+            "type": "integer",
+            "title": "Dropped",
+            "default": 0
+          },
+          "dropouts_in_period": {
+            "type": "integer",
+            "title": "Dropouts In Period",
+            "default": 0
+          },
+          "graduated": {
+            "type": "integer",
+            "title": "Graduated",
+            "default": 0
+          },
+          "new_enrollments": {
+            "type": "integer",
+            "title": "New Enrollments",
+            "default": 0
+          },
+          "certificates_issued": {
+            "type": "integer",
+            "title": "Certificates Issued",
+            "default": 0
+          },
+          "fill_rate": {
+            "type": "number",
+            "title": "Fill Rate",
+            "default": 0.0
+          },
+          "completion_rate": {
+            "type": "number",
+            "title": "Completion Rate",
+            "default": 0.0
+          },
+          "by_location": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "By Location"
+          }
+        },
+        "type": "object",
+        "title": "AcademyQuarterSummary"
+      },
       "AdminDropoutActionRequest": {
         "properties": {
           "action": {
@@ -92743,6 +93303,196 @@
         "type": "object",
         "title": "WeeklyDigestStatsResponse"
       },
+      "BusinessReviewFinance": {
+        "properties": {
+          "revenue_ngn": {
+            "type": "integer",
+            "title": "Revenue Ngn",
+            "default": 0
+          },
+          "expenses_ngn": {
+            "type": "integer",
+            "title": "Expenses Ngn",
+            "default": 0
+          },
+          "net_income_ngn": {
+            "type": "integer",
+            "title": "Net Income Ngn",
+            "default": 0
+          },
+          "cogs_ngn": {
+            "type": "integer",
+            "title": "Cogs Ngn",
+            "default": 0
+          },
+          "gross_margin_ngn": {
+            "type": "integer",
+            "title": "Gross Margin Ngn",
+            "default": 0
+          },
+          "gross_margin_pct": {
+            "type": "number",
+            "title": "Gross Margin Pct",
+            "default": 0.0
+          },
+          "deferred_revenue_ngn": {
+            "type": "integer",
+            "title": "Deferred Revenue Ngn",
+            "default": 0
+          },
+          "cash_ngn": {
+            "type": "integer",
+            "title": "Cash Ngn",
+            "default": 0
+          },
+          "by_domain": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "By Domain"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": false
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "BusinessReviewFinance"
+      },
+      "BusinessReviewResponse": {
+        "properties": {
+          "year": {
+            "type": "integer",
+            "title": "Year"
+          },
+          "quarter": {
+            "type": "integer",
+            "title": "Quarter"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "snapshot_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Status"
+          },
+          "snapshot_generated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Generated At"
+          },
+          "executive_scorecard": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/QuarterComparison"
+            },
+            "type": "object",
+            "title": "Executive Scorecard"
+          },
+          "community": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Community"
+          },
+          "academy": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Academy"
+          },
+          "club": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Club"
+          },
+          "finance": {
+            "$ref": "#/components/schemas/BusinessReviewFinance"
+          },
+          "locations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Locations"
+          },
+          "session_mix": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Session Mix"
+          },
+          "data_quality": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Data Quality"
+          },
+          "decisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Decisions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "year",
+          "quarter",
+          "label",
+          "starts_at",
+          "ends_at",
+          "executive_scorecard",
+          "community",
+          "academy",
+          "club",
+          "finance",
+          "locations",
+          "session_mix"
+        ],
+        "title": "BusinessReviewResponse"
+      },
       "CohortFillSnapshotResponse": {
         "properties": {
           "id": {
@@ -94063,6 +94813,65 @@
         ],
         "title": "PrivacyToggleRequest",
         "description": "Toggle leaderboard opt-out for a quarter."
+      },
+      "QuarterComparison": {
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "delta_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Pct"
+          }
+        },
+        "type": "object",
+        "title": "QuarterComparison"
       },
       "QuarterlyReportSummary": {
         "properties": {
