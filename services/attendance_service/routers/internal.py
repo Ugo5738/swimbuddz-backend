@@ -19,7 +19,8 @@ from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.attendance_service.models import AttendanceRecord
-from services.attendance_service.models.enums import AttendanceStatus
+from services.attendance_service.models.enums import AttendanceRole, AttendanceStatus
+from services.attendance_service.schemas import AttendanceResponse, ParticipantAttendanceCreate
 
 router = APIRouter(prefix="/internal/attendance", tags=["internal"])
 
@@ -94,6 +95,45 @@ async def get_session_attendee_member_ids(
     )
     result = await db.execute(query)
     return [str(mid) for mid in result.scalars().all()]
+
+
+@router.post(
+    "/session/{session_id}/participant",
+    response_model=AttendanceResponse,
+)
+async def record_participant_attendance(
+    session_id: uuid.UUID,
+    body: ParticipantAttendanceCreate,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Idempotently record attendance for a canonical SessionParticipant.
+
+    The participant identity itself is owned by sessions_service. Attendance
+    stores only the plain UUID cross-service reference.
+    """
+    query = select(AttendanceRecord).where(
+        AttendanceRecord.session_id == session_id,
+        AttendanceRecord.participant_id == body.participant_id,
+    )
+    attendance = (await db.execute(query)).scalar_one_or_none()
+    if attendance:
+        attendance.status = body.status
+        attendance.notes = body.notes
+    else:
+        attendance = AttendanceRecord(
+            session_id=session_id,
+            member_id=None,
+            booking_guest_id=None,
+            participant_id=body.participant_id,
+            status=body.status,
+            role=AttendanceRole.GUEST,
+            notes=body.notes,
+        )
+        db.add(attendance)
+    await db.commit()
+    await db.refresh(attendance)
+    return attendance
 
 
 # ---------------------------------------------------------------------------
