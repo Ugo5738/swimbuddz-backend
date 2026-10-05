@@ -25,6 +25,7 @@ from services.sessions_service.schemas.booking import (
     SessionBookingResponse,
     TrialGuestCreate,
     UnpaidBookingResponse,
+    WalkInAttendanceReconcileRequest,
 )
 from services.sessions_service.schemas.main import (
     MemberSessionAccessResponse,
@@ -104,4 +105,5 @@ __all__ = [
     "SessionTemplateUpdate",
     "SessionUpdate",
     "UnpaidBookingResponse",
+    "WalkInAttendanceReconcileRequest",
 ]

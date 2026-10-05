@@ -76,7 +76,10 @@ async def apply_session_booking(payment: Payment) -> None:
                     "payment_reference": payment.reference,
                 },
             },
-            headers=headers,
+            headers={
+                **headers,
+                "X-Allow-Historical-Confirmation": "true",
+            },
         )
         if resp.status_code in {404, 409, 422}:
             # Booking expired (TTL) or was cancelled before payment cleared.

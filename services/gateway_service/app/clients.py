@@ -1,6 +1,7 @@
 """HTTP clients for gateway to call microservices."""
 
 import asyncio
+from collections.abc import AsyncIterable
 from typing import Dict, Optional
 
 import httpx
@@ -57,7 +58,8 @@ class ServiceClient:
     ) -> httpx.Response:
         """Send a request with small retries to smooth over transient DNS/connection hiccups."""
         last_exc: Exception | None = None
-        for attempt in range(3):
+        attempts = 1 if isinstance(kwargs.get("content"), AsyncIterable) else 3
+        for attempt in range(attempts):
             try:
                 client = _get_shared_client()
                 response = await client.request(
@@ -77,7 +79,7 @@ class ServiceClient:
                 if isinstance(exc, httpx.HTTPStatusError):
                     raise
                 last_exc = exc
-                if attempt < 2:
+                if attempt < attempts - 1:
                     await asyncio.sleep(0.2 * (2**attempt))
                     continue
                 raise
@@ -105,7 +107,7 @@ class ServiceClient:
         self,
         path: str,
         json: Optional[Dict] = None,
-        content: Optional[bytes] = None,
+        content: Optional[bytes | AsyncIterable[bytes]] = None,
         files: Optional[Dict] = None,
         headers: Optional[Dict] = None,
     ) -> httpx.Response:
@@ -123,7 +125,7 @@ class ServiceClient:
         self,
         path: str,
         json: Optional[Dict] = None,
-        content: Optional[bytes] = None,
+        content: Optional[bytes | AsyncIterable[bytes]] = None,
         headers: Optional[Dict] = None,
     ) -> httpx.Response:
         """Make PUT request to service."""
@@ -139,7 +141,7 @@ class ServiceClient:
         self,
         path: str,
         json: Optional[Dict] = None,
-        content: Optional[bytes] = None,
+        content: Optional[bytes | AsyncIterable[bytes]] = None,
         headers: Optional[Dict] = None,
     ) -> httpx.Response:
         """Make PATCH request to service."""
@@ -163,7 +165,7 @@ attendance_client = ServiceClient(settings.ATTENDANCE_SERVICE_URL)
 communications_client = ServiceClient(settings.COMMUNICATIONS_SERVICE_URL)
 payments_client = ServiceClient(settings.PAYMENTS_SERVICE_URL)
 academy_client = ServiceClient(settings.ACADEMY_SERVICE_URL)
-media_client = ServiceClient(settings.MEDIA_SERVICE_URL)
+media_client = ServiceClient(settings.MEDIA_SERVICE_URL, timeout=600.0)
 events_client = ServiceClient(settings.EVENTS_SERVICE_URL)
 transport_client = ServiceClient(settings.TRANSPORT_SERVICE_URL)
 store_client = ServiceClient(settings.STORE_SERVICE_URL)

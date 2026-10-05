@@ -188,6 +188,36 @@ async def _read_file_with_limit(file: UploadFile, purpose: str) -> bytes:
     return b"".join(chunks)
 
 
+async def _upload_file_content(
+    file: UploadFile, purpose: str, storage_name: str, bucket_type: BucketType
+) -> tuple[str, str | None]:
+    """Validate size without retaining another full copy of a phone video."""
+    content_type = file.content_type or "application/octet-stream"
+    if not content_type.startswith("video/"):
+        data = await _read_file_with_limit(file, purpose)
+        return await storage_service.upload_media(
+            data, storage_name, content_type, bucket_type=bucket_type
+        )
+    max_size = MAX_UPLOAD_SIZES.get(purpose, 50 * 1024 * 1024)
+    # Starlette has already spooled multipart files to disk and counted bytes.
+    size = file.size
+    if size is None:
+        size = 0
+        while chunk := await file.read(_CHUNK_SIZE):
+            size += len(chunk)
+            if size > max_size:
+                break
+    if size > max_size:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size for {purpose} is {max_size // (1024 * 1024)} MB.",
+        )
+    await file.seek(0)
+    return await storage_service.upload_video_file(
+        file.file, storage_name, content_type, bucket_type=bucket_type
+    )
+
+
 @router.post("/media", response_model=MediaItemResponse)
 async def upload_media(
     file: UploadFile = File(...),
@@ -206,16 +236,13 @@ async def upload_media(
     if media_type == "VIDEO" and not file.content_type.startswith("video/"):
         raise HTTPException(status_code=422, detail="File must be a video")
 
-    # Read file data (with size limit)
-    file_data = await _read_file_with_limit(file, "media")
-
     # Upload to storage (gallery uploads go to public bucket)
     # TODO: Handle video thumbnail generation or placeholder
-    file_url, thumbnail_url = await storage_service.upload_media(
-        file_data,
-        f"media/{file.filename or f'upload_{uuid.uuid4()}'}",
-        file.content_type,
-        bucket_type=BucketType.PUBLIC,
+    file_url, thumbnail_url = await _upload_file_content(
+        file,
+        "media",
+        f"media/{uuid.uuid4()}/{file.filename or 'upload'}",
+        BucketType.PUBLIC,
     )
 
     # Videos are processed asynchronously by the media worker
@@ -401,8 +428,6 @@ async def upload_file(
             )
     # "general" allows any file type
 
-    file_data = await _read_file_with_limit(file, purpose)
-
     # Determine storage path based on purpose
     original_name = file.filename or f"upload_{uuid.uuid4()}"
     file_ext = original_name.split(".")[-1] if "." in original_name else "bin"
@@ -441,11 +466,8 @@ async def upload_file(
     # Determine which bucket to use based on purpose
     bucket_type = get_bucket_for_purpose(purpose)
 
-    file_url, thumbnail_url = await storage_service.upload_media(
-        file_data,
-        storage_name,
-        content_type or "application/octet-stream",
-        bucket_type=bucket_type,
+    file_url, thumbnail_url = await _upload_file_content(
+        file, purpose, storage_name, bucket_type
     )
 
     # Determine media type
