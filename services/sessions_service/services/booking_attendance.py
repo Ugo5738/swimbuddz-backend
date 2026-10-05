@@ -30,14 +30,20 @@ async def sync_booking_attendance(
                     "member_id": str(booking.member_id),
                     "status": attendance_status,
                     "role": "swimmer",
-                    "preserve_existing": preserve_existing,
                     "notes": (
                         f"Booking {booking.id} confirmed; default attendance"
                         if attendance_status == "present"
                         else f"Booking {booking.id} cancelled"
                     ),
                 },
-                headers={"Authorization": f"Bearer {_service_role_jwt('sessions')}"},
+                headers={
+                    "Authorization": f"Bearer {_service_role_jwt('sessions')}",
+                    **(
+                        {"X-Preserve-Existing-Attendance": "true"}
+                        if preserve_existing
+                        else {}
+                    ),
+                },
             )
             response.raise_for_status()
     except (httpx.HTTPError, RuntimeError) as exc:
