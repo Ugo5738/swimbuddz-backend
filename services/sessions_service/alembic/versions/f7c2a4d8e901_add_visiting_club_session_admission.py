@@ -4,7 +4,7 @@ Additive session admission controls for members visiting from another Club
 location. SessionTemplate stores the same policy inside admission_settings JSONB.
 
 Revision ID: f7c2a4d8e901
-Revises: e30550028159
+Revises: 1c2d3e4f5061
 Create Date: 2026-10-04 09:20:00
 """
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 revision = "f7c2a4d8e901"
-down_revision = "e30550028159"
+down_revision = "1c2d3e4f5061"
 branch_labels = None
 depends_on = None
 
