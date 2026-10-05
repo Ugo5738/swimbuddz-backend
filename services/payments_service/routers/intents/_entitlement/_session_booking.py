@@ -64,6 +64,10 @@ async def apply_session_booking(payment: Payment) -> None:
                 "member_auth_id": payment.member_auth_id,
                 "payment_intent_id": str(payment.id),
                 "wallet_transaction_id": wallet_transaction_id,
+                # Payment is authoritative here. If verification/admin approval
+                # arrives after the swim, reconcile the paid booking instead of
+                # leaving money recorded with no fulfilled booking/attendance.
+                "allow_historical_confirmation": True,
                 "confirmation_details": {
                     "amount_paid": float(payment.amount),
                     "currency": payment.currency,
