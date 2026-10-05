@@ -2221,7 +2221,7 @@ async def get_booking_internal(
     return booking
 
 
-@router.post("/sessions/{session_id}/walk-in-attendance")
+@router.post("/{session_id}/walk-in-attendance")
 async def reconcile_admin_walk_in_attendance(
     session_id: uuid.UUID,
     payload: WalkInAttendanceReconcileRequest,
