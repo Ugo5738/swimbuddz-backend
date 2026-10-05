@@ -51,6 +51,8 @@ async def test_cross_location_visit_requires_explicit_host_opt_in(
     await db_session.flush()
 
     home_plan = _club_plan(home.id, "Home quarter")
+    db_session.add(home_plan)
+    await db_session.flush()
     application = ClubApplication(
         member_id=member.id,
         club_id=home.id,
@@ -61,7 +63,7 @@ async def test_cross_location_visit_requires_explicit_host_opt_in(
         transition_expires_at=date.today() + timedelta(days=60),
         selected_payment_mode="transition_per_session",
     )
-    db_session.add_all([home_plan, application])
+    db_session.add(application)
     await db_session.flush()
     db_session.add(
         ClubEnrollment(
