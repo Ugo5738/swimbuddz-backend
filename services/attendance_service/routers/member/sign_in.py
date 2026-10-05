@@ -218,10 +218,13 @@ async def public_sign_in_to_session(
     attendance = result.scalar_one_or_none()
 
     if attendance:
-        # Update existing
-        attendance.status = attendance_in.status
-        attendance.role = attendance_in.role
-        attendance.notes = attendance_in.notes
+        # Payment/booking reconciliation must not turn an explicit ABSENT,
+        # EXCUSED or LATE decision back into PRESENT. It may still attach the
+        # canonical booking to the existing attendance row.
+        if not attendance_in.preserve_existing:
+            attendance.status = attendance_in.status
+            attendance.role = attendance_in.role
+            attendance.notes = attendance_in.notes
         if attendance.booking_id is None and linked_booking_id is not None:
             attendance.booking_id = linked_booking_id
     else:
