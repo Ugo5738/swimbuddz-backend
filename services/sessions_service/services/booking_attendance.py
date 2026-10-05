@@ -17,6 +17,7 @@ async def sync_booking_attendance(
     booking: SessionBooking,
     *,
     attendance_status: str = "present",
+    preserve_existing: bool = False,
 ) -> None:
     """Idempotently upsert the member attendance row for a booking."""
     settings = get_settings()
@@ -29,6 +30,7 @@ async def sync_booking_attendance(
                     "member_id": str(booking.member_id),
                     "status": attendance_status,
                     "role": "swimmer",
+                    "preserve_existing": preserve_existing,
                     "notes": (
                         f"Booking {booking.id} confirmed; default attendance"
                         if attendance_status == "present"
