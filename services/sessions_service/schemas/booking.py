@@ -144,6 +144,11 @@ class BookingConfirmRequest(BaseModel):
     member_auth_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
     payment_intent_id: Optional[uuid.UUID] = None
     wallet_transaction_id: Optional[uuid.UUID] = None
+    # Service-role payment fulfillment may arrive after the session has started
+    # (for example a verified bank transfer recorded retrospectively). This flag
+    # never bypasses a CANCELLED booking; it only permits PENDING/EXPIRED paid
+    # reservations to be reconciled as historical accounting records.
+    allow_historical_confirmation: bool = False
     booking_source: Optional[str] = None
     campaign_key: Optional[str] = None
 
