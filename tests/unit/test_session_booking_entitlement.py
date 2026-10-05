@@ -74,7 +74,8 @@ async def test_session_booking_confirms_owner_and_fulfills_quoted_ride(monkeypat
         f"/internal/sessions/bookings/{payment.payment_metadata['booking_id']}/confirm"
     )
     assert confirm_kwargs["json"]["member_auth_id"] == payment.member_auth_id
-    assert confirm_kwargs["json"]["allow_historical_confirmation"] is True
+    assert "allow_historical_confirmation" not in confirm_kwargs["json"]
+    assert confirm_kwargs["headers"]["X-Allow-Historical-Confirmation"] == "true"
     ride_url, ride_kwargs = client.posts[1]
     assert ride_url.endswith(
         f"/transport/sessions/{payment.payment_metadata['session_id']}/bookings"
@@ -165,6 +166,7 @@ async def test_paid_extra_class_fulfillment_confirms_and_links_payment_without_r
                 BookingConfirmRequest(**kwargs["json"]),
                 SimpleNamespace(),
                 db,
+                SimpleNamespace(headers=kwargs.get("headers", {})),
             )
             return FakeResponse()
 
@@ -238,10 +240,10 @@ async def test_verified_payment_can_reconcile_expired_past_booking_without_capac
         BookingConfirmRequest(
             member_auth_id=booking.member_auth_id,
             payment_intent_id=payment_id,
-            allow_historical_confirmation=True,
         ),
         SimpleNamespace(),
         db,
+        SimpleNamespace(headers={"X-Allow-Historical-Confirmation": "true"}),
     )
 
     assert booking.status == SessionBookingStatus.CONFIRMED
