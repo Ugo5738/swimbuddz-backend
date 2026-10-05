@@ -38,15 +38,34 @@ from services.members_service.routers._helpers import (
 from services.members_service.schemas import (
     MemberCreate,
     MemberListResponse,
+    MemberMembershipResponse,
     MemberResponse,
     MemberUpdate,
 )
+from services.members_service.services.club_access import current_club_enrollment_until
 from services.members_service.services.membership_status import (
     build_membership_status_summary,
 )
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+async def _admin_member_response(member: Member, db: AsyncSession) -> dict:
+    """Serialize an admin member with current dated Club access projected."""
+
+    member_dict = MemberResponse.model_validate(member).model_dump()
+    membership = member_dict.get("membership")
+    if membership is not None:
+        membership["club_enrollment_until"] = await current_club_enrollment_until(
+            db,
+            member_id=member.id,
+            at=utc_now(),
+        )
+        member_dict["membership"] = MemberMembershipResponse.model_validate(
+            membership
+        ).model_dump()
+    return await resolve_member_media_urls(member_dict)
 
 
 @router.post("/", response_model=MemberResponse, status_code=status.HTTP_201_CREATED)
@@ -325,10 +344,7 @@ async def get_member(
             detail="Member not found",
         )
 
-    # Resolve media URLs
-    member_dict = MemberResponse.model_validate(member).model_dump()
-    member_dict = await resolve_member_media_urls(member_dict)
-    return member_dict
+    return await _admin_member_response(member, db)
 
 
 @router.patch("/{member_id}", response_model=MemberResponse)
@@ -368,10 +384,7 @@ async def update_member(
     result = await db.execute(query)
     updated_member = result.scalar_one()
 
-    # Resolve media URLs
-    member_dict = MemberResponse.model_validate(updated_member).model_dump()
-    member_dict = await resolve_member_media_urls(member_dict)
-    return member_dict
+    return await _admin_member_response(updated_member, db)
 
 
 @router.delete("/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
