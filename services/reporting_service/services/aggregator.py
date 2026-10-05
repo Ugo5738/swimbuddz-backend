@@ -713,15 +713,14 @@ async def compute_all_member_reports(year: int, quarter: int, db: AsyncSession) 
     concurrent coroutines).
     """
     members = await _fetch_all_approved_members()
-    eligible_members = [
+    candidate_members = [
         member
         for member in members
-        if str(member.get("primary_tier") or "").lower() in REPORT_ELIGIBLE_TIERS
-        and "member"
+        if "member"
         in {str(role).lower() for role in (member.get("roles") or ["member"])}
     ]
-    if not eligible_members:
-        logger.warning("No report-eligible swimmer profiles found.")
+    if not candidate_members:
+        logger.warning("No report-eligible member-role profiles found.")
         return 0
 
     # Regeneration is authoritative for the selected quarter. Remove stale rows
@@ -736,15 +735,27 @@ async def compute_all_member_reports(year: int, quarter: int, db: AsyncSession) 
 
     count = 0
 
-    for member in eligible_members:
+    for member in candidate_members:
         try:
-            await compute_member_report(
+            report = await compute_member_report(
                 member_auth_id=member["auth_id"],
                 year=year,
                 quarter=quarter,
                 db=db,
                 member_info=member,
             )
+            tier = str(report.member_tier or "").lower()
+            has_quarter_activity = bool(
+                report.total_sessions_attended
+                or report.total_sessions_available
+                or report.programs_enrolled
+                or report.events_attended
+                or report.volunteer_hours
+            )
+            if tier not in REPORT_ELIGIBLE_TIERS and not has_quarter_activity:
+                await db.delete(report)
+                await db.commit()
+                continue
             count += 1
         except Exception as e:
             logger.error(f"Failed to compute report for {member.get('auth_id')}: {e}")
