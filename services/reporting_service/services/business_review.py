@@ -351,6 +351,16 @@ async def build_business_review(
         "Ledger totals are authoritative. Historical session/guest payments created before session-type revenue snapshots may still sit in the legacy Club domain; new settlements are classified by the actual session type."
     )
 
+    distribution_blockers: list[str] = []
+    if not snapshot or snapshot.semantics_version < 2:
+        distribution_blockers.append(
+            "Regenerate this quarter under the corrected reporting definitions before sending member reports."
+        )
+    if duplicate_names:
+        distribution_blockers.append(
+            "Review possible duplicate swimmer identities before member-facing distribution."
+        )
+
     previous = previous_stats if comparison_compatible else None
     scorecard = {
         "active_members": _comparison(
@@ -474,5 +484,7 @@ async def build_business_review(
         ),
         session_mix=sessions.get("by_type") or current_stats.stats_by_type or {},
         data_quality=data_quality,
+        member_distribution_ready=not distribution_blockers,
+        member_distribution_blockers=distribution_blockers,
         decisions=decisions,
     )
