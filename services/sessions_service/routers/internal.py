@@ -739,8 +739,8 @@ async def get_session_detailed_stats(
 
     # Fold actual attendance into delivery metrics. Booking guests and door
     # walk-ins currently do not store exact swim minutes, so their swimmer-hours
-    # are estimated using the same effective-session convention as member
-    # reporting: scheduled duration minus one hour for warm-up/rest, min 0.
+    # are estimated from the full scheduled session duration. Do not subtract an
+    # arbitrary hour: that previously erased one-hour Academy sessions entirely.
     details: list[dict] = []
     member_attendance_records = 0
     booking_guest_attendance_records = 0
@@ -755,7 +755,7 @@ async def get_session_detailed_stats(
     for session in sessions:
         session_id = str(session.id)
         duration_hours = (session.ends_at - session.starts_at).total_seconds() / 3600
-        effective_guest_hours = max(0.0, duration_hours - 1.0)
+        effective_guest_hours = max(0.0, duration_hours)
         attendance = attendance_counts.get(session_id) or {}
         member_count = int(attendance.get("member_attended") or 0)
         booking_guest_count = int(attendance.get("booking_guest_attended") or 0)
