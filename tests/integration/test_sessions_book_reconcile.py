@@ -275,8 +275,9 @@ async def test_admin_walk_in_preserves_cross_location_visit_price_and_source(
     assert body["fee_amount_kobo"] == 850_000
     assert body["member_fee_amount_kobo"] == 850_000
     assert body["access_source"] == "club_visit"
-    assert body["booking_source"] == "admin_walk_in"
 
+    # booking_source is an internal operational attribution field and is not
+    # part of the public booking response contract; assert it on persistence.
     persisted = (
         await db_session.execute(
             select(SessionBooking).where(SessionBooking.id == uuid.UUID(body["id"]))
