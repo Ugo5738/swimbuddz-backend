@@ -97,6 +97,7 @@ class ClubAccessCheck(BaseModel):
     at: datetime
     pool_id: UUID | None = None
     pod_id: UUID | None = None
+    allows_visiting_club_members: bool = False
 
 
 class ClubAccessChecksRequest(BaseModel):

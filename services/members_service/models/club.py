@@ -603,6 +603,91 @@ class ClubEnrollment(Base):
     )
 
 
+class ClubEnrollmentTransfer(Base):
+    """Audit trail for a permanent home-Club location change.
+
+    Visiting another Club never creates one of these rows. A transfer changes
+    the member's commercial home location and therefore records both the source
+    and target enrollment identities explicitly.
+    """
+
+    __tablename__ = "club_enrollment_transfers"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("members.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    source_enrollment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("club_enrollments.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    target_enrollment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("club_enrollments.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    source_club_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("clubs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    target_club_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("clubs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    target_plan_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("club_plan_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    target_pod_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("pods.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    effective_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    source_payment_mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="completed", server_default="completed"
+    )
+    requested_by_auth_id: Mapped[str] = mapped_column(Text, nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "source_club_id <> target_club_id",
+            name="ck_club_enrollment_transfer_different_clubs",
+        ),
+        CheckConstraint(
+            "source_payment_mode IN ('quarterly_prepaid', 'transition_per_session')",
+            name="ck_club_enrollment_transfer_payment_mode",
+        ),
+        CheckConstraint(
+            "status IN ('completed', 'cancelled')",
+            name="ck_club_enrollment_transfer_status",
+        ),
+        Index(
+            "ix_club_enrollment_transfers_member_created",
+            "member_id",
+            "created_at",
+        ),
+    )
+
+
 class CommunityExperiencePurchase(Base):
     """A paid, quarter-specific Community Experience entitlement."""
 

@@ -48,6 +48,9 @@ def _club_access_check(session: Session, member_id: str) -> dict:
         "at": session.starts_at.isoformat(),
         "pool_id": str(session.pool_id) if session.pool_id else None,
         "pod_id": str(session.pod_id) if session.pod_id else None,
+        "allows_visiting_club_members": bool(
+            getattr(session, "allows_visiting_club_members", False)
+        ),
     }
 
 

@@ -29,6 +29,8 @@ def legacy_rate_specs(session: Session) -> list[dict]:
     pool_fee = int(getattr(session, "pool_fee", 0) or 0)
     guest_fee = getattr(session, "guest_fee_kobo", None)
     community_fee = getattr(session, "community_dropin_fee_kobo", None)
+    visitor_fee = getattr(session, "visiting_club_fee_kobo", None)
+    club_access_mode = getattr(session, "club_access_mode", "plan_included")
     specs: list[dict] = []
 
     def add(
@@ -71,6 +73,34 @@ def legacy_rate_specs(session: Session) -> list[dict]:
             amount_kobo=pool_fee,
             priority=20,
         )
+        add(
+            audience="club",
+            access_source="club_paid_addon",
+            rate_code="club_paid_addon",
+            label="Club paid add-on",
+            amount_kobo=pool_fee,
+            priority=25,
+        )
+        if getattr(session, "allows_visiting_club_members", False):
+            visitor_is_addon = club_access_mode == "paid_addon"
+            add(
+                audience="club",
+                access_source="club_visit",
+                rate_code=(
+                    "club_visit_paid_addon" if visitor_is_addon else "club_visit"
+                ),
+                label=(
+                    "Club paid add-on"
+                    if visitor_is_addon
+                    else "Visiting Club member rate"
+                ),
+                amount_kobo=(
+                    pool_fee
+                    if visitor_is_addon or visitor_fee is None
+                    else int(visitor_fee)
+                ),
+                priority=30,
+            )
         add(
             audience="club",
             rate_code="club_member",

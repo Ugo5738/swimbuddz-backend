@@ -62,6 +62,10 @@ class Session(Base):
             name="ck_sessions_guest_fee_nonnegative",
         ),
         CheckConstraint(
+            "visiting_club_fee_kobo IS NULL OR visiting_club_fee_kobo >= 0",
+            name="ck_sessions_visiting_club_fee_nonnegative",
+        ),
+        CheckConstraint(
             "cohort_fee_mode IN ('included','paid_extra') AND (session_type = 'cohort_class' OR cohort_fee_mode = 'included')",
             name="ck_sessions_cohort_fee_mode",
         ),
@@ -164,6 +168,16 @@ class Session(Base):
     guest_fee_kobo: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     community_dropin_fee_kobo: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True
+    )
+    # Cross-location Club visits are an explicit host-session admission policy.
+    # The optional fee overrides the host's normal per-session Club rate; when
+    # unset the access resolver falls back to pool_fee. Paid add-ons always use
+    # their full session price.
+    visiting_club_fee_kobo: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    allows_visiting_club_members: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
     # Club sessions are Club-only unless an admin explicitly opens one to
     # active annual members at the separate Community drop-in rate.

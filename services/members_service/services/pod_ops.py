@@ -370,7 +370,16 @@ async def transfer_member(
             detail="source and target pods are the same",
         )
 
+    source = await get_pod_or_404(db, source_pod_id)
     target = await get_pod_or_404(db, target_pod_id)
+    if source.club_id != target.club_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Pods belong to different Club locations. Change the member's "
+                "Club location before assigning a pod at the new Club."
+            ),
+        )
     if target.status != PodStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

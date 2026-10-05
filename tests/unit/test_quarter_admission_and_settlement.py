@@ -30,13 +30,18 @@ def test_template_admission_requires_independent_explicit_prices():
                 "guest_booking_mode": "public",
                 "community_dropin_fee": 7000,
                 "allows_community_dropins": True,
+                "visiting_club_fee": 8500,
+                "allows_visiting_club_members": True,
                 "guest_booking_cutoff_hours": 3,
             }
         ),
         starts,
     )
     assert (
-        values["guest_fee_kobo"] == 0 and values["community_dropin_fee_kobo"] == 700000
+        values["guest_fee_kobo"] == 0
+        and values["community_dropin_fee_kobo"] == 700000
+        and values["visiting_club_fee_kobo"] == 850000
+        and values["allows_visiting_club_members"] is True
     )
     assert values["guest_booking_closes_at"] == starts - timedelta(hours=3)
 

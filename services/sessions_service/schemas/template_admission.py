@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field, model_validator
 class TemplateAdmissionSettings(BaseModel):
     guest_fee: float | None = Field(None, ge=0, allow_inf_nan=False)
     community_dropin_fee: float | None = Field(None, ge=0, allow_inf_nan=False)
+    visiting_club_fee: float | None = Field(None, ge=0, allow_inf_nan=False)
     allows_community_dropins: bool = False
+    allows_visiting_club_members: bool = False
     allows_guests: bool = True
     max_guests_per_booking: int = Field(4, ge=0, le=20)
     guest_booking_mode: Literal[

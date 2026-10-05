@@ -206,6 +206,18 @@ async def update_template(
         update_data["club_id"] = scope.get("club_id")
 
     effective_type = update_data.get("session_type", template.session_type)
+    effective_admission = update_data.get(
+        "admission_settings", getattr(template, "admission_settings", {}) or {}
+    )
+    effective_type_value = getattr(effective_type, "value", effective_type)
+    if effective_type_value != "club" and (
+        bool(effective_admission.get("allows_visiting_club_members"))
+        or effective_admission.get("visiting_club_fee") is not None
+    ):
+        raise HTTPException(
+            422,
+            "Only Club templates can enable visiting Club member admission",
+        )
     if "cohort_fee_mode" in update_data and update_data["cohort_fee_mode"] is None:
         raise HTTPException(422, "Choose included or paid_extra for class billing.")
     if "session_type" in update_data and effective_type != SessionType.COHORT_CLASS:

@@ -42,7 +42,12 @@ def template_admission(template, starts_at) -> dict:
         getattr(template, "admission_settings", None) or {}
     )
     values = settings.model_dump(
-        exclude={"guest_fee", "community_dropin_fee", "guest_booking_cutoff_hours"}
+        exclude={
+            "guest_fee",
+            "community_dropin_fee",
+            "visiting_club_fee",
+            "guest_booking_cutoff_hours",
+        }
     )
     values.update(
         guest_fee_kobo=naira_to_kobo(settings.guest_fee)
@@ -50,6 +55,9 @@ def template_admission(template, starts_at) -> dict:
         else None,
         community_dropin_fee_kobo=naira_to_kobo(settings.community_dropin_fee)
         if settings.community_dropin_fee is not None
+        else None,
+        visiting_club_fee_kobo=naira_to_kobo(settings.visiting_club_fee)
+        if settings.visiting_club_fee is not None
         else None,
         guest_booking_closes_at=starts_at
         - timedelta(hours=settings.guest_booking_cutoff_hours),
