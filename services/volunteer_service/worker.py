@@ -6,7 +6,11 @@ Run with:
     arq services.volunteer_service.worker.WorkerSettings
 """
 
-from arq import cron
+from datetime import timedelta
+
+from arq import Retry, cron
+
+from services.volunteer_service.services.monthly_reward import award_volunteer_of_month
 
 from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
@@ -63,6 +67,13 @@ async def task_apply_monthly_volunteer_spotlight(ctx: dict):
                     period_start=result.period_start,
                     monthly_hours=result.monthly_hours,
                 )
+            if result.member_id is not None:
+                # Use the display month for both manual and automatic selections.
+                award_month = (
+                    (result.featured_until - timedelta(days=1)).date().replace(day=1)
+                )
+                if not await award_volunteer_of_month(result.member_id, award_month):
+                    raise Retry(defer=60)
         logger.info(
             "volunteer.spotlight monthly rotation complete: %s",
             result,

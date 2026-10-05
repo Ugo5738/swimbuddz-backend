@@ -32,7 +32,7 @@ from sqlalchemy.future import select
 
 
 def build_default_rules() -> list[RewardRule]:
-    """Return the 22 default reward rules with stable UUIDs."""
+    """Return the 23 default reward rules with stable UUIDs."""
     return [
         # --- ACQUISITION ---
         RewardRule(
@@ -165,6 +165,17 @@ def build_default_rules() -> list[RewardRule]:
             created_by="seed",
         ),
         # --- COMMUNITY ---
+        RewardRule(
+            id=uuid.UUID("00000000-0000-0000-0000-100000000023"),
+            rule_name="volunteer_of_the_month",
+            display_name="Volunteer of the Month",
+            event_type="volunteer.monthly_spotlight",
+            trigger_config={},
+            reward_bubbles=10,
+            reward_description_template="Volunteer of the Month — {month} ({amount} 🫧)",
+            category=RewardCategory.COMMUNITY,
+            created_by="seed",
+        ),
         RewardRule(
             id=uuid.UUID("00000000-0000-0000-0000-100000000010"),
             rule_name="volunteer_event",

@@ -59,6 +59,28 @@ async def test_confirmed_booking_upserts_default_present_attendance(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_booking_sync_can_preserve_existing_attendance(monkeypatch):
+    response = SimpleNamespace(raise_for_status=lambda: None)
+    client = _Client(response)
+    monkeypatch.setattr(attendance_sync.httpx, "AsyncClient", lambda **_kwargs: client)
+    monkeypatch.setattr(attendance_sync, "_service_role_jwt", lambda _service: "jwt")
+    monkeypatch.setattr(
+        attendance_sync,
+        "get_settings",
+        lambda: SimpleNamespace(ATTENDANCE_SERVICE_URL="http://attendance"),
+    )
+    booking = _booking()
+
+    await attendance_sync.sync_booking_attendance(booking, preserve_existing=True)
+
+    payload = client.post.await_args.kwargs["json"]
+    headers = client.post.await_args.kwargs["headers"]
+    assert payload["status"] == "present"
+    assert "preserve_existing" not in payload
+    assert headers["X-Preserve-Existing-Attendance"] == "true"
+
+
+@pytest.mark.asyncio
 async def test_attendance_sync_failure_is_retryable_upstream(monkeypatch):
     request = httpx.Request("POST", "http://attendance/attendance")
 

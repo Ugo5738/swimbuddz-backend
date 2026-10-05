@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +55,7 @@ from services.sessions_service.schemas import (
     BundleBookingReserveResponse,
     MemberSessionAccessResponse,
     SessionBookingResponse,
+    WalkInAttendanceReconcileRequest,
 )
 from services.sessions_service.services.booking_attendance import (
     sync_booking_attendance,
@@ -2220,6 +2221,71 @@ async def get_booking_internal(
     return booking
 
 
+@router.post("/{session_id}/walk-in-attendance", include_in_schema=False)
+async def reconcile_admin_walk_in_attendance(
+    session_id: uuid.UUID,
+    payload: WalkInAttendanceReconcileRequest,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Keep an unpaid admin walk-in booking aligned with corrected attendance.
+
+    Only bookings created by the admin walk-in path are mutable here. A paid
+    booking is never cancelled by an attendance correction. Replays are
+    idempotent, and a mistaken ABSENT can be restored by marking PRESENT/LATE.
+    """
+    normalized = payload.status.strip().lower()
+    if normalized not in {"present", "late", "absent", "excused", "cancelled"}:
+        raise HTTPException(status_code=422, detail="Unsupported attendance status")
+
+    booking = (
+        await db.execute(
+            select(SessionBooking)
+            .where(
+                SessionBooking.session_id == session_id,
+                SessionBooking.member_id == payload.member_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if booking is None or booking.booking_source != "admin_walk_in":
+        return {"action": "ignored", "reason": "not_admin_walk_in"}
+
+    # Once money is linked, attendance can change but the financial booking
+    # remains an immutable paid obligation/history record.
+    if (
+        booking.payment_intent_id is not None
+        or booking.wallet_transaction_id is not None
+    ):
+        return {"action": "preserved", "reason": "paid_booking"}
+
+    reversal_marker = "[walk_in_attendance_reversed]"
+    notes = booking.notes or ""
+
+    if normalized in {"absent", "excused", "cancelled"}:
+        if booking.status == SessionBookingStatus.CONFIRMED:
+            booking.status = SessionBookingStatus.CANCELLED
+            booking.cancelled_at = utc_now()
+            if reversal_marker not in notes:
+                booking.notes = "\n".join(
+                    filter(None, [notes, f"{reversal_marker} status={normalized}"])
+                )
+            await db.commit()
+            return {"action": "cancelled"}
+        return {"action": "unchanged"}
+
+    # PRESENT/LATE restores only a booking that this reconciliation flow
+    # previously cancelled; unrelated member/admin cancellations stay terminal.
+    if booking.status == SessionBookingStatus.CANCELLED and reversal_marker in notes:
+        booking.status = SessionBookingStatus.CONFIRMED
+        booking.cancelled_at = None
+        booking.confirmed_at = booking.confirmed_at or utc_now()
+        await db.commit()
+        return {"action": "restored"}
+
+    return {"action": "unchanged"}
+
+
 @router.post(
     "/bookings/{booking_id}/confirm",
     response_model=SessionBookingResponse,
@@ -2229,6 +2295,7 @@ async def internal_confirm_booking(
     confirm_in: BookingConfirmRequest,
     _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
+    request: Request = None,
 ):
     """Service-role variant of /sessions/bookings/{id}/confirm.
 
@@ -2314,22 +2381,41 @@ async def internal_confirm_booking(
         if updated:
             await db.refresh(booking)
         await deliver_confirmation(db, key)
-        await sync_booking_attendance(booking)
+        await sync_booking_attendance(booking, preserve_existing=True)
         return booking
     now = utc_now()
-    if session.status != SessionStatus.SCHEDULED or session.starts_at <= now:
+    allow_historical_confirmation = bool(
+        request
+        and request.headers.get("X-Allow-Historical-Confirmation", "").lower() == "true"
+    )
+    historical_confirmation = bool(
+        allow_historical_confirmation
+        and session.starts_at <= now
+        and session.status
+        in {
+            SessionStatus.SCHEDULED,
+            SessionStatus.IN_PROGRESS,
+            SessionStatus.COMPLETED,
+        }
+    )
+    if not historical_confirmation and (
+        session.status != SessionStatus.SCHEDULED or session.starts_at <= now
+    ):
         raise HTTPException(
             status_code=409,
             detail="This paid reservation can no longer be confirmed",
         )
-    if booking.status == SessionBookingStatus.EXPIRED:
+    if booking.status == SessionBookingStatus.EXPIRED and not historical_confirmation:
         await assert_booking_capacity(
             db,
             session=session,
             member_id=booking.member_id,
             new_party_size=booking.party_size,
         )
-    elif booking.status != SessionBookingStatus.PENDING:
+    elif booking.status not in {
+        SessionBookingStatus.PENDING,
+        SessionBookingStatus.EXPIRED,
+    }:
         raise HTTPException(
             status_code=422,
             detail=f"Cannot confirm a booking with status={booking.status.value}.",
@@ -2351,7 +2437,7 @@ async def internal_confirm_booking(
     await db.commit()
     await db.refresh(booking)
     await deliver_confirmation(db, key)
-    await sync_booking_attendance(booking)
+    await sync_booking_attendance(booking, preserve_existing=True)
     return booking
 
 

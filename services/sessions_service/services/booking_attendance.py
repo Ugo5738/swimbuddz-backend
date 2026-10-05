@@ -17,6 +17,7 @@ async def sync_booking_attendance(
     booking: SessionBooking,
     *,
     attendance_status: str = "present",
+    preserve_existing: bool = False,
 ) -> None:
     """Idempotently upsert the member attendance row for a booking."""
     settings = get_settings()
@@ -35,7 +36,14 @@ async def sync_booking_attendance(
                         else f"Booking {booking.id} cancelled"
                     ),
                 },
-                headers={"Authorization": f"Bearer {_service_role_jwt('sessions')}"},
+                headers={
+                    "Authorization": f"Bearer {_service_role_jwt('sessions')}",
+                    **(
+                        {"X-Preserve-Existing-Attendance": "true"}
+                        if preserve_existing
+                        else {}
+                    ),
+                },
             )
             response.raise_for_status()
     except (httpx.HTTPError, RuntimeError) as exc:

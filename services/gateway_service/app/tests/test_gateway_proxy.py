@@ -255,3 +255,32 @@ async def test_head_on_non_playback_media_path_is_rejected(client):
 
     assert response.status_code == 405
     assert fake_client.calls == []
+
+
+@pytest.mark.asyncio
+async def test_media_upload_forwards_stream_without_changing_multipart_boundary(
+    client, monkeypatch
+):
+    class StreamingMedia:
+        received = b""
+        headers = {}
+
+        async def post(self, path, *, content, headers):
+            assert path == "/media/uploads"
+            assert not isinstance(content, bytes)
+            self.headers = headers
+            self.received = b"".join([chunk async for chunk in content])
+            return httpx.Response(200, json={"id": "video"})
+
+    fake = StreamingMedia()
+    monkeypatch.setattr(clients, "media_client", fake)
+    response = await client.post(
+        "/api/v1/media/uploads",
+        files={"file": ("proof.mov", b"video-bytes", "video/quicktime")},
+        data={"purpose": "challenge_proof"},
+    )
+    assert response.status_code == 200
+    boundary = fake.headers["content-type"].split("boundary=")[1]
+    assert fake.received.startswith(f"--{boundary}".encode())
+    assert b"video-bytes" in fake.received
+    assert b"challenge_proof" in fake.received

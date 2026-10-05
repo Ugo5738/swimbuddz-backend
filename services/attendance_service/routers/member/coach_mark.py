@@ -8,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
-from libs.common.service_client import get_members_bulk, get_session_by_id
+from libs.common.config import get_settings
+from libs.common.service_client import (
+    get_members_bulk,
+    get_session_by_id,
+    internal_post,
+)
 from libs.db.session import get_async_db
 from services.attendance_service.models import AttendanceRecord, AttendanceStatus
 from services.attendance_service.schemas import (
@@ -139,6 +144,30 @@ async def coach_mark_session_attendance(
         upserted += 1
 
     await db.commit()
+
+    # Attendance corrections must also retire/restore the *unpaid* booking
+    # created by the admin walk-in action. Without this reconciliation an
+    # accidentally-present member changed to ABSENT still carries an "Owes"
+    # booking and the admin UI continues to offer "Generate link".
+    settings = get_settings()
+    for entry in payload.entries:
+        response = await internal_post(
+            service_url=settings.SESSIONS_SERVICE_URL,
+            path=f"/internal/sessions/{session_id}/walk-in-attendance",
+            calling_service="attendance",
+            json={
+                "member_id": str(entry.member_id),
+                "status": entry.status.value,
+            },
+        )
+        if response.status_code >= 400:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Attendance was saved, but the walk-in booking could not be "
+                    "reconciled. Retry Save attendance before collecting payment."
+                ),
+            )
 
     # Re-fetch the resulting state for the response.
     refreshed = (

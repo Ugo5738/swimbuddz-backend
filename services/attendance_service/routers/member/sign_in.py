@@ -3,7 +3,7 @@
 import uuid
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -177,6 +177,7 @@ async def public_sign_in_to_session(
     attendance_in: PublicAttendanceCreate,
     current_user: AuthUser = Depends(require_coach),
     db: AsyncSession = Depends(get_async_db),
+    request: Request = None,
 ):
     """Record attendance for another member as service, admin, or coach."""
     await require_admin_or_coach_for_session(session_id, current_user, db)
@@ -218,10 +219,18 @@ async def public_sign_in_to_session(
     attendance = result.scalar_one_or_none()
 
     if attendance:
-        # Update existing
-        attendance.status = attendance_in.status
-        attendance.role = attendance_in.role
-        attendance.notes = attendance_in.notes
+        # Payment/booking reconciliation must not turn an explicit ABSENT,
+        # EXCUSED or LATE decision back into PRESENT. It may still attach the
+        # canonical booking to the existing attendance row.
+        preserve_existing = bool(
+            request
+            and request.headers.get("X-Preserve-Existing-Attendance", "").lower()
+            == "true"
+        )
+        if not preserve_existing:
+            attendance.status = attendance_in.status
+            attendance.role = attendance_in.role
+            attendance.notes = attendance_in.notes
         if attendance.booking_id is None and linked_booking_id is not None:
             attendance.booking_id = linked_booking_id
     else:

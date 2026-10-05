@@ -19,6 +19,7 @@ from services.volunteer_service.schemas import (
     VolunteerProfileAdminUpdate,
     VolunteerProfileResponse,
 )
+from services.volunteer_service.services.monthly_reward import award_volunteer_of_month
 from services.volunteer_service.services import announce_volunteer_of_the_month
 
 router = APIRouter()
@@ -160,6 +161,14 @@ async def feature_volunteer(
             db,
             member_id=member_id,
             period_start=date(now.year, now.month, 1),
+        )
+
+    # Retry the wallet effect even when this profile was already featured.
+    # The wallet deduplicates by member and display month.
+    if not await award_volunteer_of_month(member_id, date(now.year, now.month, 1)):
+        raise HTTPException(
+            status_code=503,
+            detail="Volunteer featured, but the 10-Bubble reward could not be confirmed. Retry featuring to finish the reward.",
         )
 
     result = {c.key: getattr(profile, c.key) for c in profile.__table__.columns}
