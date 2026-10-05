@@ -717,7 +717,8 @@ async def compute_all_member_reports(year: int, quarter: int, db: AsyncSession) 
         member
         for member in members
         if str(member.get("primary_tier") or "").lower() in REPORT_ELIGIBLE_TIERS
-        and "member" in {str(role).lower() for role in (member.get("roles") or ["member"])}
+        and "member"
+        in {str(role).lower() for role in (member.get("roles") or ["member"])}
     ]
     if not eligible_members:
         logger.warning("No report-eligible swimmer profiles found.")

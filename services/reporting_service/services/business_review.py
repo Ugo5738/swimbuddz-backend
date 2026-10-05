@@ -63,14 +63,17 @@ def _comparison(current: float | int | None, previous: float | int | None):
     )
 
 
-
 def _canonical_location(name: str | None) -> tuple[str, str]:
     """Collapse known cross-service location aliases into one operating site."""
     raw = (name or "Unspecified").strip()
     lowered = raw.lower()
     aliases = (
         (("rowe park", "yaba"), "yaba", "Yaba — Rowe Park Pool"),
-        (("oduduwa", "victoria island"), "victoria-island", "Victoria Island — Oduduwa House Pool"),
+        (
+            ("oduduwa", "victoria island"),
+            "victoria-island",
+            "Victoria Island — Oduduwa House Pool",
+        ),
         (("siloam", "festac"), "festac", "Festac — Siloam Pool"),
         (("herel", "ikoyi"), "ikoyi", "Ikoyi — Herel Play"),
         (("ikeja",), "ikeja", "Ikeja"),
@@ -285,9 +288,13 @@ async def build_business_review(
                     MemberQuarterlyReport.quarter == quarter,
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
-    normalized_name_counts = Counter(name.strip().lower() for name in report_names if name)
+    normalized_name_counts = Counter(
+        name.strip().lower() for name in report_names if name
+    )
     duplicate_names = sorted(
         name for name, count in normalized_name_counts.items() if count > 1
     )

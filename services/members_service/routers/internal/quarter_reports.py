@@ -128,9 +128,7 @@ async def get_club_quarter_summary(
 
     return ClubQuarterSummary(
         active_members=len(current_member_ids),
-        new_enrollments=(
-            None if historical_baseline_missing else raw_new_enrollments
-        ),
+        new_enrollments=(None if historical_baseline_missing else raw_new_enrollments),
         new_enrollments_available=not historical_baseline_missing,
         prior_period_members=(
             None if historical_baseline_missing else len(prior_member_ids)
