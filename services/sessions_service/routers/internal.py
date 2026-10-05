@@ -2253,7 +2253,10 @@ async def reconcile_admin_walk_in_attendance(
 
     # Once money is linked, attendance can change but the financial booking
     # remains an immutable paid obligation/history record.
-    if booking.payment_intent_id is not None or booking.wallet_transaction_id is not None:
+    if (
+        booking.payment_intent_id is not None
+        or booking.wallet_transaction_id is not None
+    ):
         return {"action": "preserved", "reason": "paid_booking"}
 
     reversal_marker = "[walk_in_attendance_reversed]"
