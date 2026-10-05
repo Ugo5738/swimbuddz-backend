@@ -1,0 +1,33 @@
+name: Temporary Ruff Format Q3 Integrity Final
+
+on:
+  push:
+    branches:
+      - feature/q3-reporting-integrity
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/q3-reporting-integrity
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install ruff==0.4.10
+      - run: |
+          ruff format \
+            services/reporting_service/services/aggregator.py \
+            services/reporting_service/services/business_review.py
+      - run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/reporting_service/services/aggregator.py services/reporting_service/services/business_review.py
+          git commit -m "style: format final Q3 integrity changes"
+          git push origin HEAD:feature/q3-reporting-integrity
