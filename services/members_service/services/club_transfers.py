@@ -225,12 +225,8 @@ async def preview_location_transfer(
     # Network hydration is preview-only and deliberately happens without DB row
     # locks. Execution re-locks and revalidates the authoritative rows later.
     await hydrate_schedules([source_plan, target_plan])
-    source_count, source_value = _remaining_value(
-        source_plan, on_date=effective.date()
-    )
-    target_count, target_value = _remaining_value(
-        target_plan, on_date=effective.date()
-    )
+    source_count, source_value = _remaining_value(source_plan, on_date=effective.date())
+    target_count, target_value = _remaining_value(target_plan, on_date=effective.date())
     quarterly = source.payment_mode == "quarterly_prepaid"
     return ClubLocationTransferPreview(
         source_enrollment_id=source.id,
