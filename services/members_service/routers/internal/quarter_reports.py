@@ -17,10 +17,13 @@ router = APIRouter()
 
 class ClubQuarterSummary(BaseModel):
     active_members: int = 0
-    new_enrollments: int = 0
-    prior_period_members: int = 0
-    retained_members: int = 0
-    retention_rate: float = 0.0
+    new_enrollments: int | None = None
+    new_enrollments_available: bool = True
+    prior_period_members: int | None = None
+    retained_members: int | None = None
+    retention_rate: float | None = None
+    retention_available: bool = True
+    retention_note: str | None = None
     prepaid_enrollments: int = 0
     transition_enrollments: int = 0
     by_club: dict[str, dict] = Field(default_factory=dict)
@@ -77,17 +80,23 @@ async def get_club_quarter_summary(
     current_member_ids = {row[0].member_id for row in current_rows}
     retained = current_member_ids & prior_member_ids
 
-    new_enrollments = int(
+    raw_new_enrollments = int(
         (
             await db.execute(
                 select(func.count(ClubEnrollment.id)).where(
-                    ClubEnrollment.created_at >= date_from,
-                    ClubEnrollment.created_at <= date_to,
+                    ClubEnrollment.starts_at >= date_from,
+                    ClubEnrollment.starts_at <= date_to,
                 )
             )
         ).scalar_one()
         or 0
     )
+
+    # The Club entitlement model was introduced after earlier Club operations.
+    # If current Club members exist but the immediately preceding period has no
+    # entitlement baseline, zero retention/new-enrollment figures would imply a
+    # business outcome that the historical data cannot support.
+    historical_baseline_missing = bool(current_member_ids) and not prior_member_ids
 
     by_club: dict[str, dict] = {}
     prepaid = 0
@@ -119,12 +128,30 @@ async def get_club_quarter_summary(
 
     return ClubQuarterSummary(
         active_members=len(current_member_ids),
-        new_enrollments=new_enrollments,
-        prior_period_members=len(prior_member_ids),
-        retained_members=len(retained),
-        retention_rate=round(len(retained) / len(prior_member_ids), 4)
-        if prior_member_ids
-        else 0.0,
+        new_enrollments=(
+            None if historical_baseline_missing else raw_new_enrollments
+        ),
+        new_enrollments_available=not historical_baseline_missing,
+        prior_period_members=(
+            None if historical_baseline_missing else len(prior_member_ids)
+        ),
+        retained_members=None if historical_baseline_missing else len(retained),
+        retention_rate=(
+            None
+            if historical_baseline_missing
+            else (
+                round(len(retained) / len(prior_member_ids), 4)
+                if prior_member_ids
+                else None
+            )
+        ),
+        retention_available=not historical_baseline_missing,
+        retention_note=(
+            "Historical Club entitlement coverage is incomplete before this quarter, "
+            "so prior-period retention and new-enrollment counts are not reliable."
+            if historical_baseline_missing
+            else None
+        ),
         prepaid_enrollments=prepaid,
         transition_enrollments=transition,
         by_club=by_club,
