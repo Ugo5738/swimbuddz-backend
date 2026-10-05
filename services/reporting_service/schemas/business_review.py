@@ -45,4 +45,6 @@ class BusinessReviewResponse(BaseModel):
     locations: list[dict[str, Any]]
     session_mix: dict[str, int]
     data_quality: list[str] = Field(default_factory=list)
+    member_distribution_ready: bool = False
+    member_distribution_blockers: list[str] = Field(default_factory=list)
     decisions: list[dict[str, Any]] = Field(default_factory=list)
