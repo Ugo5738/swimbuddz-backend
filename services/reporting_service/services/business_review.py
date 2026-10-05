@@ -67,6 +67,9 @@ def _canonical_location(name: str | None) -> tuple[str, str]:
     """Collapse known cross-service location aliases into one operating site."""
     raw = (name or "Unspecified").strip()
     lowered = raw.lower()
+    if lowered in {"vi", "v.i.", "v.i"}:
+        return "victoria-island", "Victoria Island — Oduduwa House Pool"
+
     aliases = (
         (("rowe park", "yaba"), "yaba", "Yaba — Rowe Park Pool"),
         (
@@ -306,7 +309,7 @@ async def build_business_review(
         )
     elif not profitability_reliable:
         data_quality.append(
-            "Revenue is ledger-backed, but Q3 direct costs/COGS are not fully classified; gross margin and net income must not be treated as profitability conclusions."
+            "Revenue is ledger-backed, but direct costs/COGS are not fully classified for this quarter; gross margin and net income must not be treated as profitability conclusions."
         )
     if not academy:
         data_quality.append("Academy quarter summary unavailable.")
@@ -328,7 +331,7 @@ async def build_business_review(
     estimated_guest_hours = float(sessions.get("estimated_guest_swimmer_hours") or 0)
     if estimated_guest_hours > 0:
         data_quality.append(
-            "Some guest swimmer-hours are estimated from effective session duration because attached guests and door walk-ins do not yet store exact swim minutes. GuestPass minutes remain exact."
+            "Some guest swimmer-hours are estimated from full scheduled session duration because attached guests and door walk-ins do not yet store exact swim minutes. GuestPass minutes remain exact."
         )
     data_quality.append(
         "Academy new-enrollment timing uses enrolled_at, then paid_at, then created_at as a legacy fallback; completion is time-bounded by certificate issuance because Enrollment does not yet store graduated_at."
