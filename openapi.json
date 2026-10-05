@@ -4527,6 +4527,174 @@
         }
       }
     },
+    "/api/v1/clubs/admin/members/{member_id}/enrollments": {
+      "get": {
+        "tags": [
+          "clubs-admin-transfers"
+        ],
+        "summary": "List Member Club Enrollments",
+        "operationId": "list_member_club_enrollments_clubs_admin_members__member_id__enrollments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminClubEnrollmentSummary"
+                  },
+                  "title": "Response List Member Club Enrollments Clubs Admin Members  Member Id  Enrollments Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/admin/enrollments/{source_enrollment_id}/location-transfer/preview": {
+      "post": {
+        "tags": [
+          "clubs-admin-transfers"
+        ],
+        "summary": "Preview Club Location Transfer",
+        "operationId": "preview_club_location_transfer_clubs_admin_enrollments__source_enrollment_id__location_transfer_preview_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "source_enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Source Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubLocationTransferRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubLocationTransferPreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/admin/enrollments/{source_enrollment_id}/location-transfer": {
+      "post": {
+        "tags": [
+          "clubs-admin-transfers"
+        ],
+        "summary": "Transfer Club Location",
+        "operationId": "transfer_club_location_clubs_admin_enrollments__source_enrollment_id__location_transfer_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "source_enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Source Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubLocationTransferRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubLocationTransferResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/clubs/": {
       "get": {
         "tags": [
@@ -10519,7 +10687,7 @@
           "bookings"
         ],
         "summary": "Admin Walk In Booking",
-        "description": "Admin creates a CONFIRMED booking for a member who showed up without\npre-booking online. Used by the attendance UI's \"Mark walk-in\" action.\n\nBehavior:\n  - Tuition-included cohort classes have no additional fee. Other sessions\n    default to ``pool_fee`` unless Admin specifies the originally agreed fee.\n  - Idempotent: if a PENDING or CONFIRMED booking already exists for\n    ``(session_id, member_id)``, returns it instead of creating a new one.\n    Cancelled/expired bookings raise 409 (admin must investigate).\n  - Channel is hard-coded to ``ADMIN`` so the row is distinguishable from\n    member-self bookings in reporting.\n  - Coach payouts pick this up like any other booking \u2014 paying happens\n    when an attendance row records Present/Late for this booking.",
+        "description": "Admin creates a CONFIRMED booking for a member who showed up without\npre-booking online. Used by the attendance UI's \"Mark walk-in\" action.\n\nBehavior:\n  - Tuition-included cohort classes have no additional fee. Other sessions\n    use the same server-authoritative access/rate resolver as member booking\n    (including cross-location Club visitor rates) unless Admin explicitly\n    records an agreed override.\n  - Idempotent: if a PENDING or CONFIRMED booking already exists for\n    ``(session_id, member_id)``, returns it instead of creating a new one.\n    Cancelled/expired bookings raise 409 (admin must investigate).\n  - Channel is hard-coded to ``ADMIN`` so the row is distinguishable from\n    member-self bookings in reporting.\n  - Coach payouts pick this up like any other booking \u2014 paying happens\n    when an attendance row records Present/Late for this booking.",
         "operationId": "admin_walk_in_booking_sessions__session_id__admin_walk_in_post",
         "security": [
           {
@@ -58517,6 +58685,82 @@
         "title": "AdminApproveCoach",
         "description": "Payload for approving a coach application."
       },
+      "AdminClubEnrollmentSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Club Id"
+          },
+          "club_name": {
+            "type": "string",
+            "title": "Club Name"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Plan Version Id"
+          },
+          "plan_name": {
+            "type": "string",
+            "title": "Plan Name"
+          },
+          "payment_mode": {
+            "type": "string",
+            "title": "Payment Mode"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "assigned_pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Pod Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "member_id",
+          "club_id",
+          "club_name",
+          "plan_version_id",
+          "plan_name",
+          "payment_mode",
+          "starts_at",
+          "ends_at",
+          "status"
+        ],
+        "title": "AdminClubEnrollmentSummary"
+      },
       "AdminCoachApplicationDetail": {
         "properties": {
           "id": {
@@ -60669,6 +60913,11 @@
               }
             ],
             "title": "Pod Id"
+          },
+          "allows_visiting_club_members": {
+            "type": "boolean",
+            "title": "Allows Visiting Club Members",
+            "default": false
           }
         },
         "type": "object",
@@ -62261,6 +62510,300 @@
           "slug"
         ],
         "title": "ClubCreate"
+      },
+      "ClubLocationTransferPreview": {
+        "properties": {
+          "source_enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Enrollment Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "source_club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Club Id"
+          },
+          "source_club_name": {
+            "type": "string",
+            "title": "Source Club Name"
+          },
+          "target_club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Club Id"
+          },
+          "target_club_name": {
+            "type": "string",
+            "title": "Target Club Name"
+          },
+          "target_plan_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Plan Version Id"
+          },
+          "target_plan_name": {
+            "type": "string",
+            "title": "Target Plan Name"
+          },
+          "target_pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Pod Id"
+          },
+          "payment_mode": {
+            "type": "string",
+            "title": "Payment Mode"
+          },
+          "effective_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Effective At"
+          },
+          "source_remaining_sessions": {
+            "type": "integer",
+            "title": "Source Remaining Sessions",
+            "default": 0
+          },
+          "source_remaining_value_kobo": {
+            "type": "integer",
+            "title": "Source Remaining Value Kobo",
+            "default": 0
+          },
+          "target_remaining_sessions": {
+            "type": "integer",
+            "title": "Target Remaining Sessions",
+            "default": 0
+          },
+          "target_remaining_value_kobo": {
+            "type": "integer",
+            "title": "Target Remaining Value Kobo",
+            "default": 0
+          },
+          "estimated_difference_kobo": {
+            "type": "integer",
+            "title": "Estimated Difference Kobo",
+            "default": 0
+          },
+          "can_execute_now": {
+            "type": "boolean",
+            "title": "Can Execute Now"
+          },
+          "requires_financial_reconciliation": {
+            "type": "boolean",
+            "title": "Requires Financial Reconciliation"
+          },
+          "guidance": {
+            "type": "string",
+            "title": "Guidance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_enrollment_id",
+          "member_id",
+          "source_club_id",
+          "source_club_name",
+          "target_club_id",
+          "target_club_name",
+          "target_plan_version_id",
+          "target_plan_name",
+          "payment_mode",
+          "effective_at",
+          "can_execute_now",
+          "requires_financial_reconciliation",
+          "guidance"
+        ],
+        "title": "ClubLocationTransferPreview"
+      },
+      "ClubLocationTransferRequest": {
+        "properties": {
+          "target_plan_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Plan Version Id"
+          },
+          "target_pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Pod Id"
+          },
+          "effective_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective At"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_plan_version_id"
+        ],
+        "title": "ClubLocationTransferRequest"
+      },
+      "ClubLocationTransferResponse": {
+        "properties": {
+          "source_enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Enrollment Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "source_club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Club Id"
+          },
+          "source_club_name": {
+            "type": "string",
+            "title": "Source Club Name"
+          },
+          "target_club_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Club Id"
+          },
+          "target_club_name": {
+            "type": "string",
+            "title": "Target Club Name"
+          },
+          "target_plan_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Plan Version Id"
+          },
+          "target_plan_name": {
+            "type": "string",
+            "title": "Target Plan Name"
+          },
+          "target_pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Pod Id"
+          },
+          "payment_mode": {
+            "type": "string",
+            "title": "Payment Mode"
+          },
+          "effective_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Effective At"
+          },
+          "source_remaining_sessions": {
+            "type": "integer",
+            "title": "Source Remaining Sessions",
+            "default": 0
+          },
+          "source_remaining_value_kobo": {
+            "type": "integer",
+            "title": "Source Remaining Value Kobo",
+            "default": 0
+          },
+          "target_remaining_sessions": {
+            "type": "integer",
+            "title": "Target Remaining Sessions",
+            "default": 0
+          },
+          "target_remaining_value_kobo": {
+            "type": "integer",
+            "title": "Target Remaining Value Kobo",
+            "default": 0
+          },
+          "estimated_difference_kobo": {
+            "type": "integer",
+            "title": "Estimated Difference Kobo",
+            "default": 0
+          },
+          "can_execute_now": {
+            "type": "boolean",
+            "title": "Can Execute Now"
+          },
+          "requires_financial_reconciliation": {
+            "type": "boolean",
+            "title": "Requires Financial Reconciliation"
+          },
+          "guidance": {
+            "type": "string",
+            "title": "Guidance"
+          },
+          "transfer_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transfer Id"
+          },
+          "target_enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Enrollment Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_enrollment_id",
+          "member_id",
+          "source_club_id",
+          "source_club_name",
+          "target_club_id",
+          "target_club_name",
+          "target_plan_version_id",
+          "target_plan_name",
+          "payment_mode",
+          "effective_at",
+          "can_execute_now",
+          "requires_financial_reconciliation",
+          "guidance",
+          "transfer_id",
+          "target_enrollment_id"
+        ],
+        "title": "ClubLocationTransferResponse"
       },
       "ClubObservedAssessmentUpdate": {
         "properties": {
@@ -76789,9 +77332,25 @@
             ],
             "title": "Community Dropin Fee Kobo"
           },
+          "visiting_club_fee_kobo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visiting Club Fee Kobo"
+          },
           "allows_community_dropins": {
             "type": "boolean",
             "title": "Allows Community Dropins",
+            "default": false
+          },
+          "allows_visiting_club_members": {
+            "type": "boolean",
+            "title": "Allows Visiting Club Members",
             "default": false
           },
           "ride_share_fee": {
@@ -77387,7 +77946,8 @@
           "community_dropin_fee": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -77395,9 +77955,26 @@
             ],
             "title": "Community Dropin Fee"
           },
+          "visiting_club_fee": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visiting Club Fee"
+          },
           "allows_community_dropins": {
             "type": "boolean",
             "title": "Allows Community Dropins",
+            "default": false
+          },
+          "allows_visiting_club_members": {
+            "type": "boolean",
+            "title": "Allows Visiting Club Members",
             "default": false
           },
           "ride_share_fee": {
@@ -78167,7 +78744,8 @@
           "community_dropin_fee": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -78175,9 +78753,26 @@
             ],
             "title": "Community Dropin Fee"
           },
+          "visiting_club_fee": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visiting Club Fee"
+          },
           "allows_community_dropins": {
             "type": "boolean",
             "title": "Allows Community Dropins",
+            "default": false
+          },
+          "allows_visiting_club_members": {
+            "type": "boolean",
+            "title": "Allows Visiting Club Members",
             "default": false
           },
           "ride_share_fee": {
@@ -79814,13 +80409,26 @@
           "community_dropin_fee": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "minimum": 0.0
               },
               {
                 "type": "null"
               }
             ],
             "title": "Community Dropin Fee"
+          },
+          "visiting_club_fee": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visiting Club Fee"
           },
           "allows_community_dropins": {
             "anyOf": [
@@ -79832,6 +80440,17 @@
               }
             ],
             "title": "Allows Community Dropins"
+          },
+          "allows_visiting_club_members": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allows Visiting Club Members"
           },
           "ride_share_fee": {
             "anyOf": [
@@ -80000,9 +80619,26 @@
             ],
             "title": "Community Dropin Fee"
           },
+          "visiting_club_fee": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visiting Club Fee"
+          },
           "allows_community_dropins": {
             "type": "boolean",
             "title": "Allows Community Dropins",
+            "default": false
+          },
+          "allows_visiting_club_members": {
+            "type": "boolean",
+            "title": "Allows Visiting Club Members",
             "default": false
           },
           "allows_guests": {
