@@ -665,8 +665,18 @@ async def get_academy_quarter_summary_internal(
         (
             await db.execute(
                 select(func.count(Enrollment.id)).where(
-                    Enrollment.enrolled_at >= date_from,
-                    Enrollment.enrolled_at <= date_to,
+                    func.coalesce(
+                        Enrollment.enrolled_at,
+                        Enrollment.paid_at,
+                        Enrollment.created_at,
+                    )
+                    >= date_from,
+                    func.coalesce(
+                        Enrollment.enrolled_at,
+                        Enrollment.paid_at,
+                        Enrollment.created_at,
+                    )
+                    <= date_to,
                 )
             )
         ).scalar_one()
