@@ -6,7 +6,7 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
@@ -136,6 +136,7 @@ async def admin_list_member_reports(
         .where(
             MemberQuarterlyReport.year == year,
             MemberQuarterlyReport.quarter == quarter,
+            func.lower(MemberQuarterlyReport.member_tier).in_(["academy", "club", "community"]),
         )
         .order_by(order)
         .limit(limit)
@@ -157,6 +158,7 @@ async def admin_export_csv(
         .where(
             MemberQuarterlyReport.year == year,
             MemberQuarterlyReport.quarter == quarter,
+            func.lower(MemberQuarterlyReport.member_tier).in_(["academy", "club", "community"]),
         )
         .order_by(MemberQuarterlyReport.member_name.asc())
     )
@@ -340,6 +342,7 @@ async def admin_send_report_emails(
         select(MemberQuarterlyReport).where(
             MemberQuarterlyReport.year == body.year,
             MemberQuarterlyReport.quarter == body.quarter,
+            func.lower(MemberQuarterlyReport.member_tier).in_(["academy", "club", "community"]),
         )
     )
     reports = result.scalars().all()
