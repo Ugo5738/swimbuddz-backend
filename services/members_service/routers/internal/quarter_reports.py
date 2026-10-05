@@ -80,12 +80,20 @@ async def get_club_quarter_summary(
     current_member_ids = {row[0].member_id for row in current_rows}
     retained = current_member_ids & prior_member_ids
 
+    first_club_start = (
+        select(
+            ClubEnrollment.member_id.label("member_id"),
+            func.min(ClubEnrollment.starts_at).label("first_starts_at"),
+        )
+        .group_by(ClubEnrollment.member_id)
+        .subquery()
+    )
     raw_new_enrollments = int(
         (
             await db.execute(
-                select(func.count(ClubEnrollment.id)).where(
-                    ClubEnrollment.starts_at >= date_from,
-                    ClubEnrollment.starts_at <= date_to,
+                select(func.count(first_club_start.c.member_id)).where(
+                    first_club_start.c.first_starts_at >= date_from,
+                    first_club_start.c.first_starts_at <= date_to,
                 )
             )
         ).scalar_one()
