@@ -24,6 +24,10 @@ class AttendanceCreate(AttendanceBase):
 
 class PublicAttendanceCreate(AttendanceBase):
     member_id: uuid.UUID
+    # Booking/payment synchronization may need to attach booking_id after the
+    # fact. When true, an existing PRESENT/ABSENT/LATE/EXCUSED decision wins;
+    # only a missing attendance row receives the requested default status.
+    preserve_existing: bool = False
 
 
 class ParticipantAttendanceCreate(BaseModel):
