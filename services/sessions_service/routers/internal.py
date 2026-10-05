@@ -2314,22 +2314,37 @@ async def internal_confirm_booking(
         if updated:
             await db.refresh(booking)
         await deliver_confirmation(db, key)
-        await sync_booking_attendance(booking)
+        await sync_booking_attendance(booking, preserve_existing=True)
         return booking
     now = utc_now()
-    if session.status != SessionStatus.SCHEDULED or session.starts_at <= now:
+    historical_confirmation = bool(
+        confirm_in.allow_historical_confirmation
+        and session.starts_at <= now
+        and session.status
+        in {
+            SessionStatus.SCHEDULED,
+            SessionStatus.IN_PROGRESS,
+            SessionStatus.COMPLETED,
+        }
+    )
+    if not historical_confirmation and (
+        session.status != SessionStatus.SCHEDULED or session.starts_at <= now
+    ):
         raise HTTPException(
             status_code=409,
             detail="This paid reservation can no longer be confirmed",
         )
-    if booking.status == SessionBookingStatus.EXPIRED:
+    if booking.status == SessionBookingStatus.EXPIRED and not historical_confirmation:
         await assert_booking_capacity(
             db,
             session=session,
             member_id=booking.member_id,
             new_party_size=booking.party_size,
         )
-    elif booking.status != SessionBookingStatus.PENDING:
+    elif booking.status not in {
+        SessionBookingStatus.PENDING,
+        SessionBookingStatus.EXPIRED,
+    }:
         raise HTTPException(
             status_code=422,
             detail=f"Cannot confirm a booking with status={booking.status.value}.",
@@ -2351,7 +2366,7 @@ async def internal_confirm_booking(
     await db.commit()
     await db.refresh(booking)
     await deliver_confirmation(db, key)
-    await sync_booking_attendance(booking)
+    await sync_booking_attendance(booking, preserve_existing=True)
     return booking
 
 
