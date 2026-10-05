@@ -74,6 +74,7 @@ async def test_session_booking_confirms_owner_and_fulfills_quoted_ride(monkeypat
         f"/internal/sessions/bookings/{payment.payment_metadata['booking_id']}/confirm"
     )
     assert confirm_kwargs["json"]["member_auth_id"] == payment.member_auth_id
+    assert confirm_kwargs["json"]["allow_historical_confirmation"] is True
     ride_url, ride_kwargs = client.posts[1]
     assert ride_url.endswith(
         f"/transport/sessions/{payment.payment_metadata['session_id']}/bookings"
@@ -176,8 +177,75 @@ async def test_paid_extra_class_fulfillment_confirms_and_links_payment_without_r
     assert booking.payment_intent_id == payment.id
     assert booking.fee_amount_kobo == 1500000
     assert booking.expires_at is None
-    sync.assert_awaited_once_with(booking)
+    sync.assert_awaited_once_with(booking, preserve_existing=True)
     # Duplicate verification/webhook is idempotent and never creates another booking.
     await _session_booking.apply_session_booking(payment)
     assert booking.payment_intent_id == payment.id
     assert booking.fee_amount_kobo == 1500000
+
+
+@pytest.mark.asyncio
+async def test_verified_payment_can_reconcile_expired_past_booking_without_capacity_recheck(
+    monkeypatch,
+):
+    from datetime import timedelta
+
+    from libs.common.datetime_utils import utc_now
+    from services.sessions_service.models import SessionBookingStatus, SessionStatus
+    from services.sessions_service.routers import internal
+    from services.sessions_service.schemas.booking import BookingConfirmRequest
+
+    booking = SimpleNamespace(
+        id=uuid.uuid4(),
+        session_id=uuid.uuid4(),
+        member_id=uuid.uuid4(),
+        member_auth_id="member-auth-1",
+        status=SessionBookingStatus.EXPIRED,
+        payment_intent_id=None,
+        wallet_transaction_id=None,
+        party_size=1,
+        expires_at=utc_now() - timedelta(days=2),
+        confirmed_at=None,
+    )
+    session = SimpleNamespace(
+        id=booking.session_id,
+        status=SessionStatus.COMPLETED,
+        starts_at=utc_now() - timedelta(days=1),
+    )
+    db = SimpleNamespace(
+        execute=AsyncMock(
+            side_effect=[
+                SimpleNamespace(one_or_none=lambda: booking),
+                SimpleNamespace(scalar_one_or_none=lambda: session),
+                SimpleNamespace(scalar_one=lambda: booking),
+            ]
+        ),
+        commit=AsyncMock(),
+        refresh=AsyncMock(),
+    )
+    sync = AsyncMock()
+    capacity = AsyncMock()
+    monkeypatch.setattr(internal, "sync_booking_attendance", sync)
+    monkeypatch.setattr(internal, "assert_booking_capacity", capacity)
+    monkeypatch.setattr(
+        internal, "queue_confirmation", AsyncMock(return_value="email-key")
+    )
+    monkeypatch.setattr(internal, "deliver_confirmation", AsyncMock())
+
+    payment_id = uuid.uuid4()
+    await internal.internal_confirm_booking(
+        booking.id,
+        BookingConfirmRequest(
+            member_auth_id=booking.member_auth_id,
+            payment_intent_id=payment_id,
+            allow_historical_confirmation=True,
+        ),
+        SimpleNamespace(),
+        db,
+    )
+
+    assert booking.status == SessionBookingStatus.CONFIRMED
+    assert booking.payment_intent_id == payment_id
+    assert booking.expires_at is None
+    capacity.assert_not_awaited()
+    sync.assert_awaited_once_with(booking, preserve_existing=True)
