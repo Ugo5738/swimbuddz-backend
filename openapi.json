@@ -59830,6 +59830,18 @@
             "type": "string",
             "title": "Last Name"
           },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles",
+            "default": []
+          },
           "primary_tier": {
             "anyOf": [
               {
@@ -59840,6 +59852,28 @@
               }
             ],
             "title": "Primary Tier"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
           }
         },
         "type": "object",
@@ -59847,7 +59881,8 @@
           "id",
           "auth_id",
           "first_name",
-          "last_name"
+          "last_name",
+          "email"
         ],
         "title": "ApprovedMemberBasic"
       },
@@ -63869,24 +63904,69 @@
             "default": 0
           },
           "new_enrollments": {
-            "type": "integer",
-            "title": "New Enrollments",
-            "default": 0
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Enrollments"
+          },
+          "new_enrollments_available": {
+            "type": "boolean",
+            "title": "New Enrollments Available",
+            "default": true
           },
           "prior_period_members": {
-            "type": "integer",
-            "title": "Prior Period Members",
-            "default": 0
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prior Period Members"
           },
           "retained_members": {
-            "type": "integer",
-            "title": "Retained Members",
-            "default": 0
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retained Members"
           },
           "retention_rate": {
-            "type": "number",
-            "title": "Retention Rate",
-            "default": 0.0
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Rate"
+          },
+          "retention_available": {
+            "type": "boolean",
+            "title": "Retention Available",
+            "default": true
+          },
+          "retention_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Note"
           },
           "prepaid_enrollments": {
             "type": "integer",
@@ -82593,6 +82673,11 @@
             "title": "Certificates Issued",
             "default": 0
           },
+          "progress_updates_in_period": {
+            "type": "integer",
+            "title": "Progress Updates In Period",
+            "default": 0
+          },
           "fill_rate": {
             "type": "number",
             "title": "Fill Rate",
@@ -95784,6 +95869,11 @@
             "title": "Gross Margin Pct",
             "default": 0.0
           },
+          "profitability_reliable": {
+            "type": "boolean",
+            "title": "Profitability Reliable",
+            "default": false
+          },
           "deferred_revenue_ngn": {
             "type": "integer",
             "title": "Deferred Revenue Ngn",
@@ -95915,6 +96005,18 @@
             },
             "type": "array",
             "title": "Data Quality"
+          },
+          "member_distribution_ready": {
+            "type": "boolean",
+            "title": "Member Distribution Ready",
+            "default": false
+          },
+          "member_distribution_blockers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Member Distribution Blockers"
           },
           "decisions": {
             "items": {

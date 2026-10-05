@@ -11,7 +11,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.config import get_settings
@@ -33,6 +33,7 @@ MAX_CONCURRENT = 10
 ATTENDED_STATUSES = {"present", "late"}
 EXCUSED_STATUSES = {"excused", "cancelled"}
 REPORTABLE_SESSION_TYPES = {"cohort_class", "club", "community", "event"}
+REPORT_ELIGIBLE_TIERS = {"academy", "club", "community"}
 
 
 async def _safe_get(
@@ -324,12 +325,17 @@ def _attendance_status_by_session(records: list[dict]) -> dict[str, str]:
 
 
 def _effective_pool_hours(session: dict) -> float:
+    """Return swimmer-hours contributed by one attended session.
+
+    Quarterly reporting should reflect actual scheduled swim time. The previous
+    blanket "-1 hour" convention erased one-hour Academy lessons entirely and
+    understated Club/Community participation.
+    """
     starts_at = _parse_iso_datetime(session.get("starts_at"))
     ends_at = _parse_iso_datetime(session.get("ends_at"))
     if starts_at is None or ends_at is None:
         return 0.0
-    raw_hours = max(0.0, (ends_at - starts_at).total_seconds() / 3600)
-    return max(0.0, raw_hours - 1.0)
+    return max(0.0, (ends_at - starts_at).total_seconds() / 3600)
 
 
 def _weekly_attendance(
@@ -599,7 +605,7 @@ async def compute_member_report(
     member_tier = member_info.get("primary_tier")
 
     # Detect first-timer (joined this quarter)
-    member_created_at = member_info.get("created_at") or member_info.get("approved_at")
+    member_created_at = member_info.get("approved_at") or member_info.get("created_at")
     is_first_quarter = False
     if member_created_at:
         from datetime import datetime as _dt
@@ -707,28 +713,56 @@ async def compute_all_member_reports(year: int, quarter: int, db: AsyncSession) 
     concurrent coroutines).
     """
     members = await _fetch_all_approved_members()
-    if not members:
-        logger.warning("No approved members found to generate reports for.")
+    candidate_members = [
+        member
+        for member in members
+        if "member"
+        in {str(role).lower() for role in (member.get("roles") or ["member"])}
+    ]
+    if not candidate_members:
+        logger.warning("No report-eligible member-role profiles found.")
         return 0
+
+    # Regeneration is authoritative for the selected quarter. Remove stale rows
+    # first so prospects/admins from older report definitions cannot linger.
+    await db.execute(
+        delete(MemberQuarterlyReport).where(
+            MemberQuarterlyReport.year == year,
+            MemberQuarterlyReport.quarter == quarter,
+        )
+    )
+    await db.commit()
 
     count = 0
 
-    for member in members:
+    for member in candidate_members:
         try:
-            await compute_member_report(
+            report = await compute_member_report(
                 member_auth_id=member["auth_id"],
                 year=year,
                 quarter=quarter,
                 db=db,
                 member_info=member,
             )
+            tier = str(report.member_tier or "").lower()
+            has_quarter_activity = bool(
+                report.total_sessions_attended
+                or report.total_sessions_available
+                or report.programs_enrolled
+                or report.events_attended
+                or report.volunteer_hours
+            )
+            if tier not in REPORT_ELIGIBLE_TIERS and not has_quarter_activity:
+                await db.delete(report)
+                await db.commit()
+                continue
             count += 1
         except Exception as e:
             logger.error(f"Failed to compute report for {member.get('auth_id')}: {e}")
             # Rollback so the session is usable for the next member
             await db.rollback()
 
-    logger.info(f"Generated {count} member reports for Q{quarter} {year}")
+    logger.info(f"Generated {count} eligible swimmer reports for Q{quarter} {year}")
 
     # Compute percentile ranks across all member reports
     await _compute_percentile_ranks(year, quarter, db)
@@ -774,7 +808,12 @@ async def compute_community_stats(
             func.sum(MemberQuarterlyReport.total_sessions_attended).label(
                 "total_attendance"
             ),
-            func.avg(MemberQuarterlyReport.attendance_rate).label("avg_rate"),
+            func.sum(MemberQuarterlyReport.total_sessions_available).label(
+                "total_available"
+            ),
+            func.count(MemberQuarterlyReport.id)
+            .filter(MemberQuarterlyReport.total_sessions_attended > 0)
+            .label("active_swimmers"),
             func.sum(MemberQuarterlyReport.milestones_achieved).label(
                 "total_milestones"
             ),
@@ -818,7 +857,7 @@ async def compute_community_stats(
     stats_data = dict(
         year=year,
         quarter=quarter,
-        total_active_members=row.total_members or 0,
+        total_active_members=row.active_swimmers or 0,
         total_sessions_held=session_stats.get("total_sessions", 0),
         # Community-wide attendance is an all-human operational count.
         # Prefer Sessions' canonical member + attached guest + guest-pass +
@@ -835,7 +874,11 @@ async def compute_community_stats(
         # This remains a member attendance-rate KPI, not "all visitors /
         # capacity". Keep the metric stable and label it honestly in the
         # management UI.
-        average_attendance_rate=float(row.avg_rate or 0.0),
+        average_attendance_rate=(
+            float(row.total_attendance or 0) / float(row.total_available or 1)
+            if row.total_available
+            else 0.0
+        ),
         total_new_members=int(row.total_new_members or 0),
         total_milestones_achieved=row.total_milestones or 0,
         total_certificates_issued=row.total_certs or 0,
@@ -856,7 +899,7 @@ async def compute_community_stats(
         # Community milestones
         community_milestones=_build_community_milestones(
             total_pool_hours=community_swimmer_hours,
-            total_members=row.total_members or 0,
+            total_members=row.active_swimmers or 0,
             total_sessions=session_stats.get("total_sessions", 0),
             total_volunteer=float(row.total_volunteer or 0.0),
         ),

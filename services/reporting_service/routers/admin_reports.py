@@ -6,7 +6,7 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
@@ -136,6 +136,9 @@ async def admin_list_member_reports(
         .where(
             MemberQuarterlyReport.year == year,
             MemberQuarterlyReport.quarter == quarter,
+            func.lower(MemberQuarterlyReport.member_tier).in_(
+                ["academy", "club", "community"]
+            ),
         )
         .order_by(order)
         .limit(limit)
@@ -157,6 +160,9 @@ async def admin_export_csv(
         .where(
             MemberQuarterlyReport.year == year,
             MemberQuarterlyReport.quarter == quarter,
+            func.lower(MemberQuarterlyReport.member_tier).in_(
+                ["academy", "club", "community"]
+            ),
         )
         .order_by(MemberQuarterlyReport.member_name.asc())
     )
@@ -278,6 +284,7 @@ async def admin_generate_report(
         await compute_community_stats(body.year, body.quarter, db)
         snapshot.status = ReportStatus.COMPLETED
         snapshot.member_count = count
+        snapshot.semantics_version = 2
         snapshot.completed_at = utc_now()
         await db.commit()
         await db.refresh(snapshot)
@@ -335,10 +342,29 @@ async def admin_send_report_emails(
     from libs.common.config import settings
     from libs.common.emails.client import get_email_client
 
+    snapshot_result = await db.execute(
+        select(QuarterlySnapshot).where(
+            QuarterlySnapshot.year == body.year,
+            QuarterlySnapshot.quarter == body.quarter,
+        )
+    )
+    snapshot = snapshot_result.scalar_one_or_none()
+    if snapshot is None or snapshot.semantics_version < 2:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Regenerate this quarter under the corrected reporting definitions "
+                "before sending member reports."
+            ),
+        )
+
     result = await db.execute(
         select(MemberQuarterlyReport).where(
             MemberQuarterlyReport.year == body.year,
             MemberQuarterlyReport.quarter == body.quarter,
+            func.lower(MemberQuarterlyReport.member_tier).in_(
+                ["academy", "club", "community"]
+            ),
         )
     )
     reports = result.scalars().all()

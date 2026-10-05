@@ -8,7 +8,7 @@ Quarterly member/community snapshots remain the frozen engagement layer.
 from __future__ import annotations
 
 import asyncio
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 
 from sqlalchemy import select
@@ -18,6 +18,7 @@ from libs.common.config import get_settings
 from libs.common.service_client import internal_get
 from services.reporting_service.models import (
     CommunityQuarterlyStats,
+    MemberQuarterlyReport,
     QuarterlySnapshot,
 )
 from services.reporting_service.schemas.business_review import (
@@ -62,6 +63,31 @@ def _comparison(current: float | int | None, previous: float | int | None):
     )
 
 
+def _canonical_location(name: str | None) -> tuple[str, str]:
+    """Collapse known cross-service location aliases into one operating site."""
+    raw = (name or "Unspecified").strip()
+    lowered = raw.lower()
+    if lowered in {"vi", "v.i.", "v.i"}:
+        return "victoria-island", "Victoria Island — Oduduwa House Pool"
+
+    aliases = (
+        (("rowe park", "yaba"), "yaba", "Yaba — Rowe Park Pool"),
+        (
+            ("oduduwa", "victoria island"),
+            "victoria-island",
+            "Victoria Island — Oduduwa House Pool",
+        ),
+        (("siloam", "festac"), "festac", "Festac — Siloam Pool"),
+        (("herel", "ikoyi"), "ikoyi", "Ikoyi — Herel Play"),
+        (("ikeja",), "ikeja", "Ikeja"),
+        (("ogudu",), "ogudu", "Ogudu GRA"),
+    )
+    for needles, key, label in aliases:
+        if any(needle in lowered for needle in needles):
+            return key, label
+    return lowered or "unspecified", raw or "Unspecified"
+
+
 def _naira(minor: int | float | None) -> int:
     return int(round(float(minor or 0) / 100))
 
@@ -100,6 +126,22 @@ async def build_business_review(
             )
         )
     ).scalar_one_or_none()
+
+    previous_snapshot = (
+        await db.execute(
+            select(QuarterlySnapshot).where(
+                QuarterlySnapshot.year == prev_year,
+                QuarterlySnapshot.quarter == prev_quarter,
+            )
+        )
+    ).scalar_one_or_none()
+
+    comparison_compatible = bool(
+        snapshot
+        and previous_snapshot
+        and snapshot.semantics_version >= 2
+        and snapshot.semantics_version == previous_snapshot.semantics_version
+    )
 
     date_params = {"from": start.isoformat(), "to": end.isoformat()}
     ledger_date_params = {
@@ -150,12 +192,18 @@ async def build_business_review(
     sessions = sessions or {}
 
     finance_available = pnl is not None and margin is not None
+    revenue_minor = int((margin or {}).get("total_revenue_minor") or 0)
+    cogs_minor = int((margin or {}).get("total_cogs_minor") or 0)
+    profitability_reliable = bool(
+        finance_available and (revenue_minor == 0 or cogs_minor > 0)
+    )
     finance = BusinessReviewFinance(
         revenue_ngn=_naira((pnl or {}).get("total_revenue_minor")),
         expenses_ngn=_naira((pnl or {}).get("total_expense_minor")),
         net_income_ngn=_naira((pnl or {}).get("net_income_minor")),
         cogs_ngn=_naira((margin or {}).get("total_cogs_minor")),
         gross_margin_ngn=_naira((margin or {}).get("total_margin_minor")),
+        profitability_reliable=profitability_reliable,
         gross_margin_pct=(
             round(
                 (
@@ -181,9 +229,15 @@ async def build_business_review(
             for row in (margin or {}).get("rows", [])
         ],
         available=finance_available,
-        note=None
-        if finance_available
-        else "Ledger data is unavailable for this period; engagement revenue is not substituted for accounting revenue.",
+        note=(
+            None
+            if profitability_reliable
+            else (
+                "Ledger revenue is available, but direct costs/COGS are not sufficiently classified for a reliable gross-margin or net-income conclusion."
+                if finance_available
+                else "Ledger data is unavailable for this period; engagement revenue is not substituted for accounting revenue."
+            )
+        ),
     )
 
     location_map: dict[str, dict[str, Any]] = defaultdict(
@@ -201,9 +255,9 @@ async def build_business_review(
         }
     )
     for detail in sessions.get("session_details") or []:
-        name = detail.get("location") or "Unspecified"
-        row = location_map[name]
-        row["location"] = name
+        key, label = _canonical_location(detail.get("location"))
+        row = location_map[key]
+        row["location"] = label
         row["sessions"] += 1
         row["scheduled_pool_hours"] = round(
             row["scheduled_pool_hours"] + float(detail.get("hours") or 0), 2
@@ -217,24 +271,55 @@ async def build_business_review(
         )
 
     for name, a in (academy.get("by_location") or {}).items():
-        row = location_map[name]
-        row["location"] = name
+        key, label = _canonical_location(name)
+        row = location_map[key]
+        row["location"] = label
         row["academy_cohorts"] = a.get("cohorts", 0)
         row["academy_active_enrollments"] = a.get("active_enrollments", 0)
 
     for club_name, c in (club.get("by_club") or {}).items():
-        name = c.get("location") or club_name
-        row = location_map[name]
-        row["location"] = name
+        key, label = _canonical_location(c.get("location") or club_name)
+        row = location_map[key]
+        row["location"] = label
         row["club_active_members"] += c.get("active_members", 0)
+
+    report_names = list(
+        (
+            await db.execute(
+                select(MemberQuarterlyReport.member_name).where(
+                    MemberQuarterlyReport.year == year,
+                    MemberQuarterlyReport.quarter == quarter,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    normalized_name_counts = Counter(
+        name.strip().lower() for name in report_names if name
+    )
+    duplicate_names = sorted(
+        name for name, count in normalized_name_counts.items() if count > 1
+    )
 
     data_quality: list[str] = []
     if not finance_available:
         data_quality.append(
             "Finance section incomplete because ledger reporting was unavailable."
         )
+    elif not profitability_reliable:
+        data_quality.append(
+            "Revenue is ledger-backed, but direct costs/COGS are not fully classified for this quarter; gross margin and net income must not be treated as profitability conclusions."
+        )
     if not academy:
         data_quality.append("Academy quarter summary unavailable.")
+    elif (
+        int(academy.get("active_enrollments") or 0) > 0
+        and int(academy.get("progress_updates_in_period") or 0) == 0
+    ):
+        data_quality.append(
+            "Academy had active learners but no progress records were updated in the quarter; zero milestones/certificates should be treated as incomplete progress-recording coverage, not evidence of zero learner progress."
+        )
     if not club:
         data_quality.append("Club quarter summary unavailable.")
     if not sessions:
@@ -246,22 +331,54 @@ async def build_business_review(
     estimated_guest_hours = float(sessions.get("estimated_guest_swimmer_hours") or 0)
     if estimated_guest_hours > 0:
         data_quality.append(
-            "Some guest swimmer-hours are estimated from effective session duration because attached guests and door walk-ins do not yet store exact swim minutes. GuestPass minutes remain exact."
+            "Some guest swimmer-hours are estimated from full scheduled session duration because attached guests and door walk-ins do not yet store exact swim minutes. GuestPass minutes remain exact."
         )
     data_quality.append(
-        "Academy completion is time-bounded by certificate issuance because Enrollment does not yet store graduated_at."
+        "Academy new-enrollment timing uses enrolled_at, then paid_at, then created_at as a legacy fallback; completion is time-bounded by certificate issuance because Enrollment does not yet store graduated_at."
     )
+    if club and not club.get("retention_available", True):
+        data_quality.append(
+            club.get("retention_note")
+            or "Club retention is unavailable because the historical entitlement baseline is incomplete."
+        )
+    else:
+        data_quality.append(
+            "Club retention compares overlapping paid Club entitlements with the immediately preceding equal-length period."
+        )
     data_quality.append(
-        "Club retention compares overlapping paid Club entitlements with the immediately preceding equal-length period."
+        "Guest/walk-in history is complete only where canonical GuestPass/participant attendance was recorded; older manually handled guests may be absent."
     )
     data_quality.append(
         "Lead-to-sale conversion and marketing CAC are not included yet because prospect/CRM lifecycle events are not a single authoritative reporting source."
     )
     data_quality.append(
+        "Known location aliases are normalized for management reporting (for example Yaba/Rowe Park, VI/Oduduwa House, Festac/Siloam and Ikoyi/Herel Play)."
+    )
+    if duplicate_names:
+        data_quality.append(
+            "Possible duplicate swimmer identities share the same display name: "
+            + ", ".join(duplicate_names)
+            + ". Review these accounts before member-facing distribution."
+        )
+    if previous_stats is not None and not comparison_compatible:
+        data_quality.append(
+            f"Q{prev_quarter} {prev_year} was generated under an older reporting definition, so QoQ comparisons are hidden until that quarter is regenerated."
+        )
+    data_quality.append(
         "Ledger totals are authoritative. Historical session/guest payments created before session-type revenue snapshots may still sit in the legacy Club domain; new settlements are classified by the actual session type."
     )
 
-    previous = previous_stats
+    distribution_blockers: list[str] = []
+    if not snapshot or snapshot.semantics_version < 2:
+        distribution_blockers.append(
+            "Regenerate this quarter under the corrected reporting definitions before sending member reports."
+        )
+    if duplicate_names:
+        distribution_blockers.append(
+            "Review possible duplicate swimmer identities before member-facing distribution."
+        )
+
+    previous = previous_stats if comparison_compatible else None
     scorecard = {
         "active_members": _comparison(
             current_stats.total_active_members,
@@ -331,6 +448,7 @@ async def build_business_review(
         executive_scorecard=scorecard,
         community={
             "active_members": current_stats.total_active_members,
+            "registered_swimmer_profiles": snapshot.member_count if snapshot else 0,
             "new_members": current_stats.total_new_members,
             "sessions_held": current_stats.total_sessions_held,
             "attendance_records": int(
@@ -383,5 +501,7 @@ async def build_business_review(
         ),
         session_mix=sessions.get("by_type") or current_stats.stats_by_type or {},
         data_quality=data_quality,
+        member_distribution_ready=not distribution_blockers,
+        member_distribution_blockers=distribution_blockers,
         decisions=decisions,
     )

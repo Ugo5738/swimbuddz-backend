@@ -584,6 +584,7 @@ class AcademyQuarterSummary(_BaseModel):
     graduated: int = 0
     new_enrollments: int = 0
     certificates_issued: int = 0
+    progress_updates_in_period: int = 0
     fill_rate: float = 0.0
     completion_rate: float = 0.0
     by_location: dict[str, dict] = _Field(default_factory=dict)
@@ -665,8 +666,18 @@ async def get_academy_quarter_summary_internal(
         (
             await db.execute(
                 select(func.count(Enrollment.id)).where(
-                    Enrollment.enrolled_at >= date_from,
-                    Enrollment.enrolled_at <= date_to,
+                    func.coalesce(
+                        Enrollment.enrolled_at,
+                        Enrollment.paid_at,
+                        Enrollment.created_at,
+                    )
+                    >= date_from,
+                    func.coalesce(
+                        Enrollment.enrolled_at,
+                        Enrollment.paid_at,
+                        Enrollment.created_at,
+                    )
+                    <= date_to,
                 )
             )
         ).scalar_one()
@@ -695,6 +706,18 @@ async def get_academy_quarter_summary_internal(
         or 0
     )
 
+    progress_updates_in_period = int(
+        (
+            await db.execute(
+                select(func.count(StudentProgress.id)).where(
+                    StudentProgress.updated_at >= date_from,
+                    StudentProgress.updated_at <= date_to,
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+
     filled = (
         status_counts["active"] + status_counts["graduated"] + status_counts["dropped"]
     )
@@ -713,6 +736,7 @@ async def get_academy_quarter_summary_internal(
         graduated=status_counts["graduated"],
         new_enrollments=new_enrollments,
         certificates_issued=certificates_issued,
+        progress_updates_in_period=progress_updates_in_period,
         fill_rate=round(filled / total_capacity, 4) if total_capacity else 0.0,
         completion_rate=(
             round(certificates_issued / completion_denominator, 4)
