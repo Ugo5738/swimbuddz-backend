@@ -1,11 +1,12 @@
 """Storage utilities for handling file uploads with Supabase/S3."""
 
+import asyncio
 import math
 import uuid
 from datetime import timedelta
 from enum import Enum
 from io import BytesIO
-from typing import Optional, Tuple
+from typing import BinaryIO, Optional, Tuple
 from urllib.parse import quote, urlparse
 
 from PIL import Image, ImageOps
@@ -191,6 +192,30 @@ class StorageService:
             raise ValueError(f"Unknown storage backend: {self.backend}")
 
         return file_url, thumbnail_url
+
+    async def upload_video_file(
+        self,
+        file: BinaryIO,
+        filename: str,
+        content_type: str,
+        bucket_type: BucketType = BucketType.PUBLIC,
+    ) -> Tuple[str, None]:
+        """Stream a spooled video to S3 without blocking the async server."""
+        if self.backend != "s3":
+            # Supabase's legacy client accepts bytes only.
+            data = await asyncio.to_thread(file.read)
+            return await self.upload_media(data, filename, content_type, bucket_type)
+        bucket = self._get_s3_bucket(bucket_type)
+        await asyncio.to_thread(
+            self.s3_client.upload_fileobj,
+            file,
+            bucket,
+            filename,
+            ExtraArgs={"ContentType": content_type},
+        )
+        if bucket_type == BucketType.PUBLIC and CLOUDFRONT_URL:
+            return f"{CLOUDFRONT_URL}/{filename}", None
+        return f"https://{bucket}.s3.{AWS_REGION}.amazonaws.com/{filename}", None
 
     def _normalize_image_orientation(
         self, image_data: bytes, content_type: str

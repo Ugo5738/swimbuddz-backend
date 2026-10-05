@@ -888,9 +888,16 @@ async def proxy_request(
         content_body = None
 
         if request.method in ["POST", "PATCH", "PUT"]:
-            body_bytes = await request.body()
-            if body_bytes:
-                content_body = body_bytes
+            if client is clients.media_client and request.headers.get(
+                "content-type", ""
+            ).startswith("multipart/form-data"):
+                # Forward phone videos incrementally. Reading request.body()
+                # held the entire (up to 2 GB) upload in the gateway's memory.
+                content_body = request.stream()
+            else:
+                body_bytes = await request.body()
+                if body_bytes:
+                    content_body = body_bytes
 
         # Forward headers (excluding those that httpx handles or that cause issues)
         # Content-Length is handled by httpx based on the body we pass
