@@ -233,6 +233,13 @@ class AdminWalkInRequest(BaseModel):
     notes: Optional[str] = Field(default=None, max_length=500)
 
 
+class WalkInAttendanceReconcileRequest(BaseModel):
+    """Reconcile an admin-created walk-in booking with a corrected attendance mark."""
+
+    member_id: uuid.UUID
+    status: str = Field(min_length=1, max_length=24)
+
+
 class AdminUnpricedCohortBookingRequest(BaseModel):
     """Explicit correction of a legacy cohort booking created without a price.
 
